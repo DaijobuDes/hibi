@@ -35,6 +35,12 @@ test('empty entry, three views, and lossless source switching', {
       document.activeElement?.getAttribute('aria-label') === 'document editor',
   )
   await rich.fill('hello editor')
+  await page.waitForFunction(
+    () => getComputedStyle(document.querySelector('.titlebar')).opacity === '0',
+  )
+  await page.waitForFunction(
+    () => getComputedStyle(document.querySelector('.titlebar')).opacity === '1',
+  )
   await page.getByRole('button', { name: 'side-by-side', exact: true }).click()
   const source = page.getByRole('textbox', { name: 'markdown editor' })
   await source.waitFor()
@@ -42,16 +48,27 @@ test('empty entry, three views, and lossless source switching', {
     const panes = document
       .querySelector('.editor-panes')
       .getBoundingClientRect()
+    const title = document
+      .querySelector('.document-title')
+      .getBoundingClientRect()
     return {
       top: panes.top,
       bottom: panes.bottom,
       viewport: innerHeight,
       padding: getComputedStyle(document.querySelector('.tiptap')).paddingTop,
+      centered: Math.abs(title.x + title.width / 2 - innerWidth / 2) < 0.5,
+      flat:
+        getComputedStyle(document.querySelector('.titlebar'))
+          .borderBottomWidth === '0px' &&
+        getComputedStyle(document.querySelector('.document-title'))
+          .borderWidth === '0px',
     }
   })
   assert.equal(geometry.top, 36)
   assert.equal(geometry.bottom, geometry.viewport)
-  assert.equal(geometry.padding, '8px')
+  assert.equal(geometry.padding, '24px')
+  assert.equal(geometry.centered, true)
+  assert.equal(geometry.flat, true)
   await page.getByRole('button', { name: 'editor settings' }).click()
   await page.getByRole('slider', { name: 'editor padding' }).press('Home')
   assert.equal(

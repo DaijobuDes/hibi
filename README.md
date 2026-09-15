@@ -8,7 +8,11 @@ minimal markdown editor built on electron 44.3.0, react, strict typescript, and 
 - **side-by-side:** editable rich text and syntax-highlighted markdown, synchronized in both directions.
 - **markdown only:** edit the original source directly.
 
-the compact title bar holds file actions, filename, formatting, and view controls. editor panels fill the space below it. open editor settings (sliders icon) to adjust padding from 0–48 px; default is 8 px and the preference persists across launches.
+the compact title bar holds file actions, filename, formatting, and view controls. editor panels fill the space below it. open editor settings (sliders icon) to adjust padding from 0–48 px; default is 24 px and the preference persists across launches.
+
+startup and lazy editor loading show a centered, faded page icon with a shimmer. reduced-motion mode shows a static icon. lucide supplies interface icons; simple-icons is installed for future brand icons and is not bundled unless used.
+
+the flat title bar keeps its filename centered on the window. it fades out while typing and returns after 1.2 seconds idle, when the pointer moves into the top 36 px, or when its controls receive keyboard focus. its space stays reserved so text does not jump.
 
 native file menu supports new (`cmd/ctrl+n`), open (`cmd/ctrl+o`), save (`cmd/ctrl+s`), and save as (`cmd/ctrl+shift+s`). opening another document, starting a new one, closing, or quitting asks before discarding unsaved changes. a dot beside the filename marks unsaved changes.
 

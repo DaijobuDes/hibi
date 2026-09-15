@@ -1,3 +1,12 @@
+import {
+  Code,
+  Columns2,
+  FilePlus,
+  FileText,
+  FolderOpen,
+  Save,
+  SlidersHorizontal,
+} from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type {
   AppInfo,
@@ -7,31 +16,18 @@ import type {
 import type { ViewMode } from './Editor'
 
 const icons = {
-  new: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M12 12v6 M9 15h6',
-  open: 'M3 7V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v2 M3 7h5l2 3h11l-3 10H3z',
-  save: 'M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h12l4 4v12a2 2 0 0 1-2 2z M7 3v6h10V3 M7 21v-8h10v8',
-  normal: 'M4 3h16v18H4z M8 8h8 M8 12h8 M8 16h5',
-  'side-by-side': 'M3 4h18v16H3z M12 4v16',
-  markdown: 'M8 6l-6 6 6 6 M16 6l6 6-6 6',
-  settings: 'M4 7h7 M15 7h5 M4 17h3 M11 17h9 M11 4v6 M7 14v6',
+  new: FilePlus,
+  open: FolderOpen,
+  save: Save,
+  normal: FileText,
+  'side-by-side': Columns2,
+  markdown: Code,
+  settings: SlidersHorizontal,
 } as const
 
 function Icon({ name }: { name: keyof typeof icons }) {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d={icons[name]} />
-    </svg>
-  )
+  const Glyph = icons[name]
+  return <Glyph size={16} strokeWidth={1.5} aria-hidden="true" />
 }
 
 export function Titlebar({
@@ -50,8 +46,8 @@ export function Titlebar({
   disabled: boolean
 }) {
   const [padding, setPadding] = useState(() => {
-    const stored = Number(localStorage.getItem('editor-padding') ?? 8)
-    return Number.isInteger(stored) && stored >= 0 && stored <= 48 ? stored : 8
+    const stored = Number(localStorage.getItem('editor-padding') ?? 24)
+    return Number.isInteger(stored) && stored >= 0 && stored <= 48 ? stored : 24
   })
   useEffect(() => {
     window.document.documentElement.style.setProperty(

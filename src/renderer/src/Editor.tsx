@@ -1,5 +1,6 @@
 import { EditorContent, useEditor } from '@tiptap/react'
 import { lazy, Suspense, useEffect, useState } from 'react'
+import { LoadingScreen } from './LoadingScreen'
 import { extensions, needsSourceEditing } from './markdown'
 
 const SourceEditor = lazy(() =>
@@ -124,7 +125,7 @@ export function MarkdownEditor({
         >
           {sourceMounted && (
             <Suspense
-              fallback={<p className="loading">loading markdown editor…</p>}
+              fallback={<LoadingScreen label="loading markdown editor" />}
             >
               <SourceEditor
                 value={value}

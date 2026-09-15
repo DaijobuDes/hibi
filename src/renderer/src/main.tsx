@@ -17,6 +17,7 @@ import type {
 import { MAX_DOCUMENT_BYTES } from '../../shared/desktop'
 import './styles.css'
 import { MarkdownEditor, type ViewMode } from './Editor'
+import { LoadingScreen } from './LoadingScreen'
 import { Titlebar } from './Titlebar'
 
 class ErrorBoundary extends Component<
@@ -59,6 +60,28 @@ function App() {
   const [mode, setMode] = useState<ViewMode>('normal')
   const [info, setInfo] = useState<AppInfo | null>(null)
   const [failed, setFailed] = useState(false)
+  const [typing, setTyping] = useState(false)
+  const typingTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  )
+
+  useEffect(() => () => clearTimeout(typingTimer.current), [])
+
+  function showTitlebar() {
+    clearTimeout(typingTimer.current)
+    setTyping(false)
+  }
+
+  function noteTyping(target: EventTarget) {
+    if (
+      !(target instanceof HTMLElement) ||
+      !target.closest('[contenteditable="true"]')
+    )
+      return
+    clearTimeout(typingTimer.current)
+    setTyping(true)
+    typingTimer.current = setTimeout(() => setTyping(false), 1200)
+  }
 
   useEffect(() => {
     let active = true
@@ -135,8 +158,30 @@ function App() {
       )
   }
 
+  if (!document && !failed) return <LoadingScreen full />
+
   return (
-    <div className="app" data-platform={info?.platform}>
+    <div
+      className="app"
+      data-platform={info?.platform}
+      data-typing={typing}
+      onInputCapture={(event) => noteTyping(event.target)}
+      onKeyDownCapture={(event) => {
+        if (
+          !event.metaKey &&
+          !event.ctrlKey &&
+          (event.key.length === 1 ||
+            ['Enter', 'Backspace', 'Delete'].includes(event.key))
+        )
+          noteTyping(event.target)
+      }}
+      onPointerMove={(event) => {
+        if (event.clientY <= 36) showTitlebar()
+      }}
+      onFocusCapture={(event) => {
+        if (event.target.closest('.titlebar')) showTitlebar()
+      }}
+    >
       <Titlebar
         document={document}
         info={info}
