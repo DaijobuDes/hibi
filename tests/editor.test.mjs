@@ -38,6 +38,29 @@ test('empty entry, three views, and lossless source switching', {
   await page.getByRole('button', { name: 'side-by-side', exact: true }).click()
   const source = page.getByRole('textbox', { name: 'markdown editor' })
   await source.waitFor()
+  const geometry = await page.evaluate(() => {
+    const panes = document
+      .querySelector('.editor-panes')
+      .getBoundingClientRect()
+    return {
+      top: panes.top,
+      bottom: panes.bottom,
+      viewport: innerHeight,
+      padding: getComputedStyle(document.querySelector('.tiptap')).paddingTop,
+    }
+  })
+  assert.equal(geometry.top, 36)
+  assert.equal(geometry.bottom, geometry.viewport)
+  assert.equal(geometry.padding, '8px')
+  await page.getByRole('button', { name: 'editor settings' }).click()
+  await page.getByRole('slider', { name: 'editor padding' }).press('Home')
+  assert.equal(
+    await page.evaluate(
+      () => getComputedStyle(document.querySelector('.tiptap')).paddingTop,
+    ),
+    '0px',
+  )
+  await page.keyboard.press('Escape')
   assert.equal(await source.innerText(), 'hello editor')
   const markdown =
     '# hello\n\n**bold** text\n\n- [x] done\n\n| name | value |\n| --- | --- |\n| one | two |'
@@ -65,5 +88,13 @@ test('empty entry, three views, and lossless source switching', {
   assert.equal(
     (await source.locator('.cm-line').allTextContents()).join('\n'),
     extended,
+  )
+  await page.reload()
+  await rich.waitFor()
+  assert.equal(
+    await page.evaluate(
+      () => getComputedStyle(document.querySelector('.tiptap')).paddingTop,
+    ),
+    '0px',
   )
 })

@@ -97,7 +97,7 @@ function titleBarColors() {
   return {
     color: nativeTheme.shouldUseDarkColors ? '#181818' : '#ffffff',
     symbolColor: nativeTheme.shouldUseDarkColors ? '#eeeeee' : '#222222',
-    height: 48,
+    height: 36,
   }
 }
 
@@ -126,7 +126,7 @@ function createWindow(): void {
     title: 'hibi',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
     ...(process.platform === 'darwin'
-      ? { trafficLightPosition: { x: 16, y: 17 } }
+      ? { trafficLightPosition: { x: 12, y: 11 } }
       : { titleBarOverlay: titleBarColors(), autoHideMenuBar: true }),
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#181818' : '#ffffff',
     webPreferences: {
@@ -290,12 +290,7 @@ if (!app.requestSingleInstanceLock()) {
         const devPolicy = CONTENT_SECURITY_POLICY.replace(
           "script-src 'self'",
           "script-src 'self' 'unsafe-inline'",
-        )
-          .replace("style-src 'self'", "style-src 'self' 'unsafe-inline'")
-          .replace(
-            "connect-src 'self'",
-            `connect-src 'self' ${websocketOrigin}`,
-          )
+        ).replace("connect-src 'self'", `connect-src 'self' ${websocketOrigin}`)
         session.defaultSession.webRequest.onHeadersReceived(
           { urls: [`${new URL(devUrl).origin}/*`] },
           (details, callback) => {

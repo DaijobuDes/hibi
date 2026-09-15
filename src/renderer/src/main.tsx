@@ -17,6 +17,7 @@ import type {
 import { MAX_DOCUMENT_BYTES } from '../../shared/desktop'
 import './styles.css'
 import { MarkdownEditor, type ViewMode } from './Editor'
+import { Titlebar } from './Titlebar'
 
 class ErrorBoundary extends Component<
   { children: ReactNode },
@@ -136,50 +137,14 @@ function App() {
 
   return (
     <div className="app" data-platform={info?.platform}>
-      <header className="titlebar">
-        <span className="wordmark" title={document?.name}>
-          {document?.name ?? 'hibi'}
-          {document?.dirty ? ' •' : ''}
-        </span>
-        <nav className="view-switch" aria-label="editor view">
-          {(['normal', 'side-by-side', 'markdown'] as const).map((view) => (
-            <button
-              type="button"
-              key={view}
-              aria-pressed={mode === view}
-              onClick={() => setMode(view)}
-            >
-              {view === 'markdown' ? 'markdown only' : view}
-            </button>
-          ))}
-        </nav>
-      </header>
-      <div className="document-actions">
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => void runCommand('new')}
-        >
-          new
-        </button>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => void runCommand('open')}
-        >
-          open
-        </button>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => void runCommand('save')}
-        >
-          save
-        </button>
-        <span role="status">
-          {busy ? 'working…' : document?.dirty ? 'unsaved' : ''}
-        </span>
-      </div>
+      <Titlebar
+        document={document}
+        info={info}
+        mode={mode}
+        onMode={setMode}
+        onCommand={(command) => void runCommand(command)}
+        disabled={busy || !document}
+      />
       {error && (
         <div className="error-message" role="alert">
           {error}
@@ -194,25 +159,14 @@ function App() {
           disabled={busy}
         />
       )}
-      <footer>
-        {failed ? (
-          <p role="alert">
-            could not connect to hibi.{' '}
-            <button type="button" onClick={() => location.reload()}>
-              retry
-            </button>
-          </p>
-        ) : (
-          <details>
-            <summary>about hibi</summary>
-            <p>
-              {info
-                ? `version ${info.version} · electron ${info.electron}`
-                : 'loading app details…'}
-            </p>
-          </details>
-        )}
-      </footer>
+      {failed && (
+        <p role="alert">
+          could not connect to hibi.{' '}
+          <button type="button" onClick={() => location.reload()}>
+            retry
+          </button>
+        </p>
+      )}
     </div>
   )
 }

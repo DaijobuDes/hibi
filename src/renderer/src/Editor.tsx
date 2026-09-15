@@ -20,7 +20,6 @@ export function MarkdownEditor({
   disabled: boolean
 }) {
   const sourceOnly = needsSourceEditing(value)
-  const [formatting, setFormatting] = useState(false)
   const [sourceMounted, setSourceMounted] = useState(mode !== 'normal')
   useEffect(() => {
     if (mode !== 'normal') setSourceMounted(true)
@@ -56,17 +55,8 @@ export function MarkdownEditor({
 
   return (
     <>
-      <div className="editor-tools">
-        {mode !== 'markdown' && (
-          <button
-            type="button"
-            aria-expanded={formatting}
-            onClick={() => setFormatting(!formatting)}
-          >
-            format
-          </button>
-        )}
-        {mode !== 'markdown' && formatting && editor && !sourceOnly && (
+      <div id="format-menu" popover="auto">
+        {editor && !sourceOnly && (
           <fieldset
             className="formats"
             aria-label="formatting"
@@ -112,13 +102,13 @@ export function MarkdownEditor({
             </button>
           </fieldset>
         )}
-        {sourceOnly && mode !== 'markdown' && (
-          <span role="status">
-            edit this document’s html, references, or frontmatter in markdown
-            view.
-          </span>
-        )}
       </div>
+      {sourceOnly && mode !== 'markdown' && (
+        <div className="source-notice" role="status">
+          edit this document’s html, references, or frontmatter in markdown
+          view.
+        </div>
+      )}
       <main className={`editor-panes mode-${mode}`}>
         <section
           className="rich-pane"

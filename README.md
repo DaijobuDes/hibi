@@ -8,13 +8,15 @@ minimal markdown editor built on electron 44.3.0, react, strict typescript, and 
 - **side-by-side:** editable rich text and syntax-highlighted markdown, synchronized in both directions.
 - **markdown only:** edit the original source directly.
 
+the compact title bar holds file actions, filename, formatting, and view controls. editor panels fill the space below it. open editor settings (sliders icon) to adjust padding from 0–48 px; default is 8 px and the preference persists across launches.
+
 native file menu supports new (`cmd/ctrl+n`), open (`cmd/ctrl+o`), save (`cmd/ctrl+s`), and save as (`cmd/ctrl+shift+s`). opening another document, starting a new one, closing, or quitting asks before discarding unsaved changes. a dot beside the filename marks unsaved changes.
 
 switching views preserves the exact markdown source. rich edits serialize markdown and may normalize spacing or syntax. html, frontmatter, reference definitions, and footnotes stay editable in source mode; rich mode becomes read-only for those documents to prevent lossy conversion. headings, emphasis, links, code, quotes, lists, task lists, and tables are supported. image references are preserved, but external and document-relative images are not loaded yet.
 
 ## run
 
-use node 24 lts (`nvm use`); node 22.12 or newer also works.
+use node 24 lts (`nvm use`); node 22.18 or newer also works.
 
 ```sh
 npm ci

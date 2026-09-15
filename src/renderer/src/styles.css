@@ -10,6 +10,7 @@
   --accent: oklch(0.45 0.075 200);
   --surface: oklch(0.97 0 0);
   --border: oklch(0.9 0 0);
+  --editor-padding: 8px;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -69,13 +70,19 @@ button:disabled {
   overflow: hidden;
 }
 .titlebar {
-  height: 48px;
+  height: 36px;
   flex-shrink: 0;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(84px, 1fr) minmax(80px, 360px) minmax(
+      140px,
+      1fr
+    );
   align-items: center;
-  gap: 20px;
-  padding-left: 88px;
-  padding-right: 20px;
+  gap: 12px;
+  padding-left: 80px;
+  padding-right: 8px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
   -webkit-app-region: drag;
   user-select: none;
 }
@@ -83,49 +90,66 @@ button:disabled {
 .titlebar nav {
   -webkit-app-region: no-drag;
 }
+.titlebar button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: 4px;
+}
+.titlebar button:hover,
+.titlebar button[aria-pressed="true"] {
+  background: var(--border);
+}
 .app[data-platform="win32"] .titlebar,
 .app[data-platform="linux"] .titlebar {
-  padding-left: 20px;
-  padding-right: 150px;
+  padding-left: 8px;
+  padding-right: 140px;
 }
-.wordmark {
+.document-title {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  height: 25px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--background);
+  font-size: 12px;
+  color: var(--muted);
+}
+.document-title > :first-child {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: -0.025em;
+}
+.dirty-dot {
+  flex-shrink: 0;
+  color: var(--ink);
 }
 .view-switch {
   flex-shrink: 0;
   display: flex;
-  gap: 3px;
-  margin-left: auto;
+  gap: 2px;
+  justify-self: end;
   font-size: 12px;
   white-space: nowrap;
-}
-.editor-tools {
-  flex-shrink: 0;
-  min-height: 36px;
-  padding: 3px 20px;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 4px;
-  font-size: 12px;
-  color: var(--muted);
 }
 .document-actions {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 0 20px;
+  gap: 2px;
   font-size: 12px;
 }
-.document-actions span {
-  margin-left: auto;
+.source-notice {
+  padding: 4px 8px;
+  font-size: 12px;
   color: var(--muted);
+  border-bottom: 1px solid var(--border);
 }
 .error-message {
   padding: 8px 24px;
@@ -141,6 +165,41 @@ button:disabled {
   gap: 2px;
   flex-wrap: wrap;
 }
+[popover] {
+  position: fixed;
+  top: 40px;
+  right: 8px;
+  bottom: auto;
+  left: auto;
+  margin: 0;
+  max-width: calc(100vw - 16px);
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--background);
+  color: var(--ink);
+  font-size: 12px;
+}
+.settings-menu {
+  width: 260px;
+}
+.settings-menu label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.settings-menu input {
+  width: 100%;
+  margin: 12px 0 16px;
+  accent-color: var(--accent);
+}
+.settings-menu details {
+  color: var(--muted);
+}
+.settings-menu p {
+  margin: 8px 0 0;
+}
 .editor-panes {
   display: flex;
   min-height: 0;
@@ -155,11 +214,15 @@ button:disabled {
 .mode-side-by-side .source-pane {
   border-left: 1px solid var(--border);
 }
-.tiptap {
-  max-width: 760px;
+.rich-pane > div {
   min-height: 100%;
-  margin: auto;
-  padding: 48px 48px 120px;
+  display: flex;
+  flex-direction: column;
+}
+.tiptap {
+  flex: 1;
+  min-height: 100%;
+  padding: var(--editor-padding);
   outline: none;
   font-size: 16px;
   line-height: 1.75;
@@ -288,7 +351,7 @@ button:disabled {
   line-height: 1.85;
 }
 .cm-editor .cm-content {
-  padding: 48px 40px 120px;
+  padding: var(--editor-padding);
   caret-color: var(--ink);
 }
 .cm-editor .cm-line {
@@ -303,16 +366,6 @@ button:disabled {
 .source-editor .cm-editor .cm-selectionBackground {
   background: var(--border);
 }
-footer {
-  min-height: 36px;
-  flex-shrink: 0;
-  padding: 6px 24px;
-  font-size: 11px;
-  color: var(--muted);
-}
-.app footer p {
-  margin-block: 6px;
-}
 summary {
   cursor: pointer;
   width: fit-content;
@@ -322,20 +375,18 @@ summary {
   padding: 80px 40px;
 }
 @media (max-width: 700px) {
-  .tiptap {
-    padding: 28px 24px 80px;
-  }
-  .cm-editor .cm-content {
-    padding: 28px 24px 80px;
-  }
   .titlebar {
-    gap: 8px;
-    padding-right: 12px;
+    gap: 6px;
   }
   .view-switch {
     gap: 0;
   }
-  .view-switch button {
-    padding-inline: 5px;
+  .app[data-platform="win32"] .titlebar,
+  .app[data-platform="linux"] .titlebar {
+    grid-template-columns: 1fr 1fr;
+  }
+  .app[data-platform="win32"] .document-title,
+  .app[data-platform="linux"] .document-title {
+    display: none;
   }
 }
