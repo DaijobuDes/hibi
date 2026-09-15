@@ -14,7 +14,7 @@ documentation exports embed local Markdown images into the HTML, so they remain 
 
 the frontmatter addon adds collapsible metadata fields to normal and split views. edit text, numbers, and booleans directly; add or remove properties from the same panel. use **yaml** for lists, objects, and other YAML structures, then **apply yaml**. invalid YAML cannot overwrite the note. the body stays unchanged when properties change.
 
-use **add frontmatter** in the command palette for a note without metadata. disable the addon under settings → addons to return to editing metadata in markdown only. see the [addon guide](../../src/addons/frontmatter/README.md) for preservation details.
+use **add frontmatter** in the command palette for a note without metadata. disable the addon under settings → addons to return to editing metadata in markdown only. see the [addon guide](frontmatter.md) for preservation details.
 
 success and error notifications appear at the bottom right without moving your document. use the close button to dismiss them.
 

@@ -1,5 +1,17 @@
 # exporting documentation
 
+## navigation and small screens
+
+breadcrumbs live in the top bar, with links back to the workspace and parent folders. previous and next page links sit below the document, separated by a divider, and follow sidebar order.
+
+headings appear in an **in this page** outline on the right when there is room. on smaller screens the outline becomes a disclosure above the document; choosing a heading closes it and scrolls to that section. the current section is highlighted while scrolling.
+
+on phones, workspace navigation opens over the document with a dismissible backdrop. choosing a page, tapping outside, or pressing escape closes it. entering the phone layout also closes an open sidebar. header breadcrumbs shorten, content padding decreases, tables and code scroll within their own area, and the rest of the page keeps its width.
+
+phone navigation rows and header controls use 44px touch targets. the shared sidebar selection follows the same row-height token, so its sliding highlight stays aligned at both densities.
+
+## export a folder
+
 1. keep documentation in markdown files inside a folder. nested folders are supported.
 2. open that folder as a workspace.
 3. enable **documentation** in settings → addons.

@@ -61,7 +61,7 @@
 .sidebar-selection {
   position: absolute;
   inset: 0 0 auto;
-  height: 28px;
+  height: var(--sidebar-row-height);
   background: var(--border);
   pointer-events: none;
   transition: transform var(--motion-selection) var(--ease-out);
@@ -74,7 +74,7 @@
   align-items: center;
   gap: 7px;
   width: 100%;
-  height: 28px;
+  height: var(--sidebar-row-height);
   flex-shrink: 0;
   padding: 0 12px 0 16px;
   border-radius: 0;

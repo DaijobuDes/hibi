@@ -30,6 +30,7 @@ generated from `src/ui/tokens.css`. update the source, then run `npm run docs`. 
   --radius-popover: 10px;
   --radius-panel: 16px;
   --control-height: 28px;
+  --sidebar-row-height: 28px;
   --icon-size: 16px;
   --key-height: 20px;
   --key-min-width: 20px;

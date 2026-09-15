@@ -1,5 +1,14 @@
 import DOMPurify from 'dompurify'
-import { FileText, Folder, PanelLeft, Search } from 'lucide-react'
+import {
+  ArrowLeft,
+  ArrowRight,
+  ChevronDown,
+  ChevronRight,
+  FileText,
+  Folder,
+  PanelLeft,
+  Search,
+} from 'lucide-react'
 import { marked } from 'marked'
 import MiniSearch from 'minisearch'
 import { type CSSProperties, useEffect, useMemo, useState } from 'react'
@@ -134,6 +143,7 @@ function renderMarkdown(path: string, markdown: string) {
     },
   )
   const slugs = new Map<string, number>()
+  const outline: { id: string; label: string; depth: number }[] = []
   for (const heading of fragment.querySelectorAll('h1,h2,h3,h4,h5,h6')) {
     const slug = (heading.textContent ?? '')
       .toLowerCase()
@@ -143,6 +153,21 @@ function renderMarkdown(path: string, markdown: string) {
     const count = slugs.get(slug) ?? 0
     slugs.set(slug, count + 1)
     heading.id = `doc-${slug}${count ? `-${count}` : ''}`
+    if (heading.tagName !== 'H1' && heading.textContent?.trim())
+      outline.push({
+        id: heading.id,
+        label: heading.textContent.trim(),
+        depth: Number(heading.tagName.slice(1)),
+      })
+  }
+  for (const table of fragment.querySelectorAll('table')) {
+    const scroll = document.createElement('div')
+    scroll.className = 'site-table-scroll'
+    scroll.tabIndex = 0
+    scroll.setAttribute('role', 'region')
+    scroll.setAttribute('aria-label', 'table')
+    table.replaceWith(scroll)
+    scroll.append(table)
   }
   for (const input of fragment.querySelectorAll('input')) input.disabled = true
   for (const image of fragment.querySelectorAll('img')) {
@@ -187,32 +212,53 @@ function renderMarkdown(path: string, markdown: string) {
   }
   const container = document.createElement('div')
   container.append(fragment)
-  return container.innerHTML
+  return { html: container.innerHTML, outline }
 }
 
 function DocumentationSite() {
   const [current, setCurrent] = useState(route)
   const [palette, setPalette] = useState(false)
   const [sidebar, setSidebar] = useState(() => innerWidth > 700)
+  const [mobile, setMobile] = useState(() => innerWidth <= 700)
+  const [activeHeading, setActiveHeading] = useState('')
   const sidebarResize = useSidebarResize(240)
   const page = byPath.get(current.path)
-  const html = useMemo(
-    () => (page ? renderMarkdown(page.path, page.markdown) : ''),
+  const { html, outline } = useMemo(
+    () =>
+      page
+        ? renderMarkdown(page.path, page.markdown)
+        : { html: '', outline: [] },
     [page],
   )
   useEffect(() => {
-    const update = () => setCurrent(route())
+    const media = matchMedia('(max-width: 700px)')
+    const resized = () => {
+      setMobile(media.matches)
+      if (media.matches) setSidebar(false)
+    }
+    media.addEventListener('change', resized)
+    const update = () => {
+      setCurrent(route())
+      if (media.matches) setSidebar(false)
+    }
     const keyboard = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault()
         setPalette(true)
       }
+      if (
+        event.key === 'Escape' &&
+        !document.querySelector('dialog[open]') &&
+        media.matches
+      )
+        setSidebar(false)
     }
     window.addEventListener('hashchange', update)
     window.addEventListener('keydown', keyboard)
     return () => {
       window.removeEventListener('hashchange', update)
       window.removeEventListener('keydown', keyboard)
+      media.removeEventListener('change', resized)
     }
   }, [])
   useEffect(() => {
@@ -221,6 +267,59 @@ function DocumentationSite() {
       document.getElementById(`doc-${current.anchor}`)?.scrollIntoView()
     else document.querySelector('.site-content')?.scrollTo(0, 0)
   }, [page, current.anchor])
+  useEffect(() => {
+    const scroller = document.querySelector('.site-content')
+    const headings = outline
+      .map(({ id }) => document.getElementById(id))
+      .filter((node): node is HTMLElement => Boolean(node))
+    let frame = 0
+    const update = () => {
+      frame = 0
+      const edge = (scroller?.getBoundingClientRect().top ?? 0) + 48
+      let active = headings[0]?.id ?? ''
+      for (const heading of headings) {
+        if (heading.getBoundingClientRect().top > edge) break
+        active = heading.id
+      }
+      setActiveHeading(active)
+    }
+    const scroll = () => {
+      if (!frame) frame = requestAnimationFrame(update)
+    }
+    update()
+    scroller?.addEventListener('scroll', scroll, { passive: true })
+    return () => {
+      scroller?.removeEventListener('scroll', scroll)
+      cancelAnimationFrame(frame)
+    }
+  }, [outline])
+  const pageIndex = pages.findIndex((entry) => entry.path === current.path)
+  const previous = pages[pageIndex - 1]
+  const next = pageIndex >= 0 ? pages[pageIndex + 1] : undefined
+  const folders = current.path.split('/').slice(0, -1)
+  const outlineLinks = (
+    <nav aria-label="in this page">
+      {outline.map((heading) => (
+        <a
+          key={heading.id}
+          href={destination(current.path, heading.id.slice(4))}
+          aria-current={activeHeading === heading.id ? 'location' : undefined}
+          style={
+            {
+              '--heading-indent': `${Math.max(0, heading.depth - 2) * 12}px`,
+            } as CSSProperties
+          }
+          onClick={(event) => {
+            const details = event.currentTarget.closest('details')
+            if (details) details.open = false
+            document.getElementById(heading.id)?.scrollIntoView()
+          }}
+        >
+          {heading.label}
+        </a>
+      ))}
+    </nav>
+  )
   const command = (path: string): PaletteCommand => ({
     id: path,
     label: byPath.get(path)?.title ?? path,
@@ -245,7 +344,38 @@ function DocumentationSite() {
         >
           <PanelLeft size={18} />
         </IconButton>
-        <span>{workspace.name}</span>
+        <nav className="site-breadcrumbs" aria-label="breadcrumbs">
+          <ol>
+            <li>
+              <a href={destination(home?.path ?? '')}>
+                <Folder aria-hidden="true" />
+                <span>{workspace.name}</span>
+              </a>
+            </li>
+            {folders.map((folder, index) => {
+              const prefix = folders.slice(0, index + 1).join('/')
+              const target =
+                [`${prefix}/README.md`, `${prefix}/index.md`].find((path) =>
+                  byPath.has(path),
+                ) ??
+                pages.find((entry) => entry.path.startsWith(`${prefix}/`))?.path
+              return (
+                <li key={prefix}>
+                  <ChevronRight aria-hidden="true" />
+                  {target ? (
+                    <a href={destination(target)}>{folder}</a>
+                  ) : (
+                    <span>{folder}</span>
+                  )}
+                </li>
+              )
+            })}
+            <li aria-current="page">
+              <ChevronRight aria-hidden="true" />
+              <span>{page?.title ?? 'page not found'}</span>
+            </li>
+          </ol>
+        </nav>
         <button
           type="button"
           className="site-search"
@@ -261,6 +391,14 @@ function DocumentationSite() {
         </button>
       </header>
       <div className="site-layout">
+        <button
+          type="button"
+          className="site-nav-scrim"
+          aria-label="close navigation"
+          aria-hidden={!mobile || !sidebar}
+          tabIndex={mobile && sidebar ? 0 : -1}
+          onClick={() => setSidebar(false)}
+        />
         <Sidebar
           resize={sidebarResize}
           open={sidebar}
@@ -273,16 +411,62 @@ function DocumentationSite() {
           label="documentation navigation"
           header={<span>documentation</span>}
         />
-        <main className="site-content" aria-label="documentation">
+        <main
+          className="site-content"
+          aria-label="documentation"
+          inert={mobile && sidebar}
+        >
           {page ? (
-            <>
-              <div className="site-path">{page.path}</div>
-              <article
-                className="tiptap"
-                // biome-ignore lint/security/noDangerouslySetInnerHtml: strict DOMPurify allowlist sanitizes this markdown before rendering.
-                dangerouslySetInnerHTML={{ __html: html }}
-              />
-            </>
+            <div className="site-document-layout">
+              <div className="site-reading">
+                {outline.length > 0 && (
+                  <details className="site-outline-mobile">
+                    <summary>
+                      in this page
+                      <ChevronDown size={14} aria-hidden="true" />
+                    </summary>
+                    {outlineLinks}
+                  </details>
+                )}
+                <article
+                  className="tiptap"
+                  // biome-ignore lint/security/noDangerouslySetInnerHtml: strict DOMPurify allowlist sanitizes this markdown before rendering.
+                  dangerouslySetInnerHTML={{ __html: html }}
+                />
+                {(previous || next) && (
+                  <nav className="site-pagination" aria-label="page navigation">
+                    {previous ? (
+                      <a href={destination(previous.path)}>
+                        <span>
+                          <ArrowLeft size={14} aria-hidden="true" />
+                          previous
+                        </span>
+                        <strong>{previous.title}</strong>
+                      </a>
+                    ) : (
+                      <span />
+                    )}
+                    {next ? (
+                      <a className="site-next" href={destination(next.path)}>
+                        <span>
+                          next
+                          <ArrowRight size={14} aria-hidden="true" />
+                        </span>
+                        <strong>{next.title}</strong>
+                      </a>
+                    ) : (
+                      <span />
+                    )}
+                  </nav>
+                )}
+              </div>
+              {outline.length > 0 && (
+                <aside className="site-outline">
+                  <p>in this page</p>
+                  {outlineLinks}
+                </aside>
+              )}
+            </div>
           ) : (
             <div className="site-missing">
               <h1>page not found</h1>

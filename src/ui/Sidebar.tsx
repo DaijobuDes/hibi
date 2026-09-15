@@ -134,7 +134,9 @@ export function Sidebar({
               <span
                 className="sidebar-selection category-selection"
                 aria-hidden="true"
-                style={{ transform: `translateY(${active * 28}px)` }}
+                style={{
+                  transform: `translateY(calc(${active} * var(--sidebar-row-height)))`,
+                }}
               />
             )}
             {rows.map(({ item, depth, parent, position, size }, index) => {

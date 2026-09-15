@@ -1,5 +1,7 @@
 # documentation addon
 
+exports include top-bar breadcrumbs, previous/next links below a divider, and an **in this page** heading outline. the outline moves into a compact disclosure on narrower screens. phone navigation opens as a drawer with an outside-click backdrop and escape dismissal; selecting a page closes it. all navigation reuses the shared sidebar and tokens.
+
 the first hibi addon turns a folder of markdown into one deployable HTML document.
 
 enable **documentation** under settings → addons. open a workspace, then choose **export documentation** from the sidebar or command palette. a native save dialog selects the destination. the exported site provides nested navigation, normal read-only rendering, and local fuzzy/keyword search on `cmd/ctrl+k`.

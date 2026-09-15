@@ -271,6 +271,19 @@ test('nested workspace editing, addon lifecycle, and offline static export', {
   assert.equal(await site.locator('.view-switch').count(), 0)
   for (const viewportWidth of [1000, 480]) {
     await site.setViewportSize({ width: viewportWidth, height: 720 })
+    if (viewportWidth <= 700) {
+      await site.waitForFunction(
+        () =>
+          document
+            .querySelector('.documentation-site')
+            .getAttribute('data-sidebar') === 'false',
+      )
+      await site.getByRole('button', { name: 'toggle navigation' }).click()
+      await site.waitForFunction(
+        () =>
+          document.querySelector('.sidebar').getBoundingClientRect().x === 0,
+      )
+    }
     for (const opening of [false, true]) {
       const samples = await site.evaluate(async () => {
         document.querySelector('[aria-label="toggle navigation"]').click()
