@@ -1,6 +1,7 @@
-import { ChevronDown, FileText, FolderOpen, Info, PanelTop } from 'lucide-react'
+import { FileText, Info, PanelTop } from 'lucide-react'
 import { useState } from 'react'
 import type { AppInfo } from '../../shared/desktop'
+import { animateChange } from './transitions'
 
 const categories = [
   { id: 'editor', label: 'editor', icon: FileText },
@@ -27,60 +28,49 @@ export function SettingsScreen({
   return (
     <main className="settings-screen" aria-label="settings">
       <aside className="settings-sidebar">
-        <details open>
-          <summary className="settings-folder">
-            <ChevronDown
-              className="folder-chevron"
-              size={14}
-              aria-hidden="true"
-            />
-            <FolderOpen size={15} aria-hidden="true" />
-            <span>settings</span>
-          </summary>
-          <div
-            className="settings-categories"
-            role="tablist"
-            aria-label="settings categories"
-            aria-orientation="vertical"
-          >
-            {categories.map(({ id, label, icon: Icon }, index) => (
-              <button
-                type="button"
-                key={id}
-                id={`category-${id}`}
-                role="tab"
-                aria-selected={category === id}
-                aria-controls={`settings-${id}`}
-                tabIndex={category === id ? 0 : -1}
-                onClick={() => setCategory(id)}
-                onKeyDown={(event) => {
-                  const next =
-                    event.key === 'ArrowDown'
-                      ? (index + 1) % categories.length
-                      : event.key === 'ArrowUp'
-                        ? (index + categories.length - 1) % categories.length
-                        : event.key === 'Home'
-                          ? 0
-                          : event.key === 'End'
-                            ? categories.length - 1
-                            : null
-                  if (next === null) return
-                  event.preventDefault()
-                  const item = categories[next]
-                  if (item) {
-                    setCategory(item.id)
-                    window.document
-                      .getElementById(`category-${item.id}`)
-                      ?.focus()
-                  }
-                }}
-              >
-                <Icon size={15} strokeWidth={1.5} aria-hidden="true" />
-                <span>{label}</span>
-              </button>
-            ))}
-          </div>
-        </details>
+        <div
+          className="settings-categories"
+          role="tablist"
+          aria-label="settings categories"
+          aria-orientation="vertical"
+        >
+          {categories.map(({ id, label, icon: Icon }, index) => (
+            <button
+              type="button"
+              key={id}
+              id={`category-${id}`}
+              role="tab"
+              aria-selected={category === id}
+              aria-controls={`settings-${id}`}
+              tabIndex={category === id ? 0 : -1}
+              onClick={() => {
+                void animateChange(() => setCategory(id))
+              }}
+              onKeyDown={(event) => {
+                const next =
+                  event.key === 'ArrowDown'
+                    ? (index + 1) % categories.length
+                    : event.key === 'ArrowUp'
+                      ? (index + categories.length - 1) % categories.length
+                      : event.key === 'Home'
+                        ? 0
+                        : event.key === 'End'
+                          ? categories.length - 1
+                          : null
+                if (next === null) return
+                event.preventDefault()
+                const item = categories[next]
+                if (item) {
+                  void animateChange(() => setCategory(item.id))
+                  window.document.getElementById(`category-${item.id}`)?.focus()
+                }
+              }}
+            >
+              <Icon size={15} strokeWidth={1.5} aria-hidden="true" />
+              <span>{label}</span>
+            </button>
+          ))}
+        </div>
       </aside>
       <div className="settings-content">
         <section

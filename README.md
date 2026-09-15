@@ -8,7 +8,11 @@ minimal markdown editor built on electron 44.3.0, react, strict typescript, and 
 - **side-by-side:** editable rich text and syntax-highlighted markdown, synchronized in both directions.
 - **markdown only:** edit the original source directly.
 
-the compact title bar holds file actions, filename, formatting, and view controls. editor panels fill the space below it. settings opens as a full screen with a file-list-style category sidebar: editor, appearance, and about. adjust padding from 0–96 px (default 48 px), or change whether the top bar hides while typing. preferences persist across launches. use escape or the back button to return to your unchanged document.
+the compact title bar holds file actions, filename, formatting, and view controls. editor panels fill the space below it. settings has a full-height sidebar with a flat category list: editor, appearance, and about. editor-only controls disappear on settings. adjust padding from 0–96 px (default 48 px), or change whether the top bar hides while typing. preferences persist across launches. use escape or the back button to return to your unchanged document.
+
+click the centered filename, press `cmd/ctrl+shift+p`, or press `f1` for the command palette. search file operations, view modes, settings, and top-bar behavior. use arrow keys and enter to run a command, or escape to dismiss. opening and closing settings, changing categories and views, and opening and dismissing the palette use short transitions; reduced-motion preferences disable them.
+
+geist sans and geist mono come directly from [vercel's geist package](https://github.com/vercel/geist-font) and load from bundled woff2 files. no google fonts or font cdn requests. the font license ships in `resources/licenses/geist.txt`.
 
 startup and lazy editor loading show a centered, faded page icon with a shimmer. reduced-motion mode shows a static icon. lucide supplies interface icons; simple-icons is installed for future brand icons and is not bundled unless used.
 
@@ -43,7 +47,7 @@ on headless linux, run `xvfb-run --auto-servernum npm test`. tests keep sandboxi
 - `src/main/`: window lifecycle, native menus, permission policy, local asset protocol, and privileged ipc handlers.
 - `src/preload/`: sandbox-compatible commonjs bridge. exposes individual typed operations; never exposes `ipcRenderer`, filesystem access, or a generic channel dispatcher.
 - `src/shared/`: contracts shared by main, preload, and renderer.
-- `src/renderer/`: tiptap rich editor, lazily loaded codemirror source editor, react, and css. system fonts and light/dark mode; no node access.
+- `src/renderer/`: tiptap rich editor, lazily loaded codemirror source editor, react, and css. bundled geist fonts and system light/dark mode; no node access.
 - `tests/`: asset traversal and sender checks, plus actual window launch, sandbox, csp, ipc rejection, navigation blocking, offline reload, crash recovery, and macos reopen checks. theme screenshots land in `test-results/`.
 
 production loads bundled content through `app://hibi/`, with a strict script content security policy. inline styles are allowed for editor layout. new windows, page navigation, downloads, and permissions are denied by default. ipc checks window identity, frame identity, and exact document url. file paths come from native dialogs, never renderer-provided paths. react render failures offer reload; renderer crashes offer reload or quit and retain the draft in the main process.

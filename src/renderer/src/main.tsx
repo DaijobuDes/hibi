@@ -16,10 +16,12 @@ import type {
 } from '../../shared/desktop'
 import { MAX_DOCUMENT_BYTES } from '../../shared/desktop'
 import './styles.css'
+import { CommandPalette, type PaletteCommand } from './CommandPalette'
 import { MarkdownEditor, type ViewMode } from './Editor'
 import { LoadingScreen } from './LoadingScreen'
 import { SettingsScreen } from './SettingsScreen'
 import { Titlebar } from './Titlebar'
+import { animateChange } from './transitions'
 
 class ErrorBoundary extends Component<
   { children: ReactNode },
@@ -63,6 +65,7 @@ function App() {
   const [failed, setFailed] = useState(false)
   const [typing, setTyping] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [paletteOpen, setPaletteOpen] = useState(false)
   const [padding, setPadding] = useState(() => {
     const value = Number(localStorage.getItem('editor-padding') ?? 48)
     return Number.isInteger(value) && value >= 0 && value <= 96 ? value : 48
@@ -92,6 +95,7 @@ function App() {
   function noteTyping(target: EventTarget) {
     if (
       settingsOpen ||
+      paletteOpen ||
       !hideTitlebar ||
       !(target instanceof HTMLElement) ||
       !target.closest('[contenteditable="true"]')
@@ -102,17 +106,23 @@ function App() {
     typingTimer.current = setTimeout(() => setTyping(false), 1200)
   }
 
+  function openPalette() {
+    showTitlebar()
+    setPaletteOpen(true)
+  }
+
   function toggleSettings() {
     showTitlebar()
-    setSettingsOpen(!settingsOpen)
-    if (settingsOpen)
-      requestAnimationFrame(() =>
-        window.document
-          .querySelector<HTMLElement>(
-            mode === 'markdown' ? '.cm-content' : '.tiptap',
-          )
-          ?.focus(),
-      )
+    void animateChange(() => setSettingsOpen(!settingsOpen)).then(() => {
+      if (settingsOpen)
+        requestAnimationFrame(() =>
+          window.document
+            .querySelector<HTMLElement>(
+              mode === 'markdown' ? '.cm-content' : '.tiptap',
+            )
+            ?.focus(),
+        )
+    })
   }
 
   useEffect(() => {
@@ -193,20 +203,73 @@ function App() {
 
   if (!document && !failed) return <LoadingScreen full />
 
+  const modifier = info?.platform === 'darwin' ? '⌘' : 'ctrl+'
+  const paletteCommands: PaletteCommand[] = [
+    ...(!busy && document
+      ? (['new', 'open', 'save', 'saveAs'] as const).map((command) => ({
+          id: command,
+          label: `file: ${command === 'saveAs' ? 'save as…' : command === 'new' ? 'new document' : command === 'open' ? 'open document…' : 'save document'}`,
+          shortcut: `${modifier}${command === 'new' ? 'n' : command === 'open' ? 'o' : command === 'saveAs' ? 'shift+s' : 's'}`,
+          run: () => {
+            void runCommand(command)
+          },
+        }))
+      : []),
+    ...(['normal', 'side-by-side', 'markdown'] as const).map((view) => ({
+      id: `view-${view}`,
+      label: `view: ${view === 'markdown' ? 'markdown only' : view}`,
+      run: () => {
+        void animateChange(() => {
+          setSettingsOpen(false)
+          setMode(view)
+        })
+      },
+    })),
+    {
+      id: 'settings',
+      label: settingsOpen
+        ? 'view: back to editor'
+        : 'preferences: open settings',
+      shortcut: `${modifier},`,
+      run: toggleSettings,
+    },
+    {
+      id: 'toggle-titlebar',
+      label: hideTitlebar
+        ? 'appearance: keep top bar visible'
+        : 'appearance: hide top bar while typing',
+      run: () => {
+        setHideTitlebar(!hideTitlebar)
+        showTitlebar()
+      },
+    },
+  ]
+
   return (
     <div
       className="app"
       data-platform={info?.platform}
+      data-screen={settingsOpen ? 'settings' : 'editor'}
       data-typing={typing}
       onInputCapture={(event) => noteTyping(event.target)}
       onKeyDownCapture={(event) => {
+        if (
+          ((event.metaKey || event.ctrlKey) &&
+            event.shiftKey &&
+            event.key.toLowerCase() === 'p') ||
+          event.key === 'F1'
+        ) {
+          event.preventDefault()
+          openPalette()
+          return
+        }
         if ((event.metaKey || event.ctrlKey) && event.key === ',') {
           event.preventDefault()
           showTitlebar()
-          setSettingsOpen(true)
+          void animateChange(() => setSettingsOpen(true))
           return
         }
-        if (event.key === 'Escape' && settingsOpen) {
+        if (event.key === 'Escape' && settingsOpen && !paletteOpen) {
           event.preventDefault()
           toggleSettings()
           return
@@ -230,11 +293,20 @@ function App() {
         document={document}
         settingsOpen={settingsOpen}
         onSettings={toggleSettings}
+        onPalette={openPalette}
         mode={mode}
-        onMode={setMode}
+        onMode={(view) => {
+          void animateChange(() => setMode(view))
+        }}
         onCommand={(command) => void runCommand(command)}
         disabled={busy || !document}
       />
+      {paletteOpen && (
+        <CommandPalette
+          commands={paletteCommands}
+          onClose={() => setPaletteOpen(false)}
+        />
+      )}
       {error && (
         <div className="error-message" role="alert">
           {error}

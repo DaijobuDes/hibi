@@ -97,9 +97,9 @@ test('empty entry, three views, and lossless source switching', {
     'two',
   )
   await page.getByRole('button', { name: 'normal', exact: true }).click()
-  assert.equal(await source.isVisible(), false)
+  await source.waitFor({ state: 'hidden' })
   await page.getByRole('button', { name: 'markdown only', exact: true }).click()
-  assert.equal(await rich.isVisible(), false)
+  await rich.waitFor({ state: 'hidden' })
   assert.equal(
     (await source.locator('.cm-line').allTextContents()).join('\n'),
     markdown,
@@ -126,6 +126,9 @@ test('empty entry, three views, and lossless source switching', {
   await page
     .getByRole('tab', { name: 'appearance', exact: true })
     .press('ArrowUp')
+  await page
+    .getByRole('tab', { name: 'editor', exact: true, selected: true })
+    .waitFor()
   assert.equal(
     await page
       .getByRole('tab', { name: 'editor', exact: true })

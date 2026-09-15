@@ -1,6 +1,39 @@
+@font-face {
+  font-family: "Geist";
+  src: url("../../../node_modules/geist/dist/fonts/geist-sans/Geist-Variable.woff2")
+    format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Geist";
+  src: url("../../../node_modules/geist/dist/fonts/geist-sans/Geist-Italic[wght].woff2")
+    format("woff2");
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Geist Mono";
+  src: url("../../../node_modules/geist/dist/fonts/geist-mono/GeistMono-Variable.woff2")
+    format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Geist Mono";
+  src: url("../../../node_modules/geist/dist/fonts/geist-mono/GeistMono-Italic[wght].woff2")
+    format("woff2");
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: swap;
+}
+
 :root {
   color-scheme: light dark;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: "Geist", sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -41,6 +74,9 @@ button {
   border-radius: 5px;
   padding: 5px 8px;
   cursor: pointer;
+  transition:
+    color 120ms ease-out,
+    background-color 120ms ease-out;
 }
 button:hover,
 summary:hover {
@@ -64,12 +100,14 @@ button:disabled {
   color: var(--background);
 }
 .app {
+  position: relative;
   height: 100svh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 .titlebar {
+  z-index: 2;
   position: relative;
   height: 36px;
   flex-shrink: 0;
@@ -115,7 +153,7 @@ button:disabled {
   padding-left: 8px;
   padding-right: 140px;
 }
-.document-title {
+.titlebar .document-title {
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
@@ -128,6 +166,13 @@ button:disabled {
   padding: 0 8px;
   font-size: 12px;
   color: var(--muted);
+}
+.titlebar .document-title:hover {
+  background: transparent;
+  color: var(--ink);
+}
+.app[data-screen="settings"] .titlebar {
+  background: transparent;
 }
 .app[data-platform="win32"] .document-title,
 .app[data-platform="linux"] .document-title {
@@ -193,6 +238,7 @@ button:disabled {
   font-size: 12px;
 }
 .editor-surface {
+  view-transition-name: workspace;
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -202,6 +248,10 @@ button:disabled {
   display: none;
 }
 .settings-screen {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  view-transition-name: workspace;
   display: flex;
   flex: 1;
   min-height: 0;
@@ -209,27 +259,9 @@ button:disabled {
 .settings-sidebar {
   width: 196px;
   flex-shrink: 0;
-  padding: 12px 0;
+  padding: 48px 0 12px;
   background: var(--surface);
   border-right: 1px solid var(--border);
-}
-.settings-folder {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  height: 28px;
-  width: 100%;
-  padding: 0 10px;
-  font-size: 12px;
-  cursor: pointer;
-  color: var(--ink);
-  user-select: none;
-}
-.settings-folder::-webkit-details-marker {
-  display: none;
-}
-.settings-sidebar details:not([open]) .folder-chevron {
-  transform: rotate(-90deg);
 }
 .settings-categories {
   display: flex;
@@ -241,7 +273,7 @@ button:disabled {
   gap: 8px;
   width: 100%;
   height: 28px;
-  padding: 0 12px 0 32px;
+  padding: 0 16px;
   border-radius: 0;
   text-align: left;
   font-size: 13px;
@@ -256,7 +288,7 @@ button:disabled {
 .settings-content {
   flex: 1;
   min-width: 0;
-  padding: 36px 40px;
+  padding: 72px 40px 36px;
   overflow: auto;
 }
 .settings-content section {
@@ -418,7 +450,7 @@ button:disabled {
   overflow: auto;
 }
 .tiptap code {
-  font-family: "SFMono-Regular", Consolas, monospace;
+  font-family: "Geist Mono", monospace;
   font-size: 0.85em;
   background: var(--surface);
   border-radius: 3px;
@@ -478,7 +510,7 @@ button:disabled {
   outline: none;
 }
 .cm-editor .cm-scroller {
-  font-family: "SFMono-Regular", Consolas, monospace;
+  font-family: "Geist Mono", monospace;
   font-size: 13px;
   line-height: 1.85;
 }
@@ -505,6 +537,124 @@ summary {
 }
 .welcome {
   padding: 80px 40px;
+}
+.command-palette {
+  position: fixed;
+  inset: 12vh auto auto 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  width: min(560px, calc(100vw - 32px));
+  max-height: 65vh;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--background);
+  color: var(--ink);
+  animation: palette-in 160ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.command-palette::backdrop {
+  background: oklch(0 0 0 / 0.24);
+}
+.command-palette.closing {
+  animation: palette-out 140ms ease-out both;
+}
+.command-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+}
+.command-search input {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+}
+.command-search input::placeholder {
+  color: var(--muted);
+}
+.command-results {
+  padding: 6px;
+  max-height: 48vh;
+  overflow-y: auto;
+}
+.command-results [role="option"] {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 10px;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.command-results [aria-selected="true"] {
+  background: var(--surface);
+}
+.command-results kbd {
+  color: var(--muted);
+  font-family: "Geist Mono", monospace;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.commands-empty {
+  padding: 8px 16px 16px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+@keyframes palette-in {
+  from {
+    opacity: 0;
+    translate: 0 -4px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+@keyframes palette-out {
+  to {
+    opacity: 0;
+    translate: 0 -3px;
+  }
+}
+::view-transition-group(*) {
+  animation-duration: 180ms;
+  animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+::view-transition-old(*) {
+  animation: workspace-out 180ms ease-out both;
+}
+::view-transition-new(*) {
+  animation: workspace-in 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+}
+@keyframes workspace-in {
+  from {
+    opacity: 0;
+    translate: 0 3px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+@keyframes workspace-out {
+  to {
+    opacity: 0;
+  }
 }
 .loading-screen {
   display: grid;
@@ -555,6 +705,13 @@ summary {
   }
 }
 @media (prefers-reduced-motion: reduce) {
+  button {
+    transition: none;
+  }
+  .command-palette,
+  .command-palette.closing {
+    animation: none;
+  }
   .titlebar {
     transition: none;
   }
@@ -571,7 +728,7 @@ summary {
     width: 152px;
   }
   .settings-content {
-    padding: 28px 24px;
+    padding: 64px 24px 28px;
   }
   .titlebar {
     gap: 6px;

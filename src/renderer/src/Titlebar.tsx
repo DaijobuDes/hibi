@@ -31,6 +31,7 @@ export function Titlebar({
   document,
   settingsOpen,
   onSettings,
+  onPalette,
   mode,
   onMode,
   onCommand,
@@ -39,6 +40,7 @@ export function Titlebar({
   document: DocumentState | null
   settingsOpen: boolean
   onSettings: () => void
+  onPalette: () => void
   mode: ViewMode
   onMode: (mode: ViewMode) => void
   onCommand: (command: DocumentCommand) => void
@@ -46,21 +48,29 @@ export function Titlebar({
 }) {
   return (
     <header className="titlebar">
-      <div className="document-actions">
-        {(['new', 'open', 'save'] as const).map((command) => (
-          <button
-            type="button"
-            key={command}
-            aria-label={command}
-            title={command}
-            disabled={disabled}
-            onClick={() => onCommand(command)}
-          >
-            <Icon name={command} />
-          </button>
-        ))}
-      </div>
-      <div className="document-title" title={document?.name}>
+      {!settingsOpen && (
+        <div className="document-actions">
+          {(['new', 'open', 'save'] as const).map((command) => (
+            <button
+              type="button"
+              key={command}
+              aria-label={command}
+              title={command}
+              disabled={disabled}
+              onClick={() => onCommand(command)}
+            >
+              <Icon name={command} />
+            </button>
+          ))}
+        </div>
+      )}
+      <button
+        type="button"
+        className="document-title"
+        aria-label="command palette"
+        title="command palette (cmd/ctrl+shift+p)"
+        onClick={onPalette}
+      >
         <span>{settingsOpen ? 'settings' : (document?.name ?? 'hibi')}</span>
         {!settingsOpen && document?.dirty && (
           <span
@@ -71,33 +81,38 @@ export function Titlebar({
             •
           </span>
         )}
-      </div>
-      <nav className="view-switch" aria-label="editor view">
-        <button
-          type="button"
-          aria-label="format"
-          title="format"
-          popoverTarget="format-menu"
-          disabled={disabled || settingsOpen || mode === 'markdown'}
-        >
-          Aa
-        </button>
-        {(['normal', 'side-by-side', 'markdown'] as const).map((view) => {
-          const label = view === 'markdown' ? 'markdown only' : view
-          return (
-            <button
-              type="button"
-              key={view}
-              aria-label={label}
-              title={label}
-              aria-pressed={mode === view}
-              disabled={settingsOpen}
-              onClick={() => onMode(view)}
-            >
-              <Icon name={view} />
-            </button>
-          )
-        })}
+      </button>
+      <nav
+        className="view-switch"
+        aria-label={settingsOpen ? 'navigation' : 'editor view'}
+      >
+        {!settingsOpen && mode !== 'markdown' && (
+          <button
+            type="button"
+            aria-label="format"
+            title="format"
+            popoverTarget="format-menu"
+            disabled={disabled}
+          >
+            Aa
+          </button>
+        )}
+        {!settingsOpen &&
+          (['normal', 'side-by-side', 'markdown'] as const).map((view) => {
+            const label = view === 'markdown' ? 'markdown only' : view
+            return (
+              <button
+                type="button"
+                key={view}
+                aria-label={label}
+                title={label}
+                aria-pressed={mode === view}
+                onClick={() => onMode(view)}
+              >
+                <Icon name={view} />
+              </button>
+            )
+          })}
         <button
           type="button"
           aria-label={settingsOpen ? 'back to editor' : 'editor settings'}
