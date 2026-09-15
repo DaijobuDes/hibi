@@ -3,11 +3,18 @@ import {
   type ErrorInfo,
   type ReactNode,
   StrictMode,
+  useCallback,
   useEffect,
+  useRef,
   useState,
 } from 'react'
 import { createRoot } from 'react-dom/client'
-import type { AppInfo } from '../../shared/desktop'
+import type {
+  AppInfo,
+  DocumentCommand,
+  DocumentState,
+} from '../../shared/desktop'
+import { MAX_DOCUMENT_BYTES } from '../../shared/desktop'
 import './styles.css'
 import { MarkdownEditor, type ViewMode } from './Editor'
 
@@ -42,17 +49,25 @@ class ErrorBoundary extends Component<
 }
 
 function App() {
-  const [markdown, setMarkdown] = useState('')
+  const [document, setDocument] = useState<DocumentState | null>(null)
+  const [resetEditor, setResetEditor] = useState(0)
+  const savedText = useRef('')
+  const busyRef = useRef(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
   const [mode, setMode] = useState<ViewMode>('normal')
   const [info, setInfo] = useState<AppInfo | null>(null)
   const [failed, setFailed] = useState(false)
 
   useEffect(() => {
     let active = true
-    window.hibi
-      .getAppInfo()
-      .then((value) => {
-        if (active) setInfo(value)
+    Promise.all([window.hibi.getAppInfo(), window.hibi.getDocument()])
+      .then(([info, document]) => {
+        if (active) {
+          setInfo(info)
+          setDocument(document)
+          savedText.current = document.savedMarkdown
+        }
       })
       .catch(() => {
         if (active) setFailed(true)
@@ -62,10 +77,70 @@ function App() {
     }
   }, [])
 
+  const runCommand = useCallback(async (command: DocumentCommand) => {
+    if (busyRef.current) return
+    busyRef.current = true
+    setBusy(true)
+    setError('')
+    try {
+      const next = await (command === 'new'
+        ? window.hibi.newDocument()
+        : command === 'open'
+          ? window.hibi.openDocument()
+          : window.hibi.saveDocument(command === 'saveAs'))
+      if (next) {
+        setDocument(next)
+        savedText.current = next.savedMarkdown
+      }
+    } catch (error) {
+      setError(
+        error instanceof Error
+          ? error.message
+          : 'could not complete file operation.',
+      )
+    } finally {
+      busyRef.current = false
+      setBusy(false)
+    }
+  }, [])
+
+  useEffect(
+    () =>
+      window.hibi.onDocumentCommand((command) => {
+        void runCommand(command)
+      }),
+    [runCommand],
+  )
+
+  function updateMarkdown(markdown: string) {
+    if (new TextEncoder().encode(markdown).length > MAX_DOCUMENT_BYTES) {
+      setError('documents must stay under 2 mib. this edit was not applied.')
+      setResetEditor((value) => value + 1)
+      return
+    }
+    setDocument((current) =>
+      current
+        ? { ...current, markdown, dirty: markdown !== savedText.current }
+        : current,
+    )
+    void window.hibi
+      .updateDocument(markdown)
+      .catch((error: unknown) =>
+        setError(
+          error instanceof Error
+            ? error.message
+            : 'could not preserve changes.',
+        ),
+      )
+  }
+
   return (
     <div className="app" data-platform={info?.platform}>
       <header className="titlebar">
-        <span className="wordmark">hibi</span>
+        <span className="wordmark" title={document?.name}>
+          {document?.name ?? 'hibi'}
+          {document?.dirty ? ' •' : ''}
+        </span>
         <nav className="view-switch" aria-label="editor view">
           {(['normal', 'side-by-side', 'markdown'] as const).map((view) => (
             <button
@@ -79,7 +154,46 @@ function App() {
           ))}
         </nav>
       </header>
-      <MarkdownEditor value={markdown} onChange={setMarkdown} mode={mode} />
+      <div className="document-actions">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void runCommand('new')}
+        >
+          new
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void runCommand('open')}
+        >
+          open
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void runCommand('save')}
+        >
+          save
+        </button>
+        <span role="status">
+          {busy ? 'working…' : document?.dirty ? 'unsaved' : ''}
+        </span>
+      </div>
+      {error && (
+        <div className="error-message" role="alert">
+          {error}
+        </div>
+      )}
+      {document && (
+        <MarkdownEditor
+          key={`${document.revision}-${resetEditor}`}
+          value={document.markdown}
+          onChange={updateMarkdown}
+          mode={mode}
+          disabled={busy}
+        />
+      )}
       <footer>
         {failed ? (
           <p role="alert">

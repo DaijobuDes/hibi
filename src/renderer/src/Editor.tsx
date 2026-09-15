@@ -12,10 +12,12 @@ export function MarkdownEditor({
   value,
   onChange,
   mode,
+  disabled,
 }: {
   value: string
   onChange: (value: string) => void
   mode: ViewMode
+  disabled: boolean
 }) {
   const sourceOnly = needsSourceEditing(value)
   const [formatting, setFormatting] = useState(false)
@@ -42,7 +44,7 @@ export function MarkdownEditor({
 
   useEffect(() => {
     if (!editor) return
-    editor.setEditable(!sourceOnly, false)
+    editor.setEditable(!sourceOnly && !disabled, false)
     if (editor.getMarkdown() !== value) {
       editor
         .chain()
@@ -50,7 +52,7 @@ export function MarkdownEditor({
         .setMeta('addToHistory', false)
         .run()
     }
-  }, [editor, value, sourceOnly])
+  }, [editor, value, sourceOnly, disabled])
 
   return (
     <>
@@ -65,7 +67,11 @@ export function MarkdownEditor({
           </button>
         )}
         {mode !== 'markdown' && formatting && editor && !sourceOnly && (
-          <fieldset className="formats" aria-label="formatting">
+          <fieldset
+            className="formats"
+            aria-label="formatting"
+            disabled={disabled}
+          >
             <button
               type="button"
               onClick={() => editor.chain().focus().toggleBold().run()}
@@ -130,7 +136,11 @@ export function MarkdownEditor({
             <Suspense
               fallback={<p className="loading">loading markdown editor…</p>}
             >
-              <SourceEditor value={value} onChange={onChange} />
+              <SourceEditor
+                value={value}
+                onChange={onChange}
+                disabled={disabled}
+              />
             </Suspense>
           )}
         </section>

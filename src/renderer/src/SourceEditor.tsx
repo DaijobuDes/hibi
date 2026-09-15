@@ -1,23 +1,43 @@
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import { markdown as markdownLanguage } from '@codemirror/lang-markdown'
-import { defaultHighlightStyle, syntaxHighlighting } from '@codemirror/language'
-import { Annotation, EditorState, Transaction } from '@codemirror/state'
+import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
+import {
+  Annotation,
+  Compartment,
+  EditorState,
+  Transaction,
+} from '@codemirror/state'
 import { EditorView, keymap, placeholder } from '@codemirror/view'
+import { tags } from '@lezer/highlight'
 import { useEffect, useRef } from 'react'
 
 const externalChange = Annotation.define<boolean>()
+const highlighting = HighlightStyle.define([
+  { tag: tags.heading, color: 'var(--ink)', fontWeight: '600' },
+  { tag: tags.strong, fontWeight: '600' },
+  { tag: tags.emphasis, fontStyle: 'italic' },
+  { tag: [tags.link, tags.url, tags.monospace], color: 'var(--accent)' },
+  {
+    tag: [tags.meta, tags.quote, tags.processingInstruction],
+    color: 'var(--muted)',
+  },
+  { tag: tags.strikethrough, textDecoration: 'line-through' },
+])
 
 export function SourceEditor({
   value,
   onChange,
+  disabled,
 }: {
   value: string
   onChange: (value: string) => void
+  disabled: boolean
 }) {
   const host = useRef<HTMLDivElement>(null)
   const view = useRef<EditorView | null>(null)
   const change = useRef(onChange)
   const initialValue = useRef(value)
+  const editable = useRef(new Compartment())
   change.current = onChange
 
   useEffect(() => {
@@ -27,10 +47,11 @@ export function SourceEditor({
       state: EditorState.create({
         doc: initialValue.current,
         extensions: [
+          editable.current.of(EditorView.editable.of(true)),
           markdownLanguage(),
           history(),
           keymap.of([...defaultKeymap, ...historyKeymap]),
-          syntaxHighlighting(defaultHighlightStyle),
+          syntaxHighlighting(highlighting),
           EditorView.lineWrapping,
           placeholder('start typing'),
           EditorView.contentAttributes.of({
@@ -69,6 +90,12 @@ export function SourceEditor({
       })
     }
   }, [value])
+
+  useEffect(() => {
+    view.current?.dispatch({
+      effects: editable.current.reconfigure(EditorView.editable.of(!disabled)),
+    })
+  }, [disabled])
 
   return <div className="source-editor" ref={host} />
 }

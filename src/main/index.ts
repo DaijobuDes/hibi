@@ -1,6 +1,6 @@
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import type { MenuItemConstructorOptions } from 'electron'
+import type { IpcMainInvokeEvent, MenuItemConstructorOptions } from 'electron'
 import {
   app,
   BrowserWindow,
@@ -12,7 +12,22 @@ import {
   protocol,
   session,
 } from 'electron'
-import { APP_INFO_CHANNEL, type AppInfo } from '../shared/desktop'
+import {
+  APP_INFO_CHANNEL,
+  type AppInfo,
+  DOCUMENT_CHANNELS,
+  type DocumentCommand,
+  type DocumentState,
+} from '../shared/desktop'
+import {
+  confirmDiscard,
+  discardChanges,
+  getDocument,
+  newDocument,
+  openDocument,
+  saveDocument,
+  updateDocument,
+} from './document'
 import {
   CONTENT_SECURITY_POLICY,
   isTrustedRendererUrl,
@@ -48,6 +63,35 @@ const devUrl = !app.isPackaged ? process.env.ELECTRON_RENDERER_URL : undefined
 const rendererUrl = devUrl ? new URL(devUrl).href : 'app://hibi/'
 const rendererRoot = join(import.meta.dirname, '../renderer')
 let mainWindow: BrowserWindow | null = null
+let fileOperation: Promise<DocumentState | null> | null = null
+let quitting = false
+app.on('before-quit', () => {
+  quitting = true
+})
+
+function trustedWindow(event: IpcMainInvokeEvent): BrowserWindow {
+  if (
+    !mainWindow ||
+    event.sender !== mainWindow.webContents ||
+    event.senderFrame !== event.sender.mainFrame ||
+    !isTrustedRendererUrl(event.senderFrame.url, rendererUrl)
+  ) {
+    throw new Error('untrusted ipc sender')
+  }
+  return mainWindow
+}
+
+function runFileOperation(
+  event: IpcMainInvokeEvent,
+  operation: (window: BrowserWindow) => Promise<DocumentState | null>,
+) {
+  const window = trustedWindow(event)
+  if (fileOperation) throw new Error('another file operation is in progress.')
+  fileOperation = operation(window).finally(() => {
+    fileOperation = null
+  })
+  return fileOperation
+}
 
 function titleBarColors() {
   return {
@@ -95,6 +139,35 @@ function createWindow(): void {
     },
   })
   mainWindow = window
+  let allowClose = false
+  let confirmingClose = false
+  window.on('close', (event) => {
+    if (allowClose || (!getDocument().dirty && !fileOperation)) return
+    event.preventDefault()
+    if (confirmingClose) return
+    confirmingClose = true
+    void (async () => {
+      await fileOperation?.catch(() => undefined)
+      if (await confirmDiscard(window)) {
+        discardChanges()
+        allowClose = true
+        if (quitting) app.quit()
+        else window.close()
+      } else {
+        quitting = false
+      }
+    })()
+      .catch((error: unknown) => {
+        quitting = false
+        dialog.showErrorBox(
+          'could not save document',
+          error instanceof Error ? error.message : 'please try again.',
+        )
+      })
+      .finally(() => {
+        confirmingClose = false
+      })
+  })
   window.once('ready-to-show', () => {
     window.show()
   })
@@ -142,9 +215,25 @@ function createWindow(): void {
 }
 
 function installMenu(): void {
+  const command = (action: DocumentCommand) => () =>
+    mainWindow?.webContents.send(DOCUMENT_CHANNELS.command, action)
   const menu: MenuItemConstructorOptions[] = [
     ...(process.platform === 'darwin' ? [{ role: 'appMenu' as const }] : []),
-    { role: 'fileMenu' },
+    {
+      label: 'file',
+      submenu: [
+        { label: 'new', accelerator: 'CmdOrCtrl+N', click: command('new') },
+        { label: 'open…', accelerator: 'CmdOrCtrl+O', click: command('open') },
+        { label: 'save', accelerator: 'CmdOrCtrl+S', click: command('save') },
+        {
+          label: 'save as…',
+          accelerator: 'CmdOrCtrl+Shift+S',
+          click: command('saveAs'),
+        },
+        { type: 'separator' },
+        { role: process.platform === 'darwin' ? 'close' : 'quit' },
+      ],
+    },
     { role: 'editMenu' },
     {
       label: 'view',
@@ -221,18 +310,31 @@ if (!app.requestSingleInstanceLock()) {
       }
 
       ipcMain.handle(APP_INFO_CHANNEL, (event): AppInfo => {
-        if (
-          event.sender !== mainWindow?.webContents ||
-          event.senderFrame !== event.sender.mainFrame ||
-          !isTrustedRendererUrl(event.senderFrame.url, rendererUrl)
-        ) {
-          throw new Error('untrusted ipc sender')
-        }
+        trustedWindow(event)
         return {
           version: app.getVersion(),
           electron: process.versions.electron,
           platform: process.platform,
         }
+      })
+      ipcMain.handle(DOCUMENT_CHANNELS.get, (event) => {
+        trustedWindow(event)
+        return getDocument()
+      })
+      ipcMain.handle(DOCUMENT_CHANNELS.update, (event, value: unknown) => {
+        const window = trustedWindow(event)
+        updateDocument(value)
+        window.setDocumentEdited(getDocument().dirty)
+      })
+      ipcMain.handle(DOCUMENT_CHANNELS.open, (event) =>
+        runFileOperation(event, openDocument),
+      )
+      ipcMain.handle(DOCUMENT_CHANNELS.new, (event) =>
+        runFileOperation(event, newDocument),
+      )
+      ipcMain.handle(DOCUMENT_CHANNELS.save, (event, saveAs: unknown) => {
+        if (typeof saveAs !== 'boolean') throw new Error('invalid save request')
+        return runFileOperation(event, (window) => saveDocument(window, saveAs))
       })
       installMenu()
       nativeTheme.on('updated', () => {

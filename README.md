@@ -1,6 +1,16 @@
 # hibi
 
-lean electron desktop foundation. electron 44.3.0, react, strict typescript, and electron-vite. starts in a normal resizable window with content extending into the title bar; native window controls stay available.
+minimal markdown editor built on electron 44.3.0, react, strict typescript, and electron-vite. starts with an empty, focused editor and a `start typing` placeholder. normal resizable window, integrated title area, native window controls.
+
+## editing
+
+- **normal:** wysiwyg editing with markdown shortcuts. use `format` for bold, italic, headings, lists, quotes, and code.
+- **side-by-side:** editable rich text and syntax-highlighted markdown, synchronized in both directions.
+- **markdown only:** edit the original source directly.
+
+native file menu supports new (`cmd/ctrl+n`), open (`cmd/ctrl+o`), save (`cmd/ctrl+s`), and save as (`cmd/ctrl+shift+s`). opening another document, starting a new one, closing, or quitting asks before discarding unsaved changes. a dot beside the filename marks unsaved changes.
+
+switching views preserves the exact markdown source. rich edits serialize markdown and may normalize spacing or syntax. html, frontmatter, reference definitions, and footnotes stay editable in source mode; rich mode becomes read-only for those documents to prevent lossy conversion. headings, emphasis, links, code, quotes, lists, task lists, and tables are supported. image references are preserved, but external and document-relative images are not loaded yet.
 
 ## run
 
@@ -27,10 +37,12 @@ on headless linux, run `xvfb-run --auto-servernum npm test`. tests keep sandboxi
 - `src/main/`: window lifecycle, native menus, permission policy, local asset protocol, and privileged ipc handlers.
 - `src/preload/`: sandbox-compatible commonjs bridge. exposes individual typed operations; never exposes `ipcRenderer`, filesystem access, or a generic channel dispatcher.
 - `src/shared/`: contracts shared by main, preload, and renderer.
-- `src/renderer/`: react and css. system fonts and system light/dark mode; no node access.
+- `src/renderer/`: tiptap rich editor, lazily loaded codemirror source editor, react, and css. system fonts and light/dark mode; no node access.
 - `tests/`: asset traversal and sender checks, plus actual window launch, sandbox, csp, ipc rejection, navigation blocking, offline reload, crash recovery, and macos reopen checks. theme screenshots land in `test-results/`.
 
-production loads bundled content through `app://hibi/`, with a strict content security policy. new windows, page navigation, downloads, and permissions are denied by default. ipc checks window identity, frame identity, and exact document url. react render failures offer reload; renderer process crashes offer reload or quit.
+production loads bundled content through `app://hibi/`, with a strict script content security policy. inline styles are allowed for editor layout. new windows, page navigation, downloads, and permissions are denied by default. ipc checks window identity, frame identity, and exact document url. file paths come from native dialogs, never renderer-provided paths. react render failures offer reload; renderer crashes offer reload or quit and retain the draft in the main process.
+
+files use utf-8 with a 2 mib limit. saves write and sync a temporary file, then rename it over the destination. existing file permissions are preserved, and changed/deleted files prompt before replacement. drafts live in memory until saved; a full app/process or machine crash is not covered by renderer-crash recovery.
 
 ## keep it fast
 
@@ -42,6 +54,6 @@ electron is pinned exactly; the lockfile makes installs repeatable. dependabot p
 
 `package` produces a local test build, with an ad-hoc macos signature so hardened electron binaries launch locally. configure a final app id, app icon, macos distribution signing/notarization, and windows signing before public distribution. packaging enables asar integrity checks and disables run-as-node, node environment options, and node inspector arguments.
 
-product workflows, persistence, accounts, and an update feed are not chosen yet. add those when their requirements are known. native fullscreen remains available from the view menu; startup neither maximizes nor enters fullscreen.
+tiptap's markdown extension is marked beta upstream; versions are pinned and common markdown/gfm round trips have runnable checks. accounts, cloud sync, and an update feed are not configured. native fullscreen remains available from the view menu; startup neither maximizes nor enters fullscreen.
 
 references: [electron releases](https://releases.electronjs.org/), [electron security](https://www.electronjs.org/docs/latest/tutorial/security), [electron performance](https://www.electronjs.org/docs/latest/tutorial/performance), [electron-vite](https://electron-vite.org/guide/).

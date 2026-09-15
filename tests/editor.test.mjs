@@ -13,6 +13,12 @@ test('empty entry, three views, and lossless source switching', {
     args: [resolve('.'), `--user-data-dir=${profile}`],
   })
   t.after(async () => {
+    await app.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => ({
+        response: 1,
+        checkboxChecked: false,
+      })
+    })
     await app.close()
     await rm(profile, { recursive: true, force: true })
   })

@@ -89,11 +89,16 @@ button:disabled {
   padding-right: 150px;
 }
 .wordmark {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 13px;
   font-weight: 600;
   letter-spacing: -0.025em;
 }
 .view-switch {
+  flex-shrink: 0;
   display: flex;
   gap: 3px;
   margin-left: auto;
@@ -110,6 +115,23 @@ button:disabled {
   gap: 4px;
   font-size: 12px;
   color: var(--muted);
+}
+.document-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 20px;
+  font-size: 12px;
+}
+.document-actions span {
+  margin-left: auto;
+  color: var(--muted);
+}
+.error-message {
+  padding: 8px 24px;
+  font-size: 12px;
+  color: var(--ink);
+  background: var(--surface);
 }
 .formats {
   border: 0;

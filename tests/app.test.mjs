@@ -46,7 +46,19 @@ test('desktop launch, isolation, offline reload, and recovery', {
       process: typeof window.process,
       api: Object.keys(window.hibi),
     })),
-    { node: 'undefined', process: 'undefined', api: ['getAppInfo'] },
+    {
+      node: 'undefined',
+      process: 'undefined',
+      api: [
+        'getAppInfo',
+        'getDocument',
+        'updateDocument',
+        'openDocument',
+        'newDocument',
+        'saveDocument',
+        'onDocumentCommand',
+      ],
+    },
   )
   const preferences = await app.evaluate(({ BrowserWindow }) => {
     const prefs =
@@ -215,7 +227,7 @@ test('desktop launch, isolation, offline reload, and recovery', {
       await reloaded
       // Playwright retains its crashed target; inspect the new renderer through Electron.
       return contents.executeJavaScript(
-        'window.hibi.getAppInfo().then(info => ({ editor: Boolean(document.querySelector(".tiptap")), version: info.version }))',
+        'new Promise(resolve => { const check = () => document.querySelector(".tiptap") ? window.hibi.getAppInfo().then(info => resolve({ editor: true, version: info.version })) : requestAnimationFrame(check); check() })',
       )
     })
     assert.deepEqual(recovered, {
