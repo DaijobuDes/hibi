@@ -336,59 +336,68 @@ function DocumentationSite() {
       style={{ '--sidebar-width': `${sidebarResize.width}px` } as CSSProperties}
     >
       <header className="site-header">
-        <IconButton
-          type="button"
-          aria-label="toggle navigation"
-          aria-expanded={sidebar}
-          onClick={() => setSidebar(!sidebar)}
-        >
-          <PanelLeft size={18} />
-        </IconButton>
-        <nav className="site-breadcrumbs" aria-label="breadcrumbs">
-          <ol>
-            <li>
-              <a href={destination(home?.path ?? '')}>
-                <Folder aria-hidden="true" />
-                <span>{workspace.name}</span>
-              </a>
-            </li>
-            {folders.map((folder, index) => {
-              const prefix = folders.slice(0, index + 1).join('/')
-              const target =
-                [`${prefix}/README.md`, `${prefix}/index.md`].find((path) =>
-                  byPath.has(path),
-                ) ??
-                pages.find((entry) => entry.path.startsWith(`${prefix}/`))?.path
-              return (
-                <li key={prefix}>
-                  <ChevronRight aria-hidden="true" />
-                  {target ? (
-                    <a href={destination(target)}>{folder}</a>
-                  ) : (
-                    <span>{folder}</span>
-                  )}
-                </li>
-              )
-            })}
-            <li aria-current="page">
-              <ChevronRight aria-hidden="true" />
-              <span>{page?.title ?? 'page not found'}</span>
-            </li>
-          </ol>
-        </nav>
-        <button
-          type="button"
-          className="site-search"
-          onClick={() => setPalette(true)}
-          aria-label="search documentation"
-        >
-          <Search size={15} />
-          <span className="site-search-label">search documentation</span>
-          <ShortcutKeys
-            shortcut={/Mac/.test(navigator.platform) ? 'meta+k' : 'ctrl+k'}
-            platform={/Mac/.test(navigator.platform) ? 'darwin' : 'linux'}
-          />
-        </button>
+        <div className="site-navigation-controls">
+          <IconButton
+            type="button"
+            aria-label="toggle navigation"
+            aria-expanded={sidebar}
+            onClick={() => setSidebar(!sidebar)}
+          >
+            <PanelLeft size={18} />
+          </IconButton>
+        </div>
+        <div className="site-header-content">
+          <nav
+            className="site-breadcrumbs"
+            aria-label="breadcrumbs"
+            aria-hidden={mobile && sidebar}
+          >
+            <ol>
+              <li>
+                <a href={destination(home?.path ?? '')}>
+                  <Folder aria-hidden="true" />
+                  <span>{workspace.name}</span>
+                </a>
+              </li>
+              {folders.map((folder, index) => {
+                const prefix = folders.slice(0, index + 1).join('/')
+                const target =
+                  [`${prefix}/README.md`, `${prefix}/index.md`].find((path) =>
+                    byPath.has(path),
+                  ) ??
+                  pages.find((entry) => entry.path.startsWith(`${prefix}/`))
+                    ?.path
+                return (
+                  <li key={prefix}>
+                    <ChevronRight aria-hidden="true" />
+                    {target ? (
+                      <a href={destination(target)}>{folder}</a>
+                    ) : (
+                      <span>{folder}</span>
+                    )}
+                  </li>
+                )
+              })}
+              <li aria-current="page">
+                <ChevronRight aria-hidden="true" />
+                <span>{page?.title ?? 'page not found'}</span>
+              </li>
+            </ol>
+          </nav>
+          <button
+            type="button"
+            className="site-search"
+            onClick={() => setPalette(true)}
+            aria-label="search documentation"
+          >
+            <Search size={15} />
+            <span className="site-search-label">search documentation</span>
+            <ShortcutKeys
+              shortcut={/Mac/.test(navigator.platform) ? 'meta+k' : 'ctrl+k'}
+              platform={/Mac/.test(navigator.platform) ? 'darwin' : 'linux'}
+            />
+          </button>
+        </div>
       </header>
       <div className="site-layout">
         <button

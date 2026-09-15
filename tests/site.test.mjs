@@ -74,6 +74,19 @@ test('documentation breadcrumbs, outline, pagination, and phone navigation', {
     await breadcrumbs.innerText(),
     /hibi documentation.*guides.*getting started/s,
   )
+  await page.waitForFunction(() => {
+    const sidebar = document.querySelector('.sidebar').getBoundingClientRect()
+    const controls = document
+      .querySelector('.site-navigation-controls')
+      .getBoundingClientRect()
+    const breadcrumbs = document
+      .querySelector('.site-breadcrumbs')
+      .getBoundingClientRect()
+    return (
+      Math.abs(controls.right - sidebar.right) < 1 &&
+      breadcrumbs.left > sidebar.right
+    )
+  })
   assert.equal(await page.locator('.site-path').count(), 0)
   await page.locator('.site-outline').waitFor()
   const usage = page

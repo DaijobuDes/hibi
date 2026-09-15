@@ -4,6 +4,8 @@
 
 breadcrumbs live in the top bar, with links back to the workspace and parent folders. previous and next page links sit below the document, separated by a divider, and follow sidebar order.
 
+the navigation toggle stays in the sidebar's top area when open. breadcrumbs sit outside the sidebar over the document, matching the app's split header. collapsing or resizing navigation moves that header boundary with it. phone drawers hide the underlying breadcrumbs while open.
+
 headings appear in an **in this page** outline on the right when there is room. on smaller screens the outline becomes a disclosure above the document; choosing a heading closes it and scrolls to that section. the current section is highlighted while scrolling.
 
 on phones, workspace navigation opens over the document with a dismissible backdrop. choosing a page, tapping outside, or pressing escape closes it. entering the phone layout also closes an open sidebar. header breadcrumbs shorten, content padding decreases, tables and code scroll within their own area, and the rest of the page keeps its width.
