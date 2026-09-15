@@ -86,17 +86,6 @@ export function Titlebar({
         className="view-switch"
         aria-label={settingsOpen ? 'navigation' : 'editor view'}
       >
-        {!settingsOpen && mode !== 'markdown' && (
-          <button
-            type="button"
-            aria-label="format"
-            title="format"
-            popoverTarget="format-menu"
-            disabled={disabled}
-          >
-            Aa
-          </button>
-        )}
         {!settingsOpen &&
           (['normal', 'side-by-side', 'markdown'] as const).map((view) => {
             const label = view === 'markdown' ? 'markdown only' : view

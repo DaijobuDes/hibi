@@ -214,29 +214,6 @@ button:disabled {
   color: var(--ink);
   background: var(--surface);
 }
-.formats {
-  border: 0;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  gap: 2px;
-  flex-wrap: wrap;
-}
-[popover] {
-  position: fixed;
-  top: 40px;
-  right: 8px;
-  bottom: auto;
-  left: auto;
-  margin: 0;
-  max-width: calc(100vw - 16px);
-  padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--background);
-  color: var(--ink);
-  font-size: 12px;
-}
 .editor-surface {
   view-transition-name: workspace;
   display: flex;

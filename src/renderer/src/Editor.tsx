@@ -153,54 +153,6 @@ export function MarkdownEditor({
               ?.focus()
         }}
       />
-      <div id="format-menu" popover="auto">
-        {editor && !sourceOnly && (
-          <fieldset
-            className="formats"
-            aria-label="formatting"
-            disabled={disabled}
-          >
-            <button
-              type="button"
-              onClick={() => editor.chain().focus().toggleBold().run()}
-            >
-              <strong>bold</strong>
-            </button>
-            <button
-              type="button"
-              onClick={() => editor.chain().focus().toggleItalic().run()}
-            >
-              <em>italic</em>
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                editor.chain().focus().toggleHeading({ level: 2 }).run()
-              }
-            >
-              heading
-            </button>
-            <button
-              type="button"
-              onClick={() => editor.chain().focus().toggleBulletList().run()}
-            >
-              list
-            </button>
-            <button
-              type="button"
-              onClick={() => editor.chain().focus().toggleBlockquote().run()}
-            >
-              quote
-            </button>
-            <button
-              type="button"
-              onClick={() => editor.chain().focus().toggleCodeBlock().run()}
-            >
-              code
-            </button>
-          </fieldset>
-        )}
-      </div>
       {sourceOnly && mode !== 'markdown' && (
         <div className="source-notice" role="status">
           edit this document’s html, references, or frontmatter in markdown
