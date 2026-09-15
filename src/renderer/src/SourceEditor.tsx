@@ -28,15 +28,18 @@ export function SourceEditor({
   value,
   onChange,
   disabled,
+  externalRevision,
 }: {
   value: string
   onChange: (value: string) => void
   disabled: boolean
+  externalRevision: number
 }) {
   const host = useRef<HTMLDivElement>(null)
   const view = useRef<EditorView | null>(null)
   const change = useRef(onChange)
   const initialValue = useRef(value)
+  const appliedRevision = useRef(externalRevision)
   const editable = useRef(new Compartment())
   change.current = onChange
 
@@ -79,6 +82,9 @@ export function SourceEditor({
   }, [])
 
   useEffect(() => {
+    // Only reconcile edits from the other pane; never replay our own stale props.
+    if (appliedRevision.current === externalRevision) return
+    appliedRevision.current = externalRevision
     const editor = view.current
     if (editor && editor.state.doc.toString() !== value) {
       editor.dispatch({
@@ -89,7 +95,7 @@ export function SourceEditor({
         ],
       })
     }
-  }, [value])
+  }, [value, externalRevision])
 
   useEffect(() => {
     view.current?.dispatch({

@@ -21,6 +21,7 @@ export function MarkdownEditor({
   disabled: boolean
 }) {
   const sourceOnly = needsSourceEditing(value)
+  const [richRevision, setRichRevision] = useState(0)
   const [sourceMounted, setSourceMounted] = useState(mode !== 'normal')
   useEffect(() => {
     if (mode !== 'normal') setSourceMounted(true)
@@ -39,20 +40,25 @@ export function MarkdownEditor({
         'aria-multiline': 'true',
       },
     },
-    onUpdate: ({ editor }) => onChange(editor.getMarkdown()),
+    onUpdate: ({ editor }) => {
+      onChange(editor.getMarkdown())
+      setRichRevision((revision) => revision + 1)
+    },
   })
 
   useEffect(() => {
     if (!editor) return
     editor.setEditable(!sourceOnly && !disabled, false)
-    if (editor.getMarkdown() !== value) {
-      editor
-        .chain()
-        .setContent(value, { contentType: 'markdown', emitUpdate: false })
-        .setMeta('addToHistory', false)
-        .run()
-    }
-  }, [editor, value, sourceOnly, disabled])
+  }, [editor, sourceOnly, disabled])
+
+  function updateFromSource(markdown: string) {
+    editor
+      ?.chain()
+      .setContent(markdown, { contentType: 'markdown', emitUpdate: false })
+      .setMeta('addToHistory', false)
+      .run()
+    onChange(markdown)
+  }
 
   return (
     <>
@@ -129,7 +135,8 @@ export function MarkdownEditor({
             >
               <SourceEditor
                 value={value}
-                onChange={onChange}
+                externalRevision={richRevision}
+                onChange={updateFromSource}
                 disabled={disabled}
               />
             </Suspense>
