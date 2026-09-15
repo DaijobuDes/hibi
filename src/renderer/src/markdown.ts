@@ -8,6 +8,28 @@ import { Markdown } from '@tiptap/markdown'
 import { StarterKit } from '@tiptap/starter-kit'
 import { marked } from 'marked'
 import { search } from 'prosemirror-search'
+import type { MarkdownExtension, MarkdownProjection } from '../../addons/api'
+
+export function projectMarkdown(
+  source: string,
+  adapters: readonly MarkdownExtension[],
+): MarkdownProjection {
+  let result: MarkdownProjection = {
+    content: source,
+    serialize: (content) => content,
+  }
+  for (const adapter of adapters) {
+    const next = adapter.parse(result.content)
+    if (!next) continue
+    const previous = result
+    result = {
+      content: next.content,
+      serialize: (content) => previous.serialize(next.serialize(content)),
+      readOnly: Boolean(previous.readOnly || next.readOnly),
+    }
+  }
+  return result
+}
 
 export const extensions = [
   Extension.create({
@@ -30,7 +52,7 @@ export const extensions = [
 // Preserve source constructs the rich editor cannot round-trip without loss.
 export function needsSourceEditing(source: string): boolean {
   if (
-    /^(?:\uFEFF)?---\r?\n/.test(source) ||
+    /^(?:\uFEFF)?---[ \t]*\r?\n/.test(source) ||
     /^\s{0,3}\[[^\]]+\]:/m.test(source)
   )
     return true

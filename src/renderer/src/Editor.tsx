@@ -16,9 +16,11 @@ import {
   useRef,
   useState,
 } from 'react'
+import type { MarkdownExtension } from '../../addons/api'
+import { type CursorSettings, EditorCursor } from './EditorCursor'
 import { FindBar, type FindMove, type FindStatus } from './FindBar'
 import { LoadingScreen } from './LoadingScreen'
-import { extensions, needsSourceEditing } from './markdown'
+import { extensions, needsSourceEditing, projectMarkdown } from './markdown'
 
 const SourceEditor = lazy(() =>
   import('./SourceEditor').then((module) => ({ default: module.SourceEditor })),
@@ -33,6 +35,8 @@ export function MarkdownEditor({
   disabled,
   findOpen,
   onCloseFind,
+  markdownExtensions,
+  cursorSettings,
 }: {
   value: string
   onChange: (value: string) => void
@@ -40,8 +44,18 @@ export function MarkdownEditor({
   disabled: boolean
   findOpen: boolean
   onCloseFind: () => void
+  markdownExtensions: readonly MarkdownExtension[]
+  cursorSettings: CursorSettings
 }) {
-  const sourceOnly = useMemo(() => needsSourceEditing(value), [value])
+  const projection = useMemo(
+    () => projectMarkdown(value, markdownExtensions),
+    [value, markdownExtensions],
+  )
+  const sourceOnly = useMemo(
+    () =>
+      Boolean(projection.readOnly) || needsSourceEditing(projection.content),
+    [projection],
+  )
   const [richRevision, setRichRevision] = useState(0)
   const [findQuery, setFindQuery] = useState('')
   const [findStatus, setFindStatus] = useState<FindStatus>({
@@ -86,25 +100,28 @@ export function MarkdownEditor({
   useEffect(() => {
     if (mode !== 'normal') setSourceMounted(true)
   }, [mode])
-  const editor = useEditor({
-    extensions,
-    content: value,
-    contentType: 'markdown',
-    autofocus: 'end',
-    injectCSS: false,
-    shouldRerenderOnTransaction: false,
-    editorProps: {
-      attributes: {
-        'aria-label': 'document editor',
-        role: 'textbox',
-        'aria-multiline': 'true',
+  const editor = useEditor(
+    {
+      extensions,
+      content: projection.content,
+      contentType: 'markdown',
+      autofocus: 'end',
+      injectCSS: false,
+      shouldRerenderOnTransaction: false,
+      editorProps: {
+        attributes: {
+          'aria-label': 'document editor',
+          role: 'textbox',
+          'aria-multiline': 'true',
+        },
+      },
+      onUpdate: ({ editor }) => {
+        onChange(projection.serialize(editor.getMarkdown()))
+        setRichRevision((revision) => revision + 1)
       },
     },
-    onUpdate: ({ editor }) => {
-      onChange(editor.getMarkdown())
-      setRichRevision((revision) => revision + 1)
-    },
-  })
+    [markdownExtensions],
+  )
 
   useEffect(() => {
     if (!editor) return
@@ -162,7 +179,10 @@ export function MarkdownEditor({
   function updateFromSource(markdown: string) {
     editor
       ?.chain()
-      .setContent(markdown, { contentType: 'markdown', emitUpdate: false })
+      .setContent(projectMarkdown(markdown, markdownExtensions).content, {
+        contentType: 'markdown',
+        emitUpdate: false,
+      })
       .setMeta('addToHistory', false)
       .run()
     onChange(markdown)
@@ -187,17 +207,12 @@ export function MarkdownEditor({
               ?.focus()
         }}
       />
-      {sourceOnly && mode !== 'markdown' && (
-        <div className="source-notice" role="status">
-          edit this document’s html, references, or frontmatter in markdown
-          view.
-        </div>
-      )}
       <main
         className={`editor-panes mode-${paneMode}`}
         data-source-ready={sourceReady}
       >
         <div className="editor-content" ref={content}>
+          <EditorCursor root={content} settings={cursorSettings} />
           <section
             className="rich-pane"
             onFocusCapture={() => setFocusedPane('rich')}

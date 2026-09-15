@@ -44,7 +44,13 @@ private addons import the SDK from `../../addons/api`. use a unique lowercase id
 
 export a `NativeAddon` with an id and a map of asynchronous methods. `context.workspace.snapshot()` returns markdown pages with relative paths. `context.exportHtml()` asks the user where to save and writes the HTML there. never register a generic filesystem or arbitrary IPC dispatcher.
 
-see [the documentation addon](../../src/addons/documentation/README.md) for the working example and [the generated API reference](../reference/addon-api.md) for exact signatures.
+the working implementation lives in `src/addons/documentation/`. see [exporting documentation](../guides/exporting.md) for its behavior and [the generated API reference](../reference/addon-api.md) for exact signatures.
+
+## markdown extensions
+
+`context.editor.registerMarkdown` registers a pure `parse(source)` projection with a local id. return `null` for unrecognized documents, or `{ content, serialize }` to expose a visual-editing body and reconstruct the complete source after an edit. `readOnly: true` can protect unsupported variants. projections compose in registration order; serialization runs in reverse order.
+
+the host removes registrations when the addon stops, preserves source text while editor capabilities change, and isolates parser errors with a read-only fallback. changing editor extensions rebuilds the visual editor, so its undo history resets; the current document stays intact. keep metadata untouched in `serialize` and avoid side effects in parser callbacks. `src/addons/frontmatter/` is the working example.
 
 ## shared navigation
 

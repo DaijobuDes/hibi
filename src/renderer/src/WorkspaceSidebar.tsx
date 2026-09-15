@@ -35,40 +35,48 @@ export function WorkspaceSidebar({
     <Sidebar
       resize={resize}
       open={open}
-      className="workspace-sidebar"
+      className={`workspace-sidebar ${workspace ? '' : 'workspace-empty'}`}
       items={items}
       selected={workspace?.activePath ?? null}
       onSelect={onFile}
       label="workspace files"
       header={
-        <>
-          <span>{workspace?.name ?? 'workspace'}</span>
-          <button
-            type="button"
-            aria-label="open workspace"
-            title="open folder"
-            onClick={onOpen}
-          >
-            <FolderOpen size={15} />
-          </button>
-          {workspace && (
+        workspace && (
+          <>
+            <span>{workspace?.name ?? 'workspace'}</span>
             <button
               type="button"
-              aria-label="refresh workspace"
-              title="refresh files"
-              onClick={onRefresh}
+              aria-label="open workspace"
+              title="open folder"
+              onClick={onOpen}
             >
-              <RefreshCw size={14} />
+              <FolderOpen size={15} />
             </button>
-          )}
-        </>
+            {workspace && (
+              <button
+                type="button"
+                aria-label="refresh workspace"
+                title="refresh files"
+                onClick={onRefresh}
+              >
+                <RefreshCw size={14} />
+              </button>
+            )}
+          </>
+        )
       }
       empty={
         workspace ? (
           'no markdown files in this folder.'
         ) : (
-          <button type="button" onClick={onOpen}>
-            open a folder…
+          <button
+            className="open-workspace"
+            type="button"
+            aria-label="open workspace"
+            onClick={onOpen}
+          >
+            <FolderOpen size={28} strokeWidth={1.25} aria-hidden="true" />
+            <span>open a folder</span>
           </button>
         )
       }

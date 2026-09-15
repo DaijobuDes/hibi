@@ -5,6 +5,7 @@ import type { AppInfo } from '../../shared/desktop'
 import type { Hotkeys } from '../../shared/hotkeys'
 import { Sidebar, type SidebarProps } from '../../ui/Sidebar'
 import { addons } from './addons'
+import type { CursorSettings } from './EditorCursor'
 import { HotkeySettings } from './HotkeySettings'
 
 const categories = [
@@ -27,6 +28,8 @@ export function SettingsScreen({
   addonStates,
   onAddonEnabled,
   resize,
+  cursorSettings,
+  onCursorSettings,
 }: {
   open: boolean
   padding: number
@@ -39,6 +42,8 @@ export function SettingsScreen({
   addonStates: AddonState[]
   onAddonEnabled: (id: string, enabled: boolean) => Promise<void>
   resize: NonNullable<SidebarProps['resize']>
+  cursorSettings: CursorSettings
+  onCursorSettings: (settings: CursorSettings) => void
 }) {
   const [category, setCategory] =
     useState<(typeof categories)[number]['id']>('editor')
@@ -100,6 +105,57 @@ export function SettingsScreen({
           hidden={category !== 'appearance'}
         >
           <h1>appearance</h1>
+          {(
+            [
+              [
+                'style',
+                'cursor style',
+                [
+                  ['bar', 'line |'],
+                  ['outline', 'outline ▯'],
+                  ['block', 'filled ▮'],
+                  ['underline', 'underline _'],
+                ],
+              ],
+              [
+                'speed',
+                'cursor blink',
+                [
+                  ['fast', 'fast'],
+                  ['normal', 'normal'],
+                  ['slow', 'slow'],
+                ],
+              ],
+              [
+                'animation',
+                'cursor animation',
+                [
+                  ['smooth', 'smooth'],
+                  ['blink', 'blink'],
+                ],
+              ],
+            ] as const
+          ).map(([key, label, options]) => (
+            <div className="setting-row" key={key}>
+              <label htmlFor={`cursor-${key}`}>{label}</label>
+              <select
+                id={`cursor-${key}`}
+                value={cursorSettings[key]}
+                onChange={(event) =>
+                  onCursorSettings({
+                    ...cursorSettings,
+                    [key]: event.target.value,
+                  })
+                }
+              >
+                {options.map(([value, text]) => (
+                  <option key={value} value={value}>
+                    {text}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ))}
           <div className="setting-row">
             <label className="setting-checkbox">
               <input

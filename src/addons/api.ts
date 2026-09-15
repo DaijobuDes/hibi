@@ -23,7 +23,19 @@ export type AddonCommand = {
 export type ExportResult = { path: string; pages: number }
 export type AddonState = { id: string; enabled: boolean }
 
+export type MarkdownProjection = {
+  content: string
+  serialize: (content: string) => string
+  readOnly?: boolean
+}
+export type MarkdownExtension = {
+  id: string
+  /** Pure source-to-body projection; return null for unrecognized documents. */
+  parse: (source: string) => MarkdownProjection | null
+}
+
 export type AddonContext = {
+  editor: { registerMarkdown: (extension: MarkdownExtension) => () => void }
   commands: { register: (command: AddonCommand) => () => void }
   workspace: {
     get: () => Promise<WorkspaceState | null>

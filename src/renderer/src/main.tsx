@@ -29,6 +29,7 @@ import { useSidebarResize } from '../../ui/useSidebarResize'
 import { useAddons } from './addons'
 import { CommandPalette, type PaletteCommand } from './CommandPalette'
 import { MarkdownEditor, type ViewMode } from './Editor'
+import { loadCursor } from './EditorCursor'
 import { LoadingScreen } from './LoadingScreen'
 import { SettingsScreen } from './SettingsScreen'
 import { Titlebar } from './Titlebar'
@@ -83,6 +84,10 @@ function App() {
     () => localStorage.getItem('sidebar-open') !== 'false',
   )
   const sidebarResize = useSidebarResize(196)
+  const [cursorSettings, setCursorSettings] = useState(loadCursor)
+  useEffect(() => {
+    localStorage.setItem('cursor-settings', JSON.stringify(cursorSettings))
+  }, [cursorSettings])
   const [notice, setNotice] = useState('')
   const addonHost = useAddons({
     workspace: {
@@ -294,6 +299,24 @@ function App() {
     }
   }
 
+  async function renameFile(name: string) {
+    if (busyRef.current) return
+    busyRef.current = true
+    setBusy(true)
+    setError('')
+    try {
+      setDocument(await window.hibi.renameDocument(name))
+      setWorkspace(await window.hibi.refreshWorkspace())
+    } catch (error) {
+      setError(
+        error instanceof Error ? error.message : 'could not rename file.',
+      )
+    } finally {
+      busyRef.current = false
+      setBusy(false)
+    }
+  }
+
   useEffect(() => window.hibi.onCommand(runAction))
 
   function updateMarkdown(markdown: string) {
@@ -432,6 +455,7 @@ function App() {
       }}
     >
       <Titlebar
+        onRename={renameFile}
         sidebarOpen={sidebarOpen}
         onSidebar={() => setSidebarOpen(!sidebarOpen)}
         hotkeys={hotkeys}
@@ -497,6 +521,8 @@ function App() {
         commands={addonHost.commands}
       />
       <SettingsScreen
+        cursorSettings={cursorSettings}
+        onCursorSettings={setCursorSettings}
         resize={sidebarResize}
         addonStates={addonHost.states}
         onAddonEnabled={addonHost.setEnabled}
@@ -519,6 +545,8 @@ function App() {
       >
         {document && (
           <MarkdownEditor
+            cursorSettings={cursorSettings}
+            markdownExtensions={addonHost.markdownExtensions}
             key={`${document.revision}-${resetEditor}`}
             value={document.markdown}
             onChange={updateMarkdown}

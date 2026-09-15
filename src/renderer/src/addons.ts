@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ADDON_API_VERSION,
   type Addon,
   type AddonCommand,
   type AddonContext,
   type AddonState,
+  type MarkdownExtension,
 } from '../../addons/api'
 
 export const addons = Object.values(
@@ -14,7 +15,7 @@ export const addons = Object.values(
   ),
 )
 export type RegisteredCommand = AddonCommand & { addonId: string }
-type Environment = Omit<AddonContext, 'commands' | 'native'> & {
+type Environment = Omit<AddonContext, 'commands' | 'native' | 'editor'> & {
   invoke: (id: string, method: string, input?: unknown) => Promise<unknown>
   error: (error: unknown) => void
 }
@@ -25,6 +26,21 @@ export function useAddons(environment: Environment) {
   const [states, setStates] = useState<AddonState[]>([])
   const [commands, setCommands] = useState<RegisteredCommand[]>([])
   const registered = useRef(new Map<string, RegisteredCommand>()).current
+  const extensions = useRef(
+    new Map<string, MarkdownExtension & { addonId: string }>(),
+  ).current
+  const [markdownExtensions, setMarkdownExtensions] = useState<
+    MarkdownExtension[]
+  >([])
+  const publishExtensions = useCallback(() => {
+    setMarkdownExtensions((current) => {
+      const next = [...extensions.values()]
+      return current.length === next.length &&
+        current.every((entry, index) => entry === next[index])
+        ? current
+        : next
+    })
+  }, [extensions])
   const running = useRef(
     new Map<string, { addon: Addon; stop: () => void }>(),
   ).current
@@ -63,6 +79,9 @@ export function useAddons(environment: Environment) {
         running.delete(id)
         for (const [key, command] of registered)
           if (command.addonId === id) registered.delete(key)
+        for (const [key, extension] of extensions)
+          if (extension.addonId === id) extensions.delete(key)
+        if (mounted.current) publishExtensions()
         try {
           addon.stop?.()
         } catch (error) {
@@ -74,6 +93,41 @@ export function useAddons(environment: Environment) {
           throw new Error(`incompatible addon: ${id}`)
         running.set(id, { addon, stop })
         addon.start({
+          editor: {
+            registerMarkdown(extension) {
+              if (disposed) return () => {}
+              const key = `${id}.${extension.id}`
+              if (
+                !/^[a-z][a-z0-9-]*$/.test(extension.id) ||
+                extensions.has(key)
+              )
+                throw new Error(
+                  `duplicate or invalid markdown extension: ${key}`,
+                )
+              extensions.set(key, {
+                id: key,
+                addonId: id,
+                parse(source) {
+                  if (disposed) return null
+                  try {
+                    return extension.parse(source)
+                  } catch (error) {
+                    queueMicrotask(() => latest.current.error(error))
+                    return {
+                      content: source,
+                      serialize: () => source,
+                      readOnly: true,
+                    }
+                  }
+                },
+              })
+              if (mounted.current) publishExtensions()
+              return () => {
+                extensions.delete(key)
+                if (!disposed && mounted.current) publishExtensions()
+              }
+            },
+          },
           commands: {
             register(command) {
               if (disposed) return () => {}
@@ -118,7 +172,7 @@ export function useAddons(environment: Environment) {
       }
     }
     setCommands([...registered.values()])
-  }, [states, registered, running])
+  }, [states, registered, running, extensions, publishExtensions])
   async function setEnabled(id: string, enabled: boolean) {
     try {
       setStates(await window.hibi.setAddonEnabled(id, enabled))
@@ -126,5 +180,5 @@ export function useAddons(environment: Environment) {
       latest.current.error(error)
     }
   }
-  return { states, commands, setEnabled }
+  return { states, commands, markdownExtensions, setEnabled }
 }

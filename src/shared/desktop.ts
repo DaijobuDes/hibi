@@ -5,6 +5,7 @@ export const DOCUMENT_CHANNELS = {
   open: 'document:open',
   new: 'document:new',
   save: 'document:save',
+  rename: 'document:rename',
 } as const
 
 export const MAX_DOCUMENT_BYTES = 2 * 1024 * 1024
@@ -40,6 +41,7 @@ export type DesktopApi = {
   openDocument: () => Promise<DocumentState | null>
   newDocument: () => Promise<DocumentState | null>
   saveDocument: (saveAs: boolean) => Promise<DocumentState | null>
+  renameDocument: (name: string) => Promise<DocumentState>
   getHotkeys: () => Promise<Hotkeys>
   saveHotkeys: (hotkeys: Hotkeys) => Promise<Hotkeys>
   setHotkeyRecording: (recording: boolean) => Promise<void>

@@ -33,6 +33,7 @@ import {
   getDocument,
   newDocument,
   openDocument,
+  renameDocument,
   saveDocument,
   updateDocument,
 } from './document'
@@ -461,10 +462,13 @@ if (!app.requestSingleInstanceLock()) {
           saveDocument(
             window,
             saveAs,
-            join(workspaceRoot() ?? '', 'untitled.md'),
+            join(workspaceRoot() ?? '', getDocument().name),
           ),
         )
       })
+      ipcMain.handle(DOCUMENT_CHANNELS.rename, (event, name: unknown) =>
+        runFileOperation(event, () => renameDocument(name)),
+      )
       installMenu()
       nativeTheme.on('updated', () => {
         if (process.platform !== 'darwin')

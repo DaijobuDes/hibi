@@ -7,8 +7,10 @@ import {
   FolderOpen,
   PanelLeft,
   Save,
+  Search,
   SlidersHorizontal,
 } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import type { DocumentCommand, DocumentState } from '../../shared/desktop'
 import { type Hotkeys, shortcutLabels } from '../../shared/hotkeys'
 import type { ViewMode } from './Editor'
@@ -42,6 +44,7 @@ export function Titlebar({
   platform,
   sidebarOpen,
   onSidebar,
+  onRename,
 }: {
   document: DocumentState | null
   settingsOpen: boolean
@@ -55,7 +58,20 @@ export function Titlebar({
   platform: string
   sidebarOpen: boolean
   onSidebar: () => void
+  onRename: (name: string) => Promise<void>
 }) {
+  const [renaming, setRenaming] = useState(false)
+  const [name, setName] = useState('')
+  const input = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    const field = input.current
+    if (!renaming || !field) return
+    field.focus()
+    const extension = field.value.lastIndexOf('.')
+    field.setSelectionRange(0, extension > 0 ? extension : field.value.length)
+  }, [renaming])
+  // biome-ignore lint/correctness/useExhaustiveDependencies: changing documents or screens cancels inline renaming.
+  useEffect(() => setRenaming(false), [document?.name, settingsOpen])
   return (
     <header className="titlebar">
       <div className="sidebar-toolbar" data-open={sidebarOpen || settingsOpen}>
@@ -89,27 +105,68 @@ export function Titlebar({
           </div>
         )}
         <div className="document-title">
-          <button
-            type="button"
-            className="command-trigger"
-            aria-label="command palette"
-            title={`command palette${hotkeys.palette ? ` (${shortcutLabels(hotkeys.palette, platform).join('')})` : ''}`}
-            onClick={onPalette}
-          >
-            <span>
-              {settingsOpen ? 'settings' : (document?.name ?? 'hibi')}
-            </span>
-            {!settingsOpen && document?.dirty && (
-              <span
-                className="dirty-dot"
-                role="status"
-                aria-label="unsaved changes"
-              >
-                •
+          {settingsOpen ? (
+            <span>settings</span>
+          ) : renaming ? (
+            <input
+              ref={input}
+              className="rename-input"
+              aria-label="file name"
+              value={name}
+              spellCheck={false}
+              onChange={(event) => setName(event.target.value)}
+              onBlur={() => setRenaming(false)}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') {
+                  event.preventDefault()
+                  setRenaming(false)
+                }
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  setRenaming(false)
+                  void onRename(name)
+                }
+              }}
+            />
+          ) : (
+            <button
+              type="button"
+              className="document-name"
+              aria-label="rename document"
+              title="rename document"
+              disabled={disabled}
+              onClick={() => {
+                setName(document?.name ?? 'untitled.md')
+                setRenaming(true)
+              }}
+            >
+              <span>
+                {settingsOpen ? 'settings' : (document?.name ?? 'hibi')}
               </span>
-            )}
-          </button>
+              {!settingsOpen && document?.dirty && (
+                <span
+                  className="dirty-dot"
+                  role="status"
+                  aria-label="unsaved changes"
+                >
+                  •
+                </span>
+              )}
+            </button>
+          )}
         </div>
+        <button
+          type="button"
+          className="palette-trigger"
+          aria-label="command palette"
+          title="command palette"
+          onClick={onPalette}
+        >
+          <Search size={14} strokeWidth={1.5} aria-hidden="true" />
+          {hotkeys.palette && (
+            <kbd>{shortcutLabels(hotkeys.palette, platform).join('')}</kbd>
+          )}
+        </button>
         <nav
           className="view-switch"
           aria-label={settingsOpen ? 'navigation' : 'editor view'}
