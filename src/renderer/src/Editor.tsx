@@ -17,6 +17,7 @@ import {
   useState,
 } from 'react'
 import type { MarkdownExtension } from '../../addons/api'
+import { documentImage } from './DocumentImage'
 import { type CursorSettings, EditorCursor } from './EditorCursor'
 import { FindBar, type FindMove, type FindStatus } from './FindBar'
 import { LoadingScreen } from './LoadingScreen'
@@ -37,6 +38,8 @@ export function MarkdownEditor({
   onCloseFind,
   markdownExtensions,
   cursorSettings,
+  showLineNumbers,
+  documentRevision,
 }: {
   value: string
   onChange: (value: string) => void
@@ -46,6 +49,8 @@ export function MarkdownEditor({
   onCloseFind: () => void
   markdownExtensions: readonly MarkdownExtension[]
   cursorSettings: CursorSettings
+  showLineNumbers: boolean
+  documentRevision: number
 }) {
   const projection = useMemo(
     () => projectMarkdown(value, markdownExtensions),
@@ -83,6 +88,9 @@ export function MarkdownEditor({
     const opacity = Number(getComputedStyle(element).opacity)
     for (const animation of element.getAnimations()) animation.cancel()
     if (matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    const duration = getComputedStyle(element)
+      .getPropertyValue('--motion-feedback')
+      .trim()
     element.animate(
       [
         { opacity, offset: 0 },
@@ -90,7 +98,11 @@ export function MarkdownEditor({
         { opacity: 0, offset: 0.625 },
         { opacity: 1, offset: 1 },
       ],
-      { duration: 160 },
+      {
+        duration:
+          Number.parseFloat(duration) * (duration.endsWith('ms') ? 1 : 1000) ||
+          160,
+      },
     )
   }, [paneMode])
   useEffect(() => {
@@ -102,7 +114,7 @@ export function MarkdownEditor({
   }, [mode])
   const editor = useEditor(
     {
-      extensions,
+      extensions: [...extensions, documentImage(documentRevision)],
       content: projection.content,
       contentType: 'markdown',
       autofocus: 'end',
@@ -234,6 +246,7 @@ export function MarkdownEditor({
                 fallback={<LoadingScreen label="loading markdown editor" />}
               >
                 <SourceEditor
+                  showLineNumbers={showLineNumbers}
                   active={mode !== 'normal'}
                   onReady={() => setSourceReady(true)}
                   value={value}

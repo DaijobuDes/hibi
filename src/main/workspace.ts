@@ -180,7 +180,18 @@ export async function snapshotWorkspace(): Promise<WorkspaceSnapshot> {
           throw new Error(
             'export supports up to 2,000 documents and 20 mib of markdown.',
           )
-        pages.push({ path: item.path, markdown })
+        const images: Record<string, string> = Object.create(null)
+        for (const source of imageSources(markdown)) {
+          const image = await readDocumentImage(source, path)
+          if (!image) continue
+          bytes += Buffer.byteLength(image)
+          if (bytes > 20 * 1024 * 1024)
+            throw new Error(
+              'export supports up to 20 mib of markdown and embedded images.',
+            )
+          images[source] = image
+        }
+        pages.push({ path: item.path, markdown, images })
       }
     }
   }
@@ -189,3 +200,5 @@ export async function snapshotWorkspace(): Promise<WorkspaceSnapshot> {
     throw new Error('this workspace has no markdown documents.')
   return { name: basename(selected), pages }
 }
+
+import { imageSources, readDocumentImage } from './images'

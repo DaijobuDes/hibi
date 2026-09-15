@@ -8,6 +8,7 @@ hibi is a local markdown editor with folder workspaces and code-defined addons.
 - [exporting documentation](guides/exporting.md)
 - [creating addons](development/addons.md)
 - [architecture and security](development/architecture.md)
+- [shared ui and theme tokens](development/design-system.md)
 - [development and validation](development/validation.md)
 - [addon api](reference/addon-api.md)
 - [workspace types](reference/workspace-api.md)

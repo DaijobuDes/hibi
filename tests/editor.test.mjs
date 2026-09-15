@@ -145,4 +145,37 @@ test('empty entry, three views, and lossless source switching', {
     ),
     '0px',
   )
+  await page.getByRole('button', { name: 'markdown only', exact: true }).click()
+  await source.waitFor()
+  const sourceBefore = (await page.evaluate(() => window.hibi.getDocument()))
+    .markdown
+  assert.equal(await page.locator('.cm-lineNumbers').count(), 0)
+  await page.getByRole('button', { name: 'editor settings' }).click()
+  await page.getByRole('tab', { name: 'editor', exact: true }).click()
+  await page.getByRole('checkbox', { name: 'show line numbers' }).check()
+  await page.getByRole('button', { name: 'back to editor' }).click()
+  await page.locator('.cm-lineNumbers').waitFor()
+  assert.equal(
+    (await page.evaluate(() => window.hibi.getDocument())).markdown,
+    sourceBefore,
+  )
+  await page.getByRole('button', { name: 'side-by-side', exact: true }).click()
+  await page.locator('.cm-lineNumbers').waitFor()
+  await Promise.all([
+    page.waitForEvent('domcontentloaded'),
+    app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0].reload(),
+    ),
+  ])
+  await page.getByRole('button', { name: 'markdown only', exact: true }).click()
+  await page.locator('.cm-lineNumbers').waitFor()
+  await page.getByRole('button', { name: 'editor settings' }).click()
+  await page.getByRole('tab', { name: 'editor', exact: true }).click()
+  await page.getByRole('checkbox', { name: 'show line numbers' }).uncheck()
+  await page.getByRole('button', { name: 'back to editor' }).click()
+  await page.locator('.cm-lineNumbers').waitFor({ state: 'detached' })
+  assert.equal(
+    (await page.evaluate(() => window.hibi.getDocument())).markdown,
+    sourceBefore,
+  )
 })

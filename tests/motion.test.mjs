@@ -180,7 +180,16 @@ test('panes move horizontally and sidebar selection slides without fading settin
     directSource,
     directRich,
   ]) {
-    assert.ok(frames.some(({ opacity }) => opacity === 0))
+    assert.ok(
+      frames.some(({ opacity }) => opacity === 0),
+      JSON.stringify(
+        frames.map(({ opacity, richWidth, sourceWidth }) => ({
+          opacity,
+          richWidth,
+          sourceWidth,
+        })),
+      ),
+    )
     assert.equal(frames.at(-1).opacity, 1)
     for (let index = 1; index < frames.length; index++) {
       if (
@@ -196,11 +205,17 @@ test('panes move horizontally and sidebar selection slides without fading settin
     }
   }
   assert.ok(
-    fromRich.slice(1).every(({ dividerOpacity }) => dividerOpacity === 1),
+    fromRich.some(
+      ({ dividerOpacity }) => dividerOpacity > 0 && dividerOpacity < 1,
+    ),
   )
+  assert.equal(fromRich.at(-1).dividerOpacity, 1)
   assert.ok(
-    dismissSource.slice(1).every(({ dividerOpacity }) => dividerOpacity === 0),
+    dismissSource.some(
+      ({ dividerOpacity }) => dividerOpacity > 0 && dividerOpacity < 1,
+    ),
   )
+  assert.equal(dismissSource.at(-1).dividerOpacity, 0)
   await page.getByRole('button', { name: 'side-by-side', exact: true }).click()
   await settle()
   const divider = await page

@@ -1,4 +1,4 @@
-import { shortcutLabels } from '../../shared/hotkeys'
+import { shortcutLabels } from '../shared/hotkeys'
 
 export function ShortcutKeys({
   shortcut,

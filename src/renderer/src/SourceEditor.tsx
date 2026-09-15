@@ -17,7 +17,7 @@ import {
   EditorState,
   Transaction,
 } from '@codemirror/state'
-import { EditorView, keymap, placeholder } from '@codemirror/view'
+import { EditorView, keymap, lineNumbers, placeholder } from '@codemirror/view'
 import { tags } from '@lezer/highlight'
 import { useEffect, useRef } from 'react'
 import type { FindMove, FindStatus } from './FindBar'
@@ -46,6 +46,7 @@ export function SourceEditor({
   findQuery,
   findMove,
   onFindStatus,
+  showLineNumbers,
 }: {
   active: boolean
   onReady: () => void
@@ -57,6 +58,7 @@ export function SourceEditor({
   findQuery: string
   findMove: FindMove
   onFindStatus: (status: FindStatus) => void
+  showLineNumbers: boolean
 }) {
   const host = useRef<HTMLDivElement>(null)
   const view = useRef<EditorView | null>(null)
@@ -64,6 +66,7 @@ export function SourceEditor({
   const initialValue = useRef(value)
   const appliedRevision = useRef(externalRevision)
   const editable = useRef(new Compartment())
+  const numbers = useRef(new Compartment())
   const find = useRef({ active: findActive, report: onFindStatus })
   const handledFindMove = useRef(findMove.id)
   const ready = useRef(onReady)
@@ -86,6 +89,7 @@ export function SourceEditor({
             },
           }),
           editable.current.of(EditorView.editable.of(true)),
+          numbers.current.of([]),
           markdownLanguage(),
           history(),
           keymap.of([...defaultKeymap, ...historyKeymap]),
@@ -168,6 +172,14 @@ export function SourceEditor({
       effects: editable.current.reconfigure(EditorView.editable.of(!disabled)),
     })
   }, [disabled])
+
+  useEffect(() => {
+    view.current?.dispatch({
+      effects: numbers.current.reconfigure(
+        showLineNumbers ? lineNumbers() : [],
+      ),
+    })
+  }, [showLineNumbers])
 
   useEffect(() => {
     const editor = view.current

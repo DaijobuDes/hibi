@@ -3,6 +3,7 @@ import { useState } from 'react'
 import type { AddonState } from '../../addons/api'
 import type { AppInfo } from '../../shared/desktop'
 import type { Hotkeys } from '../../shared/hotkeys'
+import { SettingRow, Toggle } from '../../ui/Controls'
 import { Sidebar, type SidebarProps } from '../../ui/Sidebar'
 import { addons } from './addons'
 import type { CursorSettings } from './EditorCursor'
@@ -30,6 +31,8 @@ export function SettingsScreen({
   resize,
   cursorSettings,
   onCursorSettings,
+  showLineNumbers,
+  onShowLineNumbers,
 }: {
   open: boolean
   padding: number
@@ -44,6 +47,8 @@ export function SettingsScreen({
   resize: NonNullable<SidebarProps['resize']>
   cursorSettings: CursorSettings
   onCursorSettings: (settings: CursorSettings) => void
+  showLineNumbers: boolean
+  onShowLineNumbers: (show: boolean) => void
 }) {
   const [category, setCategory] =
     useState<(typeof categories)[number]['id']>('editor')
@@ -74,28 +79,47 @@ export function SettingsScreen({
           hidden={category !== 'editor'}
         >
           <h1>editor</h1>
-          <div className="setting-row">
-            <label htmlFor="editor-padding">content padding</label>
-            <p>space around your document in every view.</p>
-            <div className="padding-control">
-              <input
-                id="editor-padding"
-                type="range"
-                min="0"
-                max="96"
-                step="4"
-                value={padding}
-                onChange={(event) => onPadding(Number(event.target.value))}
-              />
-              <output htmlFor="editor-padding">{padding} px</output>
-            </div>
-            <button
-              type="button"
-              className="setting-reset"
-              onClick={() => onPadding(48)}
+          <div className="settings-group">
+            <SettingRow
+              id="editor-padding"
+              label="content padding"
+              description="space around your document in every view."
             >
-              reset to 48 px
-            </button>
+              <div className="setting-controls">
+                <div className="padding-control">
+                  <input
+                    id="editor-padding"
+                    aria-describedby="editor-padding-description"
+                    type="range"
+                    min="0"
+                    max="96"
+                    step="4"
+                    value={padding}
+                    onChange={(event) => onPadding(Number(event.target.value))}
+                  />
+                  <output htmlFor="editor-padding">{padding} px</output>
+                </div>
+                <button
+                  type="button"
+                  className="setting-reset"
+                  onClick={() => onPadding(48)}
+                >
+                  reset to 48 px
+                </button>
+              </div>
+            </SettingRow>
+            <SettingRow
+              id="line-numbers"
+              label="show line numbers"
+              description="number each line in markdown and side-by-side views."
+            >
+              <Toggle
+                id="line-numbers"
+                aria-describedby="line-numbers-description"
+                checked={showLineNumbers}
+                onChange={(event) => onShowLineNumbers(event.target.checked)}
+              />
+            </SettingRow>
           </div>
         </section>
         <section
@@ -105,70 +129,81 @@ export function SettingsScreen({
           hidden={category !== 'appearance'}
         >
           <h1>appearance</h1>
-          {(
-            [
+          <div className="settings-group">
+            {(
               [
-                'style',
-                'cursor style',
                 [
-                  ['bar', 'line |'],
-                  ['outline', 'outline ▯'],
-                  ['block', 'filled ▮'],
-                  ['underline', 'underline _'],
+                  'style',
+                  'cursor style',
+                  'shape of the text insertion cursor.',
+                  [
+                    ['bar', 'line |'],
+                    ['outline', 'outline ▯'],
+                    ['block', 'filled ▮'],
+                    ['underline', 'underline _'],
+                  ],
                 ],
-              ],
-              [
-                'speed',
-                'cursor blink',
                 [
-                  ['fast', 'fast'],
-                  ['normal', 'normal'],
-                  ['slow', 'slow'],
+                  'speed',
+                  'cursor blink',
+                  'how quickly the cursor blinks.',
+                  [
+                    ['fast', 'fast'],
+                    ['normal', 'normal'],
+                    ['slow', 'slow'],
+                  ],
                 ],
-              ],
-              [
-                'animation',
-                'cursor animation',
                 [
-                  ['smooth', 'smooth'],
-                  ['blink', 'blink'],
+                  'animation',
+                  'cursor animation',
+                  'smooth fades and slides; blink moves instantly.',
+                  [
+                    ['smooth', 'smooth'],
+                    ['blink', 'blink'],
+                  ],
                 ],
-              ],
-            ] as const
-          ).map(([key, label, options]) => (
-            <div className="setting-row" key={key}>
-              <label htmlFor={`cursor-${key}`}>{label}</label>
-              <select
+              ] as const
+            ).map(([key, label, description, options]) => (
+              <SettingRow
+                key={key}
                 id={`cursor-${key}`}
-                value={cursorSettings[key]}
-                onChange={(event) =>
-                  onCursorSettings({
-                    ...cursorSettings,
-                    [key]: event.target.value,
-                  })
-                }
+                label={label}
+                description={description}
               >
-                {options.map(([value, text]) => (
-                  <option key={value} value={value}>
-                    {text}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ))}
-          <div className="setting-row">
-            <label className="setting-checkbox">
-              <input
-                type="checkbox"
+                <select
+                  id={`cursor-${key}`}
+                  aria-describedby={`cursor-${key}-description`}
+                  value={cursorSettings[key]}
+                  onChange={(event) =>
+                    onCursorSettings({
+                      ...cursorSettings,
+                      [key]: event.target.value,
+                    })
+                  }
+                >
+                  {options.map(([value, text]) => (
+                    <option key={value} value={value}>
+                      {text}
+                    </option>
+                  ))}
+                </select>
+              </SettingRow>
+            ))}
+          </div>
+          <h2>window</h2>
+          <div className="settings-group">
+            <SettingRow
+              id="hide-titlebar"
+              label="hide top bar while typing"
+              description="show it after a pause, or move your pointer to the top."
+            >
+              <Toggle
+                id="hide-titlebar"
+                aria-describedby="hide-titlebar-description"
                 checked={hideTitlebar}
                 onChange={(event) => onHideTitlebar(event.target.checked)}
               />
-              <span>hide top bar while typing</span>
-            </label>
-            <p>
-              show it again after a short pause, or move your pointer to the
-              top.
-            </p>
+            </SettingRow>
           </div>
         </section>
         <section
@@ -195,12 +230,12 @@ export function SettingsScreen({
           <h1>hibi</h1>
           <p className="about-description">a quiet place to write markdown.</p>
           {info && (
-            <dl className="app-details">
-              <div>
+            <dl className="settings-group app-details">
+              <div className="setting-row">
                 <dt>version</dt>
                 <dd>{info.version}</dd>
               </div>
-              <div>
+              <div className="setting-row">
                 <dt>electron</dt>
                 <dd>{info.electron}</dd>
               </div>
@@ -214,11 +249,17 @@ export function SettingsScreen({
           hidden={category !== 'addons'}
         >
           <h1>addons</h1>
-          {addons.map(({ manifest }) => (
-            <div className="setting-row" key={manifest.id}>
-              <label className="setting-checkbox">
-                <input
-                  type="checkbox"
+          <div className="settings-group">
+            {addons.map(({ manifest }) => (
+              <SettingRow
+                key={manifest.id}
+                id={`addon-${manifest.id}`}
+                label={manifest.name}
+                description={manifest.description}
+              >
+                <Toggle
+                  id={`addon-${manifest.id}`}
+                  aria-describedby={`addon-${manifest.id}-description`}
                   checked={addonStates.some(
                     (state) => state.id === manifest.id && state.enabled,
                   )}
@@ -226,11 +267,9 @@ export function SettingsScreen({
                     void onAddonEnabled(manifest.id, event.target.checked)
                   }
                 />
-                <span>{manifest.name}</span>
-              </label>
-              <p>{manifest.description}</p>
-            </div>
-          ))}
+              </SettingRow>
+            ))}
+          </div>
         </section>
       </div>
     </main>

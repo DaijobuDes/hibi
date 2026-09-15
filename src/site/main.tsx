@@ -9,6 +9,8 @@ import {
   type PaletteCommand,
 } from '../renderer/src/CommandPalette'
 import type { WorkspaceSnapshot } from '../shared/workspace'
+import { IconButton } from '../ui/Controls'
+import { ShortcutKeys } from '../ui/ShortcutKeys'
 import { Sidebar, type SidebarItem } from '../ui/Sidebar'
 import { useSidebarResize } from '../ui/useSidebarResize'
 import './site.css'
@@ -144,8 +146,10 @@ function renderMarkdown(path: string, markdown: string) {
   }
   for (const input of fragment.querySelectorAll('input')) input.disabled = true
   for (const image of fragment.querySelectorAll('img')) {
+    const embedded = byPath.get(path)?.images?.[image.getAttribute('src') ?? '']
+    if (typeof embedded === 'string') image.setAttribute('src', embedded)
     if (
-      !/^data:image\/(png|jpeg|gif|webp|avif);base64,/i.test(
+      !/^data:image\/(png|jpeg|gif|webp|avif|svg\+xml);base64,/i.test(
         image.getAttribute('src') ?? '',
       )
     )
@@ -233,14 +237,14 @@ function DocumentationSite() {
       style={{ '--sidebar-width': `${sidebarResize.width}px` } as CSSProperties}
     >
       <header className="site-header">
-        <button
+        <IconButton
           type="button"
           aria-label="toggle navigation"
           aria-expanded={sidebar}
           onClick={() => setSidebar(!sidebar)}
         >
           <PanelLeft size={18} />
-        </button>
+        </IconButton>
         <span>{workspace.name}</span>
         <button
           type="button"
@@ -249,8 +253,11 @@ function DocumentationSite() {
           aria-label="search documentation"
         >
           <Search size={15} />
-          <span>search documentation</span>
-          <kbd>{/Mac/.test(navigator.platform) ? '⌘' : 'ctrl+'}k</kbd>
+          <span className="site-search-label">search documentation</span>
+          <ShortcutKeys
+            shortcut={/Mac/.test(navigator.platform) ? 'meta+k' : 'ctrl+k'}
+            platform={/Mac/.test(navigator.platform) ? 'darwin' : 'linux'}
+          />
         </button>
       </header>
       <div className="site-layout">

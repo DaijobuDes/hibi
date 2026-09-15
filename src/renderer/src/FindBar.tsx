@@ -1,5 +1,6 @@
 import { ChevronDown, ChevronUp, Search, X } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { IconButton } from '../../ui/Controls'
 
 export type FindStatus = { current: number; total: number }
 export type FindMove = { id: number; direction: 'next' | 'previous' }
@@ -71,7 +72,7 @@ export function FindBar({
           {count}
         </span>
       </output>
-      <button
+      <IconButton
         type="button"
         aria-label="previous match"
         title="previous match (shift+enter)"
@@ -80,8 +81,8 @@ export function FindBar({
         onClick={() => onMove('previous')}
       >
         <ChevronUp size={16} aria-hidden="true" />
-      </button>
-      <button
+      </IconButton>
+      <IconButton
         type="button"
         aria-label="next match"
         title="next match (enter)"
@@ -90,15 +91,15 @@ export function FindBar({
         onClick={() => onMove('next')}
       >
         <ChevronDown size={16} aria-hidden="true" />
-      </button>
-      <button
+      </IconButton>
+      <IconButton
         type="button"
         aria-label="close find"
         title="close find (escape)"
         onClick={onClose}
       >
         <X size={16} aria-hidden="true" />
-      </button>
+      </IconButton>
     </search>
   )
 }

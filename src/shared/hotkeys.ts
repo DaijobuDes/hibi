@@ -218,6 +218,7 @@ export function shortcutLabels(shortcut: string, platform: string): string[] {
         arrowleft: '←',
         arrowright: '→',
         enter: '↵',
+        escape: 'esc',
       }[key] ??
       key,
   )

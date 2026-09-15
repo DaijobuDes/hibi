@@ -1,0 +1,84 @@
+import { constants } from 'node:fs'
+import { open } from 'node:fs/promises'
+import { dirname, isAbsolute, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { marked } from 'marked'
+
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024
+
+function imageMime(data: Buffer): string | null {
+  const start = data.subarray(0, 16).toString('hex')
+  if (start.startsWith('89504e470d0a1a0a')) return 'image/png'
+  if (start.startsWith('ffd8ff')) return 'image/jpeg'
+  if (/^474946383[79]61/.test(start)) return 'image/gif'
+  if (
+    data.toString('ascii', 0, 4) === 'RIFF' &&
+    data.toString('ascii', 8, 12) === 'WEBP'
+  )
+    return 'image/webp'
+  if (
+    data.toString('ascii', 4, 8) === 'ftyp' &&
+    /^(avif|avis)$/.test(data.toString('ascii', 8, 12))
+  )
+    return 'image/avif'
+  if (
+    /^\s*(?:<\?xml[^>]*>\s*)?(?:<!--[\s\S]*?-->\s*)*<svg[\s>]/.test(
+      data.toString('utf8'),
+    )
+  )
+    return 'image/svg+xml'
+  return null
+}
+
+export function imageSources(markdown: string): Set<string> {
+  const sources = new Set<string>()
+  marked.walkTokens(marked.lexer(markdown), (token) => {
+    if (token.type === 'image') sources.add(token.href)
+  })
+  return sources
+}
+
+/** Local image bytes only; never exposes a general filesystem read API. */
+export async function readDocumentImage(
+  source: string,
+  documentPath: string | null,
+): Promise<string | null> {
+  if (!source || source.length > 8192 || source.includes('\0')) return null
+  let path: string
+  try {
+    if (/^file:/i.test(source)) path = fileURLToPath(source)
+    else {
+      if (/^[a-z][a-z\d+.-]*:/i.test(source) && !/^[a-z]:[/\\]/i.test(source))
+        return null
+      if (source.startsWith('//') || source.startsWith('\\\\')) return null
+      let decoded = source
+      try {
+        decoded = decodeURIComponent(source)
+      } catch {
+        /* Literal percent in a filename. */
+      }
+      if (!isAbsolute(decoded) && !documentPath) return null
+      path = isAbsolute(decoded)
+        ? decoded
+        : resolve(dirname(documentPath as string), decoded)
+    }
+    const file = await open(
+      path,
+      constants.O_RDONLY | (constants.O_NONBLOCK ?? 0),
+    )
+    try {
+      const stat = await file.stat()
+      if (!stat.isFile() || stat.size > MAX_IMAGE_BYTES) return null
+      const bytes = Buffer.alloc(stat.size + 1)
+      const { bytesRead } = await file.read(bytes, 0, bytes.length, 0)
+      if (bytesRead !== stat.size) return null
+      const data = bytes.subarray(0, bytesRead)
+      const mime = imageMime(data)
+      return mime ? `data:${mime};base64,${data.toString('base64')}` : null
+    } finally {
+      await file.close()
+    }
+  } catch {
+    return null
+  }
+}

@@ -22,12 +22,16 @@ test('nested workspace editing, addon lifecycle, and offline static export', {
   const output = join(directory, 'index.html')
   await mkdir(join(folder, 'guides', 'advanced'), { recursive: true })
   await writeFile(
+    join(folder, 'page.svg'),
+    '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><rect width="16" height="16" fill="red"/></svg>',
+  )
+  await writeFile(
     join(folder, 'README.md'),
     '# welcome\n\n[nested guide](guides/advanced/setup.md#installation)\n\n<script>window.compromised = true</script>\n\n<img src="https://example.com/tracker" onerror="window.compromised=true">\n\n[bad](javascript:alert(1))\n\nreplace tokens: $& $$',
   )
   await writeFile(
     join(folder, 'guides', 'advanced', 'setup.md'),
-    '# installation\n\nconfigure quantumwidgets here.\n\n- final list item',
+    '# installation\n\nconfigure quantumwidgets here.\n\n![local page](../../page.svg)\n\n- final list item',
   )
   await writeFile(join(directory, 'outside.md'), 'outside-secret')
   await symlink(join(directory, 'outside.md'), join(folder, 'linked.md'))
@@ -141,7 +145,7 @@ test('nested workspace editing, addon lifecycle, and offline static export', {
   )
   await writeFile(
     join(folder, 'guides', 'advanced', 'setup.md'),
-    '# installation\n\nconfigure quantumwidgets here.',
+    '# installation\n\nconfigure quantumwidgets here.\n\n![local page](../../page.svg)',
   )
   await page.getByRole('treeitem', { name: 'README.md', exact: true }).click()
   await page.getByRole('heading', { name: 'welcome', exact: true }).waitFor()
@@ -336,10 +340,21 @@ test('nested workspace editing, addon lifecycle, and offline static export', {
     .getByRole('heading', { name: 'installation', exact: true })
     .waitFor()
   assert.match(site.url(), /page=guides%2Fadvanced%2Fsetup.md/)
+  await site.waitForFunction(() => {
+    const image = document.querySelector('article img[alt="local page"]')
+    return (
+      image?.complete &&
+      image.naturalWidth === 16 &&
+      image.src.startsWith('data:image/svg+xml;base64,')
+    )
+  })
   await site
     .getByRole('treeitem', { name: 'installation', exact: true })
     .waitFor()
   await site.getByRole('treeitem', { name: 'welcome', exact: true }).click()
+  await site
+    .getByRole('treeitem', { name: 'welcome', exact: true, selected: true })
+    .waitFor()
   await site.waitForFunction(
     () =>
       document.querySelector('.sidebar-selection').getAnimations().length === 0,
@@ -347,37 +362,38 @@ test('nested workspace editing, addon lifecycle, and offline static export', {
   const beforeSelection = await site
     .locator('.sidebar-selection')
     .evaluate((element) => element.getBoundingClientRect().top)
-  await site
+  const selection = await site
     .getByRole('treeitem', { name: 'installation', exact: true })
-    .click()
-  const selection = await site.evaluate(async () => {
-    const frames = []
-    const start = performance.now()
-    while (performance.now() - start < 230) {
-      await new Promise(requestAnimationFrame)
-      const selected = document.querySelector(
-        '[role="treeitem"][aria-selected="true"]',
-      )
-      frames.push({
-        top: document
-          .querySelector('.sidebar-selection')
+    .evaluate(async (button) => {
+      button.click()
+      const frames = []
+      const start = performance.now()
+      while (performance.now() - start < 230) {
+        await new Promise(requestAnimationFrame)
+        const selected = document.querySelector(
+          '[role="treeitem"][aria-selected="true"]',
+        )
+        frames.push({
+          top: document
+            .querySelector('.sidebar-selection')
+            .getBoundingClientRect().top,
+          background: getComputedStyle(selected).backgroundColor,
+        })
+      }
+      return {
+        frames,
+        target: document
+          .querySelector('[role="treeitem"][aria-selected="true"]')
           .getBoundingClientRect().top,
-        background: getComputedStyle(selected).backgroundColor,
-      })
-    }
-    return {
-      frames,
-      target: document
-        .querySelector('[role="treeitem"][aria-selected="true"]')
-        .getBoundingClientRect().top,
-    }
-  })
+      }
+    })
   assert.ok(
     selection.frames.some(
       ({ top }) =>
         top > Math.min(beforeSelection, selection.target) &&
         top < Math.max(beforeSelection, selection.target),
     ),
+    JSON.stringify({ beforeSelection, ...selection }),
   )
   assert.equal(selection.frames.at(-1).top, selection.target)
   assert.ok(
@@ -389,6 +405,24 @@ test('nested workspace editing, addon lifecycle, and offline static export', {
     process.platform === 'darwin' ? 'Meta+k' : 'Control+k',
   )
   const search = site.getByRole('combobox', { name: 'search commands' })
+  const siteKeyStyle = (element) => {
+    const style = getComputedStyle(element)
+    return [
+      style.height,
+      style.minWidth,
+      style.fontFamily,
+      style.fontSize,
+      style.borderRadius,
+    ]
+  }
+  assert.deepEqual(
+    await site.locator('.site-search kbd').first().evaluate(siteKeyStyle),
+    await site.locator('.palette-footer kbd').first().evaluate(siteKeyStyle),
+  )
+  await site.mouse.click(12, 400)
+  await site.getByRole('dialog').waitFor({ state: 'hidden' })
+  await site.getByRole('button', { name: 'search documentation' }).click()
+  await search.waitFor()
   await search.fill('instalation')
   await site.getByRole('option').filter({ hasText: 'installation' }).waitFor()
   await search.fill('quantumwidgets')

@@ -224,7 +224,10 @@ test('rebind, conflict, clear, reset, native menus, and relaunch persistence', {
   await palette.waitFor()
   await search.fill('save document')
   assert.equal(
-    await palette.locator('.shortcut-keys kbd').last().innerText(),
+    await palette
+      .locator('.command-results .shortcut-keys kbd')
+      .last()
+      .innerText(),
     'd',
   )
   await search.press('Escape')

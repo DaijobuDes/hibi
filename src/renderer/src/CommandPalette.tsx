@@ -1,7 +1,4 @@
 import {
-  ArrowDown,
-  ArrowUp,
-  CornerDownLeft,
   FileText,
   LayoutTemplate,
   Search,
@@ -10,7 +7,8 @@ import {
   X,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { ShortcutKeys } from './ShortcutKeys'
+import { IconButton } from '../../ui/Controls'
+import { ShortcutKeys } from '../../ui/ShortcutKeys'
 
 const categoryIcons = {
   app: LayoutTemplate,
@@ -101,6 +99,7 @@ export function CommandPalette({
     <dialog
       ref={dialog}
       className="command-palette"
+      closedby="any"
       aria-label="command palette"
       onKeyDown={(event) => {
         if (event.key === 'Escape') {
@@ -159,7 +158,7 @@ export function CommandPalette({
             }
           }}
         />
-        <button
+        <IconButton
           type="button"
           className="palette-close"
           aria-label="close command palette"
@@ -167,7 +166,7 @@ export function CommandPalette({
           onClick={() => close()}
         >
           <X size={16} aria-hidden="true" />
-        </button>
+        </IconButton>
       </div>
       <div
         id="command-results"
@@ -213,14 +212,14 @@ export function CommandPalette({
       )}
       <footer className="palette-footer">
         <span>
-          <ArrowUp size={12} />
-          <ArrowDown size={12} /> navigate
+          <ShortcutKeys shortcut="arrowup" platform={platform} />
+          <ShortcutKeys shortcut="arrowdown" platform={platform} /> navigate
         </span>
         <span>
-          <CornerDownLeft size={12} /> run
+          <ShortcutKeys shortcut="enter" platform={platform} /> run
         </span>
         <span className="palette-escape">
-          <kbd>esc</kbd> close
+          <ShortcutKeys shortcut="escape" platform={platform} /> close
         </span>
       </footer>
     </dialog>

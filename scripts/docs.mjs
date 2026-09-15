@@ -3,6 +3,13 @@ import { basename, dirname } from 'node:path'
 
 const references = [
   [
+    'docs/reference/theme-tokens.md',
+    'theme tokens',
+    'src/ui/tokens.css',
+    (source) => source,
+    'css',
+  ],
+  [
     'docs/reference/addon-api.md',
     'addon api',
     'src/addons/api.ts',
@@ -27,9 +34,15 @@ const references = [
 ]
 async function generate() {
   let stale = false
-  for (const [output, title, input, select] of references) {
+  for (const [
+    output,
+    title,
+    input,
+    select,
+    language = 'typescript',
+  ] of references) {
     const source = select(await readFile(input, 'utf8')).trim()
-    const expected = `# ${title}\n\ngenerated from \`${input}\`. update the source, then run \`npm run docs\`. \`npm run docs:check\` rejects stale references.\n\n\`\`\`typescript\n${source}\n\`\`\`\n`
+    const expected = `# ${title}\n\ngenerated from \`${input}\`. update the source, then run \`npm run docs\`. \`npm run docs:check\` rejects stale references.\n\n\`\`\`${language}\n${source}\n\`\`\`\n`
     if (process.argv.includes('--check')) {
       const current = await readFile(output, 'utf8').catch(() => '')
       if (current !== expected) {

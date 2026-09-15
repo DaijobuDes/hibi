@@ -97,7 +97,12 @@ export function EditorCursor({
           ? range.startContainer
           : range.startContainer.parentElement
       if (!anchor) return
-      const rect = range.getBoundingClientRect()
+      let rect = range.getBoundingClientRect()
+      if (!rect.height && range.startContainer instanceof Element) {
+        // Empty paragraphs have no range box; the line break carries the font baseline.
+        const child = range.startContainer.childNodes[range.startOffset]
+        if (child instanceof HTMLBRElement) rect = child.getBoundingClientRect()
+      }
       const fallback = anchor.getBoundingClientRect()
       const fontSize = Number.parseFloat(getComputedStyle(anchor).fontSize)
       const x = rect.height ? rect.left : fallback.left

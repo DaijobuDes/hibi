@@ -24,6 +24,11 @@ export type WorkspaceState = {
   activePath: string | null
 }
 
-export type WorkspacePage = { path: string; markdown: string }
+export type WorkspacePage = {
+  path: string
+  markdown: string
+  /** Local Markdown image references mapped to embedded image data URLs. */
+  images?: Record<string, string>
+}
 export type WorkspaceSnapshot = { name: string; pages: WorkspacePage[] }
 ```

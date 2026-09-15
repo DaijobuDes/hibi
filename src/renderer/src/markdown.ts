@@ -1,5 +1,4 @@
 import { Extension } from '@tiptap/core'
-import { Image } from '@tiptap/extension-image'
 import { Placeholder } from '@tiptap/extension-placeholder'
 import { TableKit } from '@tiptap/extension-table'
 import { TaskItem } from '@tiptap/extension-task-item'
@@ -45,7 +44,6 @@ export const extensions = [
   TableKit.configure({ table: { resizable: false } }),
   TaskList,
   TaskItem.configure({ nested: true }),
-  Image,
   Placeholder.configure({ placeholder: 'start typing' }),
 ]
 

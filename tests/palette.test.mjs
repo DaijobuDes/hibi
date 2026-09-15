@@ -37,6 +37,40 @@ test('command palette, full-height settings, and local geist fonts', {
   const palette = page.getByRole('dialog', { name: 'command palette' })
   const search = page.getByRole('combobox', { name: 'search commands' })
   await palette.waitFor()
+  const keyStyle = (element) => {
+    const style = getComputedStyle(element)
+    return [
+      style.height,
+      style.minWidth,
+      style.fontFamily,
+      style.fontSize,
+      style.borderRadius,
+      style.borderWidth,
+      style.backgroundColor,
+    ]
+  }
+  const toolbarKeys = await page
+    .locator('.palette-trigger kbd')
+    .first()
+    .evaluate(keyStyle)
+  assert.deepEqual(
+    await palette.locator('.shortcut-keys kbd').first().evaluate(keyStyle),
+    toolbarKeys,
+  )
+  await search.click()
+  assert.equal(await palette.isVisible(), true)
+  await page.mouse.click(12, 400)
+  await palette.waitFor({ state: 'hidden' })
+  await page
+    .getByRole('button', { name: 'command palette', exact: true })
+    .click()
+  await palette.waitFor()
+  await page.mouse.click(300, 18)
+  await palette.waitFor({ state: 'hidden' })
+  await page
+    .getByRole('button', { name: 'command palette', exact: true })
+    .click()
+  await palette.waitFor()
   await search.fill('side-by-side')
   await search.press('Enter')
   await palette.waitFor({ state: 'hidden' })
@@ -65,6 +99,46 @@ test('command palette, full-height settings, and local geist fonts', {
   await palette.waitFor({ state: 'hidden' })
   const settings = page.getByRole('main', { name: 'settings', exact: true })
   await settings.waitFor()
+  for (const category of ['appearance', 'addons', 'about hibi', 'hotkeys']) {
+    await page.getByRole('tab', { name: category, exact: true }).click()
+    if (category === 'hotkeys')
+      assert.deepEqual(
+        await page.locator('.hotkey-binding kbd').first().evaluate(keyStyle),
+        toolbarKeys,
+      )
+    for (const width of [1000, 480]) {
+      await page.setViewportSize({ width, height: 720 })
+      const geometry = await page
+        .getByRole('tabpanel', { name: category, exact: true })
+        .evaluate((panel) => {
+          const bounds = panel.getBoundingClientRect()
+          return {
+            overflow: panel.scrollWidth - panel.clientWidth,
+            right: bounds.right,
+            viewport: innerWidth,
+          }
+        })
+      assert.ok(geometry.overflow <= 1 && geometry.right <= geometry.viewport)
+    }
+    await page.setViewportSize({ width: 1000, height: 720 })
+  }
+  await page.getByRole('tab', { name: 'appearance', exact: true }).click()
+  const rowGeometry = await page
+    .locator('#settings-appearance .setting-row')
+    .first()
+    .evaluate((row) => {
+      const label = row.querySelector('.setting-copy').getBoundingClientRect()
+      const control = row.querySelector('select').getBoundingClientRect()
+      return {
+        separated: control.left > label.right,
+        centered:
+          Math.abs(
+            label.y + label.height / 2 - control.y - control.height / 2,
+          ) < 1,
+      }
+    })
+  assert.ok(rowGeometry.separated && rowGeometry.centered)
+  await page.getByRole('tab', { name: 'editor', exact: true }).click()
   assert.deepEqual(
     await page.evaluate(() => {
       const sidebar = document

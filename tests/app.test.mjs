@@ -68,6 +68,7 @@ test('desktop launch, isolation, offline reload, and recovery', {
         'newDocument',
         'saveDocument',
         'renameDocument',
+        'readDocumentImage',
         'getHotkeys',
         'saveHotkeys',
         'setHotkeyRecording',

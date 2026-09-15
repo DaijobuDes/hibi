@@ -31,6 +31,7 @@ import {
   confirmDiscard,
   discardChanges,
   getDocument,
+  getDocumentPath,
   newDocument,
   openDocument,
   renameDocument,
@@ -38,6 +39,7 @@ import {
   updateDocument,
 } from './document'
 import { hotkeys, loadHotkeys, saveHotkeys } from './hotkeys'
+import { readDocumentImage } from './images'
 import {
   CONTENT_SECURITY_POLICY,
   isTrustedRendererUrl,
@@ -425,6 +427,20 @@ if (!app.requestSingleInstanceLock()) {
         trustedWindow(event)
         return getDocument()
       })
+      ipcMain.handle(
+        DOCUMENT_CHANNELS.image,
+        async (event, source: unknown, revision: unknown) => {
+          trustedWindow(event)
+          if (typeof source !== 'string' || revision !== getDocument().revision)
+            return null
+          const path = getDocumentPath()
+          const image = await readDocumentImage(source, path)
+          return revision === getDocument().revision &&
+            path === getDocumentPath()
+            ? image
+            : null
+        },
+      )
       ipcMain.handle(WORKSPACE_CHANNELS.get, (event) => {
         trustedWindow(event)
         return getWorkspace()

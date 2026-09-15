@@ -23,6 +23,7 @@ import {
   defaultHotkeys,
   type Hotkeys,
 } from '../../shared/hotkeys'
+import { IconButton } from '../../ui/Controls'
 import './styles.css'
 import type { WorkspaceState } from '../../shared/workspace'
 import { useSidebarResize } from '../../ui/useSidebarResize'
@@ -85,6 +86,12 @@ function App() {
   )
   const sidebarResize = useSidebarResize(196)
   const [cursorSettings, setCursorSettings] = useState(loadCursor)
+  const [showLineNumbers, setShowLineNumbers] = useState(
+    () => localStorage.getItem('line-numbers') === 'true',
+  )
+  useEffect(() => {
+    localStorage.setItem('line-numbers', String(showLineNumbers))
+  }, [showLineNumbers])
   useEffect(() => {
     localStorage.setItem('cursor-settings', JSON.stringify(cursorSettings))
   }, [cursorSettings])
@@ -455,6 +462,7 @@ function App() {
       }}
     >
       <Titlebar
+        busy={busy}
         onRename={renameFile}
         sidebarOpen={sidebarOpen}
         onSidebar={() => setSidebarOpen(!sidebarOpen)}
@@ -470,7 +478,7 @@ function App() {
           setMode(view)
         }}
         onCommand={(command) => void runCommand(command)}
-        disabled={busy || !document}
+        disabled={!document}
       />
       {paletteOpen && (
         <CommandPalette
@@ -487,13 +495,13 @@ function App() {
           inert={!error}
         >
           <span>{error}</span>
-          <button
+          <IconButton
             type="button"
             aria-label="dismiss error"
             onClick={() => setError('')}
           >
             <X size={15} aria-hidden="true" />
-          </button>
+          </IconButton>
         </div>
         <div
           className="notification notice-message"
@@ -502,13 +510,13 @@ function App() {
           inert={!notice}
         >
           <span>{notice}</span>
-          <button
+          <IconButton
             type="button"
             aria-label="dismiss notice"
             onClick={() => setNotice('')}
           >
             <X size={15} aria-hidden="true" />
-          </button>
+          </IconButton>
         </div>
       </div>
       <WorkspaceSidebar
@@ -521,6 +529,8 @@ function App() {
         commands={addonHost.commands}
       />
       <SettingsScreen
+        showLineNumbers={showLineNumbers}
+        onShowLineNumbers={setShowLineNumbers}
         cursorSettings={cursorSettings}
         onCursorSettings={setCursorSettings}
         resize={sidebarResize}
@@ -545,6 +555,8 @@ function App() {
       >
         {document && (
           <MarkdownEditor
+            documentRevision={document.revision}
+            showLineNumbers={showLineNumbers}
             cursorSettings={cursorSettings}
             markdownExtensions={addonHost.markdownExtensions}
             key={`${document.revision}-${resetEditor}`}

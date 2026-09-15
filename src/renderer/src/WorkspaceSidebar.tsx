@@ -1,6 +1,7 @@
 import { FileText, Folder, FolderOpen, RefreshCw } from 'lucide-react'
 import { useMemo } from 'react'
 import type { WorkspaceEntry, WorkspaceState } from '../../shared/workspace'
+import { IconButton } from '../../ui/Controls'
 import { Sidebar, type SidebarItem, type SidebarProps } from '../../ui/Sidebar'
 import type { RegisteredCommand } from './addons'
 
@@ -44,23 +45,23 @@ export function WorkspaceSidebar({
         workspace && (
           <>
             <span>{workspace?.name ?? 'workspace'}</span>
-            <button
+            <IconButton
               type="button"
               aria-label="open workspace"
               title="open folder"
               onClick={onOpen}
             >
               <FolderOpen size={15} />
-            </button>
+            </IconButton>
             {workspace && (
-              <button
+              <IconButton
                 type="button"
                 aria-label="refresh workspace"
                 title="refresh files"
                 onClick={onRefresh}
               >
                 <RefreshCw size={14} />
-              </button>
+              </IconButton>
             )}
           </>
         )

@@ -1,10 +1,18 @@
 # editing
 
+## images
+
+normal and split views resolve relative image paths from the saved note's folder. absolute paths and local `file:` URLs also work. spaces can be percent encoded or enclosed in Markdown angle brackets. the stored Markdown keeps the original path.
+
+local PNG, JPEG, GIF, WebP, AVIF, and SVG images are supported up to 8 mib each. save a new note before using relative paths. unavailable images retain their alt text and a path hint. remote images are not fetched. SVGs display as images, never as executable document markup.
+
+documentation exports embed local Markdown images into the HTML, so they remain visible offline. the export limit is 20 mib including embedded image data.
+
 success and error notifications appear at the bottom right without moving your document. use the close button to dismiss them.
 
 start typing in a blank document. normal view is the rich-text editor; side-by-side puts markdown on the left and rich text on the right; markdown-only edits the original source. click the filename to rename it. the separate command-palette control shows its current shortcut, with draggable space between controls.
 
-view switches use a quick text fade: content fades out, reflows once while hidden, then fades back in as the panes slide. the divider does not fade. the markdown engine prepares during idle time and waits for its font and layout before appearing. reduced-motion preferences disable animations.
+view switches use a quick text fade: content fades out, reflows once while hidden, then fades back in as the panes slide. the divider fades independently as split view opens or closes. the markdown engine prepares during idle time and waits for its font and layout before appearing. reduced-motion preferences disable animations.
 
 default view shortcuts are `cmd/ctrl+[` for normal, `cmd/ctrl+]` for markdown, and `cmd/ctrl+|` (`cmd/ctrl+shift+\`) for side-by-side. these can be rebound in settings.
 
@@ -16,7 +24,11 @@ default view shortcuts are `cmd/ctrl+[` for normal, `cmd/ctrl+]` for markdown, a
 
 `cmd/ctrl+k` opens the command palette. search, use arrow keys, and press enter. drag its non-interactive chrome to move the window; inputs and command rows remain interactive.
 
+click outside the palette or press escape to dismiss it. shortcut hints use the same keycaps throughout the app and exported documentation.
+
 settings contains editor, appearance, hotkeys, addons, and about. padding defaults to 48 px and can be changed from 0–96 px. the top bar can fade while typing. hotkeys can be rebound, cleared, or reset; conflicts and standard editing/window shortcuts are rejected. all command hints use the active bindings.
+
+settings → editor → **show line numbers** toggles the markdown gutter in markdown-only and side-by-side views. it is hidden by default, saves on this device, and changes without resetting the document or undo history.
 
 appearance also controls the text cursor in both editors: line, outline block, filled block, or underline; fast, normal, or slow blinking; and smooth or blink animation. smooth slides between insertion positions and fades softly. blink moves immediately and switches on/off. cursor preferences persist locally. reduced motion disables sliding and blinking; native caret behavior is retained during composition or when custom geometry is unavailable.
 

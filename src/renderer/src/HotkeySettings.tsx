@@ -8,7 +8,8 @@ import {
   shortcutError,
   shortcutFromEvent,
 } from '../../shared/hotkeys'
-import { ShortcutKeys } from './ShortcutKeys'
+import { IconButton } from '../../ui/Controls'
+import { ShortcutKeys } from '../../ui/ShortcutKeys'
 
 export function HotkeySettings({
   active,
@@ -96,7 +97,7 @@ export function HotkeySettings({
           reset all
         </button>
       </div>
-      <div className="hotkey-list">
+      <div className="settings-group hotkey-list">
         {actions
           .filter(({ label, category }) =>
             `${category} ${label}`.includes(query.toLowerCase().trim()),
@@ -172,7 +173,7 @@ export function HotkeySettings({
                 </button>
                 {recording === id ? (
                   <>
-                    <button
+                    <IconButton
                       type="button"
                       aria-label={`save shortcut for ${label}`}
                       title="save shortcut (enter)"
@@ -180,8 +181,8 @@ export function HotkeySettings({
                       onClick={() => void save({ ...hotkeys, [id]: candidate })}
                     >
                       <Check size={15} />
-                    </button>
-                    <button
+                    </IconButton>
+                    <IconButton
                       type="button"
                       aria-label="cancel rebinding"
                       title="cancel (escape)"
@@ -189,11 +190,11 @@ export function HotkeySettings({
                       onClick={cancel}
                     >
                       <X size={15} />
-                    </button>
+                    </IconButton>
                   </>
                 ) : (
                   <>
-                    <button
+                    <IconButton
                       type="button"
                       aria-label={`reset shortcut for ${label}`}
                       title="reset shortcut"
@@ -205,8 +206,8 @@ export function HotkeySettings({
                       }
                     >
                       <RotateCcw size={14} />
-                    </button>
-                    <button
+                    </IconButton>
+                    <IconButton
                       type="button"
                       aria-label={`clear shortcut for ${label}`}
                       title="clear shortcut"
@@ -214,7 +215,7 @@ export function HotkeySettings({
                       onClick={() => void save({ ...hotkeys, [id]: '' })}
                     >
                       <X size={14} />
-                    </button>
+                    </IconButton>
                   </>
                 )}
               </div>

@@ -40,6 +40,8 @@ if (process.isMainFrame) {
       ipcRenderer.invoke(DOCUMENT_CHANNELS.save, saveAs),
     renameDocument: (name) =>
       ipcRenderer.invoke(DOCUMENT_CHANNELS.rename, name),
+    readDocumentImage: (source, revision) =>
+      ipcRenderer.invoke(DOCUMENT_CHANNELS.image, source, revision),
     getHotkeys: () => ipcRenderer.invoke(HOTKEY_CHANNELS.get),
     saveHotkeys: (hotkeys) => ipcRenderer.invoke(HOTKEY_CHANNELS.save, hotkeys),
     setHotkeyRecording: (recording) =>

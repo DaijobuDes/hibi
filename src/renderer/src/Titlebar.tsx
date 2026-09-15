@@ -13,6 +13,8 @@ import {
 import { useEffect, useRef, useState } from 'react'
 import type { DocumentCommand, DocumentState } from '../../shared/desktop'
 import { type Hotkeys, shortcutLabels } from '../../shared/hotkeys'
+import { IconButton } from '../../ui/Controls'
+import { ShortcutKeys } from '../../ui/ShortcutKeys'
 import type { ViewMode } from './Editor'
 
 const icons = {
@@ -45,6 +47,7 @@ export function Titlebar({
   sidebarOpen,
   onSidebar,
   onRename,
+  busy,
 }: {
   document: DocumentState | null
   settingsOpen: boolean
@@ -59,6 +62,7 @@ export function Titlebar({
   sidebarOpen: boolean
   onSidebar: () => void
   onRename: (name: string) => Promise<void>
+  busy: boolean
 }) {
   const [renaming, setRenaming] = useState(false)
   const [name, setName] = useState('')
@@ -73,10 +77,10 @@ export function Titlebar({
   // biome-ignore lint/correctness/useExhaustiveDependencies: changing documents or screens cancels inline renaming.
   useEffect(() => setRenaming(false), [document?.name, settingsOpen])
   return (
-    <header className="titlebar">
+    <header className="titlebar" aria-busy={busy}>
       <div className="sidebar-toolbar" data-open={sidebarOpen || settingsOpen}>
         {!settingsOpen && (
-          <button
+          <IconButton
             type="button"
             aria-label="toggle workspace sidebar"
             aria-pressed={sidebarOpen}
@@ -84,23 +88,26 @@ export function Titlebar({
             onClick={onSidebar}
           >
             <PanelLeft size={16} strokeWidth={1.5} />
-          </button>
+          </IconButton>
         )}
       </div>
       <div className="document-toolbar">
         {!settingsOpen && (
           <div className="document-actions">
             {(['new', 'open', 'save'] as const).map((command) => (
-              <button
+              <IconButton
                 type="button"
                 key={command}
                 aria-label={command}
                 title={`${command}${hotkeys[command] ? ` (${shortcutLabels(hotkeys[command], platform).join('')})` : ''}`}
                 disabled={disabled}
-                onClick={() => onCommand(command)}
+                aria-disabled={busy || disabled}
+                onClick={() => {
+                  if (!busy) onCommand(command)
+                }}
               >
                 <Icon name={command} />
-              </button>
+              </IconButton>
             ))}
           </div>
         )}
@@ -136,6 +143,7 @@ export function Titlebar({
               title="rename document"
               disabled={disabled}
               onClick={() => {
+                if (busy) return
                 setName(document?.name ?? 'untitled.md')
                 setRenaming(true)
               }}
@@ -164,7 +172,7 @@ export function Titlebar({
         >
           <Search size={14} strokeWidth={1.5} aria-hidden="true" />
           {hotkeys.palette && (
-            <kbd>{shortcutLabels(hotkeys.palette, platform).join('')}</kbd>
+            <ShortcutKeys shortcut={hotkeys.palette} platform={platform} />
           )}
         </button>
         <nav
@@ -175,7 +183,7 @@ export function Titlebar({
             (['normal', 'side-by-side', 'markdown'] as const).map((view) => {
               const label = view === 'markdown' ? 'markdown only' : view
               return (
-                <button
+                <IconButton
                   type="button"
                   key={view}
                   aria-label={label}
@@ -184,10 +192,10 @@ export function Titlebar({
                   onClick={() => onMode(view)}
                 >
                   <Icon name={view} />
-                </button>
+                </IconButton>
               )
             })}
-          <button
+          <IconButton
             type="button"
             aria-label={settingsOpen ? 'back to editor' : 'editor settings'}
             title={settingsOpen ? 'back to editor' : 'editor settings'}
@@ -195,7 +203,7 @@ export function Titlebar({
             onClick={onSettings}
           >
             <Icon name={settingsOpen ? 'back' : 'settings'} />
-          </button>
+          </IconButton>
         </nav>
       </div>
     </header>

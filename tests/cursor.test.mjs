@@ -26,7 +26,31 @@ test('cursor appearance, movement, selection hiding, and persistence in both edi
   // Exercise caret rendering without taking focus from the user's active window.
   await page.evaluate(() => {
     document.hasFocus = () => true
+    document.dispatchEvent(new Event('selectionchange'))
   })
+  await page.locator('.editor-cursor').waitFor()
+  const emptyGeometry = await page.evaluate(() => {
+    const caret = document
+      .querySelector('.editor-cursor')
+      .getBoundingClientRect()
+    const baseline = document
+      .querySelector('.tiptap p br')
+      .getBoundingClientRect()
+    return {
+      x: caret.x - baseline.x,
+      y: caret.y - baseline.y,
+      height: caret.height - baseline.height,
+    }
+  })
+  assert.ok(
+    Object.values(emptyGeometry).every(
+      (difference) => Math.abs(difference) < 1,
+    ),
+  )
+  assert.equal(
+    (await page.evaluate(() => window.hibi.getDocument())).markdown,
+    '',
+  )
   await rich.fill('cursor movement sample')
   const cursor = page.locator('.editor-cursor')
   await cursor.waitFor()
