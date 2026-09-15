@@ -1,11 +1,13 @@
-import { FileText, Info, PanelTop } from 'lucide-react'
+import { FileText, Info, Keyboard, PanelTop } from 'lucide-react'
 import { useState } from 'react'
 import type { AppInfo } from '../../shared/desktop'
-import { animateChange } from './transitions'
+import type { Hotkeys } from '../../shared/hotkeys'
+import { HotkeySettings } from './HotkeySettings'
 
 const categories = [
   { id: 'editor', label: 'editor', icon: FileText },
   { id: 'appearance', label: 'appearance', icon: PanelTop },
+  { id: 'hotkeys', label: 'hotkeys', icon: Keyboard },
   { id: 'about', label: 'about hibi', icon: Info },
 ] as const
 
@@ -15,12 +17,16 @@ export function SettingsScreen({
   hideTitlebar,
   onHideTitlebar,
   info,
+  hotkeys,
+  onHotkeys,
 }: {
   padding: number
   onPadding: (padding: number) => void
   hideTitlebar: boolean
   onHideTitlebar: (hide: boolean) => void
   info: AppInfo | null
+  hotkeys: Hotkeys
+  onHotkeys: (hotkeys: Hotkeys) => void
 }) {
   const [category, setCategory] =
     useState<(typeof categories)[number]['id']>('editor')
@@ -34,6 +40,13 @@ export function SettingsScreen({
           aria-label="settings categories"
           aria-orientation="vertical"
         >
+          <span
+            className="category-selection"
+            aria-hidden="true"
+            style={{
+              transform: `translateY(${categories.findIndex(({ id }) => id === category) * 28}px)`,
+            }}
+          />
           {categories.map(({ id, label, icon: Icon }, index) => (
             <button
               type="button"
@@ -44,7 +57,7 @@ export function SettingsScreen({
               aria-controls={`settings-${id}`}
               tabIndex={category === id ? 0 : -1}
               onClick={() => {
-                void animateChange(() => setCategory(id))
+                setCategory(id)
               }}
               onKeyDown={(event) => {
                 const next =
@@ -61,7 +74,7 @@ export function SettingsScreen({
                 event.preventDefault()
                 const item = categories[next]
                 if (item) {
-                  void animateChange(() => setCategory(item.id))
+                  setCategory(item.id)
                   window.document.getElementById(`category-${item.id}`)?.focus()
                 }
               }}
@@ -125,6 +138,20 @@ export function SettingsScreen({
               top.
             </p>
           </div>
+        </section>
+        <section
+          id="settings-hotkeys"
+          role="tabpanel"
+          aria-labelledby="category-hotkeys"
+          hidden={category !== 'hotkeys'}
+        >
+          {category === 'hotkeys' && (
+            <HotkeySettings
+              hotkeys={hotkeys}
+              onChange={onHotkeys}
+              platform={info?.platform ?? 'darwin'}
+            />
+          )}
         </section>
         <section
           id="settings-about"

@@ -15,6 +15,12 @@ import type {
   DocumentState,
 } from '../../shared/desktop'
 import { MAX_DOCUMENT_BYTES } from '../../shared/desktop'
+import {
+  type AppCommand,
+  actions,
+  defaultHotkeys,
+  type Hotkeys,
+} from '../../shared/hotkeys'
 import './styles.css'
 import { CommandPalette, type PaletteCommand } from './CommandPalette'
 import { MarkdownEditor, type ViewMode } from './Editor'
@@ -67,6 +73,9 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [findOpen, setFindOpen] = useState(false)
+  const [hotkeys, setHotkeys] = useState<Hotkeys>(() =>
+    defaultHotkeys('darwin'),
+  )
   const [padding, setPadding] = useState(() => {
     const value = Number(localStorage.getItem('editor-padding') ?? 48)
     return Number.isInteger(value) && value >= 0 && value <= 96 ? value : 48
@@ -145,11 +154,16 @@ function App() {
 
   useEffect(() => {
     let active = true
-    Promise.all([window.hibi.getAppInfo(), window.hibi.getDocument()])
-      .then(([info, document]) => {
+    Promise.all([
+      window.hibi.getAppInfo(),
+      window.hibi.getDocument(),
+      window.hibi.getHotkeys(),
+    ])
+      .then(([info, document, hotkeys]) => {
         if (active) {
           setInfo(info)
           setDocument(document)
+          setHotkeys(hotkeys)
           savedText.current = document.savedMarkdown
         }
       })
@@ -189,13 +203,7 @@ function App() {
     }
   }, [])
 
-  useEffect(
-    () =>
-      window.hibi.onDocumentCommand((command) => {
-        void runCommand(command)
-      }),
-    [runCommand],
-  )
+  useEffect(() => window.hibi.onCommand(runAction))
 
   function updateMarkdown(markdown: string) {
     if (new TextEncoder().encode(markdown).length > MAX_DOCUMENT_BYTES) {
@@ -219,55 +227,63 @@ function App() {
       )
   }
 
-  if (!document && !failed) return <LoadingScreen full />
-
-  const modifier = info?.platform === 'darwin' ? '⌘' : 'ctrl+'
-  const paletteCommands: PaletteCommand[] = [
-    {
-      id: 'find',
-      label: 'edit: find in note',
-      shortcut: `${modifier}f`,
-      run: openFind,
-    },
-    ...(!busy && document
-      ? (['new', 'open', 'save', 'saveAs'] as const).map((command) => ({
-          id: command,
-          label: `file: ${command === 'saveAs' ? 'save as…' : command === 'new' ? 'new document' : command === 'open' ? 'open document…' : 'save document'}`,
-          shortcut: `${modifier}${command === 'new' ? 'n' : command === 'open' ? 'o' : command === 'saveAs' ? 'shift+s' : 's'}`,
-          run: () => {
-            void runCommand(command)
-          },
-        }))
-      : []),
-    ...(['normal', 'side-by-side', 'markdown'] as const).map((view) => ({
-      id: `view-${view}`,
-      label: `view: ${view === 'markdown' ? 'markdown only' : view}`,
-      run: () => {
-        void animateChange(() => {
-          setSettingsOpen(false)
-          setMode(view)
-        })
-      },
-    })),
-    {
-      id: 'settings',
-      label: settingsOpen
-        ? 'view: back to editor'
-        : 'preferences: open settings',
-      shortcut: `${modifier},`,
-      run: toggleSettings,
-    },
-    {
-      id: 'toggle-titlebar',
-      label: hideTitlebar
-        ? 'appearance: keep top bar visible'
-        : 'appearance: hide top bar while typing',
-      run: () => {
+  function runAction(command: AppCommand) {
+    if (command === 'palette') {
+      openPalette()
+      return
+    }
+    setPaletteOpen(false)
+    switch (command) {
+      case 'new':
+      case 'open':
+      case 'save':
+      case 'saveAs':
+        void runCommand(command)
+        break
+      case 'find':
+        openFind()
+        break
+      case 'settings':
+        toggleSettings()
+        break
+      case 'normal':
+      case 'side-by-side':
+      case 'markdown':
+        showTitlebar()
+        if (settingsOpen)
+          void animateChange(() => {
+            setSettingsOpen(false)
+            setMode(command)
+          })
+        else setMode(command)
+        break
+      case 'toggle-titlebar':
         setHideTitlebar(!hideTitlebar)
         showTitlebar()
-      },
-    },
-  ]
+        break
+    }
+  }
+
+  if (!document && !failed) return <LoadingScreen full />
+
+  const paletteCommands: PaletteCommand[] = actions
+    .filter(
+      ({ id, category }) => id !== 'palette' && !(category === 'file' && busy),
+    )
+    .map(({ id, label, category }) => ({
+      id,
+      category,
+      label:
+        id === 'settings' && settingsOpen
+          ? 'back to editor'
+          : id === 'toggle-titlebar'
+            ? hideTitlebar
+              ? 'keep top bar visible'
+              : 'hide top bar while typing'
+            : label,
+      shortcut: hotkeys[id],
+      run: () => runAction(id),
+    }))
 
   return (
     <div
@@ -278,30 +294,11 @@ function App() {
       onInputCapture={(event) => noteTyping(event.target)}
       onKeyDownCapture={(event) => {
         if (
-          (event.metaKey || event.ctrlKey) &&
-          event.key.toLowerCase() === 'f'
-        ) {
-          event.preventDefault()
-          openFind()
+          (event.target as HTMLElement).closest(
+            '.hotkey-recorder[aria-pressed="true"]',
+          )
+        )
           return
-        }
-        if (
-          ((event.metaKey || event.ctrlKey) &&
-            event.shiftKey &&
-            event.key.toLowerCase() === 'p') ||
-          event.key === 'F1'
-        ) {
-          event.preventDefault()
-          openPalette()
-          return
-        }
-        if ((event.metaKey || event.ctrlKey) && event.key === ',') {
-          event.preventDefault()
-          showTitlebar()
-          setFindOpen(false)
-          void animateChange(() => setSettingsOpen(true))
-          return
-        }
         if (
           event.key === 'Escape' &&
           findOpen &&
@@ -333,19 +330,23 @@ function App() {
       }}
     >
       <Titlebar
+        hotkeys={hotkeys}
+        platform={info?.platform ?? 'darwin'}
         document={document}
         settingsOpen={settingsOpen}
         onSettings={toggleSettings}
         onPalette={openPalette}
         mode={mode}
         onMode={(view) => {
-          void animateChange(() => setMode(view))
+          showTitlebar()
+          setMode(view)
         }}
         onCommand={(command) => void runCommand(command)}
         disabled={busy || !document}
       />
       {paletteOpen && (
         <CommandPalette
+          platform={info?.platform ?? 'darwin'}
           commands={paletteCommands}
           onClose={() => setPaletteOpen(false)}
         />
@@ -357,6 +358,8 @@ function App() {
       )}
       {settingsOpen && (
         <SettingsScreen
+          hotkeys={hotkeys}
+          onHotkeys={setHotkeys}
           padding={padding}
           onPadding={setPadding}
           hideTitlebar={hideTitlebar}

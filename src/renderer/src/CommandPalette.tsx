@@ -1,9 +1,30 @@
-import { Search } from 'lucide-react'
+import {
+  ArrowDown,
+  ArrowUp,
+  CornerDownLeft,
+  FileText,
+  LayoutTemplate,
+  Search,
+  Settings2,
+  Sun,
+  X,
+} from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import { ShortcutKeys } from './ShortcutKeys'
+
+const categoryIcons = {
+  app: LayoutTemplate,
+  file: FileText,
+  edit: Search,
+  view: LayoutTemplate,
+  preferences: Settings2,
+  appearance: Sun,
+}
 
 export type PaletteCommand = {
   id: string
   label: string
+  category: keyof typeof categoryIcons
   shortcut?: string
   run: () => void
 }
@@ -11,9 +32,11 @@ export type PaletteCommand = {
 export function CommandPalette({
   commands,
   onClose,
+  platform,
 }: {
   commands: PaletteCommand[]
   onClose: () => void
+  platform: string
 }) {
   const dialog = useRef<HTMLDialogElement>(null)
   const input = useRef<HTMLInputElement>(null)
@@ -25,7 +48,9 @@ export function CommandPalette({
   const [selected, setSelected] = useState(0)
   const terms = query.toLowerCase().trim().split(/\s+/)
   const results = commands.filter((command) =>
-    terms.every((term) => command.label.toLowerCase().includes(term)),
+    terms.every((term) =>
+      `${command.category} ${command.label}`.toLowerCase().includes(term),
+    ),
   )
   const active = Math.min(selected, results.length - 1)
   const activeId = results[active]?.id
@@ -104,7 +129,7 @@ export function CommandPalette({
           aria-activedescendant={
             results[active] ? `command-${results[active].id}` : undefined
           }
-          placeholder="type a command…"
+          placeholder="search commands…"
           autoComplete="off"
           spellCheck={false}
           value={query}
@@ -128,6 +153,15 @@ export function CommandPalette({
             }
           }}
         />
+        <button
+          type="button"
+          className="palette-close"
+          aria-label="close command palette"
+          title="close (escape)"
+          onClick={() => close()}
+        >
+          <X size={16} aria-hidden="true" />
+        </button>
       </div>
       <div
         id="command-results"
@@ -135,30 +169,54 @@ export function CommandPalette({
         role="listbox"
         aria-label="commands"
       >
-        {results.map((command, index) => (
-          <div
-            key={command.id}
-            id={`command-${command.id}`}
-            role="option"
-            aria-selected={index === active}
-            tabIndex={-1}
-            onMouseEnter={() => setSelected(index)}
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => execute(command)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') execute(command)
-            }}
-          >
-            <span>{command.label}</span>
-            {command.shortcut && <kbd>{command.shortcut}</kbd>}
-          </div>
-        ))}
+        {results.map((command, index) => {
+          const Icon = categoryIcons[command.category]
+          return (
+            <div
+              key={command.id}
+              id={`command-${command.id}`}
+              role="option"
+              aria-selected={index === active}
+              tabIndex={-1}
+              onMouseEnter={() => setSelected(index)}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => execute(command)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') execute(command)
+              }}
+            >
+              <Icon
+                size={16}
+                strokeWidth={1.5}
+                className="command-icon"
+                aria-hidden="true"
+              />
+              <span className="command-label">{command.label}</span>
+              <span className="command-category">{command.category}</span>
+              {command.shortcut && (
+                <ShortcutKeys shortcut={command.shortcut} platform={platform} />
+              )}
+            </div>
+          )
+        })}
       </div>
       {results.length === 0 && (
         <p className="commands-empty" role="status">
           no commands found.
         </p>
       )}
+      <footer className="palette-footer">
+        <span>
+          <ArrowUp size={12} />
+          <ArrowDown size={12} /> navigate
+        </span>
+        <span>
+          <CornerDownLeft size={12} /> run
+        </span>
+        <span className="palette-escape">
+          <kbd>esc</kbd> close
+        </span>
+      </footer>
     </dialog>
   )
 }

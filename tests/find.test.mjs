@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { _electron as electron } from 'playwright'
+import { pressShortcut } from './keyboard.mjs'
 
 test('find in note searches rich text and offscreen markdown without editing it', {
   timeout: 45000,
@@ -34,7 +35,7 @@ test('find in note searches rich text and offscreen markdown without editing it'
   await page.getByRole('button', { name: 'normal', exact: true }).click()
   await rich.waitFor()
   const shortcut = process.platform === 'darwin' ? 'Meta+f' : 'Control+f'
-  await page.keyboard.press(shortcut)
+  await pressShortcut(app, shortcut)
   const input = page.getByRole('textbox', { name: 'find in note', exact: true })
   const bar = page.getByRole('search', { name: 'find in note' })
   const waitForCount = (expected) =>
@@ -60,7 +61,7 @@ test('find in note searches rich text and offscreen markdown without editing it'
   await page.getByRole('button', { name: 'next match', exact: true }).click()
   await waitForCount('1/3')
   await rich.click()
-  await page.keyboard.press(shortcut)
+  await pressShortcut(app, shortcut)
   assert.equal(
     await input.evaluate((element) => element === document.activeElement),
     true,
@@ -81,7 +82,7 @@ test('find in note searches rich text and offscreen markdown without editing it'
 
   await page.getByRole('button', { name: 'markdown only', exact: true }).click()
   await source.waitFor()
-  await page.keyboard.press(shortcut)
+  await pressShortcut(app, shortcut)
   await page.waitForFunction(
     () => document.querySelector('.find-bar output')?.textContent === '1/2',
   )
@@ -128,11 +129,11 @@ test('find in note searches rich text and offscreen markdown without editing it'
   await page.getByRole('button', { name: 'side-by-side', exact: true }).click()
   await source.waitFor()
   await source.focus()
-  await page.keyboard.press(shortcut)
+  await pressShortcut(app, shortcut)
   await waitForCount('1/1')
   assert.equal(await source.locator('.cm-searchMatch-selected').count(), 1)
   await rich.focus()
-  await page.keyboard.press(shortcut)
+  await pressShortcut(app, shortcut)
   await waitForCount('1/1')
   assert.equal(
     await rich.locator('.ProseMirror-active-search-match').count(),

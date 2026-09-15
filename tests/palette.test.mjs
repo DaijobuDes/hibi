@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { _electron as electron } from 'playwright'
+import { pressShortcut } from './keyboard.mjs'
 
 test('command palette, full-height settings, and local geist fonts', {
   timeout: 45000,
@@ -29,8 +30,9 @@ test('command palette, full-height settings, and local geist fonts', {
   const rich = page.getByRole('textbox', { name: 'document editor' })
   await rich.waitFor()
   await rich.fill('keep this draft')
-  await page.keyboard.press(
-    process.platform === 'darwin' ? 'Meta+Shift+p' : 'Control+Shift+p',
+  await pressShortcut(
+    app,
+    process.platform === 'darwin' ? 'Meta+k' : 'Control+k',
   )
   const palette = page.getByRole('dialog', { name: 'command palette' })
   const search = page.getByRole('combobox', { name: 'search commands' })

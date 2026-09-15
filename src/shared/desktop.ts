@@ -5,7 +5,6 @@ export const DOCUMENT_CHANNELS = {
   open: 'document:open',
   new: 'document:new',
   save: 'document:save',
-  command: 'document:command',
 } as const
 
 export const MAX_DOCUMENT_BYTES = 2 * 1024 * 1024
@@ -31,7 +30,10 @@ export type DesktopApi = {
   openDocument: () => Promise<DocumentState | null>
   newDocument: () => Promise<DocumentState | null>
   saveDocument: (saveAs: boolean) => Promise<DocumentState | null>
-  onDocumentCommand: (
-    callback: (command: DocumentCommand) => void,
-  ) => () => void
+  getHotkeys: () => Promise<Hotkeys>
+  saveHotkeys: (hotkeys: Hotkeys) => Promise<Hotkeys>
+  setHotkeyRecording: (recording: boolean) => Promise<void>
+  onCommand: (callback: (command: AppCommand) => void) => () => void
 }
+
+import type { AppCommand, Hotkeys } from './hotkeys'

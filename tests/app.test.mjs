@@ -59,7 +59,10 @@ test('desktop launch, isolation, offline reload, and recovery', {
         'openDocument',
         'newDocument',
         'saveDocument',
-        'onDocumentCommand',
+        'getHotkeys',
+        'saveHotkeys',
+        'setHotkeyRecording',
+        'onCommand',
       ],
     },
   )

@@ -9,6 +9,7 @@ import {
   SlidersHorizontal,
 } from 'lucide-react'
 import type { DocumentCommand, DocumentState } from '../../shared/desktop'
+import { type Hotkeys, shortcutLabels } from '../../shared/hotkeys'
 import type { ViewMode } from './Editor'
 
 const icons = {
@@ -36,6 +37,8 @@ export function Titlebar({
   onMode,
   onCommand,
   disabled,
+  hotkeys,
+  platform,
 }: {
   document: DocumentState | null
   settingsOpen: boolean
@@ -45,6 +48,8 @@ export function Titlebar({
   onMode: (mode: ViewMode) => void
   onCommand: (command: DocumentCommand) => void
   disabled: boolean
+  hotkeys: Hotkeys
+  platform: string
 }) {
   return (
     <header className="titlebar">
@@ -55,7 +60,7 @@ export function Titlebar({
               type="button"
               key={command}
               aria-label={command}
-              title={command}
+              title={`${command}${hotkeys[command] ? ` (${shortcutLabels(hotkeys[command], platform).join('')})` : ''}`}
               disabled={disabled}
               onClick={() => onCommand(command)}
             >
@@ -68,7 +73,7 @@ export function Titlebar({
         type="button"
         className="document-title"
         aria-label="command palette"
-        title="command palette (cmd/ctrl+shift+p)"
+        title={`command palette${hotkeys.palette ? ` (${shortcutLabels(hotkeys.palette, platform).join('')})` : ''}`}
         onClick={onPalette}
       >
         <span>{settingsOpen ? 'settings' : (document?.name ?? 'hibi')}</span>

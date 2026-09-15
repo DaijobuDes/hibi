@@ -4,13 +4,17 @@ minimal markdown editor built on electron 44.3.0, react, strict typescript, and 
 
 ## editing
 
-- **normal:** wysiwyg editing with markdown shortcuts. use `format` for bold, italic, headings, lists, quotes, and code.
-- **side-by-side:** editable rich text and syntax-highlighted markdown, synchronized in both directions.
+- **normal:** wysiwyg editing with markdown shortcuts.
+- **side-by-side:** syntax-highlighted markdown on the left and editable rich text on the right, synchronized in both directions. the divider fades to transparent at both ends.
 - **markdown only:** edit the original source directly.
 
-the compact title bar holds file actions, filename, formatting, and view controls. editor panels fill the space below it. settings has a full-height sidebar with a flat category list: editor, appearance, and about. editor-only controls disappear on settings. adjust padding from 0–96 px (default 48 px), or change whether the top bar hides while typing. preferences persist across launches. use escape or the back button to return to your unchanged document.
+the compact title bar holds file actions, filename, and view controls. editor panels fill the space below it. settings has a full-height sidebar with a flat category list: editor, appearance, hotkeys, and about. editor-only controls disappear on settings. adjust padding from 0–96 px (default 48 px), or change whether the top bar hides while typing. preferences persist across launches. use escape or the back button to return to your unchanged document.
 
-click the centered filename, press `cmd/ctrl+shift+p`, or press `f1` for the command palette. search file operations, view modes, settings, and top-bar behavior. use arrow keys and enter to run a command, or escape to dismiss. opening and closing settings, changing categories and views, and opening and dismissing the palette use short transitions; reduced-motion preferences disable them.
+click the centered filename or press `cmd/ctrl+k` for the command palette. search file operations, view modes, settings, and top-bar behavior. command rows show icons, categories, and individual keycaps. use arrow keys and enter to run a command, or escape to dismiss.
+
+settings → hotkeys lets you rebind, clear, or reset app shortcuts, including view modes. click a binding, press your new shortcut, then enter to save or escape to cancel. conflicts and standard editing/window shortcuts are rejected. bindings persist in the app profile and update native menus, tooltips, and the command palette. recording a shortcut suppresses native menu actions so pressing save or close cannot accidentally execute them.
+
+opening and closing settings and the palette use short transitions. settings content changes immediately while its sidebar selection slides between rows. editor panes resize horizontally: markdown enters from the left, rich text from the right. reduced-motion preferences disable these animations.
 
 `cmd/ctrl+f` opens find in note at the top right. matching is literal and case-insensitive; enter/shift+enter or the arrow buttons navigate matches. escape closes it. search uses rich text in normal view, source text in markdown view, and the last focused pane in side-by-side view. search includes the full document, including markdown outside the visible viewport.
 

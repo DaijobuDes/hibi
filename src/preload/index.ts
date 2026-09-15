@@ -3,8 +3,8 @@ import {
   APP_INFO_CHANNEL,
   type DesktopApi,
   DOCUMENT_CHANNELS,
-  type DocumentCommand,
 } from '../shared/desktop'
+import { type AppCommand, HOTKEY_CHANNELS } from '../shared/hotkeys'
 
 if (process.isMainFrame) {
   contextBridge.exposeInMainWorld('hibi', {
@@ -16,14 +16,18 @@ if (process.isMainFrame) {
     newDocument: () => ipcRenderer.invoke(DOCUMENT_CHANNELS.new),
     saveDocument: (saveAs) =>
       ipcRenderer.invoke(DOCUMENT_CHANNELS.save, saveAs),
-    onDocumentCommand: (callback) => {
+    getHotkeys: () => ipcRenderer.invoke(HOTKEY_CHANNELS.get),
+    saveHotkeys: (hotkeys) => ipcRenderer.invoke(HOTKEY_CHANNELS.save, hotkeys),
+    setHotkeyRecording: (recording) =>
+      ipcRenderer.invoke(HOTKEY_CHANNELS.record, recording),
+    onCommand: (callback) => {
       const listener = (
         _event: Electron.IpcRendererEvent,
-        command: DocumentCommand,
+        command: AppCommand,
       ) => callback(command)
-      ipcRenderer.on(DOCUMENT_CHANNELS.command, listener)
+      ipcRenderer.on(HOTKEY_CHANNELS.command, listener)
       return () => {
-        ipcRenderer.removeListener(DOCUMENT_CHANNELS.command, listener)
+        ipcRenderer.removeListener(HOTKEY_CHANNELS.command, listener)
       }
     },
   } satisfies DesktopApi)

@@ -16,9 +16,15 @@ import {
   APP_INFO_CHANNEL,
   type AppInfo,
   DOCUMENT_CHANNELS,
-  type DocumentCommand,
   type DocumentState,
 } from '../shared/desktop'
+import {
+  type AppCommand,
+  accelerator,
+  actions,
+  HOTKEY_CHANNELS,
+  shortcutFromEvent,
+} from '../shared/hotkeys'
 import {
   confirmDiscard,
   discardChanges,
@@ -28,6 +34,7 @@ import {
   saveDocument,
   updateDocument,
 } from './document'
+import { hotkeys, loadHotkeys, saveHotkeys } from './hotkeys'
 import {
   CONTENT_SECURITY_POLICY,
   isTrustedRendererUrl,
@@ -65,6 +72,7 @@ const rendererRoot = join(import.meta.dirname, '../renderer')
 let mainWindow: BrowserWindow | null = null
 let fileOperation: Promise<DocumentState | null> | null = null
 let quitting = false
+let recordingHotkey = false
 app.on('before-quit', () => {
   quitting = true
 })
@@ -139,6 +147,30 @@ function createWindow(): void {
     },
   })
   mainWindow = window
+  const stopRecording = () => {
+    recordingHotkey = false
+    window.webContents.setIgnoreMenuShortcuts(false)
+  }
+  window.on('blur', stopRecording)
+  window.webContents.on('did-start-loading', stopRecording)
+  window.webContents.on('before-input-event', (event, input) => {
+    if (recordingHotkey || input.type !== 'keyDown' || input.isComposing) return
+    const shortcut = shortcutFromEvent({
+      key: input.key,
+      code: input.code,
+      ctrlKey: input.control,
+      metaKey: input.meta,
+      altKey: input.alt,
+      shiftKey: input.shift,
+    })
+    const action =
+      shortcut && actions.find(({ id }) => hotkeys[id] === shortcut)
+    if (action) {
+      event.preventDefault()
+      if (!input.isAutoRepeat)
+        window.webContents.send(HOTKEY_CHANNELS.command, action.id)
+    }
+  })
   let allowClose = false
   let confirmingClose = false
   window.on('close', (event) => {
@@ -215,19 +247,31 @@ function createWindow(): void {
 }
 
 function installMenu(): void {
-  const command = (action: DocumentCommand) => () =>
-    mainWindow?.webContents.send(DOCUMENT_CHANNELS.command, action)
+  const command = (action: AppCommand) => () =>
+    mainWindow?.webContents.send(HOTKEY_CHANNELS.command, action)
   const menu: MenuItemConstructorOptions[] = [
     ...(process.platform === 'darwin' ? [{ role: 'appMenu' as const }] : []),
     {
       label: 'file',
       submenu: [
-        { label: 'new', accelerator: 'CmdOrCtrl+N', click: command('new') },
-        { label: 'open…', accelerator: 'CmdOrCtrl+O', click: command('open') },
-        { label: 'save', accelerator: 'CmdOrCtrl+S', click: command('save') },
+        {
+          label: 'new',
+          accelerator: accelerator(hotkeys.new),
+          click: command('new'),
+        },
+        {
+          label: 'open…',
+          accelerator: accelerator(hotkeys.open),
+          click: command('open'),
+        },
+        {
+          label: 'save',
+          accelerator: accelerator(hotkeys.save),
+          click: command('save'),
+        },
         {
           label: 'save as…',
-          accelerator: 'CmdOrCtrl+Shift+S',
+          accelerator: accelerator(hotkeys.saveAs),
           click: command('saveAs'),
         },
         { type: 'separator' },
@@ -238,6 +282,22 @@ function installMenu(): void {
     {
       label: 'view',
       submenu: [
+        {
+          label: 'command palette',
+          accelerator: accelerator(hotkeys.palette),
+          click: command('palette'),
+        },
+        {
+          label: 'find in note',
+          accelerator: accelerator(hotkeys.find),
+          click: command('find'),
+        },
+        {
+          label: 'settings',
+          accelerator: accelerator(hotkeys.settings),
+          click: command('settings'),
+        },
+        { type: 'separator' },
         ...(!app.isPackaged
           ? [
               { role: 'reload' as const },
@@ -275,7 +335,8 @@ if (!app.requestSingleInstanceLock()) {
 
   void app
     .whenReady()
-    .then(() => {
+    .then(async () => {
+      await loadHotkeys()
       protocol.handle('app', serveAsset)
       session.defaultSession.setPermissionCheckHandler(() => false)
       session.defaultSession.setPermissionRequestHandler(
@@ -311,6 +372,23 @@ if (!app.requestSingleInstanceLock()) {
           electron: process.versions.electron,
           platform: process.platform,
         }
+      })
+      ipcMain.handle(HOTKEY_CHANNELS.get, (event) => {
+        trustedWindow(event)
+        return hotkeys
+      })
+      ipcMain.handle(HOTKEY_CHANNELS.save, async (event, value: unknown) => {
+        trustedWindow(event)
+        const next = await saveHotkeys(value)
+        installMenu()
+        return next
+      })
+      ipcMain.handle(HOTKEY_CHANNELS.record, (event, value: unknown) => {
+        const window = trustedWindow(event)
+        if (typeof value !== 'boolean')
+          throw new Error('invalid recording state.')
+        recordingHotkey = value
+        window.webContents.setIgnoreMenuShortcuts(value)
       })
       ipcMain.handle(DOCUMENT_CHANNELS.get, (event) => {
         trustedWindow(event)

@@ -164,7 +164,8 @@ export function MarkdownEditor({
           className="rich-pane"
           onFocusCapture={() => setFocusedPane('rich')}
           aria-label="formatted document"
-          hidden={mode === 'markdown'}
+          aria-hidden={mode === 'markdown'}
+          inert={mode === 'markdown'}
         >
           <EditorContent editor={editor} />
         </section>
@@ -172,7 +173,8 @@ export function MarkdownEditor({
           className="source-pane"
           onFocusCapture={() => setFocusedPane('source')}
           aria-label="markdown source"
-          hidden={mode === 'normal'}
+          aria-hidden={mode === 'normal'}
+          inert={mode === 'normal'}
         >
           {sourceMounted && (
             <Suspense
