@@ -26,7 +26,7 @@ test('nested workspace editing, addon lifecycle, and offline static export', {
   )
   await writeFile(
     join(folder, 'guides', 'advanced', 'setup.md'),
-    '# installation\n\nconfigure quantumwidgets here.',
+    '# installation\n\nconfigure quantumwidgets here.\n\n- final list item',
   )
   await writeFile(join(directory, 'outside.md'), 'outside-secret')
   await symlink(join(directory, 'outside.md'), join(folder, 'linked.md'))
@@ -77,6 +77,27 @@ test('nested workspace editing, addon lifecycle, and offline static export', {
     'guides/advanced/setup.md',
   )
   assert.equal(
+    (await page.evaluate(() => window.hibi.getDocument())).dirty,
+    false,
+  )
+  await pressShortcut(
+    app,
+    process.platform === 'darwin' ? 'Meta+f' : 'Control+f',
+  )
+  await page
+    .getByRole('textbox', { name: 'find in note', exact: true })
+    .fill('final list item')
+  await page.waitForFunction(
+    () => document.querySelector('.find-bar output')?.textContent === '1/1',
+  )
+  assert.equal(
+    (await page.evaluate(() => window.hibi.getDocument())).dirty,
+    false,
+  )
+  await page
+    .getByRole('textbox', { name: 'find in note', exact: true })
+    .press('Escape')
+  assert.equal(
     await page
       .getByRole('treeitem', { name: 'linked.md', exact: true })
       .count(),
@@ -110,9 +131,9 @@ test('nested workspace editing, addon lifecycle, and offline static export', {
     draft,
   )
   await page.getByRole('button', { name: 'save', exact: true }).click()
-  await page.waitForFunction(() =>
-    window.hibi.getDocument().then((doc) => !doc.dirty),
-  )
+  await page
+    .getByRole('status', { name: 'unsaved changes' })
+    .waitFor({ state: 'hidden' })
   assert.equal(
     await readFile(join(folder, 'guides', 'advanced', 'setup.md'), 'utf8'),
     draft,

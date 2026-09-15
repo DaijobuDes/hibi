@@ -54,4 +54,4 @@ import `Sidebar` from the UI SDK at `src/addons/ui.ts`. it supports nested tree 
 
 the public API is version 1. manifests declare `apiVersion`; incompatible manifests are rejected. preserve existing signatures when adding capabilities. breaking changes require an API version bump, addon migration, and documentation updates.
 
-run `npm run docs` after changing public types. `npm run docs:check`, included in `npm run check`, fails if generated references differ from the actual SDK or shared types. keep your addon’s README updated with behavior changes.
+`npm start` regenerates API references when their source declarations change. outside watch mode, run `npm run docs` after changing public types. `npm run docs:check`, included in `npm run check`, fails if generated references differ from the actual SDK or shared types. keep your addon’s README updated with behavior changes.

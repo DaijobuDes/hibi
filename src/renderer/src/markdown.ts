@@ -14,7 +14,11 @@ export const extensions = [
     name: 'findInNote',
     addProseMirrorPlugins: () => [search()],
   }),
-  StarterKit.configure({ underline: false, link: { openOnClick: false } }),
+  StarterKit.configure({
+    underline: false,
+    trailingNode: false,
+    link: { openOnClick: false },
+  }),
   Markdown,
   TableKit.configure({ table: { resizable: false } }),
   TaskList,

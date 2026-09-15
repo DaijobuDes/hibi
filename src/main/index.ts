@@ -212,7 +212,9 @@ function createWindow(): void {
       })
   })
   window.once('ready-to-show', () => {
-    window.show()
+    if (!app.isPackaged && app.commandLine.hasSwitch('user-data-dir'))
+      window.showInactive()
+    else window.show()
   })
   window.on('closed', () => {
     mainWindow = null
