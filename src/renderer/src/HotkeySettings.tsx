@@ -11,10 +11,12 @@ import {
 import { ShortcutKeys } from './ShortcutKeys'
 
 export function HotkeySettings({
+  active,
   hotkeys,
   onChange,
   platform,
 }: {
+  active: boolean
   hotkeys: Hotkeys
   onChange: (hotkeys: Hotkeys) => void
   platform: string
@@ -31,6 +33,9 @@ export function HotkeySettings({
     setRecording(null)
     setError('')
   }, [])
+  useEffect(() => {
+    if (!active) cancel()
+  }, [active, cancel])
 
   useEffect(() => {
     if (!recording) return

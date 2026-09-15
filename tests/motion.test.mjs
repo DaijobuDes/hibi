@@ -5,6 +5,72 @@ import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { _electron as electron } from 'playwright'
 
+test('source font and layout are ready before the pane starts moving', {
+  timeout: 30000,
+}, async (t) => {
+  const profile = await mkdtemp(join(tmpdir(), 'hibi-cold-pane-'))
+  const app = await electron.launch({
+    args: [resolve('.'), `--user-data-dir=${profile}`],
+  })
+  t.after(async () => {
+    await app.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => ({
+        response: 1,
+        checkboxChecked: false,
+      })
+    })
+    await app.close()
+    await rm(profile, { recursive: true, force: true })
+  })
+  const page = await app.firstWindow()
+  await page.getByRole('textbox', { name: 'document editor' }).waitFor()
+  await page.addInitScript(() => {
+    const load = document.fonts.load.bind(document.fonts)
+    document.fonts.load = (font, text) =>
+      font.includes('Geist Mono')
+        ? new Promise((resolve) => {
+            window.releaseSourceFont = () => load(font, text).then(resolve)
+          })
+        : load(font, text)
+  })
+  await Promise.all([
+    page.waitForEvent('domcontentloaded'),
+    app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0].reload(),
+    ),
+  ])
+  const rich = page.getByRole('textbox', { name: 'document editor' })
+  await rich.waitFor()
+  await rich.fill('keep edits made while the source engine loads')
+  await page.getByRole('button', { name: 'side-by-side', exact: true }).click()
+  assert.equal(
+    await page.locator('.editor-panes').getAttribute('data-source-ready'),
+    'false',
+  )
+  assert.match(
+    await page.locator('.editor-panes').getAttribute('class'),
+    /mode-normal/,
+  )
+  await page.waitForFunction(
+    () => typeof window.releaseSourceFont === 'function',
+  )
+  await page.evaluate(() => window.releaseSourceFont())
+  const source = page.getByRole('textbox', { name: 'markdown editor' })
+  await source.waitFor()
+  assert.equal(
+    await page.locator('.editor-panes').getAttribute('data-source-ready'),
+    'true',
+  )
+  assert.equal(
+    await source.innerText(),
+    'keep edits made while the source engine loads',
+  )
+  assert.equal(
+    await page.evaluate(() => document.fonts.check('13px "Geist Mono"')),
+    true,
+  )
+})
+
 test('panes move horizontally and sidebar selection slides without fading settings', {
   timeout: 30000,
 }, async (t) => {
@@ -13,11 +79,28 @@ test('panes move horizontally and sidebar selection slides without fading settin
     args: [resolve('.'), `--user-data-dir=${profile}`],
   })
   t.after(async () => {
+    await app.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => ({
+        response: 1,
+        checkboxChecked: false,
+      })
+    })
     await app.close()
     await rm(profile, { recursive: true, force: true })
   })
   const page = await app.firstWindow()
   await page.getByRole('textbox', { name: 'document editor' }).waitFor()
+  await page.waitForFunction(
+    () =>
+      document.querySelector('.editor-panes').dataset.sourceReady === 'true',
+  )
+  await page
+    .getByRole('textbox', { name: 'document editor' })
+    .fill(
+      'long paragraphs should keep their wrapping while a panel slides across the window. '.repeat(
+        40,
+      ),
+    )
   assert.equal(
     await page.getByRole('button', { name: 'format', exact: true }).count(),
     0,
@@ -32,10 +115,10 @@ test('panes move horizontally and sidebar selection slides without fading settin
           .map((animation) => animation.finished.catch(() => {})),
       ),
     )
-  async function sampleSplit(from) {
+  async function sampleSplit(from, to = 'side-by-side') {
     await page.getByRole('button', { name: from, exact: true }).click()
     await settle()
-    return page.evaluate(async () => {
+    return page.evaluate(async (target) => {
       const sample = () => {
         const rich = document
           .querySelector('.rich-pane')
@@ -45,32 +128,39 @@ test('panes move horizontally and sidebar selection slides without fading settin
           .getBoundingClientRect()
         return {
           richX: rich.x,
-          richWidth: rich.width,
+          richWidth: document.querySelector('.rich-pane').offsetWidth,
           sourceX: source.x,
-          sourceWidth: source.width,
+          sourceWidth: document.querySelector('.source-pane').offsetWidth,
         }
       }
       const samples = [sample()]
-      document.querySelector('button[aria-label="side-by-side"]').click()
+      document.querySelector(`button[aria-label="${target}"]`).click()
       const start = performance.now()
       while (performance.now() - start < 300) {
         await new Promise(requestAnimationFrame)
         samples.push(sample())
       }
       return samples
-    })
+    }, to)
   }
   const fromRich = await sampleSplit('normal')
-  assert.equal(fromRich[0].sourceWidth, 0)
-  assert.ok(
-    fromRich.some((frame) => frame.sourceWidth > 0 && frame.sourceWidth < 490),
-  )
+  assert.equal(fromRich[0].sourceWidth, 500)
+  assert.ok(fromRich.some((frame) => frame.sourceX > -500 && frame.sourceX < 0))
+  assert.equal(new Set(fromRich.map((frame) => frame.sourceWidth)).size, 1)
+  assert.ok(new Set(fromRich.map((frame) => frame.richWidth)).size <= 2)
   assert.equal(fromRich.at(-1).sourceX, 0)
   assert.equal(fromRich.at(-1).richX, 500)
   const fromSource = await sampleSplit('markdown only')
-  assert.equal(fromSource[0].richWidth, 0)
+  assert.equal(fromSource[0].richWidth, 500)
   assert.ok(fromSource.some((frame) => frame.richX > 510 && frame.richX < 1000))
   assert.equal(fromSource.at(-1).richX, 500)
+  assert.equal(new Set(fromSource.map((frame) => frame.richWidth)).size, 1)
+  const dismissSource = await sampleSplit('side-by-side', 'normal')
+  assert.equal(new Set(dismissSource.map((frame) => frame.sourceWidth)).size, 1)
+  const dismissRich = await sampleSplit('side-by-side', 'markdown only')
+  assert.equal(new Set(dismissRich.map((frame) => frame.richWidth)).size, 1)
+  await page.getByRole('button', { name: 'side-by-side', exact: true }).click()
+  await settle()
   const divider = await page
     .locator('.editor-panes')
     .evaluate((element) => getComputedStyle(element, '::after').backgroundImage)

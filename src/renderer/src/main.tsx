@@ -27,7 +27,6 @@ import { MarkdownEditor, type ViewMode } from './Editor'
 import { LoadingScreen } from './LoadingScreen'
 import { SettingsScreen } from './SettingsScreen'
 import { Titlebar } from './Titlebar'
-import { animateChange } from './transitions'
 
 class ErrorBoundary extends Component<
   { children: ReactNode },
@@ -124,16 +123,15 @@ function App() {
   function toggleSettings() {
     showTitlebar()
     if (!settingsOpen) setFindOpen(false)
-    void animateChange(() => setSettingsOpen(!settingsOpen)).then(() => {
-      if (settingsOpen)
-        requestAnimationFrame(() =>
-          window.document
-            .querySelector<HTMLElement>(
-              mode === 'markdown' ? '.cm-content' : '.tiptap',
-            )
-            ?.focus(),
-        )
-    })
+    setSettingsOpen(!settingsOpen)
+    if (settingsOpen)
+      requestAnimationFrame(() =>
+        window.document
+          .querySelector<HTMLElement>(
+            mode === 'markdown' ? '.cm-content' : '.tiptap',
+          )
+          ?.focus(),
+      )
   }
 
   function openFind() {
@@ -145,11 +143,8 @@ function App() {
       input?.focus()
       input?.select()
     }
-    if (settingsOpen)
-      void animateChange(() => setSettingsOpen(false)).then(() =>
-        setFindOpen(true),
-      )
-    else setFindOpen(true)
+    setSettingsOpen(false)
+    setFindOpen(true)
   }
 
   useEffect(() => {
@@ -250,12 +245,8 @@ function App() {
       case 'side-by-side':
       case 'markdown':
         showTitlebar()
-        if (settingsOpen)
-          void animateChange(() => {
-            setSettingsOpen(false)
-            setMode(command)
-          })
-        else setMode(command)
+        setSettingsOpen(false)
+        setMode(command)
         break
       case 'toggle-titlebar':
         setHideTitlebar(!hideTitlebar)
@@ -356,21 +347,24 @@ function App() {
           {error}
         </div>
       )}
-      {settingsOpen && (
-        <SettingsScreen
-          hotkeys={hotkeys}
-          onHotkeys={setHotkeys}
-          padding={padding}
-          onPadding={setPadding}
-          hideTitlebar={hideTitlebar}
-          onHideTitlebar={(value) => {
-            setHideTitlebar(value)
-            showTitlebar()
-          }}
-          info={info}
-        />
-      )}
-      <div className="editor-surface" hidden={settingsOpen}>
+      <SettingsScreen
+        open={settingsOpen}
+        hotkeys={hotkeys}
+        onHotkeys={setHotkeys}
+        padding={padding}
+        onPadding={setPadding}
+        hideTitlebar={hideTitlebar}
+        onHideTitlebar={(value) => {
+          setHideTitlebar(value)
+          showTitlebar()
+        }}
+        info={info}
+      />
+      <div
+        className="editor-surface"
+        aria-hidden={settingsOpen}
+        inert={settingsOpen}
+      >
         {document && (
           <MarkdownEditor
             key={`${document.revision}-${resetEditor}`}

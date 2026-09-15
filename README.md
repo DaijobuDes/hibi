@@ -14,7 +14,9 @@ click the centered filename or press `cmd/ctrl+k` for the command palette. searc
 
 settings → hotkeys lets you rebind, clear, or reset app shortcuts, including view modes. click a binding, press your new shortcut, then enter to save or escape to cancel. conflicts and standard editing/window shortcuts are rejected. bindings persist in the app profile and update native menus, tooltips, and the command palette. recording a shortcut suppresses native menu actions so pressing save or close cannot accidentally execute them.
 
-opening and closing settings and the palette use short transitions. settings content changes immediately while its sidebar selection slides between rows. editor panes resize horizontally: markdown enters from the left, rich text from the right. reduced-motion preferences disable these animations.
+opening and closing settings and the palette use short transitions. settings stays mounted and fades without capturing a screenshot of the editor. settings content changes immediately while its sidebar selection slides between rows. editor panes slide horizontally at fixed text widths: markdown enters from the left, rich text from the right. remaining content reflows once after shrinking. reduced-motion preferences disable these animations.
+
+the markdown engine prepares during idle time and finishes font loading and its first layout before opening. hidden markdown panes pause document syncing until shown again. source compatibility checks are cached across interface changes.
 
 `cmd/ctrl+f` opens find in note at the top right. matching is literal and case-insensitive; enter/shift+enter or the arrow buttons navigate matches. escape closes it. search uses rich text in normal view, source text in markdown view, and the last focused pane in side-by-side view. search includes the full document, including markdown outside the visible viewport.
 
@@ -43,7 +45,8 @@ npm run dev
 npm run check    # lint, typecheck, build, and real electron smoke tests
 npm run package  # unpacked application in release/
 npm run dist     # platform installer; never publishes
-npm start        # launch the last production build
+npm start        # live development with hot reload (same as npm run dev)
+npm run preview  # launch the last production build
 ```
 
 on headless linux, run `xvfb-run --auto-servernum npm test`. tests keep sandboxing enabled and use a temporary profile. macos, windows, and linux checks are configured in `.github/workflows/check.yml`; hosted runs require a github repository.

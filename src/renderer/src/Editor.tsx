@@ -7,7 +7,7 @@ import {
   SearchQuery,
   setSearchState,
 } from 'prosemirror-search'
-import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { FindBar, type FindMove, type FindStatus } from './FindBar'
 import { LoadingScreen } from './LoadingScreen'
 import { extensions, needsSourceEditing } from './markdown'
@@ -33,7 +33,7 @@ export function MarkdownEditor({
   findOpen: boolean
   onCloseFind: () => void
 }) {
-  const sourceOnly = needsSourceEditing(value)
+  const sourceOnly = useMemo(() => needsSourceEditing(value), [value])
   const [richRevision, setRichRevision] = useState(0)
   const [findQuery, setFindQuery] = useState('')
   const [findStatus, setFindStatus] = useState<FindStatus>({
@@ -49,6 +49,12 @@ export function MarkdownEditor({
   const findTarget =
     mode === 'normal' ? 'rich' : mode === 'markdown' ? 'source' : focusedPane
   const [sourceMounted, setSourceMounted] = useState(mode !== 'normal')
+  const [sourceReady, setSourceReady] = useState(false)
+  const paneMode = sourceReady || mode === 'normal' ? mode : 'normal'
+  useEffect(() => {
+    const idle = requestIdleCallback(() => setSourceMounted(true))
+    return () => cancelIdleCallback(idle)
+  }, [])
   useEffect(() => {
     if (mode !== 'normal') setSourceMounted(true)
   }, [mode])
@@ -159,13 +165,16 @@ export function MarkdownEditor({
           view.
         </div>
       )}
-      <main className={`editor-panes mode-${mode}`}>
+      <main
+        className={`editor-panes mode-${paneMode}`}
+        data-source-ready={sourceReady}
+      >
         <section
           className="rich-pane"
           onFocusCapture={() => setFocusedPane('rich')}
           aria-label="formatted document"
-          aria-hidden={mode === 'markdown'}
-          inert={mode === 'markdown'}
+          aria-hidden={paneMode === 'markdown'}
+          inert={paneMode === 'markdown'}
         >
           <EditorContent editor={editor} />
         </section>
@@ -173,14 +182,16 @@ export function MarkdownEditor({
           className="source-pane"
           onFocusCapture={() => setFocusedPane('source')}
           aria-label="markdown source"
-          aria-hidden={mode === 'normal'}
-          inert={mode === 'normal'}
+          aria-hidden={paneMode === 'normal'}
+          inert={paneMode === 'normal'}
         >
           {sourceMounted && (
             <Suspense
               fallback={<LoadingScreen label="loading markdown editor" />}
             >
               <SourceEditor
+                active={mode !== 'normal'}
+                onReady={() => setSourceReady(true)}
                 value={value}
                 externalRevision={richRevision}
                 onChange={updateFromSource}

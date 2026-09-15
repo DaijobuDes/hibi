@@ -10,7 +10,8 @@
   },
   "scripts": {
     "dev": "electron-vite dev --watch",
-    "start": "electron-vite preview",
+    "start": "npm run dev",
+    "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "lint": "biome check .",
     "format": "biome check --write .",

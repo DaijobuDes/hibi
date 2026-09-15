@@ -36,6 +36,8 @@ const highlighting = HighlightStyle.define([
 ])
 
 export function SourceEditor({
+  active,
+  onReady,
   value,
   onChange,
   disabled,
@@ -45,6 +47,8 @@ export function SourceEditor({
   findMove,
   onFindStatus,
 }: {
+  active: boolean
+  onReady: () => void
   value: string
   onChange: (value: string) => void
   disabled: boolean
@@ -62,6 +66,8 @@ export function SourceEditor({
   const editable = useRef(new Compartment())
   const find = useRef({ active: findActive, report: onFindStatus })
   const handledFindMove = useRef(findMove.id)
+  const ready = useRef(onReady)
+  ready.current = onReady
   find.current = { active: findActive, report: onFindStatus }
   change.current = onChange
 
@@ -125,7 +131,17 @@ export function SourceEditor({
       }),
     })
     view.current = editor
+    let disposed = false
+    const measure = () => {
+      if (!disposed)
+        editor.requestMeasure({
+          read: () => null,
+          write: () => ready.current(),
+        })
+    }
+    void window.document.fonts.load('13px "Geist Mono"').then(measure, measure)
     return () => {
+      disposed = true
       editor.destroy()
       view.current = null
     }
@@ -133,7 +149,7 @@ export function SourceEditor({
 
   useEffect(() => {
     // Only reconcile edits from the other pane; never replay our own stale props.
-    if (appliedRevision.current === externalRevision) return
+    if (!active || appliedRevision.current === externalRevision) return
     appliedRevision.current = externalRevision
     const editor = view.current
     if (editor && editor.state.doc.toString() !== value) {
@@ -145,7 +161,7 @@ export function SourceEditor({
         ],
       })
     }
-  }, [value, externalRevision])
+  }, [active, value, externalRevision])
 
   useEffect(() => {
     view.current?.dispatch({

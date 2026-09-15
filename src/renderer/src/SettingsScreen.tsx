@@ -12,6 +12,7 @@ const categories = [
 ] as const
 
 export function SettingsScreen({
+  open,
   padding,
   onPadding,
   hideTitlebar,
@@ -20,6 +21,7 @@ export function SettingsScreen({
   hotkeys,
   onHotkeys,
 }: {
+  open: boolean
   padding: number
   onPadding: (padding: number) => void
   hideTitlebar: boolean
@@ -32,7 +34,12 @@ export function SettingsScreen({
     useState<(typeof categories)[number]['id']>('editor')
 
   return (
-    <main className="settings-screen" aria-label="settings">
+    <main
+      className="settings-screen"
+      aria-label="settings"
+      hidden={!open}
+      inert={!open}
+    >
       <aside className="settings-sidebar">
         <div
           className="settings-categories"
@@ -147,6 +154,7 @@ export function SettingsScreen({
         >
           {category === 'hotkeys' && (
             <HotkeySettings
+              active={open}
               hotkeys={hotkeys}
               onChange={onHotkeys}
               platform={info?.platform ?? 'darwin'}
