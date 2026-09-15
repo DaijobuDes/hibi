@@ -1,4 +1,4 @@
-appId: com.hibi.desktop
+appId: com.ryanaque.hibi
 productName: hibi
 directories:
   output: release
