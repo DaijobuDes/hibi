@@ -253,16 +253,39 @@ test('workspace sidebar slides at a fixed width and the titlebar follows its sta
   })
   const page = await app.firstWindow()
   await page.getByRole('textbox', { name: 'document editor' }).waitFor()
-  for (const opening of [false, true]) {
-    const samples = await page.evaluate(async () => {
+  for (const [opening, reverse] of [
+    [false, false],
+    [true, false],
+    [true, true],
+  ]) {
+    const samples = await page.evaluate(async (reverse) => {
       const sidebar = document.querySelector('.workspace-sidebar > .sidebar')
       const editor = document.querySelector('.editor-surface')
       const toolbar = document.querySelector('.sidebar-toolbar')
       document.querySelector('[aria-label="toggle workspace sidebar"]').click()
       const samples = []
+      let reversed = false
       const start = performance.now()
       while (performance.now() - start < 320) {
         await new Promise(requestAnimationFrame)
+        if (reverse && !reversed && performance.now() - start > 64) {
+          document
+            .querySelector('[aria-label="toggle workspace sidebar"]')
+            .click()
+          reversed = true
+        }
+        // Allow hit testing during dismissal to catch panes painting over the sidebar.
+        const slot = sidebar.parentElement
+        slot.inert = false
+        sidebar.style.pointerEvents = 'auto'
+        const right = sidebar.getBoundingClientRect().right
+        const onTop =
+          right > 1 &&
+          document
+            .elementFromPoint(right / 2, innerHeight / 2)
+            ?.closest('.sidebar') === sidebar
+        sidebar.style.pointerEvents = ''
+        slot.inert = slot.dataset.open === 'false'
         samples.push({
           x: sidebar.getBoundingClientRect().x,
           width: sidebar.offsetWidth,
@@ -270,12 +293,30 @@ test('workspace sidebar slides at a fixed width and the titlebar follows its sta
           bottom: sidebar.getBoundingClientRect().bottom,
           viewportHeight: innerHeight,
           editorWidth: editor.offsetWidth,
+          contentX: editor.getBoundingClientRect().left,
           toolbarWidth: toolbar.offsetWidth,
+          visibility: getComputedStyle(sidebar).visibility,
+          onTop,
+          toolbarBackground: getComputedStyle(toolbar).backgroundColor,
+          titlebarBackground: getComputedStyle(toolbar.parentElement)
+            .backgroundColor,
         })
       }
       return samples
-    })
+    }, reverse)
     assert.ok(samples.some(({ x }) => x > -195 && x < -1))
+    assert.ok(
+      samples
+        .filter(({ x }) => x > -195 && x < -1)
+        .every(({ visibility, onTop }) => visibility === 'visible' && onTop),
+    )
+    assert.ok(
+      samples.every(
+        ({ toolbarBackground, titlebarBackground }) =>
+          toolbarBackground === 'rgba(0, 0, 0, 0)' &&
+          titlebarBackground === 'rgba(0, 0, 0, 0)',
+      ),
+    )
     assert.deepEqual([...new Set(samples.map(({ width }) => width))], [196])
     assert.ok(
       samples.every(
@@ -283,7 +324,15 @@ test('workspace sidebar slides at a fixed width and the titlebar follows its sta
           top === 0 && bottom === viewportHeight,
       ),
     )
-    assert.equal(new Set(samples.map(({ editorWidth }) => editorWidth)).size, 1)
+    assert.equal(
+      new Set(samples.map(({ editorWidth }) => editorWidth)).size,
+      reverse ? 2 : 1,
+    )
+    assert.ok(
+      samples.every(
+        ({ x, width, contentX }) => Math.abs(contentX - x - width) < 1,
+      ),
+    )
     assert.equal(samples.at(-1).x, opening ? 0 : -196)
     assert.equal(samples.at(-1).toolbarWidth, opening ? 196 : 112)
   }

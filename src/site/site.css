@@ -49,12 +49,16 @@
   padding-top: 64px;
 }
 .site-content {
-  flex: 1;
+  flex: none;
+  width: 100%;
   min-width: 0;
   overflow: auto;
+  transform: translateX(0);
+  transition: transform 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 .documentation-site[data-sidebar="true"] .site-content {
-  margin-left: var(--sidebar-width);
+  width: calc(100% - var(--sidebar-width));
+  transform: translateX(var(--sidebar-width));
 }
 .site-path {
   max-width: 900px;
@@ -83,8 +87,12 @@
   padding: 48px;
 }
 @media (max-width: 700px) {
+  .site-content {
+    transition: none;
+  }
   .documentation-site[data-sidebar="true"] .site-content {
-    margin-left: 0;
+    width: 100%;
+    transform: none;
   }
   .site-search > span {
     display: none;
@@ -94,5 +102,10 @@
   }
   .site-path {
     padding-inline: 24px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .site-content {
+    transition: none;
   }
 }

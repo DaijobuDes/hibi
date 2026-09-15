@@ -11,3 +11,7 @@ dotfiles, dotfolders, `node_modules`, and symlinks are excluded. hibi checks can
 the sidebar button hides or shows navigation with a short slide from the left. labels retain their width during motion; reduced-motion preferences disable transitions. settings, workspaces, and exported sites use the same sidebar component and keyboard behavior.
 
 with navigation visible, window controls sit over the sidebar and document controls begin beside it. hiding navigation brings the top bar together. settings keeps its category sidebar and hides document-only actions.
+
+the sidebar paints one continuous surface behind the window controls, so its top and body move together when opening and closing.
+
+document content moves with the sidebar in the editor and exported site. it resizes once per toggle, then animates horizontally without rewrapping each frame. narrow exported pages keep the sidebar above the document.

@@ -227,6 +227,68 @@ test('nested workspace editing, addon lifecycle, and offline static export', {
   assert.equal(await site.evaluate(() => typeof window.hibi), 'undefined')
   assert.equal(await site.locator('[contenteditable="true"]').count(), 0)
   assert.equal(await site.locator('.view-switch').count(), 0)
+  for (const viewportWidth of [1000, 480]) {
+    await site.setViewportSize({ width: viewportWidth, height: 720 })
+    for (const opening of [false, true]) {
+      const samples = await site.evaluate(async () => {
+        document.querySelector('[aria-label="toggle navigation"]').click()
+        const samples = []
+        const start = performance.now()
+        while (performance.now() - start < 320) {
+          await new Promise(requestAnimationFrame)
+          const sidebar = document.querySelector('.sidebar')
+          const content = document.querySelector('.site-content')
+          const bounds = sidebar.getBoundingClientRect()
+          samples.push({
+            x: bounds.x,
+            right: bounds.right,
+            width: sidebar.offsetWidth,
+            top: bounds.top,
+            bottom: bounds.bottom,
+            height: innerHeight,
+            contentX: content.getBoundingClientRect().x,
+            contentWidth: content.offsetWidth,
+            visibility: getComputedStyle(sidebar).visibility,
+          })
+        }
+        return samples
+      })
+      assert.ok(samples.some(({ x }) => x > -239 && x < -1))
+      assert.ok(
+        samples.every(
+          ({ width, top, bottom, height }) =>
+            width === 240 && top === 0 && bottom === height,
+        ),
+      )
+      assert.ok(
+        samples
+          .filter(({ x }) => x > -239 && x < -1)
+          .every(({ visibility }) => visibility === 'visible'),
+      )
+      assert.ok(
+        samples.every(
+          ({ right, contentX }) =>
+            Math.abs(contentX - (viewportWidth > 700 ? right : 0)) < 1,
+        ),
+        JSON.stringify({
+          viewportWidth,
+          opening,
+          mismatches: samples
+            .filter(
+              ({ right, contentX }) =>
+                Math.abs(contentX - (viewportWidth > 700 ? right : 0)) >= 1,
+            )
+            .slice(0, 3),
+        }),
+      )
+      assert.equal(
+        new Set(samples.map(({ contentWidth }) => contentWidth)).size,
+        1,
+      )
+      assert.equal(samples.at(-1).x, opening ? 0 : -240)
+    }
+  }
+  await site.setViewportSize({ width: 1000, height: 760 })
   assert.equal(await site.evaluate(() => window.compromised), undefined)
   assert.equal(await site.locator('article img').getAttribute('src'), null)
   assert.equal(
