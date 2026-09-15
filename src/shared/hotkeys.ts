@@ -19,9 +19,14 @@ export const actions = [
   { id: 'saveAs', label: 'save as…', category: 'file', key: 'shift+s' },
   { id: 'find', label: 'find in note', category: 'edit', key: 'f' },
   { id: 'settings', label: 'open settings', category: 'preferences', key: ',' },
-  { id: 'normal', label: 'normal view', category: 'view', key: '' },
-  { id: 'side-by-side', label: 'side-by-side view', category: 'view', key: '' },
-  { id: 'markdown', label: 'markdown only', category: 'view', key: '' },
+  { id: 'normal', label: 'normal view', category: 'view', key: '[' },
+  {
+    id: 'side-by-side',
+    label: 'side-by-side view',
+    category: 'view',
+    key: '\\',
+  },
+  { id: 'markdown', label: 'markdown only', category: 'view', key: ']' },
   {
     id: 'toggle-titlebar',
     label: 'toggle top bar auto-hide',

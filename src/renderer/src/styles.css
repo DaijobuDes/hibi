@@ -430,7 +430,7 @@ button:disabled {
   transition:
     transform 240ms cubic-bezier(0.2, 0.8, 0.2, 1),
     opacity 180ms ease-out,
-    width 0s 240ms,
+    width 0s 60ms,
     visibility 0s 240ms;
 }
 .rich-pane {
@@ -449,10 +449,10 @@ button:disabled {
   transform: translateX(0);
   opacity: 1;
   visibility: visible;
-  transition-delay: 0s;
+  transition-delay: 0s, 0s, 60ms, 0s;
 }
 .mode-normal .rich-pane {
-  transition-delay: 0s;
+  transition-delay: 0s, 0s, 60ms, 0s;
 }
 .mode-markdown .rich-pane {
   width: 50%;
@@ -465,7 +465,7 @@ button:disabled {
   width: 50%;
   opacity: 1;
   visibility: visible;
-  transition-delay: 0s, 0s, 240ms, 0s;
+  transition-delay: 0s, 0s, 60ms, 0s;
 }
 .mode-side-by-side .rich-pane {
   transform: translateX(50cqw);
@@ -481,7 +481,6 @@ button:disabled {
   width: 1px;
   pointer-events: none;
   opacity: 0;
-  transition: opacity 180ms ease-out;
   background: linear-gradient(
     to bottom,
     transparent,
@@ -492,6 +491,10 @@ button:disabled {
 }
 .mode-side-by-side::after {
   opacity: 1;
+}
+.editor-content {
+  position: absolute;
+  inset: 0;
 }
 .rich-pane > div {
   min-height: 100%;

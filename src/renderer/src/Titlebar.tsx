@@ -122,7 +122,7 @@ export function Titlebar({
                   type="button"
                   key={view}
                   aria-label={label}
-                  title={label}
+                  title={`${label}${hotkeys[view] ? ` (${shortcutLabels(hotkeys[view], platform).join('')})` : ''}`}
                   aria-pressed={mode === view}
                   onClick={() => onMode(view)}
                 >

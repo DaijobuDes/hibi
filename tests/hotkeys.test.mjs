@@ -13,6 +13,10 @@ import { pressShortcut } from './keyboard.mjs'
 
 test('hotkey validation rejects conflicts and preserves standard editing keys', () => {
   const defaults = defaultHotkeys('darwin')
+  assert.equal(defaults.normal, 'meta+[')
+  assert.equal(defaults.markdown, 'meta+]')
+  assert.equal(defaults['side-by-side'], 'meta+\\')
+  assert.equal(defaultHotkeys('linux')['side-by-side'], 'ctrl+\\')
   assert.throws(
     () => validateHotkeys({ ...defaults, palette: defaults.save }, 'darwin'),
     /already assigned/,
@@ -84,6 +88,24 @@ test('rebind, conflict, clear, reset, native menus, and relaunch persistence', {
   const rich = page.getByRole('textbox', { name: 'document editor' })
   await rich.waitFor()
   await rich.fill('keyboard checks')
+  for (const [key, mode] of [
+    [']', 'markdown'],
+    ['\\', 'side-by-side'],
+    ['[', 'normal'],
+  ]) {
+    await pressShortcut(app, `${mod}+${key}`)
+    await page.waitForFunction(
+      (mode) =>
+        document
+          .querySelector('.editor-panes')
+          .classList.contains(`mode-${mode}`),
+      mode,
+    )
+  }
+  assert.equal(
+    (await page.evaluate(() => window.hibi.getDocument())).markdown,
+    'keyboard checks',
+  )
   await pressShortcut(app, `${mod}+k`)
   const palette = page.getByRole('dialog', { name: 'command palette' })
   const search = page.getByRole('combobox', { name: 'search commands' })

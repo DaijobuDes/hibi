@@ -7,7 +7,15 @@ import {
   SearchQuery,
   setSearchState,
 } from 'prosemirror-search'
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { FindBar, type FindMove, type FindStatus } from './FindBar'
 import { LoadingScreen } from './LoadingScreen'
 import { extensions, needsSourceEditing } from './markdown'
@@ -51,6 +59,26 @@ export function MarkdownEditor({
   const [sourceMounted, setSourceMounted] = useState(mode !== 'normal')
   const [sourceReady, setSourceReady] = useState(false)
   const paneMode = sourceReady || mode === 'normal' ? mode : 'normal'
+  const content = useRef<HTMLDivElement>(null)
+  const previousMode = useRef(paneMode)
+  useLayoutEffect(() => {
+    if (previousMode.current === paneMode) return
+    previousMode.current = paneMode
+    const element = content.current
+    if (!element) return
+    const opacity = Number(getComputedStyle(element).opacity)
+    for (const animation of element.getAnimations()) animation.cancel()
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    element.animate(
+      [
+        { opacity, offset: 0 },
+        { opacity: 0, offset: 0.25 },
+        { opacity: 0, offset: 0.625 },
+        { opacity: 1, offset: 1 },
+      ],
+      { duration: 160 },
+    )
+  }, [paneMode])
   useEffect(() => {
     const idle = requestIdleCallback(() => setSourceMounted(true))
     return () => cancelIdleCallback(idle)
@@ -169,41 +197,43 @@ export function MarkdownEditor({
         className={`editor-panes mode-${paneMode}`}
         data-source-ready={sourceReady}
       >
-        <section
-          className="rich-pane"
-          onFocusCapture={() => setFocusedPane('rich')}
-          aria-label="formatted document"
-          aria-hidden={paneMode === 'markdown'}
-          inert={paneMode === 'markdown'}
-        >
-          <EditorContent editor={editor} />
-        </section>
-        <section
-          className="source-pane"
-          onFocusCapture={() => setFocusedPane('source')}
-          aria-label="markdown source"
-          aria-hidden={paneMode === 'normal'}
-          inert={paneMode === 'normal'}
-        >
-          {sourceMounted && (
-            <Suspense
-              fallback={<LoadingScreen label="loading markdown editor" />}
-            >
-              <SourceEditor
-                active={mode !== 'normal'}
-                onReady={() => setSourceReady(true)}
-                value={value}
-                externalRevision={richRevision}
-                onChange={updateFromSource}
-                disabled={disabled}
-                findActive={findOpen && findTarget === 'source'}
-                findQuery={findQuery}
-                findMove={findMove}
-                onFindStatus={setFindStatus}
-              />
-            </Suspense>
-          )}
-        </section>
+        <div className="editor-content" ref={content}>
+          <section
+            className="rich-pane"
+            onFocusCapture={() => setFocusedPane('rich')}
+            aria-label="formatted document"
+            aria-hidden={paneMode === 'markdown'}
+            inert={paneMode === 'markdown'}
+          >
+            <EditorContent editor={editor} />
+          </section>
+          <section
+            className="source-pane"
+            onFocusCapture={() => setFocusedPane('source')}
+            aria-label="markdown source"
+            aria-hidden={paneMode === 'normal'}
+            inert={paneMode === 'normal'}
+          >
+            {sourceMounted && (
+              <Suspense
+                fallback={<LoadingScreen label="loading markdown editor" />}
+              >
+                <SourceEditor
+                  active={mode !== 'normal'}
+                  onReady={() => setSourceReady(true)}
+                  value={value}
+                  externalRevision={richRevision}
+                  onChange={updateFromSource}
+                  disabled={disabled}
+                  findActive={findOpen && findTarget === 'source'}
+                  findQuery={findQuery}
+                  findMove={findMove}
+                  onFindStatus={setFindStatus}
+                />
+              </Suspense>
+            )}
+          </section>
+        </div>
       </main>
     </>
   )

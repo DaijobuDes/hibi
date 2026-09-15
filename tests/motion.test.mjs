@@ -135,6 +135,13 @@ test('panes move horizontally and sidebar selection slides without fading settin
           richWidth: document.querySelector('.rich-pane').offsetWidth,
           sourceX: source.x,
           sourceWidth: document.querySelector('.source-pane').offsetWidth,
+          opacity: Number(
+            getComputedStyle(document.querySelector('.editor-content')).opacity,
+          ),
+          dividerOpacity: Number(
+            getComputedStyle(document.querySelector('.editor-panes'), '::after')
+              .opacity,
+          ),
         }
       }
       const samples = [sample()]
@@ -163,6 +170,37 @@ test('panes move horizontally and sidebar selection slides without fading settin
   assert.equal(new Set(dismissSource.map((frame) => frame.sourceWidth)).size, 1)
   const dismissRich = await sampleSplit('side-by-side', 'markdown only')
   assert.equal(new Set(dismissRich.map((frame) => frame.richWidth)).size, 1)
+  const directSource = await sampleSplit('normal', 'markdown only')
+  const directRich = await sampleSplit('markdown only', 'normal')
+  for (const frames of [
+    fromRich,
+    fromSource,
+    dismissSource,
+    dismissRich,
+    directSource,
+    directRich,
+  ]) {
+    assert.ok(frames.some(({ opacity }) => opacity === 0))
+    assert.equal(frames.at(-1).opacity, 1)
+    for (let index = 1; index < frames.length; index++) {
+      if (
+        frames[index].richWidth !== frames[index - 1].richWidth ||
+        frames[index].sourceWidth !== frames[index - 1].sourceWidth
+      ) {
+        assert.equal(
+          frames[index].opacity,
+          0,
+          'text must be hidden when pane widths change',
+        )
+      }
+    }
+  }
+  assert.ok(
+    fromRich.slice(1).every(({ dividerOpacity }) => dividerOpacity === 1),
+  )
+  assert.ok(
+    dismissSource.slice(1).every(({ dividerOpacity }) => dividerOpacity === 0),
+  )
   await page.getByRole('button', { name: 'side-by-side', exact: true }).click()
   await settle()
   const divider = await page
@@ -219,6 +257,14 @@ test('panes move horizontally and sidebar selection slides without fading settin
       .locator('.category-selection')
       .evaluate((element) => getComputedStyle(element).transitionDuration),
     '0s',
+  )
+  await page.getByRole('button', { name: 'back to editor' }).click()
+  await page.getByRole('button', { name: 'markdown only', exact: true }).click()
+  assert.equal(
+    await page
+      .locator('.editor-content')
+      .evaluate((element) => element.getAnimations().length),
+    0,
   )
   await page.setViewportSize({ width: 480, height: 360 })
   assert.equal(
