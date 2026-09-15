@@ -21,7 +21,7 @@ test('desktop launch, isolation, offline reload, and recovery', {
   const page = await app.firstWindow()
   const errors = []
   page.on('pageerror', (error) => errors.push(error.message))
-  await page.getByRole('heading', { name: 'ready when you are.' }).waitFor()
+  await page.getByRole('textbox', { name: 'document editor' }).waitFor()
   t.diagnostic(
     `launch to visible content: ${Math.round(performance.now() - started)} ms`,
   )
@@ -153,7 +153,7 @@ test('desktop launch, isolation, offline reload, and recovery', {
     async () => {
       await app.context().setOffline(true)
       await page.reload()
-      await page.getByRole('heading', { name: 'ready when you are.' }).waitFor()
+      await page.getByRole('textbox', { name: 'document editor' }).waitFor()
       await app.evaluate(({ BrowserWindow }) => {
         const window = BrowserWindow.getAllWindows()[0]
         window.unmaximize()
@@ -193,9 +193,7 @@ test('desktop launch, isolation, offline reload, and recovery', {
         app.emit('activate')
       })
       const reopened = await opened
-      await reopened
-        .getByRole('heading', { name: 'ready when you are.' })
-        .waitFor()
+      await reopened.getByRole('textbox', { name: 'document editor' }).waitFor()
       assert.equal(
         (await reopened.evaluate(() => window.hibi.getAppInfo())).version,
         '0.1.0',
@@ -217,11 +215,11 @@ test('desktop launch, isolation, offline reload, and recovery', {
       await reloaded
       // Playwright retains its crashed target; inspect the new renderer through Electron.
       return contents.executeJavaScript(
-        'window.hibi.getAppInfo().then(info => ({ heading: document.querySelector("h1").textContent, version: info.version }))',
+        'window.hibi.getAppInfo().then(info => ({ editor: Boolean(document.querySelector(".tiptap")), version: info.version }))',
       )
     })
     assert.deepEqual(recovered, {
-      heading: 'ready when you are.',
+      editor: true,
       version: '0.1.0',
     })
   })

@@ -9,6 +9,7 @@ import {
 import { createRoot } from 'react-dom/client'
 import type { AppInfo } from '../../shared/desktop'
 import './styles.css'
+import { MarkdownEditor, type ViewMode } from './Editor'
 
 class ErrorBoundary extends Component<
   { children: ReactNode },
@@ -41,6 +42,8 @@ class ErrorBoundary extends Component<
 }
 
 function App() {
+  const [markdown, setMarkdown] = useState('')
+  const [mode, setMode] = useState<ViewMode>('normal')
   const [info, setInfo] = useState<AppInfo | null>(null)
   const [failed, setFailed] = useState(false)
 
@@ -63,11 +66,20 @@ function App() {
     <div className="app" data-platform={info?.platform}>
       <header className="titlebar">
         <span className="wordmark">hibi</span>
+        <nav className="view-switch" aria-label="editor view">
+          {(['normal', 'side-by-side', 'markdown'] as const).map((view) => (
+            <button
+              type="button"
+              key={view}
+              aria-pressed={mode === view}
+              onClick={() => setMode(view)}
+            >
+              {view === 'markdown' ? 'markdown only' : view}
+            </button>
+          ))}
+        </nav>
       </header>
-      <main className="welcome">
-        <h1>ready when you are.</h1>
-        <p>a little room for what comes next.</p>
-      </main>
+      <MarkdownEditor value={markdown} onChange={setMarkdown} mode={mode} />
       <footer>
         {failed ? (
           <p role="alert">
