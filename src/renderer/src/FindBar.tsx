@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronUp, Search, X } from 'lucide-react'
-import { useEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 export type FindStatus = { current: number; total: number }
 export type FindMove = { id: number; direction: 'next' | 'previous' }
@@ -20,6 +20,16 @@ export function FindBar({
   onClose: () => void
 }) {
   const input = useRef<HTMLInputElement>(null)
+  const counter = useRef<HTMLSpanElement>(null)
+  const [counterWidth, setCounterWidth] = useState(0)
+  const count = query
+    ? status.total
+      ? `${status.current}/${status.total}`
+      : 'no results'
+    : ''
+  useLayoutEffect(() => {
+    setCounterWidth(count ? (counter.current?.offsetWidth ?? 0) : 0)
+  }, [count])
   useEffect(() => {
     if (open) {
       input.current?.focus()
@@ -51,11 +61,13 @@ export function FindBar({
           }}
         />
       </div>
-      {query && (
-        <output aria-live="polite" aria-label="find matches">
-          {status.total ? `${status.current}/${status.total}` : 'no results'}
-        </output>
-      )}
+      <output
+        aria-live="polite"
+        aria-label="find matches"
+        style={{ width: counterWidth }}
+      >
+        <span className="find-count" ref={counter}>{count}</span>
+      </output>
       <button
         type="button"
         aria-label="previous match"

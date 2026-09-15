@@ -154,6 +154,7 @@ button:disabled {
   padding-right: 140px;
 }
 .titlebar .document-title {
+  -webkit-app-region: drag;
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
@@ -170,6 +171,19 @@ button:disabled {
 .titlebar .document-title:hover {
   background: transparent;
   color: var(--ink);
+}
+.titlebar .command-trigger {
+  width: auto;
+  max-width: 100%;
+  gap: 6px;
+  padding: 0 8px;
+  background: transparent;
+  font-size: inherit;
+}
+.command-trigger > :first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .app[data-screen="settings"] .titlebar {
   background: transparent;
@@ -676,11 +690,18 @@ summary {
   flex-shrink: 0;
 }
 .find-bar output {
-  padding-inline: 4px;
+  flex-shrink: 0;
+  overflow: hidden;
+  transition: width 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
   color: var(--muted);
   font-size: 11px;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
+}
+.find-count {
+  display: inline-block;
+  width: max-content;
+  padding-inline: 4px;
 }
 .ProseMirror-search-match,
 .cm-editor .cm-searchMatch {
@@ -692,6 +713,7 @@ summary {
   outline: 1px solid var(--accent);
 }
 .command-palette {
+  -webkit-app-region: drag;
   position: fixed;
   inset: max(48px, 12vh) auto auto 50%;
   transform: translateX(-50%);
@@ -705,6 +727,12 @@ summary {
   background: var(--background);
   color: var(--ink);
   animation: palette-in 160ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.command-palette input,
+.command-palette button,
+.command-results,
+.palette-footer {
+  -webkit-app-region: no-drag;
 }
 .command-palette::backdrop {
   background: oklch(0 0 0 / 0.2);
@@ -976,6 +1004,9 @@ summary {
     transition: none;
   }
   .find-bar {
+    transition: none;
+  }
+  .find-bar output {
     transition: none;
   }
   button {

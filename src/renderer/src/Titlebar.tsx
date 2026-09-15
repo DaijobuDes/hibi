@@ -69,24 +69,26 @@ export function Titlebar({
           ))}
         </div>
       )}
-      <button
-        type="button"
-        className="document-title"
-        aria-label="command palette"
-        title={`command palette${hotkeys.palette ? ` (${shortcutLabels(hotkeys.palette, platform).join('')})` : ''}`}
-        onClick={onPalette}
-      >
-        <span>{settingsOpen ? 'settings' : (document?.name ?? 'hibi')}</span>
-        {!settingsOpen && document?.dirty && (
-          <span
-            className="dirty-dot"
-            role="status"
-            aria-label="unsaved changes"
-          >
-            •
-          </span>
-        )}
-      </button>
+      <div className="document-title">
+        <button
+          type="button"
+          className="command-trigger"
+          aria-label="command palette"
+          title={`command palette${hotkeys.palette ? ` (${shortcutLabels(hotkeys.palette, platform).join('')})` : ''}`}
+          onClick={onPalette}
+        >
+          <span>{settingsOpen ? 'settings' : (document?.name ?? 'hibi')}</span>
+          {!settingsOpen && document?.dirty && (
+            <span
+              className="dirty-dot"
+              role="status"
+              aria-label="unsaved changes"
+            >
+              •
+            </span>
+          )}
+        </button>
+      </div>
       <nav
         className="view-switch"
         aria-label={settingsOpen ? 'navigation' : 'editor view'}
