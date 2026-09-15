@@ -365,6 +365,7 @@ button:disabled {
   margin: 0;
 }
 .editor-panes {
+  position: relative;
   display: flex;
   min-height: 0;
   flex: 1;
@@ -376,7 +377,21 @@ button:disabled {
   overflow: auto;
 }
 .mode-side-by-side .source-pane {
-  border-left: 1px solid var(--border);
+  order: -1;
+}
+.mode-side-by-side::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 50%;
+  width: 1px;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    var(--border) 48px,
+    var(--border) calc(100% - 48px),
+    transparent
+  );
 }
 .rich-pane > div {
   min-height: 100%;
