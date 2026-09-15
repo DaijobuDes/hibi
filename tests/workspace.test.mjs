@@ -336,6 +336,55 @@ test('nested workspace editing, addon lifecycle, and offline static export', {
     .getByRole('heading', { name: 'installation', exact: true })
     .waitFor()
   assert.match(site.url(), /page=guides%2Fadvanced%2Fsetup.md/)
+  await site
+    .getByRole('treeitem', { name: 'installation', exact: true })
+    .waitFor()
+  await site.getByRole('treeitem', { name: 'welcome', exact: true }).click()
+  await site.waitForFunction(
+    () =>
+      document.querySelector('.sidebar-selection').getAnimations().length === 0,
+  )
+  const beforeSelection = await site
+    .locator('.sidebar-selection')
+    .evaluate((element) => element.getBoundingClientRect().top)
+  await site
+    .getByRole('treeitem', { name: 'installation', exact: true })
+    .click()
+  const selection = await site.evaluate(async () => {
+    const frames = []
+    const start = performance.now()
+    while (performance.now() - start < 230) {
+      await new Promise(requestAnimationFrame)
+      const selected = document.querySelector(
+        '[role="treeitem"][aria-selected="true"]',
+      )
+      frames.push({
+        top: document
+          .querySelector('.sidebar-selection')
+          .getBoundingClientRect().top,
+        background: getComputedStyle(selected).backgroundColor,
+      })
+    }
+    return {
+      frames,
+      target: document
+        .querySelector('[role="treeitem"][aria-selected="true"]')
+        .getBoundingClientRect().top,
+    }
+  })
+  assert.ok(
+    selection.frames.some(
+      ({ top }) =>
+        top > Math.min(beforeSelection, selection.target) &&
+        top < Math.max(beforeSelection, selection.target),
+    ),
+  )
+  assert.equal(selection.frames.at(-1).top, selection.target)
+  assert.ok(
+    selection.frames.every(
+      ({ background }) => background === 'rgba(0, 0, 0, 0)',
+    ),
+  )
   await site.keyboard.press(
     process.platform === 'darwin' ? 'Meta+k' : 'Control+k',
   )
