@@ -10,12 +10,14 @@ export function WorkspaceSidebar({
   onFile,
   onRefresh,
   commands,
+  open,
 }: {
   workspace: WorkspaceState | null
   onOpen: () => void
   onFile: (path: string) => void
   onRefresh: () => void
   commands: RegisteredCommand[]
+  open: boolean
 }) {
   const items = useMemo(() => {
     const convert = (entries: WorkspaceEntry[]): SidebarItem[] =>
@@ -29,6 +31,7 @@ export function WorkspaceSidebar({
   }, [workspace?.entries])
   return (
     <Sidebar
+      open={open}
       className="workspace-sidebar"
       items={items}
       selected={workspace?.activePath ?? null}

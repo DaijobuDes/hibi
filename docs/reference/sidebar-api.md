@@ -15,6 +15,7 @@ export type SidebarProps = {
   onSelect: (id: string) => void
   label: string
   mode?: 'tree' | 'tabs'
+  open?: boolean
   className?: string
   idPrefix?: string
   panelPrefix?: string

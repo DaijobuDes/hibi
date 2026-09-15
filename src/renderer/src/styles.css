@@ -115,8 +115,6 @@ button:disabled {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 12px;
-  padding-left: 80px;
   padding-right: 8px;
   background: var(--background);
   -webkit-app-region: drag;
@@ -151,21 +149,42 @@ button:disabled {
 }
 .app[data-platform="win32"] .titlebar,
 .app[data-platform="linux"] .titlebar {
-  padding-left: 8px;
   padding-right: 140px;
+}
+.sidebar-toolbar {
+  --window-controls-width: 80px;
+  display: flex;
+  align-items: center;
+  height: 100%;
+  width: calc(var(--window-controls-width) + 32px);
+  padding-left: var(--window-controls-width);
+  flex-shrink: 0;
+  transition: width 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.sidebar-toolbar[data-open="true"] {
+  width: var(--sidebar-width);
+  background: var(--surface);
+}
+.app[data-platform="win32"] .sidebar-toolbar,
+.app[data-platform="linux"] .sidebar-toolbar {
+  --window-controls-width: 8px;
+}
+.document-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding-left: 8px;
 }
 .titlebar .document-title {
   -webkit-app-region: drag;
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  width: max(0px, min(360px, calc(100% - 420px)));
+  min-width: 0;
   display: flex;
-  justify-content: center;
   align-items: center;
   gap: 6px;
   height: 25px;
-  padding: 0 8px;
   font-size: 12px;
   color: var(--muted);
 }
@@ -174,6 +193,7 @@ button:disabled {
   color: var(--ink);
 }
 .titlebar .command-trigger {
+  -webkit-app-region: no-drag;
   width: auto;
   max-width: 100%;
   gap: 6px;
@@ -188,10 +208,6 @@ button:disabled {
 }
 .app[data-screen="settings"] .titlebar {
   background: transparent;
-}
-.app[data-platform="win32"] .document-title,
-.app[data-platform="linux"] .document-title {
-  width: max(0px, min(360px, calc(100% - 580px)));
 }
 .document-title > :first-child {
   min-width: 0;
@@ -212,6 +228,7 @@ button:disabled {
   white-space: nowrap;
 }
 .document-actions {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 2px;
@@ -262,7 +279,7 @@ button:disabled {
     opacity: 0;
   }
 }
-.workspace-sidebar {
+.app .workspace-sidebar {
   position: absolute;
   inset: 0 auto 0 0;
   z-index: 1;
@@ -727,6 +744,7 @@ summary {
   animation: palette-out 140ms ease-out both;
 }
 .command-search {
+  -webkit-app-region: drag;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -981,6 +999,7 @@ summary {
   }
 }
 @media (prefers-reduced-motion: reduce) {
+  .sidebar-toolbar,
   .settings-screen,
   .editor-surface,
   .rich-pane,

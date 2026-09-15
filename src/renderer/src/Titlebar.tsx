@@ -58,8 +58,8 @@ export function Titlebar({
 }) {
   return (
     <header className="titlebar">
-      {!settingsOpen && (
-        <div className="document-actions">
+      <div className="sidebar-toolbar" data-open={sidebarOpen || settingsOpen}>
+        {!settingsOpen && (
           <button
             type="button"
             aria-label="toggle workspace sidebar"
@@ -69,70 +69,78 @@ export function Titlebar({
           >
             <PanelLeft size={16} strokeWidth={1.5} />
           </button>
-          {(['new', 'open', 'save'] as const).map((command) => (
-            <button
-              type="button"
-              key={command}
-              aria-label={command}
-              title={`${command}${hotkeys[command] ? ` (${shortcutLabels(hotkeys[command], platform).join('')})` : ''}`}
-              disabled={disabled}
-              onClick={() => onCommand(command)}
-            >
-              <Icon name={command} />
-            </button>
-          ))}
-        </div>
-      )}
-      <div className="document-title">
-        <button
-          type="button"
-          className="command-trigger"
-          aria-label="command palette"
-          title={`command palette${hotkeys.palette ? ` (${shortcutLabels(hotkeys.palette, platform).join('')})` : ''}`}
-          onClick={onPalette}
-        >
-          <span>{settingsOpen ? 'settings' : (document?.name ?? 'hibi')}</span>
-          {!settingsOpen && document?.dirty && (
-            <span
-              className="dirty-dot"
-              role="status"
-              aria-label="unsaved changes"
-            >
-              •
-            </span>
-          )}
-        </button>
+        )}
       </div>
-      <nav
-        className="view-switch"
-        aria-label={settingsOpen ? 'navigation' : 'editor view'}
-      >
-        {!settingsOpen &&
-          (['normal', 'side-by-side', 'markdown'] as const).map((view) => {
-            const label = view === 'markdown' ? 'markdown only' : view
-            return (
+      <div className="document-toolbar">
+        {!settingsOpen && (
+          <div className="document-actions">
+            {(['new', 'open', 'save'] as const).map((command) => (
               <button
                 type="button"
-                key={view}
-                aria-label={label}
-                title={label}
-                aria-pressed={mode === view}
-                onClick={() => onMode(view)}
+                key={command}
+                aria-label={command}
+                title={`${command}${hotkeys[command] ? ` (${shortcutLabels(hotkeys[command], platform).join('')})` : ''}`}
+                disabled={disabled}
+                onClick={() => onCommand(command)}
               >
-                <Icon name={view} />
+                <Icon name={command} />
               </button>
-            )
-          })}
-        <button
-          type="button"
-          aria-label={settingsOpen ? 'back to editor' : 'editor settings'}
-          title={settingsOpen ? 'back to editor' : 'editor settings'}
-          aria-pressed={settingsOpen}
-          onClick={onSettings}
+            ))}
+          </div>
+        )}
+        <div className="document-title">
+          <button
+            type="button"
+            className="command-trigger"
+            aria-label="command palette"
+            title={`command palette${hotkeys.palette ? ` (${shortcutLabels(hotkeys.palette, platform).join('')})` : ''}`}
+            onClick={onPalette}
+          >
+            <span>
+              {settingsOpen ? 'settings' : (document?.name ?? 'hibi')}
+            </span>
+            {!settingsOpen && document?.dirty && (
+              <span
+                className="dirty-dot"
+                role="status"
+                aria-label="unsaved changes"
+              >
+                •
+              </span>
+            )}
+          </button>
+        </div>
+        <nav
+          className="view-switch"
+          aria-label={settingsOpen ? 'navigation' : 'editor view'}
         >
-          <Icon name={settingsOpen ? 'back' : 'settings'} />
-        </button>
-      </nav>
+          {!settingsOpen &&
+            (['normal', 'side-by-side', 'markdown'] as const).map((view) => {
+              const label = view === 'markdown' ? 'markdown only' : view
+              return (
+                <button
+                  type="button"
+                  key={view}
+                  aria-label={label}
+                  title={label}
+                  aria-pressed={mode === view}
+                  onClick={() => onMode(view)}
+                >
+                  <Icon name={view} />
+                </button>
+              )
+            })}
+          <button
+            type="button"
+            aria-label={settingsOpen ? 'back to editor' : 'editor settings'}
+            title={settingsOpen ? 'back to editor' : 'editor settings'}
+            aria-pressed={settingsOpen}
+            onClick={onSettings}
+          >
+            <Icon name={settingsOpen ? 'back' : 'settings'} />
+          </button>
+        </nav>
+      </div>
     </header>
   )
 }

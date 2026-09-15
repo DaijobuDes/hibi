@@ -248,18 +248,17 @@ function DocumentationSite() {
         </button>
       </header>
       <div className="site-layout">
-        {sidebar && (
-          <Sidebar
-            items={navigation}
-            selected={current.path}
-            onSelect={(path) => {
-              navigate(path)
-              if (innerWidth <= 700) setSidebar(false)
-            }}
-            label="documentation navigation"
-            header={<span>documentation</span>}
-          />
-        )}
+        <Sidebar
+          open={sidebar}
+          items={navigation}
+          selected={current.path}
+          onSelect={(path) => {
+            navigate(path)
+            if (innerWidth <= 700) setSidebar(false)
+          }}
+          label="documentation navigation"
+          header={<span>documentation</span>}
+        />
         <main className="site-content" aria-label="documentation">
           {page ? (
             <>

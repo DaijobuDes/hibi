@@ -11,7 +11,7 @@ upload that file to any static host, usually as `index.html`. it also opens dire
 ## included
 
 - normal read-only markdown rendering; no editor or source-view controls.
-- the shared nested sidebar.
+- the shared full-height nested sidebar, with a smooth slide from the left.
 - `cmd/ctrl+k` search with fuzzy matching, prefix matches, and keyword relevance. titles and paths receive extra weight. this is local text search, not an embedding model.
 - hash-based document and heading links, browser history, light/dark themes, bundled geist fonts, and reduced-motion support.
 

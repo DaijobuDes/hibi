@@ -239,3 +239,74 @@ test('panes move horizontally and sidebar selection slides without fading settin
   await page.emulateMedia({ colorScheme: 'light' })
   await page.screenshot({ path: 'test-results/palette-compact-light.png' })
 })
+
+test('workspace sidebar slides at a fixed width and the titlebar follows its state', {
+  timeout: 30000,
+}, async (t) => {
+  const profile = await mkdtemp(join(tmpdir(), 'hibi-sidebar-'))
+  const app = await electron.launch({
+    args: [resolve('.'), `--user-data-dir=${profile}`],
+  })
+  t.after(async () => {
+    await app.close()
+    await rm(profile, { recursive: true, force: true })
+  })
+  const page = await app.firstWindow()
+  await page.getByRole('textbox', { name: 'document editor' }).waitFor()
+  for (const opening of [false, true]) {
+    const samples = await page.evaluate(async () => {
+      const sidebar = document.querySelector('.workspace-sidebar > .sidebar')
+      const editor = document.querySelector('.editor-surface')
+      const toolbar = document.querySelector('.sidebar-toolbar')
+      document.querySelector('[aria-label="toggle workspace sidebar"]').click()
+      const samples = []
+      const start = performance.now()
+      while (performance.now() - start < 320) {
+        await new Promise(requestAnimationFrame)
+        samples.push({
+          x: sidebar.getBoundingClientRect().x,
+          width: sidebar.offsetWidth,
+          top: sidebar.getBoundingClientRect().top,
+          bottom: sidebar.getBoundingClientRect().bottom,
+          viewportHeight: innerHeight,
+          editorWidth: editor.offsetWidth,
+          toolbarWidth: toolbar.offsetWidth,
+        })
+      }
+      return samples
+    })
+    assert.ok(samples.some(({ x }) => x > -195 && x < -1))
+    assert.deepEqual([...new Set(samples.map(({ width }) => width))], [196])
+    assert.ok(
+      samples.every(
+        ({ top, bottom, viewportHeight }) =>
+          top === 0 && bottom === viewportHeight,
+      ),
+    )
+    assert.equal(new Set(samples.map(({ editorWidth }) => editorWidth)).size, 1)
+    assert.equal(samples.at(-1).x, opening ? 0 : -196)
+    assert.equal(samples.at(-1).toolbarWidth, opening ? 196 : 112)
+  }
+  await page.getByRole('button', { name: 'editor settings' }).click()
+  assert.equal(
+    await page.locator('.sidebar-toolbar').evaluate((el) => el.offsetWidth),
+    196,
+  )
+  assert.equal(
+    await page.getByRole('button', { name: 'new', exact: true }).count(),
+    0,
+  )
+  await page.getByRole('button', { name: 'back to editor' }).click()
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.getByRole('button', { name: 'toggle workspace sidebar' }).click()
+  assert.equal(
+    await page.locator('.workspace-sidebar').evaluate((el) => el.inert),
+    true,
+  )
+  assert.equal(
+    await page
+      .locator('.workspace-sidebar > .sidebar')
+      .evaluate((el) => getComputedStyle(el).visibility),
+    'hidden',
+  )
+})

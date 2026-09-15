@@ -8,4 +8,6 @@ opening a folder leaves the current note intact. opening a file checks unsaved c
 
 dotfiles, dotfolders, `node_modules`, and symlinks are excluded. hibi checks canonical paths before reading workspace files. very large folder scans stop at 20,000 entries; choose a smaller documentation folder when that limit is reached.
 
-the sidebar button hides or shows navigation. settings, workspaces, and exported sites use the same sidebar component and keyboard behavior.
+the sidebar button hides or shows navigation with a short slide from the left. labels retain their width during motion; reduced-motion preferences disable transitions. settings, workspaces, and exported sites use the same sidebar component and keyboard behavior.
+
+with navigation visible, window controls sit over the sidebar and document controls begin beside it. hiding navigation brings the top bar together. settings keeps its category sidebar and hides document-only actions.

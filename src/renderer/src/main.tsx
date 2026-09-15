@@ -467,18 +467,14 @@ function App() {
           </button>
         </div>
       )}
-      <div
-        hidden={!sidebarOpen || settingsOpen}
-        inert={!sidebarOpen || settingsOpen}
-      >
-        <WorkspaceSidebar
-          workspace={workspace}
-          onOpen={() => void openFolder()}
-          onFile={(path) => void openFile(path)}
-          onRefresh={() => void refreshFiles()}
-          commands={addonHost.commands}
-        />
-      </div>
+      <WorkspaceSidebar
+        open={sidebarOpen && !settingsOpen}
+        workspace={workspace}
+        onOpen={() => void openFolder()}
+        onFile={(path) => void openFile(path)}
+        onRefresh={() => void refreshFiles()}
+        commands={addonHost.commands}
+      />
       <SettingsScreen
         addonStates={addonHost.states}
         onAddonEnabled={addonHost.setEnabled}

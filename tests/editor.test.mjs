@@ -56,7 +56,10 @@ test('empty entry, three views, and lossless source switching', {
       bottom: panes.bottom,
       viewport: innerHeight,
       padding: getComputedStyle(document.querySelector('.tiptap')).paddingTop,
-      centered: Math.abs(title.x + title.width / 2 - innerWidth / 2) < 0.5,
+      besideSidebar:
+        title.x >
+        document.querySelector('.workspace-sidebar').getBoundingClientRect()
+          .right,
       flat:
         getComputedStyle(document.querySelector('.titlebar'))
           .borderBottomWidth === '0px' &&
@@ -67,7 +70,7 @@ test('empty entry, three views, and lossless source switching', {
   assert.equal(geometry.top, 36)
   assert.equal(geometry.bottom, geometry.viewport)
   assert.equal(geometry.padding, '48px')
-  assert.equal(geometry.centered, true)
+  assert.equal(geometry.besideSidebar, true)
   assert.equal(geometry.flat, true)
   await page.getByRole('button', { name: 'editor settings' }).click()
   await page.getByRole('main', { name: 'settings' }).waitFor()
