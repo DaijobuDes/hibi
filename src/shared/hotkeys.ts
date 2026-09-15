@@ -24,7 +24,7 @@ export const actions = [
     id: 'side-by-side',
     label: 'side-by-side view',
     category: 'view',
-    key: '\\',
+    key: 'shift+\\',
   },
   { id: 'markdown', label: 'markdown only', category: 'view', key: ']' },
   {
@@ -200,23 +200,25 @@ export function accelerator(shortcut: string): string {
 }
 
 export function shortcutLabels(shortcut: string, platform: string): string[] {
+  const parts = shortcut.split('+')
+  if (parts.includes('shift') && parts.at(-1) === '\\') {
+    parts.splice(parts.indexOf('shift'), 1)
+    parts[parts.length - 1] = '|'
+  }
   const keys: Record<string, string> =
     platform === 'darwin'
       ? { meta: '⌘', ctrl: '⌃', alt: '⌥', shift: '⇧' }
       : { meta: 'win', ctrl: 'ctrl', alt: 'alt', shift: 'shift' }
-  return shortcut
-    .split('+')
-    .filter(Boolean)
-    .map(
-      (key) =>
-        keys[key] ??
-        {
-          arrowup: '↑',
-          arrowdown: '↓',
-          arrowleft: '←',
-          arrowright: '→',
-          enter: '↵',
-        }[key] ??
-        key,
-    )
+  return parts.filter(Boolean).map(
+    (key) =>
+      keys[key] ??
+      {
+        arrowup: '↑',
+        arrowdown: '↓',
+        arrowleft: '←',
+        arrowright: '→',
+        enter: '↵',
+      }[key] ??
+      key,
+  )
 }

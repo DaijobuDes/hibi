@@ -7,6 +7,7 @@ import { _electron as electron } from 'playwright'
 import {
   defaultHotkeys,
   shortcutFromEvent,
+  shortcutLabels,
   validateHotkeys,
 } from '../src/shared/hotkeys.ts'
 import { pressShortcut } from './keyboard.mjs'
@@ -15,8 +16,12 @@ test('hotkey validation rejects conflicts and preserves standard editing keys', 
   const defaults = defaultHotkeys('darwin')
   assert.equal(defaults.normal, 'meta+[')
   assert.equal(defaults.markdown, 'meta+]')
-  assert.equal(defaults['side-by-side'], 'meta+\\')
-  assert.equal(defaultHotkeys('linux')['side-by-side'], 'ctrl+\\')
+  assert.equal(defaults['side-by-side'], 'meta+shift+\\')
+  assert.equal(defaultHotkeys('linux')['side-by-side'], 'ctrl+shift+\\')
+  assert.deepEqual(shortcutLabels(defaults['side-by-side'], 'darwin'), [
+    '⌘',
+    '|',
+  ])
   assert.throws(
     () => validateHotkeys({ ...defaults, palette: defaults.save }, 'darwin'),
     /already assigned/,
@@ -90,7 +95,7 @@ test('rebind, conflict, clear, reset, native menus, and relaunch persistence', {
   await rich.fill('keyboard checks')
   for (const [key, mode] of [
     [']', 'markdown'],
-    ['\\', 'side-by-side'],
+    ['Shift+\\', 'side-by-side'],
     ['[', 'normal'],
   ]) {
     await pressShortcut(app, `${mod}+${key}`)

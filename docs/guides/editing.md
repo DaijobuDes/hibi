@@ -6,7 +6,7 @@ start typing in a blank document. normal view is the rich-text editor; side-by-s
 
 view switches use a quick text fade: content fades out, reflows once while hidden, then fades back in as the panes slide. the divider does not fade. the markdown engine prepares during idle time and waits for its font and layout before appearing. reduced-motion preferences disable animations.
 
-default view shortcuts are `cmd/ctrl+[` for normal, `cmd/ctrl+]` for markdown, and `cmd/ctrl+\` for side-by-side. these can be rebound in settings.
+default view shortcuts are `cmd/ctrl+[` for normal, `cmd/ctrl+]` for markdown, and `cmd/ctrl+|` (`cmd/ctrl+shift+\`) for side-by-side. these can be rebound in settings.
 
 ## finding text
 
