@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { _electron as electron } from 'playwright'
+import { checkSidebarResize } from './sidebar-resize.mjs'
 
 test('source font and layout are ready before the pane starts moving', {
   timeout: 30000,
@@ -357,5 +358,29 @@ test('workspace sidebar slides at a fixed width and the titlebar follows its sta
       .locator('.workspace-sidebar > .sidebar')
       .evaluate((el) => getComputedStyle(el).visibility),
     'hidden',
+  )
+  await page.getByRole('button', { name: 'toggle workspace sidebar' }).click()
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
+  await checkSidebarResize(page, 196, '.editor-surface', async () => {
+    await Promise.all([
+      page.waitForEvent('domcontentloaded'),
+      app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0].reload(),
+      ),
+    ])
+  })
+  await page.getByRole('button', { name: 'editor settings' }).click()
+  const resize = page.getByRole('separator', { name: 'resize sidebar' })
+  await resize.press('ArrowRight')
+  assert.equal(Number(await resize.getAttribute('aria-valuenow')), 204)
+  await page.getByRole('button', { name: 'back to editor' }).click()
+  assert.equal(
+    Number(
+      await page
+        .locator('.workspace-sidebar')
+        .getByRole('separator', { name: 'resize sidebar' })
+        .getAttribute('aria-valuenow'),
+    ),
+    204,
   )
 })

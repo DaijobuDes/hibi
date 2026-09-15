@@ -3,7 +3,7 @@ import { useState } from 'react'
 import type { AddonState } from '../../addons/api'
 import type { AppInfo } from '../../shared/desktop'
 import type { Hotkeys } from '../../shared/hotkeys'
-import { Sidebar } from '../../ui/Sidebar'
+import { Sidebar, type SidebarProps } from '../../ui/Sidebar'
 import { addons } from './addons'
 import { HotkeySettings } from './HotkeySettings'
 
@@ -26,6 +26,7 @@ export function SettingsScreen({
   onHotkeys,
   addonStates,
   onAddonEnabled,
+  resize,
 }: {
   open: boolean
   padding: number
@@ -37,6 +38,7 @@ export function SettingsScreen({
   onHotkeys: (hotkeys: Hotkeys) => void
   addonStates: AddonState[]
   onAddonEnabled: (id: string, enabled: boolean) => Promise<void>
+  resize: NonNullable<SidebarProps['resize']>
 }) {
   const [category, setCategory] =
     useState<(typeof categories)[number]['id']>('editor')
@@ -49,6 +51,7 @@ export function SettingsScreen({
       inert={!open}
     >
       <Sidebar
+        resize={resize}
         className="settings-sidebar"
         items={categories}
         selected={category}

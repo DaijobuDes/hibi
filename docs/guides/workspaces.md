@@ -15,3 +15,7 @@ with navigation visible, window controls sit over the sidebar and document contr
 the sidebar paints one continuous surface behind the window controls, so its top and body move together when opening and closing.
 
 document content moves with the sidebar in the editor and exported site. it resizes once per toggle, then animates horizontally without rewrapping each frame. narrow exported pages keep the sidebar above the document.
+
+drag the sidebar's right edge to resize it. the desktop app shares the chosen width between workspace and settings; exported sites remember their own width in browser storage. widths range from 152 to 480 pixels, limited by available window space. resizing still works when browser storage is unavailable.
+
+focus the resize edge and use left/right arrows (8 pixels, or 24 with shift), home/end for the limits, and enter to reset. double-click also restores the default width; escape cancels an active drag.

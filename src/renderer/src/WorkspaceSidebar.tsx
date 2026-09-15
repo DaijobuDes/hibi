@@ -1,7 +1,7 @@
 import { FileText, Folder, FolderOpen, RefreshCw } from 'lucide-react'
 import { useMemo } from 'react'
 import type { WorkspaceEntry, WorkspaceState } from '../../shared/workspace'
-import { Sidebar, type SidebarItem } from '../../ui/Sidebar'
+import { Sidebar, type SidebarItem, type SidebarProps } from '../../ui/Sidebar'
 import type { RegisteredCommand } from './addons'
 
 export function WorkspaceSidebar({
@@ -11,6 +11,7 @@ export function WorkspaceSidebar({
   onRefresh,
   commands,
   open,
+  resize,
 }: {
   workspace: WorkspaceState | null
   onOpen: () => void
@@ -18,6 +19,7 @@ export function WorkspaceSidebar({
   onRefresh: () => void
   commands: RegisteredCommand[]
   open: boolean
+  resize: NonNullable<SidebarProps['resize']>
 }) {
   const items = useMemo(() => {
     const convert = (entries: WorkspaceEntry[]): SidebarItem[] =>
@@ -31,6 +33,7 @@ export function WorkspaceSidebar({
   }, [workspace?.entries])
   return (
     <Sidebar
+      resize={resize}
       open={open}
       className="workspace-sidebar"
       items={items}

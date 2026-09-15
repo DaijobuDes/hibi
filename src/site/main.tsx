@@ -2,7 +2,7 @@ import DOMPurify from 'dompurify'
 import { FileText, Folder, PanelLeft, Search } from 'lucide-react'
 import { marked } from 'marked'
 import MiniSearch from 'minisearch'
-import { useEffect, useMemo, useState } from 'react'
+import { type CSSProperties, useEffect, useMemo, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import {
   CommandPalette,
@@ -10,6 +10,7 @@ import {
 } from '../renderer/src/CommandPalette'
 import type { WorkspaceSnapshot } from '../shared/workspace'
 import { Sidebar, type SidebarItem } from '../ui/Sidebar'
+import { useSidebarResize } from '../ui/useSidebarResize'
 import './site.css'
 
 const workspace = JSON.parse(
@@ -189,6 +190,7 @@ function DocumentationSite() {
   const [current, setCurrent] = useState(route)
   const [palette, setPalette] = useState(false)
   const [sidebar, setSidebar] = useState(() => innerWidth > 700)
+  const sidebarResize = useSidebarResize(240)
   const page = byPath.get(current.path)
   const html = useMemo(
     () => (page ? renderMarkdown(page.path, page.markdown) : ''),
@@ -225,7 +227,11 @@ function DocumentationSite() {
     },
   })
   return (
-    <div className="documentation-site" data-sidebar={sidebar}>
+    <div
+      className="documentation-site"
+      data-sidebar={sidebar}
+      style={{ '--sidebar-width': `${sidebarResize.width}px` } as CSSProperties}
+    >
       <header className="site-header">
         <button
           type="button"
@@ -249,6 +255,7 @@ function DocumentationSite() {
       </header>
       <div className="site-layout">
         <Sidebar
+          resize={sidebarResize}
           open={sidebar}
           items={navigation}
           selected={current.path}

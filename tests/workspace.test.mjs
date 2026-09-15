@@ -12,6 +12,7 @@ import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { _electron as electron } from 'playwright'
 import { pressShortcut } from './keyboard.mjs'
+import { checkSidebarResize } from './sidebar-resize.mjs'
 
 test('nested workspace editing, addon lifecycle, and offline static export', {
   timeout: 60000,
@@ -289,6 +290,7 @@ test('nested workspace editing, addon lifecycle, and offline static export', {
     }
   }
   await site.setViewportSize({ width: 1000, height: 760 })
+  await checkSidebarResize(site, 240, '.site-content', () => site.reload())
   assert.equal(await site.evaluate(() => window.compromised), undefined)
   assert.equal(await site.locator('article img').getAttribute('src'), null)
   assert.equal(

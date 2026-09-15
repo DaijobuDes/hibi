@@ -50,6 +50,8 @@ see [the documentation addon](../../src/addons/documentation/README.md) for the 
 
 import `Sidebar` from the UI SDK at `src/addons/ui.ts`. it supports nested tree navigation or a flat tab list, optional headers/footers, keyboard focus, and a sliding selected background. hibi settings, the workspace picker, and exported documentation use this same implementation.
 
+the optional `resize` prop adds the shared pointer and keyboard resize handle. pass the current width, maximum width, change callback, and reset callback, and apply that width to `--sidebar-width` on the containing layout. core desktop and static-site layouts share the internal `useSidebarResize` controller for clamping and local persistence.
+
 ## compatibility
 
 the public API is version 1. manifests declare `apiVersion`; incompatible manifests are rejected. preserve existing signatures when adding capabilities. breaking changes require an API version bump, addon migration, and documentation updates.

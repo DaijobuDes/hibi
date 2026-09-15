@@ -36,7 +36,6 @@
   font: inherit;
 }
 .site-layout {
-  --sidebar-width: 240px;
   display: flex;
   flex: 1;
   min-height: 0;

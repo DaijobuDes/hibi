@@ -2,6 +2,7 @@
 import { ChevronRight, type LucideIcon } from 'lucide-react'
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import './sidebar.css'
+import { MIN_SIDEBAR_WIDTH } from './useSidebarResize'
 
 export type SidebarItem = {
   id: string
@@ -22,6 +23,12 @@ export type SidebarProps = {
   header?: ReactNode
   footer?: ReactNode
   empty?: ReactNode
+  resize?: {
+    width: number
+    maxWidth: number
+    onChange: (width: number) => void
+    onReset: () => void
+  }
 }
 
 export function Sidebar({
@@ -37,7 +44,12 @@ export function Sidebar({
   header,
   footer,
   empty,
+  resize,
 }: SidebarProps) {
+  const drag = useRef<{ x: number; width: number; pointer: number } | null>(
+    null,
+  )
+  const [dragging, setDragging] = useState(false)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [focused, setFocused] = useState<string | null>(null)
   const buttons = useRef(new Map<string, HTMLButtonElement>())
@@ -217,6 +229,79 @@ export function Sidebar({
           )}
         </div>
         {footer && <div className="sidebar-footer">{footer}</div>}
+        {resize && (
+          <hr
+            className="sidebar-resizer"
+            data-dragging={dragging}
+            aria-label="resize sidebar"
+            aria-orientation="vertical"
+            aria-valuemin={MIN_SIDEBAR_WIDTH}
+            aria-valuemax={resize.maxWidth}
+            aria-valuenow={resize.width}
+            tabIndex={0}
+            title="drag to resize; double-click to reset"
+            onDoubleClick={resize.onReset}
+            onPointerDown={(event) => {
+              if (event.button !== 0 || !event.isPrimary) return
+              event.preventDefault()
+              event.currentTarget.focus()
+              event.currentTarget.setPointerCapture(event.pointerId)
+              drag.current = {
+                x: event.clientX,
+                width: resize.width,
+                pointer: event.pointerId,
+              }
+              setDragging(true)
+            }}
+            onPointerMove={(event) => {
+              if (drag.current?.pointer === event.pointerId)
+                resize.onChange(
+                  drag.current.width + event.clientX - drag.current.x,
+                )
+            }}
+            onPointerUp={(event) => {
+              event.currentTarget.releasePointerCapture(event.pointerId)
+            }}
+            onPointerCancel={() => {
+              if (drag.current) resize.onChange(drag.current.width)
+            }}
+            onLostPointerCapture={() => {
+              drag.current = null
+              setDragging(false)
+            }}
+            onKeyDown={(event) => {
+              const step = event.shiftKey ? 24 : 8
+              switch (event.key) {
+                case 'ArrowLeft':
+                  resize.onChange(resize.width - step)
+                  break
+                case 'ArrowRight':
+                  resize.onChange(resize.width + step)
+                  break
+                case 'Home':
+                  resize.onChange(MIN_SIDEBAR_WIDTH)
+                  break
+                case 'End':
+                  resize.onChange(resize.maxWidth)
+                  break
+                case 'Enter':
+                  resize.onReset()
+                  break
+                case 'Escape':
+                  if (!drag.current) return
+                  resize.onChange(drag.current.width)
+                  event.currentTarget.releasePointerCapture(
+                    drag.current.pointer,
+                  )
+                  break
+                default:
+                  return
+              }
+              event.preventDefault()
+              event.stopPropagation()
+            }}
+          />
+        )}
       </aside>
     </div>
   )

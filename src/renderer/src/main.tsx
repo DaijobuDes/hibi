@@ -1,5 +1,6 @@
 import {
   Component,
+  type CSSProperties,
   type ErrorInfo,
   type ReactNode,
   StrictMode,
@@ -23,6 +24,7 @@ import {
 } from '../../shared/hotkeys'
 import './styles.css'
 import type { WorkspaceState } from '../../shared/workspace'
+import { useSidebarResize } from '../../ui/useSidebarResize'
 import { useAddons } from './addons'
 import { CommandPalette, type PaletteCommand } from './CommandPalette'
 import { MarkdownEditor, type ViewMode } from './Editor'
@@ -79,6 +81,7 @@ function App() {
   const [sidebarOpen, setSidebarOpen] = useState(
     () => localStorage.getItem('sidebar-open') !== 'false',
   )
+  const sidebarResize = useSidebarResize(196)
   const [notice, setNotice] = useState('')
   const addonHost = useAddons({
     workspace: {
@@ -384,6 +387,7 @@ function App() {
   return (
     <div
       className="app"
+      style={{ '--sidebar-width': `${sidebarResize.width}px` } as CSSProperties}
       data-platform={info?.platform}
       data-screen={settingsOpen ? 'settings' : 'editor'}
       data-typing={typing}
@@ -468,6 +472,7 @@ function App() {
         </div>
       )}
       <WorkspaceSidebar
+        resize={sidebarResize}
         open={sidebarOpen && !settingsOpen}
         workspace={workspace}
         onOpen={() => void openFolder()}
@@ -476,6 +481,7 @@ function App() {
         commands={addonHost.commands}
       />
       <SettingsScreen
+        resize={sidebarResize}
         addonStates={addonHost.states}
         onAddonEnabled={addonHost.setEnabled}
         open={settingsOpen}

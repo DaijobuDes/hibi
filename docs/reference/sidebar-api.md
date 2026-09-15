@@ -22,5 +22,11 @@ export type SidebarProps = {
   header?: ReactNode
   footer?: ReactNode
   empty?: ReactNode
+  resize?: {
+    width: number
+    maxWidth: number
+    onChange: (width: number) => void
+    onReset: () => void
+  }
 }
 ```
