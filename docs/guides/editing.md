@@ -1,5 +1,7 @@
 # editing
 
+success and error notifications appear at the bottom right without moving your document. use the close button to dismiss them.
+
 start typing in a blank document. normal view is the rich-text editor; side-by-side puts markdown on the left and rich text on the right; markdown-only edits the original source. the title bar provides file and view controls. its center opens the command palette, with draggable space around the filename.
 
 panes slide at fixed text widths. a pane that shrinks reflows once at the end. the markdown engine prepares during idle time and waits for its font and layout before appearing. reduced-motion preferences disable animations.

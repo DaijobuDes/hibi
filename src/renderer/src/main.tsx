@@ -1,3 +1,4 @@
+import { X } from 'lucide-react'
 import {
   Component,
   type CSSProperties,
@@ -454,23 +455,38 @@ function App() {
           onClose={() => setPaletteOpen(false)}
         />
       )}
-      {error && (
-        <div className="error-message" role="alert">
-          {error}
+      <div className="notification-stack">
+        <div
+          className="notification error-message"
+          role="alert"
+          hidden={!error}
+          inert={!error}
+        >
+          <span>{error}</span>
+          <button
+            type="button"
+            aria-label="dismiss error"
+            onClick={() => setError('')}
+          >
+            <X size={15} aria-hidden="true" />
+          </button>
         </div>
-      )}
-      {notice && (
-        <div className="notice-message" role="status">
+        <div
+          className="notification notice-message"
+          role="status"
+          hidden={!notice}
+          inert={!notice}
+        >
           <span>{notice}</span>
           <button
             type="button"
             aria-label="dismiss notice"
             onClick={() => setNotice('')}
           >
-            close
+            <X size={15} aria-hidden="true" />
           </button>
         </div>
-      )}
+      </div>
       <WorkspaceSidebar
         resize={sidebarResize}
         open={sidebarOpen && !settingsOpen}

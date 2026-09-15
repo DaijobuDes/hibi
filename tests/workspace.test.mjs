@@ -196,6 +196,39 @@ test('nested workspace editing, addon lifecycle, and offline static export', {
     .getByRole('status')
     .filter({ hasText: 'exported 2 pages' })
     .waitFor()
+  for (const kind of ['notice', 'error']) {
+    if (kind === 'error') {
+      await app.evaluate(({ dialog }) => {
+        dialog.showOpenDialog = async () => {
+          throw new Error('could not open example file')
+        }
+      })
+      await page.getByRole('button', { name: 'open', exact: true }).click()
+    }
+    await page.waitForFunction((kind) => {
+      const notice = document
+        .querySelector(`.${kind}-message`)
+        .getBoundingClientRect()
+      return Math.abs(notice.bottom - innerHeight + 16) < 1
+    }, kind)
+    const geometry = await page.evaluate(
+      (kind) => ({
+        right:
+          innerWidth -
+          document.querySelector(`.${kind}-message`).getBoundingClientRect()
+            .right,
+        editorTop: document
+          .querySelector('.editor-surface')
+          .getBoundingClientRect().top,
+      }),
+      kind,
+    )
+    assert.equal(geometry.right, 16)
+    assert.equal(geometry.editorTop, 36)
+    await page
+      .getByRole('button', { name: `dismiss ${kind}`, exact: true })
+      .click()
+  }
   const html = await readFile(output, 'utf8')
   assert.ok(!html.includes('outside-secret') && !html.includes('hidden-secret'))
   assert.ok(

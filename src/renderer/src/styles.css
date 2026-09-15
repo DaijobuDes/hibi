@@ -236,12 +236,6 @@ button:disabled {
   color: var(--muted);
   border-bottom: 1px solid var(--border);
 }
-.error-message {
-  padding: 8px 24px;
-  font-size: 12px;
-  color: var(--ink);
-  background: var(--surface);
-}
 .editor-surface {
   isolation: isolate;
   width: 100%;
@@ -289,20 +283,55 @@ button:disabled {
   width: calc(100% - var(--sidebar-width));
   transform: translateX(var(--sidebar-width));
 }
-.notice-message {
+.notification-stack {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 4;
   display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 24px;
-  font-size: 12px;
+  flex-direction: column;
+  gap: 8px;
+  width: min(360px, calc(100vw - 32px));
+  max-height: calc(100svh - 32px);
+  overflow: auto;
+  pointer-events: none;
 }
-.notice-message span {
+.notification {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  flex-shrink: 0;
+  padding: 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  pointer-events: auto;
+  transition:
+    opacity 160ms ease-out,
+    display 160ms allow-discrete;
+}
+.notification[hidden] {
+  display: none;
+  opacity: 0;
+  pointer-events: none;
+}
+@starting-style {
+  .notification {
+    opacity: 0;
+  }
+}
+.notification span {
   flex: 1;
+  min-width: 0;
   overflow-wrap: anywhere;
 }
-.app[data-sidebar="true"] .notice-message,
-.app[data-sidebar="true"] .error-message {
-  padding-left: calc(var(--sidebar-width) + 24px);
+.notification button {
+  display: flex;
+  padding: 2px;
+  flex-shrink: 0;
 }
 .settings-content {
   flex: 1;
@@ -1001,6 +1030,7 @@ summary {
   }
 }
 @media (prefers-reduced-motion: reduce) {
+  .notification,
   .sidebar-toolbar,
   .settings-screen,
   .editor-surface,
