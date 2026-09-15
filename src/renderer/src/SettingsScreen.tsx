@@ -1,9 +1,9 @@
 import { FileText, Info, Keyboard, PanelTop, Puzzle } from 'lucide-react'
-import { useState } from 'react'
-import type { AddonState } from '../../addons/api'
+import { Component, type ReactNode, useState } from 'react'
+import type { AddonManifest, AddonState } from '../../addons/api'
 import type { AppInfo } from '../../shared/desktop'
 import type { Hotkeys } from '../../shared/hotkeys'
-import { SettingRow, Toggle } from '../../ui/Controls'
+import { Button, Select, SettingRow, Toggle } from '../../ui/Controls'
 import { Sidebar, type SidebarProps } from '../../ui/Sidebar'
 import { addons } from './addons'
 import type { CursorSettings } from './EditorCursor'
@@ -16,6 +16,46 @@ const categories = [
   { id: 'addons', label: 'addons', icon: Puzzle },
   { id: 'about', label: 'about hibi', icon: Info },
 ] as const
+
+function AddonMetadata({ manifest }: { manifest: AddonManifest }) {
+  if (!manifest.version && !manifest.authors?.length) return null
+  return (
+    <span className="addon-metadata">
+      {manifest.version && <span>v{manifest.version}</span>}
+      {manifest.authors?.map((author) => (
+        <span
+          key={author.discordId}
+          title={`discord: ${author.discordId}`}
+          data-discord-id={author.discordId}
+        >
+          {author.displayName}
+        </span>
+      ))}
+    </span>
+  )
+}
+
+class PluginSettingsBoundary extends Component<
+  { children: ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false }
+  static getDerivedStateFromError() {
+    return { failed: true }
+  }
+  render() {
+    return this.state.failed ? (
+      <p role="alert">
+        these plugin settings could not load.{' '}
+        <button type="button" onClick={() => this.setState({ failed: false })}>
+          retry
+        </button>
+      </p>
+    ) : (
+      this.props.children
+    )
+  }
+}
 
 export function SettingsScreen({
   open,
@@ -50,8 +90,26 @@ export function SettingsScreen({
   showLineNumbers: boolean
   onShowLineNumbers: (show: boolean) => void
 }) {
-  const [category, setCategory] =
-    useState<(typeof categories)[number]['id']>('editor')
+  const [selected, setCategory] = useState('editor')
+  const pluginPages = addons.filter(
+    (addon) =>
+      addon.Settings &&
+      addonStates.some(
+        (state) => state.id === addon.manifest.id && state.enabled,
+      ),
+  )
+  const items = [
+    ...categories,
+    ...pluginPages.map(({ manifest }, index) => ({
+      id: `plugin-${manifest.id}`,
+      label: manifest.name,
+      icon: Puzzle,
+      ...(index === 0 ? { section: 'plugins' } : {}),
+    })),
+  ]
+  const category = items.some((item) => item.id === selected)
+    ? selected
+    : 'editor'
 
   return (
     <main
@@ -63,13 +121,21 @@ export function SettingsScreen({
       <Sidebar
         resize={resize}
         className="settings-sidebar"
-        items={categories}
+        items={items}
         selected={category}
-        onSelect={(id) => setCategory(id as typeof category)}
+        onSelect={setCategory}
         label="settings categories"
         mode="tabs"
         idPrefix="category"
         panelPrefix="settings-"
+        footer={
+          info && (
+            <div className="settings-versions">
+              <span>hibi {info.version}</span>
+              <span>electron {info.electron}</span>
+            </div>
+          )
+        }
       />
       <div className="settings-content">
         <section
@@ -99,13 +165,9 @@ export function SettingsScreen({
                   />
                   <output htmlFor="editor-padding">{padding} px</output>
                 </div>
-                <button
-                  type="button"
-                  className="setting-reset"
-                  onClick={() => onPadding(48)}
-                >
+                <Button type="button" onClick={() => onPadding(48)}>
                   reset to 48 px
-                </button>
+                </Button>
               </div>
             </SettingRow>
             <SettingRow
@@ -170,7 +232,7 @@ export function SettingsScreen({
                 label={label}
                 description={description}
               >
-                <select
+                <Select
                   id={`cursor-${key}`}
                   aria-describedby={`cursor-${key}-description`}
                   value={cursorSettings[key]}
@@ -186,7 +248,7 @@ export function SettingsScreen({
                       {text}
                     </option>
                   ))}
-                </select>
+                </Select>
               </SettingRow>
             ))}
           </div>
@@ -229,18 +291,6 @@ export function SettingsScreen({
         >
           <h1>hibi</h1>
           <p className="about-description">a quiet place to write markdown.</p>
-          {info && (
-            <dl className="settings-group app-details">
-              <div className="setting-row">
-                <dt>version</dt>
-                <dd>{info.version}</dd>
-              </div>
-              <div className="setting-row">
-                <dt>electron</dt>
-                <dd>{info.electron}</dd>
-              </div>
-            </dl>
-          )}
         </section>
         <section
           id="settings-addons"
@@ -255,7 +305,12 @@ export function SettingsScreen({
                 key={manifest.id}
                 id={`addon-${manifest.id}`}
                 label={manifest.name}
-                description={manifest.description}
+                description={
+                  <>
+                    {manifest.description}
+                    <AddonMetadata manifest={manifest} />
+                  </>
+                }
               >
                 <Toggle
                   id={`addon-${manifest.id}`}
@@ -271,6 +326,26 @@ export function SettingsScreen({
             ))}
           </div>
         </section>
+        {pluginPages.map(({ manifest, Settings }) => (
+          <section
+            key={manifest.id}
+            id={`settings-plugin-${manifest.id}`}
+            role="tabpanel"
+            aria-labelledby={`category-plugin-${manifest.id}`}
+            hidden={category !== `plugin-${manifest.id}`}
+          >
+            <h1>{manifest.name}</h1>
+            <p className="plugin-description">
+              {manifest.description}
+              <AddonMetadata manifest={manifest} />
+            </p>
+            {open && category === `plugin-${manifest.id}` && Settings && (
+              <PluginSettingsBoundary key={manifest.id}>
+                <Settings />
+              </PluginSettingsBoundary>
+            )}
+          </section>
+        ))}
       </div>
     </main>
   )

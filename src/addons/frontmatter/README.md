@@ -6,8 +6,10 @@ normal and split views show a collapsible properties editor above the body. text
 
 properties use compact in-page rows: type icons and names on the left, inline values on the right, and quiet hover/focus actions. simple lists display as tags. **add property** opens a name and type row. collapsed properties animate without changing their values.
 
-use **add frontmatter** in the command palette to create properties on a note without metadata. it preserves the body and refuses to overwrite an unclosed frontmatter block.
+use **add frontmatter** in the command palette to create properties on a note without metadata. it inserts an explicit empty mapping (`{}`) and preserves the existing body. recognition requires a closed YAML mapping: a leading `---`, ordinary dividers, empty divider pairs, and unfinished blocks remain regular Markdown.
 
 body edits retain metadata verbatim. field edits use the [yaml document API](https://eemeli.org/yaml/#documents) to preserve comments, value types, nested structures, and anchors. formatting inside metadata may normalize after field edits; document delimiters, line endings, surrounding spacing, and body content stay intact. invalid YAML stays untouched until explicitly repaired in the yaml editor.
 
-the addon registers a markdown projection and optional `Editor` component through `context.editor.registerMarkdown`. its command uses `context.editor.updateMarkdown`. disabling the addon removes its UI and command, preserves the document, and leaves metadata-bearing files editable in markdown view. unsupported or unclosed blocks retain the core's source-only editing protection.
+the addon registers a markdown projection and optional `Editor` component through `context.editor.registerMarkdown`. its command uses `context.editor.updateMarkdown`. disabling the addon removes its UI and command, preserves the document, and leaves recognized metadata-bearing files editable in markdown view.
+
+settings → plugins → frontmatter controls whether properties open expanded for new editor sessions. version and author credits appear under settings → addons.

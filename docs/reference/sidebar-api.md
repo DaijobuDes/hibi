@@ -8,6 +8,8 @@ export type SidebarItem = {
   label: string
   icon?: LucideIcon
   children?: SidebarItem[]
+  /** Optional section label immediately before this row. */
+  section?: string
 }
 export type SidebarProps = {
   items: readonly SidebarItem[]

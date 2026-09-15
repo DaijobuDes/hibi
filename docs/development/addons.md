@@ -17,6 +17,30 @@ vite discovers these folders. add files and rebuild, or use `npm start` while de
 
 ## renderer entry
 
+manifests may include a plugin `version` and `authors`, an array of `{ discordId, displayName }` records. bundled plugins share entries from `src/addons/authors.ts`. these fields are optional for older API v1 addons; new plugins should supply both. settings → addons shows version and display names, with Discord IDs in author tooltips.
+
+an addon may export a `Settings` React component alongside `manifest` and `start`. enabled plugins with that component get a page under the sidebar's **plugins** section. the entire section disappears when none are available. the host supplies the page heading and metadata; use shared `SettingRow`, `Toggle`, `Button`, and `Select` components for its content. a settings component is mounted only while its page is open. plugin settings failures are isolated from the editor.
+
+`context.editor.registerSource({ id, create })` installs a CodeMirror extension in each source editor. `create` may return a promise for a lazy import. keep its resources scoped to the editor lifecycle; registrations disappear when the addon stops. reconfiguration preserves document content and history. `context.editor.runCommand(command)` runs hibi's normal file flow and resolves to `false` on cancellation or failure. the vim addon demonstrates both APIs.
+
+## status pills
+
+`context.statusBar.register({ id, label, tooltip?, when?, onClick? })` adds a bottom-left status pill and returns `update(changes)` and `dispose()`. use a local unique id; the host prefixes it with the addon id. `when: 'source'` limits the pill to markdown and split views. an empty label hides it, and an empty status bar takes no space. settings hides editor status pills. labels are plain text; an optional click handler makes a pill a button.
+
+```typescript
+const mode = context.statusBar.register({
+  id: 'mode',
+  label: 'vim · normal',
+  tooltip: 'vim mode in the markdown pane',
+  when: 'source',
+})
+mode.update({ label: 'vim · insert' })
+// Dispose when the owning editor view closes; addon shutdown also removes it.
+mode.dispose()
+```
+
+updates after disposal are ignored. status click failures use the host's error notification. the vim addon owns one pill per source editor and updates it on mode changes.
+
 ```typescript
 import { defineAddon } from '../api'
 import manifest from './manifest'

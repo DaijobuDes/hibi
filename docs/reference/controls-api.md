@@ -1,3 +1,8 @@
+# shared controls
+
+generated from `src/ui/Controls.tsx`. update the source, then run `npm run docs`. `npm run docs:check` rejects stale references.
+
+```tsx
 import { ChevronDown } from 'lucide-react'
 import type { ComponentProps, ReactNode } from 'react'
 
@@ -52,3 +57,4 @@ export function SettingRow({
     </div>
   )
 }
+```

@@ -20,6 +20,7 @@ import {
 import { EditorView, keymap, lineNumbers, placeholder } from '@codemirror/view'
 import { tags } from '@lezer/highlight'
 import { useEffect, useRef } from 'react'
+import type { SourceExtension } from '../../addons/api'
 import type { FindMove, FindStatus } from './FindBar'
 
 const externalChange = Annotation.define<boolean>()
@@ -47,6 +48,7 @@ export function SourceEditor({
   findMove,
   onFindStatus,
   showLineNumbers,
+  sourceExtensions,
 }: {
   active: boolean
   onReady: () => void
@@ -59,6 +61,7 @@ export function SourceEditor({
   findMove: FindMove
   onFindStatus: (status: FindStatus) => void
   showLineNumbers: boolean
+  sourceExtensions: readonly SourceExtension[]
 }) {
   const host = useRef<HTMLDivElement>(null)
   const view = useRef<EditorView | null>(null)
@@ -67,6 +70,7 @@ export function SourceEditor({
   const appliedRevision = useRef(externalRevision)
   const editable = useRef(new Compartment())
   const numbers = useRef(new Compartment())
+  const addons = useRef(new Compartment())
   const find = useRef({ active: findActive, report: onFindStatus })
   const handledFindMove = useRef(findMove.id)
   const ready = useRef(onReady)
@@ -81,6 +85,7 @@ export function SourceEditor({
       state: EditorState.create({
         doc: initialValue.current,
         extensions: [
+          addons.current.of([]),
           search({
             createPanel: () => {
               const dom = window.document.createElement('div')
@@ -152,6 +157,20 @@ export function SourceEditor({
   }, [])
 
   useEffect(() => {
+    let canceled = false
+    const editor = view.current
+    void Promise.all(
+      sourceExtensions.map((extension) => extension.create()),
+    ).then((extensions) => {
+      if (!canceled && editor)
+        editor.dispatch({ effects: addons.current.reconfigure(extensions) })
+    })
+    return () => {
+      canceled = true
+    }
+  }, [sourceExtensions])
+
+  useEffect(() => {
     // Only reconcile edits from the other pane; never replay our own stale props.
     if (!active || appliedRevision.current === externalRevision) return
     appliedRevision.current = externalRevision
@@ -169,7 +188,10 @@ export function SourceEditor({
 
   useEffect(() => {
     view.current?.dispatch({
-      effects: editable.current.reconfigure(EditorView.editable.of(!disabled)),
+      effects: editable.current.reconfigure([
+        EditorView.editable.of(!disabled),
+        EditorState.readOnly.of(disabled),
+      ]),
     })
   }, [disabled])
 

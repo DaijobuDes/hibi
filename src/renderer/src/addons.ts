@@ -6,6 +6,8 @@ import {
   type AddonContext,
   type AddonState,
   type MarkdownExtension,
+  type SourceExtension,
+  type StatusItem,
 } from '../../addons/api'
 
 export const addons = Object.values(
@@ -15,10 +17,14 @@ export const addons = Object.values(
   ),
 )
 export type RegisteredCommand = AddonCommand & { addonId: string }
-type Environment = Omit<AddonContext, 'commands' | 'native' | 'editor'> & {
+type Environment = Omit<
+  AddonContext,
+  'commands' | 'native' | 'editor' | 'statusBar'
+> & {
   invoke: (id: string, method: string, input?: unknown) => Promise<unknown>
   error: (error: unknown) => void
   updateMarkdown: AddonContext['editor']['updateMarkdown']
+  runCommand: AddonContext['editor']['runCommand']
 }
 
 export function useAddons(environment: Environment) {
@@ -26,6 +32,10 @@ export function useAddons(environment: Environment) {
   latest.current = environment
   const [states, setStates] = useState<AddonState[]>([])
   const [commands, setCommands] = useState<RegisteredCommand[]>([])
+  const status = useRef(
+    new Map<string, StatusItem & { addonId: string }>(),
+  ).current
+  const [statusItems, setStatusItems] = useState<StatusItem[]>([])
   const registered = useRef(new Map<string, RegisteredCommand>()).current
   const extensions = useRef(
     new Map<string, MarkdownExtension & { addonId: string }>(),
@@ -33,6 +43,21 @@ export function useAddons(environment: Environment) {
   const [markdownExtensions, setMarkdownExtensions] = useState<
     MarkdownExtension[]
   >([])
+  const sources = useRef(
+    new Map<string, SourceExtension & { addonId: string }>(),
+  ).current
+  const [sourceExtensions, setSourceExtensions] = useState<SourceExtension[]>(
+    [],
+  )
+  const publishSources = useCallback(() => {
+    setSourceExtensions((current) => {
+      const next = [...sources.values()]
+      return current.length === next.length &&
+        current.every((entry, index) => entry === next[index])
+        ? current
+        : next
+    })
+  }, [sources])
   const publishExtensions = useCallback(() => {
     setMarkdownExtensions((current) => {
       const next = [...extensions.values()]
@@ -82,7 +107,13 @@ export function useAddons(environment: Environment) {
           if (command.addonId === id) registered.delete(key)
         for (const [key, extension] of extensions)
           if (extension.addonId === id) extensions.delete(key)
+        for (const [key, extension] of sources)
+          if (extension.addonId === id) sources.delete(key)
+        for (const [key, item] of status)
+          if (item.addonId === id) status.delete(key)
+        if (mounted.current) setStatusItems([...status.values()])
         if (mounted.current) publishExtensions()
+        if (mounted.current) publishSources()
         try {
           addon.stop?.()
         } catch (error) {
@@ -94,7 +125,87 @@ export function useAddons(environment: Environment) {
           throw new Error(`incompatible addon: ${id}`)
         running.set(id, { addon, stop })
         addon.start({
+          statusBar: {
+            register(initial) {
+              if (disposed) return { update() {}, dispose() {} }
+              const key = `${id}.${initial.id}`
+              if (!/^[a-z][a-z0-9-]*$/.test(initial.id) || status.has(key))
+                throw new Error(`duplicate or invalid status item: ${key}`)
+              let active = true
+              let item = initial
+              const publish = () => {
+                status.set(key, {
+                  ...item,
+                  id: key,
+                  addonId: id,
+                  ...(item.onClick
+                    ? {
+                        onClick: async () => {
+                          if (!active || disposed) return
+                          try {
+                            await item.onClick?.()
+                          } catch (error) {
+                            latest.current.error(error)
+                          }
+                        },
+                      }
+                    : {}),
+                })
+                if (mounted.current) setStatusItems([...status.values()])
+              }
+              publish()
+              return {
+                update(changes) {
+                  if (
+                    !active ||
+                    disposed ||
+                    Object.entries(changes).every(
+                      ([key, value]) => item[key as keyof StatusItem] === value,
+                    )
+                  )
+                    return
+                  item = { ...item, ...changes }
+                  publish()
+                },
+                dispose() {
+                  if (!active || disposed) return
+                  active = false
+                  status.delete(key)
+                  if (mounted.current) setStatusItems([...status.values()])
+                },
+              }
+            },
+          },
           editor: {
+            runCommand: (command) =>
+              disposed
+                ? Promise.resolve(false)
+                : latest.current.runCommand(command),
+            registerSource(extension) {
+              if (disposed) return () => {}
+              const key = `${id}.${extension.id}`
+              if (!/^[a-z][a-z0-9-]*$/.test(extension.id) || sources.has(key))
+                throw new Error(`duplicate or invalid source extension: ${key}`)
+              sources.set(key, {
+                id: key,
+                addonId: id,
+                async create() {
+                  if (disposed) return []
+                  try {
+                    const result = await extension.create()
+                    return disposed ? [] : result
+                  } catch (error) {
+                    latest.current.error(error)
+                    return []
+                  }
+                },
+              })
+              if (mounted.current) publishSources()
+              return () => {
+                sources.delete(key)
+                if (!disposed && mounted.current) publishSources()
+              }
+            },
             updateMarkdown(transform) {
               if (!disposed) latest.current.updateMarkdown(transform)
             },
@@ -177,7 +288,16 @@ export function useAddons(environment: Environment) {
       }
     }
     setCommands([...registered.values()])
-  }, [states, registered, running, extensions, publishExtensions])
+  }, [
+    states,
+    registered,
+    running,
+    extensions,
+    publishExtensions,
+    sources,
+    publishSources,
+    status,
+  ])
   async function setEnabled(id: string, enabled: boolean) {
     try {
       setStates(await window.hibi.setAddonEnabled(id, enabled))
@@ -185,5 +305,12 @@ export function useAddons(environment: Environment) {
       latest.current.error(error)
     }
   }
-  return { states, commands, markdownExtensions, setEnabled }
+  return {
+    states,
+    commands,
+    markdownExtensions,
+    sourceExtensions,
+    statusItems,
+    setEnabled,
+  }
 }

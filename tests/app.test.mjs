@@ -39,8 +39,8 @@ test('desktop launch, isolation, offline reload, and recovery', {
   await page.getByRole('button', { name: 'editor settings' }).click()
   await page.getByRole('tab', { name: 'about hibi' }).click()
   await page
-    .getByRole('tabpanel', { name: 'about hibi' })
-    .getByText('44.3.0', { exact: true })
+    .locator('.settings-sidebar .settings-versions')
+    .getByText('electron 44.3.0', { exact: true })
     .waitFor()
   await page.keyboard.press('Escape')
   assert.deepEqual(

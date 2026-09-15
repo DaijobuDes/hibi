@@ -67,8 +67,8 @@
   overflow-wrap: anywhere;
   padding: var(--space-1);
 }
-.frontmatter-field label svg,
-.frontmatter-add-trigger svg {
+.frontmatter-add-trigger svg,
+.frontmatter-field label svg {
   flex-shrink: 0;
   width: var(--icon-size);
   height: var(--icon-size);
@@ -76,7 +76,7 @@
 .frontmatter-toggle[aria-expanded="false"] svg {
   transform: rotate(-90deg);
 }
-.frontmatter :is(input:not([type="checkbox"]), textarea, select) {
+.frontmatter :is(input:not([type="checkbox"]), textarea) {
   min-width: 0;
   max-width: 100%;
   padding: var(--space-1) var(--space-2);
@@ -180,6 +180,7 @@
   }
 }
 .frontmatter-actions {
+  flex-wrap: wrap;
   justify-content: flex-end;
   margin-top: var(--space-2);
 }

@@ -27,6 +27,16 @@ test('frontmatter preserves raw metadata, spacing, and delimiter boundaries', ()
   )
   assert.equal(parseFrontmatter('paragraph\n---\ntitle: note\n---'), null)
   assert.equal(parseFrontmatter('---\nnot closed'), null)
+  for (const source of [
+    '---',
+    '---\n',
+    '---\n\n',
+    '---\n---\n',
+    '---\nparagraph\n---\nbody',
+    '---\ntitle: not closed',
+  ])
+    assert.equal(parseFrontmatter(source), null)
+  assert.ok(parseFrontmatter('---\n{}\n---\n'))
   assert.equal(
     replaceFrontmatter(`${prefix}original body`, 'title: changed\n'),
     '\uFEFF---  \r\ntitle: changed\r\n...\r\n\r\noriginal body',
@@ -186,7 +196,53 @@ test('frontmatter fields preserve comments, types, nested YAML and body edits', 
     .fill('add frontmatter')
   await page.getByRole('option').filter({ hasText: 'add frontmatter' }).click()
   await properties.waitFor()
-  assert.equal(await read(), '---\n---\n\n')
+  assert.equal(await read(), '---\n{}\n---\n\n')
+})
+
+test('typing a leading divider never activates frontmatter or disables editing', {
+  timeout: 30000,
+}, async (t) => {
+  const profile = await mkdtemp(join(tmpdir(), 'hibi-divider-'))
+  const app = await electron.launch({
+    args: [resolve('.'), `--user-data-dir=${profile}`],
+  })
+  t.after(async () => {
+    await app.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => ({ response: 1 })
+    })
+    await app.close()
+    await rm(profile, { recursive: true, force: true })
+  })
+  const page = await app.firstWindow()
+  const rich = page.getByRole('textbox', { name: 'document editor' })
+  await rich.waitFor()
+  await rich.pressSequentially('---')
+  await rich.press('Enter')
+  await rich.pressSequentially('keep writing')
+  assert.equal(await rich.getAttribute('contenteditable'), 'true')
+  assert.ok(
+    (await page.evaluate(() => window.hibi.getDocument())).markdown.includes(
+      'keep writing',
+    ),
+  )
+  assert.equal(await page.locator('.frontmatter').count(), 0)
+  for (const source of [
+    '---\n\n---\n\nbody',
+    '---\nplain paragraph\n---\n\nbody',
+    '---\ntitle: still typing',
+  ]) {
+    await page
+      .getByRole('button', { name: 'markdown only', exact: true })
+      .click()
+    await page.getByRole('textbox', { name: 'markdown editor' }).fill(source)
+    await page.getByRole('button', { name: 'normal', exact: true }).click()
+    assert.equal(await rich.getAttribute('contenteditable'), 'true')
+    assert.equal(await page.locator('.frontmatter').count(), 0)
+    assert.equal(
+      (await page.evaluate(() => window.hibi.getDocument())).markdown,
+      source,
+    )
+  }
 })
 
 test('frontmatter addon, inline rename, and centered workspace entry preserve documents', {

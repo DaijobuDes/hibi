@@ -27,7 +27,13 @@ group related rows on one surface with inset separators. each row puts its label
 - `Sidebar`: settings categories, workspace tree, and exported navigation share row height, selection motion, focus behavior, and resize controls.
 - `SettingRow`: padding, cursor, line-number, window, and addon settings share label/description layout and spacing.
 - `Toggle`: native checkbox semantics with one switch style for all settings.
+- `Button`: bordered text actions, including resets and apply/cancel actions.
+- `Select`: native keyboard/menu behavior with one shared chevron and spacing.
 - `IconButton`: file/view controls, find navigation, workspace actions, palette close, notification close, hotkey actions, and exported navigation share size, radius, and icon stroke.
 - `ShortcutKeys`: every visible shortcut uses the same formatter and keycap styles.
+
+sidebar items may introduce a section label. selection offsets include both row and section-height tokens, keeping plugin pages aligned while keyboard navigation skips the labels. app and Electron versions live as small text in the settings sidebar footer.
+
+plugin status items use one bottom-left pill style through `context.statusBar`. the bar appears only when visible items exist and reserves its own space below the editor and workspace sidebar.
 
 these components are exported from `src/addons/ui.ts`. use them for new UI instead of copying their markup. grouped panels, input/select controls, notifications, and focus/hover states use the same semantic token values. short file operations mark the toolbar busy without flashing its icons.

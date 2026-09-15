@@ -29,8 +29,11 @@ generated from `src/ui/tokens.css`. update the source, then run `npm run docs`. 
   --radius-control: 6px;
   --radius-popover: 10px;
   --radius-panel: 16px;
+  --radius-pill: 999px;
   --control-height: 28px;
+  --status-bar-height: 32px;
   --sidebar-row-height: 28px;
+  --sidebar-section-height: 36px;
   --icon-size: 16px;
   --key-height: 20px;
   --key-min-width: 20px;

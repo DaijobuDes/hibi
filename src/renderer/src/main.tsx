@@ -33,6 +33,7 @@ import { MarkdownEditor, type ViewMode } from './Editor'
 import { loadCursor } from './EditorCursor'
 import { LoadingScreen } from './LoadingScreen'
 import { SettingsScreen } from './SettingsScreen'
+import { StatusBar } from './StatusBar'
 import { Titlebar } from './Titlebar'
 import { WorkspaceSidebar } from './WorkspaceSidebar'
 
@@ -97,6 +98,7 @@ function App() {
   }, [cursorSettings])
   const [notice, setNotice] = useState('')
   const addonHost = useAddons({
+    runCommand: (command) => runCommand(command),
     updateMarkdown(transform) {
       if (busyRef.current || !document) throw new Error('the document is busy.')
       const markdown = transform(document.markdown)
@@ -231,7 +233,7 @@ function App() {
   }, [])
 
   const runCommand = useCallback(async (command: DocumentCommand) => {
-    if (busyRef.current) return
+    if (busyRef.current) return false
     busyRef.current = true
     setBusy(true)
     setError('')
@@ -247,12 +249,14 @@ function App() {
         if (command === 'new' || command === 'open') setSettingsOpen(false)
         setWorkspace(await window.hibi.getWorkspace())
       }
+      return Boolean(next)
     } catch (error) {
       setError(
         error instanceof Error
           ? error.message
           : 'could not complete file operation.',
       )
+      return false
     } finally {
       busyRef.current = false
       setBusy(false)
@@ -563,6 +567,7 @@ function App() {
       >
         {document && (
           <MarkdownEditor
+            sourceExtensions={addonHost.sourceExtensions}
             documentRevision={document.revision}
             showLineNumbers={showLineNumbers}
             cursorSettings={cursorSettings}
@@ -584,6 +589,14 @@ function App() {
             retry
           </button>
         </p>
+      )}
+      {!settingsOpen && (
+        <StatusBar
+          items={addonHost.statusItems.filter(
+            (item) =>
+              item.label && (item.when !== 'source' || mode !== 'normal'),
+          )}
+        />
       )}
     </div>
   )

@@ -8,7 +8,7 @@ import {
   shortcutError,
   shortcutFromEvent,
 } from '../../shared/hotkeys'
-import { IconButton } from '../../ui/Controls'
+import { Button, IconButton } from '../../ui/Controls'
 import { ShortcutKeys } from '../../ui/ShortcutKeys'
 
 export function HotkeySettings({
@@ -85,7 +85,7 @@ export function HotkeySettings({
           disabled={!!recording || saving}
           onChange={(event) => setQuery(event.target.value)}
         />
-        <button
+        <Button
           type="button"
           disabled={
             !!recording ||
@@ -95,7 +95,7 @@ export function HotkeySettings({
           onClick={() => void save(defaults)}
         >
           reset all
-        </button>
+        </Button>
       </div>
       <div className="settings-group hotkey-list">
         {actions

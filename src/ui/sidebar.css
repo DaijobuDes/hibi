@@ -66,6 +66,15 @@
   pointer-events: none;
   transition: transform var(--motion-selection) var(--ease-out);
 }
+.sidebar-section {
+  display: flex;
+  align-items: flex-end;
+  flex-shrink: 0;
+  height: var(--sidebar-section-height);
+  padding: 0 16px 6px;
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
 .sidebar-items button,
 .sidebar-items button:hover {
   position: relative;

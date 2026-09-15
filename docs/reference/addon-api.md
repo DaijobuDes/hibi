@@ -3,7 +3,9 @@
 generated from `src/addons/api.ts`. update the source, then run `npm run docs`. `npm run docs:check` rejects stale references.
 
 ```typescript
+import type { Extension } from '@codemirror/state'
 import type { ComponentType } from 'react'
+import type { DocumentCommand } from '../shared/desktop'
 import type { WorkspaceSnapshot, WorkspaceState } from '../shared/workspace'
 
 /** Increment when a public contract changes incompatibly. */
@@ -15,6 +17,30 @@ export type AddonManifest = {
   description: string
   apiVersion: typeof ADDON_API_VERSION
   defaultEnabled?: boolean
+  /** Plugin release version; optional for existing API v1 addons. */
+  version?: string
+  authors?: readonly AddonAuthor[]
+}
+
+export type AddonAuthor = { discordId: string; displayName: string }
+
+export type SourceExtension = {
+  id: string
+  /** Created per source editor; may lazy-load an editor integration. */
+  create: () => Extension | Promise<Extension>
+}
+
+export type StatusItem = {
+  id: string
+  label: string
+  tooltip?: string
+  /** Omit to show in every editor view. Empty labels hide the pill. */
+  when?: 'source'
+  onClick?: () => void | Promise<void>
+}
+export type StatusHandle = {
+  update: (changes: Partial<Omit<StatusItem, 'id'>>) => void
+  dispose: () => void
 }
 
 export type AddonCommand = {
@@ -49,8 +75,12 @@ export type MarkdownEditorProps = {
 }
 
 export type AddonContext = {
+  statusBar: { register: (item: StatusItem) => StatusHandle }
   editor: {
     registerMarkdown: (extension: MarkdownExtension) => () => void
+    registerSource: (extension: SourceExtension) => () => void
+    /** Uses the app's file dialogs, draft checks, and save handling. */
+    runCommand: (command: DocumentCommand) => Promise<boolean>
     /** Apply a synchronous source transform to the active note; throws while busy. */
     updateMarkdown: (transform: (source: string) => string) => void
   }
@@ -71,6 +101,8 @@ export type Addon = {
   manifest: AddonManifest
   start: (context: AddonContext) => void
   stop?: () => void
+  /** Optional settings content. The host supplies its heading and metadata. */
+  Settings?: ComponentType
 }
 
 /** Native modules are trusted application code, never loaded from a workspace. */

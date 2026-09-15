@@ -1,0 +1,19 @@
+.source-pane:has(.cm-vimMode) .editor-cursor {
+  display: none;
+}
+[data-vim-plugin] .cm-panels {
+  background: var(--background);
+  color: var(--muted);
+  border: 0;
+  font: var(--text-sm) var(--font-mono);
+}
+[data-vim-plugin] .cm-vim-panel {
+  border-top: 1px solid var(--border);
+  padding: 6px 12px;
+  background: var(--background);
+}
+[data-vim-plugin] .cm-vim-panel input {
+  font: inherit;
+  color: var(--ink);
+  background: transparent;
+}

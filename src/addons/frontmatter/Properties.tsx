@@ -12,8 +12,9 @@ import {
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { isMap, isScalar, isSeq, parseDocument } from 'yaml'
 import type { MarkdownEditorProps } from '../api'
-import { IconButton, Toggle } from '../ui'
+import { Button, IconButton, Select, Toggle } from '../ui'
 import { replaceFrontmatter, splitFrontmatter } from './markdown'
+import { propertiesExpanded } from './Settings'
 import './frontmatter.css'
 
 function NumberProperty({
@@ -61,7 +62,7 @@ export function Properties({ value, onChange, disabled }: MarkdownEditorProps) {
   const block = splitFrontmatter(value)
   const yaml = block?.yaml ?? ''
   const doc = useMemo(() => parseDocument(yaml, { intAsBigInt: true }), [yaml])
-  const [open, setOpen] = useState(true)
+  const [open, setOpen] = useState(propertiesExpanded)
   const [raw, setRaw] = useState(false)
   const [draft, setDraft] = useState('')
   const [draftBase, setDraftBase] = useState('')
@@ -148,15 +149,18 @@ export function Properties({ value, onChange, disabled }: MarkdownEditorProps) {
                 const parsed = parseDocument(draft, { intAsBigInt: true })
                 if (
                   parsed.errors.length ||
+                  (draft.trim() && !isMap(parsed.contents)) ||
                   /^(?:---|\.\.\.)[ \t]*$/m.test(draft)
                 ) {
                   setError(
                     parsed.errors[0]?.message ??
-                      'edit properties only; leave document delimiters out.',
+                      'frontmatter must be a key/value object, without document delimiters.',
                   )
                   return
                 }
-                onChange(replaceFrontmatter(value, draft))
+                onChange(
+                  replaceFrontmatter(value, draft.trim() ? draft : '{}\n'),
+                )
                 setRaw(false)
                 setError('')
               }}
@@ -170,7 +174,7 @@ export function Properties({ value, onChange, disabled }: MarkdownEditorProps) {
                 rows={Math.min(14, Math.max(4, draft.split('\n').length))}
               />
               <div className="frontmatter-actions">
-                <button
+                <Button
                   type="button"
                   onClick={() => {
                     setRaw(false)
@@ -178,10 +182,10 @@ export function Properties({ value, onChange, disabled }: MarkdownEditorProps) {
                   }}
                 >
                   cancel
-                </button>
-                <button type="submit" disabled={disabled || yaml !== draftBase}>
+                </Button>
+                <Button type="submit" disabled={disabled || yaml !== draftBase}>
                   apply yaml
-                </button>
+                </Button>
               </div>
               {yaml !== draftBase && (
                 <p role="alert">
@@ -343,7 +347,7 @@ export function Properties({ value, onChange, disabled }: MarkdownEditorProps) {
                     disabled={disabled}
                     onChange={(event) => setName(event.target.value)}
                   />
-                  <select
+                  <Select
                     aria-label="new property type"
                     value={kind}
                     disabled={disabled}
@@ -354,7 +358,7 @@ export function Properties({ value, onChange, disabled }: MarkdownEditorProps) {
                     <option value="boolean">boolean</option>
                     <option value="list">list</option>
                     <option value="object">object</option>
-                  </select>
+                  </Select>
                   <IconButton
                     type="submit"
                     aria-label="add property"

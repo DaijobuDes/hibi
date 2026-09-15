@@ -1,6 +1,13 @@
 /** biome-ignore-all lint/a11y/useAriaPropsSupportedByRole: both conditional tree/tab roles support the corresponding ARIA attributes. */
 import { ChevronRight, type LucideIcon } from 'lucide-react'
-import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  Fragment,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import './sidebar.css'
 import { MIN_SIDEBAR_WIDTH } from './useSidebarResize'
 
@@ -9,6 +16,8 @@ export type SidebarItem = {
   label: string
   icon?: LucideIcon
   children?: SidebarItem[]
+  /** Optional section label immediately before this row. */
+  section?: string
 }
 export type SidebarProps = {
   items: readonly SidebarItem[]
@@ -135,94 +144,101 @@ export function Sidebar({
                 className="sidebar-selection category-selection"
                 aria-hidden="true"
                 style={{
-                  transform: `translateY(calc(${active} * var(--sidebar-row-height)))`,
+                  transform: `translateY(calc(${active} * var(--sidebar-row-height) + ${rows.slice(0, active + 1).filter(({ item }) => item.section).length} * var(--sidebar-section-height)))`,
                 }}
               />
             )}
             {rows.map(({ item, depth, parent, position, size }, index) => {
               const Icon = item.icon
               return (
-                <button
-                  key={item.id}
-                  ref={(element) => {
-                    if (element) buttons.current.set(item.id, element)
-                    else buttons.current.delete(item.id)
-                  }}
-                  id={`${idPrefix}-${item.id}`}
-                  type="button"
-                  role={mode === 'tabs' ? 'tab' : 'treeitem'}
-                  aria-selected={selected === item.id}
-                  aria-expanded={
-                    item.children ? expanded.has(item.id) : undefined
-                  }
-                  aria-level={mode === 'tree' ? depth + 1 : undefined}
-                  aria-posinset={mode === 'tree' ? position : undefined}
-                  aria-setsize={mode === 'tree' ? size : undefined}
-                  aria-controls={
-                    mode === 'tabs' ? `${panelPrefix}${item.id}` : undefined
-                  }
-                  tabIndex={focusId === item.id ? 0 : -1}
-                  style={{ paddingLeft: 16 + depth * 14 }}
-                  title={item.label}
-                  onFocus={() => setFocused(item.id)}
-                  onClick={() => {
-                    if (item.children) toggle(item.id)
-                    else onSelect(item.id)
-                  }}
-                  onKeyDown={(event) => {
-                    switch (event.key) {
-                      case 'ArrowDown':
-                        event.preventDefault()
-                        focus(
-                          rows[Math.min(index + 1, rows.length - 1)]?.item.id,
-                        )
-                        break
-                      case 'ArrowUp':
-                        event.preventDefault()
-                        focus(rows[Math.max(index - 1, 0)]?.item.id)
-                        break
-                      case 'Home':
-                        event.preventDefault()
-                        focus(rows[0]?.item.id)
-                        break
-                      case 'End':
-                        event.preventDefault()
-                        focus(rows.at(-1)?.item.id)
-                        break
-                      case 'ArrowRight':
-                        if (item.children) {
-                          event.preventDefault()
-                          if (!expanded.has(item.id)) toggle(item.id)
-                          else focus(item.children[0]?.id)
-                        }
-                        break
-                      case 'ArrowLeft':
-                        event.preventDefault()
-                        if (item.children && expanded.has(item.id))
-                          toggle(item.id)
-                        else if (parent) focus(parent)
-                        break
+                <Fragment key={item.id}>
+                  {item.section && (
+                    <div className="sidebar-section" role="presentation">
+                      {item.section}
+                    </div>
+                  )}
+                  <button
+                    key={item.id}
+                    ref={(element) => {
+                      if (element) buttons.current.set(item.id, element)
+                      else buttons.current.delete(item.id)
+                    }}
+                    id={`${idPrefix}-${item.id}`}
+                    type="button"
+                    role={mode === 'tabs' ? 'tab' : 'treeitem'}
+                    aria-selected={selected === item.id}
+                    aria-expanded={
+                      item.children ? expanded.has(item.id) : undefined
                     }
-                  }}
-                >
-                  {mode === 'tree' && (
-                    <ChevronRight
-                      className={`sidebar-chevron ${item.children ? '' : 'leaf'}`}
-                      size={12}
-                      style={{
-                        rotate:
-                          item.children && expanded.has(item.id)
-                            ? '90deg'
-                            : '0deg',
-                      }}
-                      aria-hidden="true"
-                    />
-                  )}
-                  {Icon && (
-                    <Icon size={15} strokeWidth={1.5} aria-hidden="true" />
-                  )}
-                  <span>{item.label}</span>
-                </button>
+                    aria-level={mode === 'tree' ? depth + 1 : undefined}
+                    aria-posinset={mode === 'tree' ? position : undefined}
+                    aria-setsize={mode === 'tree' ? size : undefined}
+                    aria-controls={
+                      mode === 'tabs' ? `${panelPrefix}${item.id}` : undefined
+                    }
+                    tabIndex={focusId === item.id ? 0 : -1}
+                    style={{ paddingLeft: 16 + depth * 14 }}
+                    title={item.label}
+                    onFocus={() => setFocused(item.id)}
+                    onClick={() => {
+                      if (item.children) toggle(item.id)
+                      else onSelect(item.id)
+                    }}
+                    onKeyDown={(event) => {
+                      switch (event.key) {
+                        case 'ArrowDown':
+                          event.preventDefault()
+                          focus(
+                            rows[Math.min(index + 1, rows.length - 1)]?.item.id,
+                          )
+                          break
+                        case 'ArrowUp':
+                          event.preventDefault()
+                          focus(rows[Math.max(index - 1, 0)]?.item.id)
+                          break
+                        case 'Home':
+                          event.preventDefault()
+                          focus(rows[0]?.item.id)
+                          break
+                        case 'End':
+                          event.preventDefault()
+                          focus(rows.at(-1)?.item.id)
+                          break
+                        case 'ArrowRight':
+                          if (item.children) {
+                            event.preventDefault()
+                            if (!expanded.has(item.id)) toggle(item.id)
+                            else focus(item.children[0]?.id)
+                          }
+                          break
+                        case 'ArrowLeft':
+                          event.preventDefault()
+                          if (item.children && expanded.has(item.id))
+                            toggle(item.id)
+                          else if (parent) focus(parent)
+                          break
+                      }
+                    }}
+                  >
+                    {mode === 'tree' && (
+                      <ChevronRight
+                        className={`sidebar-chevron ${item.children ? '' : 'leaf'}`}
+                        size={12}
+                        style={{
+                          rotate:
+                            item.children && expanded.has(item.id)
+                              ? '90deg'
+                              : '0deg',
+                        }}
+                        aria-hidden="true"
+                      />
+                    )}
+                    {Icon && (
+                      <Icon size={15} strokeWidth={1.5} aria-hidden="true" />
+                    )}
+                    <span>{item.label}</span>
+                  </button>
+                </Fragment>
               )
             })}
           </div>

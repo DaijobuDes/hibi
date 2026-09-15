@@ -2,12 +2,11 @@ import type { AddonManifest } from '../api'
 import { authors } from '../authors'
 
 export default {
-  id: 'frontmatter',
-  name: 'frontmatter',
+  id: 'vim',
+  name: 'vim',
   version: '0.1.0',
   authors: [authors.may],
-  description:
-    'edit YAML properties while preserving metadata and the document body.',
+  description: 'vim editing in markdown and split source panes.',
   apiVersion: 1,
-  defaultEnabled: true,
+  defaultEnabled: false,
 } satisfies AddonManifest

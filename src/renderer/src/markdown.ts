@@ -8,6 +8,7 @@ import { StarterKit } from '@tiptap/starter-kit'
 import { marked } from 'marked'
 import { search } from 'prosemirror-search'
 import type { MarkdownExtension, MarkdownProjection } from '../../addons/api'
+import { readFrontmatter } from '../../shared/frontmatter'
 
 export function projectMarkdown(
   source: string,
@@ -49,10 +50,7 @@ export const extensions = [
 
 // Preserve source constructs the rich editor cannot round-trip without loss.
 export function needsSourceEditing(source: string): boolean {
-  if (
-    /^(?:\uFEFF)?---[ \t]*\r?\n/.test(source) ||
-    /^\s{0,3}\[[^\]]+\]:/m.test(source)
-  )
+  if (readFrontmatter(source) || /^\s{0,3}\[[^\]]+\]:/m.test(source))
     return true
   let unsupported = false
   marked.walkTokens(marked.lexer(source), (token) => {

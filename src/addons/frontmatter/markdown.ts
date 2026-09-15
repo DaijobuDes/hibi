@@ -1,24 +1,7 @@
+import { readFrontmatter as splitFrontmatter } from '../../shared/frontmatter.ts'
 import type { MarkdownProjection } from '../api'
 
-export function splitFrontmatter(source: string) {
-  const opening = /^(?:\uFEFF)?---[ \t]*(\r?\n)/.exec(source)
-  if (!opening) return null
-  const closing = /^(?:---|\.\.\.)[ \t]*(?:\r?\n|$)/m.exec(
-    source.slice(opening[0].length),
-  )
-  if (!closing) return null
-  const end = opening[0].length + closing.index + closing[0].length
-  const spacing = /^(?:[ \t]*\r?\n)*/.exec(source.slice(end))?.[0] ?? ''
-  const prefix = source.slice(0, end + spacing.length)
-  return {
-    opening: opening[0],
-    yaml: source.slice(opening[0].length, opening[0].length + closing.index),
-    closing: closing[0] + spacing,
-    eol: opening[1] as string,
-    prefix,
-    content: source.slice(prefix.length),
-  }
-}
+export { splitFrontmatter }
 
 export function replaceFrontmatter(source: string, yaml: string): string {
   const block = splitFrontmatter(source)

@@ -16,7 +16,7 @@ import {
   useRef,
   useState,
 } from 'react'
-import type { MarkdownExtension } from '../../addons/api'
+import type { MarkdownExtension, SourceExtension } from '../../addons/api'
 import { documentImage } from './DocumentImage'
 import { type CursorSettings, EditorCursor } from './EditorCursor'
 import { FindBar, type FindMove, type FindStatus } from './FindBar'
@@ -37,6 +37,7 @@ export function MarkdownEditor({
   findOpen,
   onCloseFind,
   markdownExtensions,
+  sourceExtensions,
   cursorSettings,
   showLineNumbers,
   documentRevision,
@@ -48,6 +49,7 @@ export function MarkdownEditor({
   findOpen: boolean
   onCloseFind: () => void
   markdownExtensions: readonly MarkdownExtension[]
+  sourceExtensions: readonly SourceExtension[]
   cursorSettings: CursorSettings
   showLineNumbers: boolean
   documentRevision: number
@@ -259,6 +261,7 @@ export function MarkdownEditor({
                 fallback={<LoadingScreen label="loading markdown editor" />}
               >
                 <SourceEditor
+                  sourceExtensions={sourceExtensions}
                   showLineNumbers={showLineNumbers}
                   active={mode !== 'normal'}
                   onReady={() => setSourceReady(true)}

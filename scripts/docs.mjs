@@ -3,6 +3,19 @@ import { basename, dirname } from 'node:path'
 
 const references = [
   [
+    'docs/reference/controls-api.md',
+    'shared controls',
+    'src/ui/Controls.tsx',
+    (source) => source,
+    'tsx',
+  ],
+  [
+    'docs/reference/authors.md',
+    'plugin authors',
+    'src/addons/authors.ts',
+    (source) => source,
+  ],
+  [
     'docs/reference/theme-tokens.md',
     'theme tokens',
     'src/ui/tokens.css',
