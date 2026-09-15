@@ -10,7 +10,7 @@
   --accent: oklch(0.45 0.075 200);
   --surface: oklch(0.97 0 0);
   --border: oklch(0.9 0 0);
-  --editor-padding: 24px;
+  --editor-padding: 48px;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -192,25 +192,145 @@ button:disabled {
   color: var(--ink);
   font-size: 12px;
 }
-.settings-menu {
-  width: 260px;
+.editor-surface {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
 }
-.settings-menu label {
+.editor-surface[hidden] {
+  display: none;
+}
+.settings-screen {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.settings-sidebar {
+  width: 196px;
+  flex-shrink: 0;
+  padding: 12px 0;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+}
+.settings-folder {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-.settings-menu input {
+  gap: 6px;
+  height: 28px;
   width: 100%;
-  margin: 12px 0 16px;
+  padding: 0 10px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--ink);
+  user-select: none;
+}
+.settings-folder::-webkit-details-marker {
+  display: none;
+}
+.settings-sidebar details:not([open]) .folder-chevron {
+  transform: rotate(-90deg);
+}
+.settings-categories {
+  display: flex;
+  flex-direction: column;
+}
+.settings-categories button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 28px;
+  padding: 0 12px 0 32px;
+  border-radius: 0;
+  text-align: left;
+  font-size: 13px;
+}
+.settings-categories button[aria-selected="true"] {
+  background: var(--border);
+  color: var(--ink);
+}
+.settings-categories button:focus-visible {
+  outline-offset: -2px;
+}
+.settings-content {
+  flex: 1;
+  min-width: 0;
+  padding: 36px 40px;
+  overflow: auto;
+}
+.settings-content section {
+  max-width: 640px;
+}
+.settings-content h1 {
+  margin: 0 0 32px;
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+.setting-row {
+  margin-bottom: 32px;
+}
+.setting-row > label {
+  font-size: 14px;
+  font-weight: 500;
+}
+.setting-row p,
+.about-description {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 8px 0 20px;
+}
+.padding-control {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  max-width: 400px;
+}
+.padding-control input {
+  width: 100%;
+  margin: 0;
   accent-color: var(--accent);
 }
-.settings-menu details {
+.padding-control output {
+  min-width: 44px;
+  font-size: 13px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.setting-reset {
+  margin-top: 12px;
+  padding-left: 0;
+  font-size: 12px;
+}
+.setting-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+.setting-checkbox input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+.app-details {
+  margin: 24px 0;
+  font-size: 13px;
+}
+.app-details > div {
+  display: flex;
+  gap: 24px;
+  margin: 12px 0;
+}
+.app-details dt {
+  width: 70px;
   color: var(--muted);
 }
-.settings-menu p {
-  margin: 8px 0 0;
+.app-details dd {
+  margin: 0;
 }
 .editor-panes {
   display: flex;
@@ -447,6 +567,12 @@ summary {
   }
 }
 @media (max-width: 700px) {
+  .settings-sidebar {
+    width: 152px;
+  }
+  .settings-content {
+    padding: 28px 24px;
+  }
   .titlebar {
     gap: 6px;
   }

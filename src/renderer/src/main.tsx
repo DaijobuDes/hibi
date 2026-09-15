@@ -18,6 +18,7 @@ import { MAX_DOCUMENT_BYTES } from '../../shared/desktop'
 import './styles.css'
 import { MarkdownEditor, type ViewMode } from './Editor'
 import { LoadingScreen } from './LoadingScreen'
+import { SettingsScreen } from './SettingsScreen'
 import { Titlebar } from './Titlebar'
 
 class ErrorBoundary extends Component<
@@ -61,11 +62,27 @@ function App() {
   const [info, setInfo] = useState<AppInfo | null>(null)
   const [failed, setFailed] = useState(false)
   const [typing, setTyping] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [padding, setPadding] = useState(() => {
+    const value = Number(localStorage.getItem('editor-padding') ?? 48)
+    return Number.isInteger(value) && value >= 0 && value <= 96 ? value : 48
+  })
+  const [hideTitlebar, setHideTitlebar] = useState(
+    () => localStorage.getItem('hide-titlebar') !== 'false',
+  )
   const typingTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined,
   )
 
   useEffect(() => () => clearTimeout(typingTimer.current), [])
+  useEffect(() => {
+    window.document.documentElement.style.setProperty(
+      '--editor-padding',
+      `${padding}px`,
+    )
+    localStorage.setItem('editor-padding', String(padding))
+    localStorage.setItem('hide-titlebar', String(hideTitlebar))
+  }, [padding, hideTitlebar])
 
   function showTitlebar() {
     clearTimeout(typingTimer.current)
@@ -74,6 +91,8 @@ function App() {
 
   function noteTyping(target: EventTarget) {
     if (
+      settingsOpen ||
+      !hideTitlebar ||
       !(target instanceof HTMLElement) ||
       !target.closest('[contenteditable="true"]')
     )
@@ -81,6 +100,19 @@ function App() {
     clearTimeout(typingTimer.current)
     setTyping(true)
     typingTimer.current = setTimeout(() => setTyping(false), 1200)
+  }
+
+  function toggleSettings() {
+    showTitlebar()
+    setSettingsOpen(!settingsOpen)
+    if (settingsOpen)
+      requestAnimationFrame(() =>
+        window.document
+          .querySelector<HTMLElement>(
+            mode === 'markdown' ? '.cm-content' : '.tiptap',
+          )
+          ?.focus(),
+      )
   }
 
   useEffect(() => {
@@ -115,6 +147,7 @@ function App() {
       if (next) {
         setDocument(next)
         savedText.current = next.savedMarkdown
+        if (command === 'new' || command === 'open') setSettingsOpen(false)
       }
     } catch (error) {
       setError(
@@ -167,6 +200,17 @@ function App() {
       data-typing={typing}
       onInputCapture={(event) => noteTyping(event.target)}
       onKeyDownCapture={(event) => {
+        if ((event.metaKey || event.ctrlKey) && event.key === ',') {
+          event.preventDefault()
+          showTitlebar()
+          setSettingsOpen(true)
+          return
+        }
+        if (event.key === 'Escape' && settingsOpen) {
+          event.preventDefault()
+          toggleSettings()
+          return
+        }
         if (
           !event.metaKey &&
           !event.ctrlKey &&
@@ -184,7 +228,8 @@ function App() {
     >
       <Titlebar
         document={document}
-        info={info}
+        settingsOpen={settingsOpen}
+        onSettings={toggleSettings}
         mode={mode}
         onMode={setMode}
         onCommand={(command) => void runCommand(command)}
@@ -195,15 +240,29 @@ function App() {
           {error}
         </div>
       )}
-      {document && (
-        <MarkdownEditor
-          key={`${document.revision}-${resetEditor}`}
-          value={document.markdown}
-          onChange={updateMarkdown}
-          mode={mode}
-          disabled={busy}
+      {settingsOpen && (
+        <SettingsScreen
+          padding={padding}
+          onPadding={setPadding}
+          hideTitlebar={hideTitlebar}
+          onHideTitlebar={(value) => {
+            setHideTitlebar(value)
+            showTitlebar()
+          }}
+          info={info}
         />
       )}
+      <div className="editor-surface" hidden={settingsOpen}>
+        {document && (
+          <MarkdownEditor
+            key={`${document.revision}-${resetEditor}`}
+            value={document.markdown}
+            onChange={updateMarkdown}
+            mode={mode}
+            disabled={busy}
+          />
+        )}
+      </div>
       {failed && (
         <p role="alert">
           could not connect to hibi.{' '}

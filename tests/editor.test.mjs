@@ -66,11 +66,18 @@ test('empty entry, three views, and lossless source switching', {
   })
   assert.equal(geometry.top, 36)
   assert.equal(geometry.bottom, geometry.viewport)
-  assert.equal(geometry.padding, '24px')
+  assert.equal(geometry.padding, '48px')
   assert.equal(geometry.centered, true)
   assert.equal(geometry.flat, true)
   await page.getByRole('button', { name: 'editor settings' }).click()
-  await page.getByRole('slider', { name: 'editor padding' }).press('Home')
+  await page.getByRole('main', { name: 'settings' }).waitFor()
+  assert.equal(await rich.isVisible(), false)
+  await page.getByRole('tab', { name: 'appearance', exact: true }).click()
+  await page
+    .getByRole('checkbox', { name: 'hide top bar while typing' })
+    .uncheck()
+  await page.getByRole('tab', { name: 'editor', exact: true }).click()
+  await page.getByRole('slider', { name: 'content padding' }).press('Home')
   assert.equal(
     await page.evaluate(
       () => getComputedStyle(document.querySelector('.tiptap')).paddingTop,
@@ -108,6 +115,24 @@ test('empty entry, three views, and lossless source switching', {
   )
   await page.reload()
   await rich.waitFor()
+  await page.getByRole('button', { name: 'editor settings' }).click()
+  await page.getByRole('tab', { name: 'appearance', exact: true }).click()
+  assert.equal(
+    await page
+      .getByRole('checkbox', { name: 'hide top bar while typing' })
+      .isChecked(),
+    false,
+  )
+  await page
+    .getByRole('tab', { name: 'appearance', exact: true })
+    .press('ArrowUp')
+  assert.equal(
+    await page
+      .getByRole('tab', { name: 'editor', exact: true })
+      .getAttribute('aria-selected'),
+    'true',
+  )
+  await page.keyboard.press('Escape')
   assert.equal(
     await page.evaluate(
       () => getComputedStyle(document.querySelector('.tiptap')).paddingTop,

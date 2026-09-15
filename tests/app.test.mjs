@@ -37,9 +37,10 @@ test('desktop launch, isolation, offline reload, and recovery', {
     { maximized: false, fullscreen: false },
   )
   await page.getByRole('button', { name: 'editor settings' }).click()
-  await page.getByText('about hibi', { exact: true }).click()
+  await page.getByRole('tab', { name: 'about hibi' }).click()
   await page
-    .getByText('version 0.1.0 · electron 44.3.0', { exact: true })
+    .getByRole('tabpanel', { name: 'about hibi' })
+    .getByText('44.3.0', { exact: true })
     .waitFor()
   await page.keyboard.press('Escape')
   assert.deepEqual(
