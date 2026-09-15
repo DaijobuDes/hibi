@@ -9,6 +9,12 @@ export const actions = [
   { id: 'palette', label: 'command palette', category: 'app', key: 'k' },
   { id: 'new', label: 'new document', category: 'file', key: 'n' },
   { id: 'open', label: 'open document…', category: 'file', key: 'o' },
+  {
+    id: 'open-workspace',
+    label: 'open workspace…',
+    category: 'file',
+    key: 'shift+o',
+  },
   { id: 'save', label: 'save document', category: 'file', key: 's' },
   { id: 'saveAs', label: 'save as…', category: 'file', key: 'shift+s' },
   { id: 'find', label: 'find in note', category: 'edit', key: 'f' },

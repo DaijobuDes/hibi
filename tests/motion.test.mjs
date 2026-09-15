@@ -90,6 +90,9 @@ test('panes move horizontally and sidebar selection slides without fading settin
   })
   const page = await app.firstWindow()
   await page.getByRole('textbox', { name: 'document editor' }).waitFor()
+  await page
+    .getByRole('button', { name: 'toggle workspace sidebar', exact: true })
+    .click()
   await page.waitForFunction(
     () =>
       document.querySelector('.editor-panes').dataset.sourceReady === 'true',

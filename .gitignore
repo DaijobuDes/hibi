@@ -1,4 +1,5 @@
 node_modules/
+src/useraddons/
 out/
 release/
 test-results/

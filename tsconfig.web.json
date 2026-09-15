@@ -6,6 +6,12 @@
     "types": ["vite/client"]
   },
   "include": [
+    "src/site/**/*.ts",
+    "src/site/**/*.tsx",
+    "src/addons/*/index.ts",
+    "src/addons/*/index.tsx",
+    "src/useraddons/*/index.ts",
+    "src/useraddons/*/index.tsx",
     "src/renderer/**/*.ts",
     "src/renderer/**/*.tsx",
     "src/shared/**/*.ts"

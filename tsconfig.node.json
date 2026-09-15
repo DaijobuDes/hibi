@@ -5,6 +5,10 @@
     "lib": ["ES2023"]
   },
   "include": [
+    "src/addons/*/native.ts",
+    "src/addons/*/manifest.ts",
+    "src/useraddons/*/native.ts",
+    "src/useraddons/*/manifest.ts",
     "electron.vite.config.ts",
     "src/main/**/*.ts",
     "src/preload/**/*.ts",

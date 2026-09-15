@@ -30,6 +30,10 @@ export async function writeMarkdown(
   markdown: string,
 ): Promise<void> {
   validateMarkdown(markdown)
+  return writeText(path, markdown)
+}
+
+export async function writeText(path: string, text: string): Promise<void> {
   const temp = join(dirname(path), `.${basename(path)}.${randomUUID()}.tmp`)
   const existing = await stat(path).catch((error: NodeJS.ErrnoException) => {
     if (error.code !== 'ENOENT') throw error
@@ -38,7 +42,7 @@ export async function writeMarkdown(
   try {
     const file = await open(temp, 'wx', existing?.mode ?? 0o600)
     try {
-      await file.writeFile(markdown, 'utf8')
+      await file.writeFile(text, 'utf8')
       await file.sync()
     } finally {
       await file.close()

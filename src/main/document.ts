@@ -9,6 +9,10 @@ let saved = ''
 let path: string | null = null
 let revision = 0
 
+export function getDocumentPath(): string | null {
+  return path
+}
+
 export function getDocument(): DocumentState {
   return {
     markdown,
@@ -32,12 +36,13 @@ export function updateDocument(value: unknown): void {
 export async function saveDocument(
   window: BrowserWindow,
   saveAs = false,
+  defaultPath = 'untitled.md',
 ): Promise<DocumentState | null> {
   let destination = path
   const content = markdown
   if (!destination || saveAs) {
     const result = await dialog.showSaveDialog(window, {
-      defaultPath: destination ?? 'untitled.md',
+      defaultPath: destination ?? defaultPath,
       filters: [{ name: 'markdown', extensions: ['md', 'markdown', 'txt'] }],
     })
     if (result.canceled || !result.filePath) return null
@@ -113,6 +118,14 @@ export async function openDocument(
   const selected = result.filePaths[0]
   if (result.canceled || !selected) return null
   const chosen = await realpath(selected)
+  return loadDocument(window, chosen, current)
+}
+
+export async function loadDocument(
+  window: BrowserWindow,
+  chosen: string,
+  current = markdown,
+): Promise<DocumentState> {
   const content = await readMarkdown(chosen)
   if (markdown !== current)
     throw new Error('document changed while opening a file. please try again.')

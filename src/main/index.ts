@@ -12,11 +12,11 @@ import {
   protocol,
   session,
 } from 'electron'
+import { ADDON_CHANNELS } from '../addons/api'
 import {
   APP_INFO_CHANNEL,
   type AppInfo,
   DOCUMENT_CHANNELS,
-  type DocumentState,
 } from '../shared/desktop'
 import {
   type AppCommand,
@@ -25,6 +25,8 @@ import {
   HOTKEY_CHANNELS,
   shortcutFromEvent,
 } from '../shared/hotkeys'
+import { WORKSPACE_CHANNELS } from '../shared/workspace'
+import { enableAddon, getAddonStates, invokeAddon, loadAddons } from './addons'
 import {
   confirmDiscard,
   discardChanges,
@@ -40,6 +42,14 @@ import {
   isTrustedRendererUrl,
   resolveAssetPath,
 } from './security'
+import {
+  getWorkspace,
+  observeWorkspace,
+  openWorkspace,
+  openWorkspaceFile,
+  refreshWorkspace,
+  workspaceRoot,
+} from './workspace'
 
 app.setName('hibi')
 app.enableSandbox()
@@ -70,7 +80,7 @@ const devUrl = !app.isPackaged ? process.env.ELECTRON_RENDERER_URL : undefined
 const rendererUrl = devUrl ? new URL(devUrl).href : 'app://hibi/'
 const rendererRoot = join(import.meta.dirname, '../renderer')
 let mainWindow: BrowserWindow | null = null
-let fileOperation: Promise<DocumentState | null> | null = null
+let fileOperation: Promise<unknown> | null = null
 let quitting = false
 let recordingHotkey = false
 app.on('before-quit', () => {
@@ -89,16 +99,17 @@ function trustedWindow(event: IpcMainInvokeEvent): BrowserWindow {
   return mainWindow
 }
 
-function runFileOperation(
+function runFileOperation<T>(
   event: IpcMainInvokeEvent,
-  operation: (window: BrowserWindow) => Promise<DocumentState | null>,
+  operation: (window: BrowserWindow) => Promise<T>,
 ) {
   const window = trustedWindow(event)
   if (fileOperation) throw new Error('another file operation is in progress.')
-  fileOperation = operation(window).finally(() => {
+  const pending = operation(window).finally(() => {
     fileOperation = null
   })
-  return fileOperation
+  fileOperation = pending
+  return pending
 }
 
 function titleBarColors() {
@@ -337,6 +348,7 @@ if (!app.requestSingleInstanceLock()) {
     .whenReady()
     .then(async () => {
       await loadHotkeys()
+      await loadAddons()
       protocol.handle('app', serveAsset)
       session.defaultSession.setPermissionCheckHandler(() => false)
       session.defaultSession.setPermissionRequestHandler(
@@ -373,6 +385,22 @@ if (!app.requestSingleInstanceLock()) {
           platform: process.platform,
         }
       })
+      ipcMain.handle(ADDON_CHANNELS.states, (event) => {
+        trustedWindow(event)
+        return getAddonStates()
+      })
+      ipcMain.handle(
+        ADDON_CHANNELS.enable,
+        (event, id: unknown, enabled: unknown) =>
+          runFileOperation(event, () => enableAddon(id, enabled)),
+      )
+      ipcMain.handle(
+        ADDON_CHANNELS.invoke,
+        (event, id: unknown, method: unknown, input: unknown) =>
+          runFileOperation(event, (window) =>
+            invokeAddon(window, id, method, input),
+          ),
+      )
       ipcMain.handle(HOTKEY_CHANNELS.get, (event) => {
         trustedWindow(event)
         return hotkeys
@@ -394,6 +422,26 @@ if (!app.requestSingleInstanceLock()) {
         trustedWindow(event)
         return getDocument()
       })
+      ipcMain.handle(WORKSPACE_CHANNELS.get, (event) => {
+        trustedWindow(event)
+        return getWorkspace()
+      })
+      ipcMain.handle(WORKSPACE_CHANNELS.open, (event) =>
+        runFileOperation(event, openWorkspace),
+      )
+      ipcMain.handle(WORKSPACE_CHANNELS.refresh, (event) => {
+        trustedWindow(event)
+        return refreshWorkspace()
+      })
+      ipcMain.handle(WORKSPACE_CHANNELS.openFile, (event, path: unknown) =>
+        runFileOperation(event, (window) => openWorkspaceFile(window, path)),
+      )
+      observeWorkspace(() =>
+        mainWindow?.webContents.send(
+          WORKSPACE_CHANNELS.changed,
+          getWorkspace(),
+        ),
+      )
       ipcMain.handle(DOCUMENT_CHANNELS.update, (event, value: unknown) => {
         const window = trustedWindow(event)
         updateDocument(value)
@@ -407,7 +455,13 @@ if (!app.requestSingleInstanceLock()) {
       )
       ipcMain.handle(DOCUMENT_CHANNELS.save, (event, saveAs: unknown) => {
         if (typeof saveAs !== 'boolean') throw new Error('invalid save request')
-        return runFileOperation(event, (window) => saveDocument(window, saveAs))
+        return runFileOperation(event, (window) =>
+          saveDocument(
+            window,
+            saveAs,
+            join(workspaceRoot() ?? '', 'untitled.md'),
+          ),
+        )
       })
       installMenu()
       nativeTheme.on('updated', () => {

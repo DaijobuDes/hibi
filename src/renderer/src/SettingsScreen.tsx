@@ -1,13 +1,17 @@
-import { FileText, Info, Keyboard, PanelTop } from 'lucide-react'
+import { FileText, Info, Keyboard, PanelTop, Puzzle } from 'lucide-react'
 import { useState } from 'react'
+import type { AddonState } from '../../addons/api'
 import type { AppInfo } from '../../shared/desktop'
 import type { Hotkeys } from '../../shared/hotkeys'
+import { Sidebar } from '../../ui/Sidebar'
+import { addons } from './addons'
 import { HotkeySettings } from './HotkeySettings'
 
 const categories = [
   { id: 'editor', label: 'editor', icon: FileText },
   { id: 'appearance', label: 'appearance', icon: PanelTop },
   { id: 'hotkeys', label: 'hotkeys', icon: Keyboard },
+  { id: 'addons', label: 'addons', icon: Puzzle },
   { id: 'about', label: 'about hibi', icon: Info },
 ] as const
 
@@ -20,6 +24,8 @@ export function SettingsScreen({
   info,
   hotkeys,
   onHotkeys,
+  addonStates,
+  onAddonEnabled,
 }: {
   open: boolean
   padding: number
@@ -29,6 +35,8 @@ export function SettingsScreen({
   info: AppInfo | null
   hotkeys: Hotkeys
   onHotkeys: (hotkeys: Hotkeys) => void
+  addonStates: AddonState[]
+  onAddonEnabled: (id: string, enabled: boolean) => Promise<void>
 }) {
   const [category, setCategory] =
     useState<(typeof categories)[number]['id']>('editor')
@@ -40,58 +48,16 @@ export function SettingsScreen({
       hidden={!open}
       inert={!open}
     >
-      <aside className="settings-sidebar">
-        <div
-          className="settings-categories"
-          role="tablist"
-          aria-label="settings categories"
-          aria-orientation="vertical"
-        >
-          <span
-            className="category-selection"
-            aria-hidden="true"
-            style={{
-              transform: `translateY(${categories.findIndex(({ id }) => id === category) * 28}px)`,
-            }}
-          />
-          {categories.map(({ id, label, icon: Icon }, index) => (
-            <button
-              type="button"
-              key={id}
-              id={`category-${id}`}
-              role="tab"
-              aria-selected={category === id}
-              aria-controls={`settings-${id}`}
-              tabIndex={category === id ? 0 : -1}
-              onClick={() => {
-                setCategory(id)
-              }}
-              onKeyDown={(event) => {
-                const next =
-                  event.key === 'ArrowDown'
-                    ? (index + 1) % categories.length
-                    : event.key === 'ArrowUp'
-                      ? (index + categories.length - 1) % categories.length
-                      : event.key === 'Home'
-                        ? 0
-                        : event.key === 'End'
-                          ? categories.length - 1
-                          : null
-                if (next === null) return
-                event.preventDefault()
-                const item = categories[next]
-                if (item) {
-                  setCategory(item.id)
-                  window.document.getElementById(`category-${item.id}`)?.focus()
-                }
-              }}
-            >
-              <Icon size={15} strokeWidth={1.5} aria-hidden="true" />
-              <span>{label}</span>
-            </button>
-          ))}
-        </div>
-      </aside>
+      <Sidebar
+        className="settings-sidebar"
+        items={categories}
+        selected={category}
+        onSelect={(id) => setCategory(id as typeof category)}
+        label="settings categories"
+        mode="tabs"
+        idPrefix="category"
+        panelPrefix="settings-"
+      />
       <div className="settings-content">
         <section
           id="settings-editor"
@@ -181,6 +147,31 @@ export function SettingsScreen({
               </div>
             </dl>
           )}
+        </section>
+        <section
+          id="settings-addons"
+          role="tabpanel"
+          aria-labelledby="category-addons"
+          hidden={category !== 'addons'}
+        >
+          <h1>addons</h1>
+          {addons.map(({ manifest }) => (
+            <div className="setting-row" key={manifest.id}>
+              <label className="setting-checkbox">
+                <input
+                  type="checkbox"
+                  checked={addonStates.some(
+                    (state) => state.id === manifest.id && state.enabled,
+                  )}
+                  onChange={(event) =>
+                    void onAddonEnabled(manifest.id, event.target.checked)
+                  }
+                />
+                <span>{manifest.name}</span>
+              </label>
+              <p>{manifest.description}</p>
+            </div>
+          ))}
         </section>
       </div>
     </main>

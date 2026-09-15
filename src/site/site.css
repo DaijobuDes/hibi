@@ -1,0 +1,91 @@
+@import "../renderer/src/styles.css";
+.documentation-site {
+  height: 100svh;
+  display: flex;
+  flex-direction: column;
+}
+.site-header {
+  height: 48px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+}
+.site-header > span {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.site-header > button {
+  display: inline-flex;
+  align-items: center;
+}
+.site-header .site-search {
+  margin-left: auto;
+  gap: 10px;
+  font-size: 12px;
+}
+.site-search kbd {
+  color: var(--muted);
+  font: inherit;
+}
+.site-layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.site-layout .sidebar {
+  padding-top: 16px;
+  width: 240px;
+}
+.site-content {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+}
+.site-path {
+  max-width: 900px;
+  margin: 28px auto 0;
+  padding: 0 48px;
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.site-content article {
+  max-width: 900px;
+  margin: auto;
+  min-height: auto;
+  padding-top: 24px;
+}
+.site-content article a {
+  cursor: pointer;
+}
+.site-content article h1 {
+  font-size: 30px;
+}
+.site-content article img:not([src]) {
+  display: inline;
+}
+.site-missing {
+  padding: 48px;
+}
+@media (max-width: 700px) {
+  .site-layout .sidebar {
+    position: absolute;
+    top: 48px;
+    bottom: 0;
+    left: 0;
+    z-index: 2;
+  }
+  .site-search > span {
+    display: none;
+  }
+  .site-content article {
+    padding-inline: 24px;
+  }
+  .site-path {
+    padding-inline: 24px;
+  }
+}

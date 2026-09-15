@@ -28,8 +28,9 @@ export function FindBar({
       : 'no results'
     : ''
   useLayoutEffect(() => {
+    if (!open) return
     setCounterWidth(count ? (counter.current?.offsetWidth ?? 0) : 0)
-  }, [count])
+  }, [count, open])
   useEffect(() => {
     if (open) {
       input.current?.focus()
@@ -66,7 +67,9 @@ export function FindBar({
         aria-label="find matches"
         style={{ width: counterWidth }}
       >
-        <span className="find-count" ref={counter}>{count}</span>
+        <span className="find-count" ref={counter}>
+          {count}
+        </span>
       </output>
       <button
         type="button"

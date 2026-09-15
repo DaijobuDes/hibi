@@ -5,6 +5,7 @@ import {
   FilePlus,
   FileText,
   FolderOpen,
+  PanelLeft,
   Save,
   SlidersHorizontal,
 } from 'lucide-react'
@@ -39,6 +40,8 @@ export function Titlebar({
   disabled,
   hotkeys,
   platform,
+  sidebarOpen,
+  onSidebar,
 }: {
   document: DocumentState | null
   settingsOpen: boolean
@@ -50,11 +53,22 @@ export function Titlebar({
   disabled: boolean
   hotkeys: Hotkeys
   platform: string
+  sidebarOpen: boolean
+  onSidebar: () => void
 }) {
   return (
     <header className="titlebar">
       {!settingsOpen && (
         <div className="document-actions">
+          <button
+            type="button"
+            aria-label="toggle workspace sidebar"
+            aria-pressed={sidebarOpen}
+            title="workspace sidebar"
+            onClick={onSidebar}
+          >
+            <PanelLeft size={16} strokeWidth={1.5} />
+          </button>
           {(['new', 'open', 'save'] as const).map((command) => (
             <button
               type="button"

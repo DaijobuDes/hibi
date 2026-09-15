@@ -22,11 +22,14 @@ import {
   type Hotkeys,
 } from '../../shared/hotkeys'
 import './styles.css'
+import type { WorkspaceState } from '../../shared/workspace'
+import { useAddons } from './addons'
 import { CommandPalette, type PaletteCommand } from './CommandPalette'
 import { MarkdownEditor, type ViewMode } from './Editor'
 import { LoadingScreen } from './LoadingScreen'
 import { SettingsScreen } from './SettingsScreen'
 import { Titlebar } from './Titlebar'
+import { WorkspaceSidebar } from './WorkspaceSidebar'
 
 class ErrorBoundary extends Component<
   { children: ReactNode },
@@ -72,6 +75,39 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [findOpen, setFindOpen] = useState(false)
+  const [workspace, setWorkspace] = useState<WorkspaceState | null>(null)
+  const [sidebarOpen, setSidebarOpen] = useState(
+    () => localStorage.getItem('sidebar-open') !== 'false',
+  )
+  const [notice, setNotice] = useState('')
+  const addonHost = useAddons({
+    workspace: {
+      get: () => window.hibi.getWorkspace(),
+      open: openFolder,
+      openFile: openFile,
+    },
+    invoke: async (id, method, input) => {
+      if (busyRef.current) throw new Error('another operation is in progress.')
+      busyRef.current = true
+      setBusy(true)
+      try {
+        return await window.hibi.invokeAddon(id, method, input)
+      } finally {
+        busyRef.current = false
+        setBusy(false)
+      }
+    },
+    notify: setNotice,
+    error: (error) =>
+      setError(error instanceof Error ? error.message : 'addon failed.'),
+  })
+  useEffect(() => {
+    localStorage.setItem('sidebar-open', String(sidebarOpen))
+  }, [sidebarOpen])
+  useEffect(() => window.hibi.onWorkspaceChanged(setWorkspace), [])
+  useEffect(() => {
+    void window.hibi.getWorkspace().then(setWorkspace)
+  }, [])
   const [hotkeys, setHotkeys] = useState<Hotkeys>(() =>
     defaultHotkeys('darwin'),
   )
@@ -185,6 +221,7 @@ function App() {
         setDocument(next)
         savedText.current = next.savedMarkdown
         if (command === 'new' || command === 'open') setSettingsOpen(false)
+        setWorkspace(await window.hibi.getWorkspace())
       }
     } catch (error) {
       setError(
@@ -197,6 +234,61 @@ function App() {
       setBusy(false)
     }
   }, [])
+
+  async function openFolder(): Promise<WorkspaceState | null> {
+    if (busyRef.current) return null
+    busyRef.current = true
+    setBusy(true)
+    setError('')
+    try {
+      const next = await window.hibi.openWorkspace()
+      if (next) {
+        setWorkspace(next)
+        setSidebarOpen(true)
+        setSettingsOpen(false)
+      }
+      return next
+    } catch (error) {
+      setError(
+        error instanceof Error ? error.message : 'could not open workspace.',
+      )
+      return null
+    } finally {
+      busyRef.current = false
+      setBusy(false)
+    }
+  }
+
+  async function openFile(path: string): Promise<void> {
+    if (busyRef.current) return
+    busyRef.current = true
+    setBusy(true)
+    setError('')
+    try {
+      const next = await window.hibi.openWorkspaceFile(path)
+      if (next) {
+        setDocument(next)
+        savedText.current = next.savedMarkdown
+        setSettingsOpen(false)
+        setWorkspace(await window.hibi.getWorkspace())
+      }
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'could not open file.')
+    } finally {
+      busyRef.current = false
+      setBusy(false)
+    }
+  }
+
+  async function refreshFiles() {
+    try {
+      setWorkspace(await window.hibi.refreshWorkspace())
+    } catch (error) {
+      setError(
+        error instanceof Error ? error.message : 'could not refresh workspace.',
+      )
+    }
+  }
 
   useEffect(() => window.hibi.onCommand(runAction))
 
@@ -234,6 +326,9 @@ function App() {
       case 'save':
       case 'saveAs':
         void runCommand(command)
+        break
+      case 'open-workspace':
+        void openFolder()
         break
       case 'find':
         openFind()
@@ -275,6 +370,16 @@ function App() {
       shortcut: hotkeys[id],
       run: () => runAction(id),
     }))
+  paletteCommands.push(
+    ...addonHost.commands.map((command) => ({
+      id: command.id,
+      label: command.label,
+      category: 'addons' as const,
+      run: () => {
+        void command.run()
+      },
+    })),
+  )
 
   return (
     <div
@@ -282,6 +387,7 @@ function App() {
       data-platform={info?.platform}
       data-screen={settingsOpen ? 'settings' : 'editor'}
       data-typing={typing}
+      data-sidebar={sidebarOpen}
       onInputCapture={(event) => noteTyping(event.target)}
       onKeyDownCapture={(event) => {
         if (
@@ -321,6 +427,8 @@ function App() {
       }}
     >
       <Titlebar
+        sidebarOpen={sidebarOpen}
+        onSidebar={() => setSidebarOpen(!sidebarOpen)}
         hotkeys={hotkeys}
         platform={info?.platform ?? 'darwin'}
         document={document}
@@ -347,7 +455,33 @@ function App() {
           {error}
         </div>
       )}
+      {notice && (
+        <div className="notice-message" role="status">
+          <span>{notice}</span>
+          <button
+            type="button"
+            aria-label="dismiss notice"
+            onClick={() => setNotice('')}
+          >
+            close
+          </button>
+        </div>
+      )}
+      <div
+        hidden={!sidebarOpen || settingsOpen}
+        inert={!sidebarOpen || settingsOpen}
+      >
+        <WorkspaceSidebar
+          workspace={workspace}
+          onOpen={() => void openFolder()}
+          onFile={(path) => void openFile(path)}
+          onRefresh={() => void refreshFiles()}
+          commands={addonHost.commands}
+        />
+      </div>
       <SettingsScreen
+        addonStates={addonHost.states}
+        onAddonEnabled={addonHost.setEnabled}
         open={settingsOpen}
         hotkeys={hotkeys}
         onHotkeys={setHotkeys}

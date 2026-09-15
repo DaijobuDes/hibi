@@ -2,6 +2,10 @@
 
 minimal markdown editor built on electron 44.3.0, react, strict typescript, and electron-vite. starts with an empty, focused editor and a `start typing` placeholder. normal resizable window, integrated title area, native window controls.
 
+[documentation](docs/README.md) covers editing, folder workspaces, nested navigation, static exports, and the versioned addon API. API references are generated from their TypeScript source and checked for drift by `npm run check`.
+
+open a folder from the left sidebar to browse nested markdown files. the documentation addon exports the workspace to one self-contained HTML file with shared sidebar navigation, read-only pages, and local fuzzy/keyword search on `cmd/ctrl+k`. addons follow a source-defined, enabled/disabled lifecycle; see [creating addons](docs/development/addons.md).
+
 ## editing
 
 - **normal:** wysiwyg editing with markdown shortcuts.

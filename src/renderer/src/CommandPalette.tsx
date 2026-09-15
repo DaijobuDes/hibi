@@ -19,6 +19,8 @@ const categoryIcons = {
   view: LayoutTemplate,
   preferences: Settings2,
   appearance: Sun,
+  addons: Settings2,
+  documents: FileText,
 }
 
 export type PaletteCommand = {
@@ -33,10 +35,12 @@ export function CommandPalette({
   commands,
   onClose,
   platform,
+  searchCommands,
 }: {
   commands: PaletteCommand[]
   onClose: () => void
   platform: string
+  searchCommands?: (query: string) => PaletteCommand[]
 }) {
   const dialog = useRef<HTMLDialogElement>(null)
   const input = useRef<HTMLInputElement>(null)
@@ -47,11 +51,13 @@ export function CommandPalette({
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState(0)
   const terms = query.toLowerCase().trim().split(/\s+/)
-  const results = commands.filter((command) =>
-    terms.every((term) =>
-      `${command.category} ${command.label}`.toLowerCase().includes(term),
-    ),
-  )
+  const results = searchCommands
+    ? searchCommands(query)
+    : commands.filter((command) =>
+        terms.every((term) =>
+          `${command.category} ${command.label}`.toLowerCase().includes(term),
+        ),
+      )
   const active = Math.min(selected, results.length - 1)
   const activeId = results[active]?.id
 

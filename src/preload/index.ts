@@ -1,13 +1,35 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import { ADDON_CHANNELS } from '../addons/api'
 import {
   APP_INFO_CHANNEL,
   type DesktopApi,
   DOCUMENT_CHANNELS,
 } from '../shared/desktop'
 import { type AppCommand, HOTKEY_CHANNELS } from '../shared/hotkeys'
+import { WORKSPACE_CHANNELS, type WorkspaceState } from '../shared/workspace'
 
 if (process.isMainFrame) {
   contextBridge.exposeInMainWorld('hibi', {
+    getAddonStates: () => ipcRenderer.invoke(ADDON_CHANNELS.states),
+    setAddonEnabled: (id, enabled) =>
+      ipcRenderer.invoke(ADDON_CHANNELS.enable, id, enabled),
+    invokeAddon: (id, method, input) =>
+      ipcRenderer.invoke(ADDON_CHANNELS.invoke, id, method, input),
+    getWorkspace: () => ipcRenderer.invoke(WORKSPACE_CHANNELS.get),
+    openWorkspace: () => ipcRenderer.invoke(WORKSPACE_CHANNELS.open),
+    refreshWorkspace: () => ipcRenderer.invoke(WORKSPACE_CHANNELS.refresh),
+    openWorkspaceFile: (path) =>
+      ipcRenderer.invoke(WORKSPACE_CHANNELS.openFile, path),
+    onWorkspaceChanged: (callback) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        workspace: WorkspaceState | null,
+      ) => callback(workspace)
+      ipcRenderer.on(WORKSPACE_CHANNELS.changed, listener)
+      return () => {
+        ipcRenderer.removeListener(WORKSPACE_CHANNELS.changed, listener)
+      }
+    },
     getAppInfo: () => ipcRenderer.invoke(APP_INFO_CHANNEL),
     getDocument: () => ipcRenderer.invoke(DOCUMENT_CHANNELS.get),
     updateDocument: (markdown) =>

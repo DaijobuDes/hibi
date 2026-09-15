@@ -131,10 +131,12 @@ test('find in note searches rich text and offscreen markdown without editing it'
   await source.focus()
   await pressShortcut(app, shortcut)
   await waitForCount('1/1')
+  await source.locator('.cm-searchMatch-selected').waitFor()
   assert.equal(await source.locator('.cm-searchMatch-selected').count(), 1)
   await rich.focus()
   await pressShortcut(app, shortcut)
   await waitForCount('1/1')
+  await rich.locator('.ProseMirror-active-search-match').waitFor()
   assert.equal(
     await rich.locator('.ProseMirror-active-search-match').count(),
     1,
