@@ -232,6 +232,19 @@ export function MarkdownEditor({
             aria-hidden={paneMode === 'markdown'}
             inert={paneMode === 'markdown'}
           >
+            {markdownExtensions.map(({ id, Editor }) =>
+              Editor ? (
+                <Editor
+                  key={id}
+                  value={value}
+                  disabled={disabled}
+                  onChange={(markdown) => {
+                    updateFromSource(markdown)
+                    setRichRevision((revision) => revision + 1)
+                  }}
+                />
+              ) : null,
+            )}
             <EditorContent editor={editor} />
           </section>
           <section

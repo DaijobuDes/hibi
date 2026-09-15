@@ -4,7 +4,7 @@ export default {
   id: 'frontmatter',
   name: 'frontmatter',
   description:
-    'preserve YAML metadata while editing the document body visually.',
+    'edit YAML properties while preserving metadata and the document body.',
   apiVersion: 1,
   defaultEnabled: true,
 } satisfies AddonManifest

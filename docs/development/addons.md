@@ -48,6 +48,10 @@ the working implementation lives in `src/addons/documentation/`. see [exporting 
 
 ## markdown extensions
 
+an extension can provide an optional React `Editor` component above the rich document. it receives the complete Markdown as `value`, an `onChange(source)` callback, and `disabled`. return `null` for notes where the UI does not apply. use the callback to keep both editor panes synchronized; honor `disabled` during file operations. the component unmounts when its addon is disabled.
+
+commands may call `context.editor.updateMarkdown(transform)` to synchronously transform the latest note. this marks changes unsaved and rebuilds editor state; it throws while a file operation is running. use this for explicit commands, and use the component callback for ongoing field edits. existing addons remain compatible with API version 1.
+
 `context.editor.registerMarkdown` registers a pure `parse(source)` projection with a local id. return `null` for unrecognized documents, or `{ content, serialize }` to expose a visual-editing body and reconstruct the complete source after an edit. `readOnly: true` can protect unsupported variants. projections compose in registration order; serialization runs in reverse order.
 
 the host removes registrations when the addon stops, preserves source text while editor capabilities change, and isolates parser errors with a read-only fallback. changing editor extensions rebuilds the visual editor, so its undo history resets; the current document stays intact. keep metadata untouched in `serialize` and avoid side effects in parser callbacks. `src/addons/frontmatter/` is the working example.

@@ -4,7 +4,12 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { _electron as electron } from 'playwright'
-import { parseFrontmatter } from '../src/addons/frontmatter/markdown.ts'
+import { parseDocument } from 'yaml'
+import {
+  parseFrontmatter,
+  replaceFrontmatter,
+  splitFrontmatter,
+} from '../src/addons/frontmatter/markdown.ts'
 
 test('frontmatter preserves raw metadata, spacing, and delimiter boundaries', () => {
   const prefix =
@@ -22,6 +27,166 @@ test('frontmatter preserves raw metadata, spacing, and delimiter boundaries', ()
   )
   assert.equal(parseFrontmatter('paragraph\n---\ntitle: note\n---'), null)
   assert.equal(parseFrontmatter('---\nnot closed'), null)
+  assert.equal(
+    replaceFrontmatter(`${prefix}original body`, 'title: changed\n'),
+    '\uFEFF---  \r\ntitle: changed\r\n...\r\n\r\noriginal body',
+  )
+})
+
+test('frontmatter fields preserve comments, types, nested YAML and body edits', {
+  timeout: 45000,
+}, async (t) => {
+  const folder = await mkdtemp(join(tmpdir(), 'hibi-properties-'))
+  const fixture = join(folder, 'properties.md')
+  const metadata =
+    'title: original # keep this comment\npublic: false\norder: 2\nbig: 999999999999999999999\noptions:\n  theme: &theme dark\nalias: *theme\ntags: [one, two]\n'
+  const original = `\uFEFF---\r\n${metadata.replaceAll('\n', '\r\n')}...\r\n\r\nbody stays here\r\n`
+  await writeFile(fixture, original)
+  const app = await electron.launch({
+    args: [resolve('.'), `--user-data-dir=${join(folder, 'profile')}`],
+  })
+  t.after(async () => {
+    await app.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => ({ response: 1 })
+    })
+    await app.close()
+    await rm(folder, { recursive: true, force: true })
+  })
+  await app.evaluate(({ dialog }, fixture) => {
+    dialog.showOpenDialog = async () => ({
+      canceled: false,
+      filePaths: [fixture],
+    })
+    dialog.showMessageBox = async () => ({ response: 1 })
+  }, fixture)
+  const page = await app.firstWindow()
+  await page.getByRole('textbox', { name: 'document editor' }).waitFor()
+  assert.equal(
+    await page.getByRole('region', { name: 'frontmatter properties' }).count(),
+    0,
+  )
+  await page.getByRole('button', { name: 'open', exact: true }).click()
+  const properties = page.getByRole('region', {
+    name: 'frontmatter properties',
+  })
+  await properties
+    .getByRole('textbox', { name: 'title', exact: true })
+    .fill('changed: title # literal')
+  await properties
+    .getByRole('checkbox', { name: 'public', exact: true })
+    .check()
+  await properties
+    .getByRole('spinbutton', { name: 'order', exact: true })
+    .fill('8')
+  const read = async () =>
+    (await page.evaluate(() => window.hibi.getDocument())).markdown
+  let source = await read()
+  const block = splitFrontmatter(source)
+  let values = parseDocument(block.yaml, { intAsBigInt: true }).toJS()
+  assert.equal(block.content, 'body stays here\r\n')
+  assert.equal(values.title, 'changed: title # literal')
+  assert.equal(values.public, true)
+  assert.equal(values.order, 8n)
+  const number = properties.getByRole('spinbutton', {
+    name: 'order',
+    exact: true,
+  })
+  await number.fill('')
+  await number.pressSequentially('-3.5')
+  assert.equal(
+    parseDocument(splitFrontmatter(await read()).yaml).toJS().order,
+    -3.5,
+  )
+  assert.equal(values.big, 999999999999999999999n)
+  assert.equal(values.alias, 'dark')
+  assert.deepEqual(values.tags, ['one', 'two'])
+  assert.match(block.yaml, /# keep this comment/)
+  assert.match(source, /^\uFEFF---\r\n/)
+  assert.ok(source.endsWith('...\r\n\r\nbody stays here\r\n'))
+  await properties
+    .getByRole('button', { name: 'add property', exact: true })
+    .click()
+  await properties
+    .getByRole('textbox', { name: 'new property name' })
+    .fill('draft')
+  await properties
+    .getByRole('combobox', { name: 'new property type' })
+    .selectOption('boolean')
+  await properties
+    .getByRole('button', { name: 'add property', exact: true })
+    .click()
+  await properties.getByRole('checkbox', { name: 'draft', exact: true }).check()
+  await properties
+    .getByRole('button', { name: 'remove order', exact: true })
+    .click()
+  source = await read()
+  await properties.getByRole('button', { name: 'yaml', exact: true }).click()
+  const yaml = properties.getByRole('textbox', { name: 'frontmatter yaml' })
+  await yaml.fill('tags: [broken')
+  await properties
+    .getByRole('button', { name: 'apply yaml', exact: true })
+    .click()
+  await properties.getByRole('alert').waitFor()
+  assert.equal(await read(), source)
+  await yaml.fill(
+    splitFrontmatter(source).yaml.replace(
+      'theme: &theme dark',
+      'theme: &theme light',
+    ),
+  )
+  await properties
+    .getByRole('button', { name: 'apply yaml', exact: true })
+    .click()
+  values = parseDocument(splitFrontmatter(await read()).yaml, {
+    intAsBigInt: true,
+  }).toJS()
+  assert.equal(values.options.theme, 'light')
+  assert.equal(values.alias, 'light')
+  assert.equal(values.draft, true)
+  assert.equal(values.order, undefined)
+  await page
+    .getByRole('textbox', { name: 'document editor' })
+    .fill('updated body')
+  assert.equal(splitFrontmatter(await read()).content, 'updated body')
+  await page.getByRole('button', { name: 'side-by-side', exact: true }).click()
+  await page.waitForFunction(() =>
+    document
+      .querySelector('.source-pane .cm-content')
+      ?.textContent.includes('draft: true'),
+  )
+  const heights = await properties
+    .getByRole('button', { name: /^properties/ })
+    .evaluate(async (button) => {
+      const body = document.querySelector('.frontmatter-disclosure')
+      const result = [body.getBoundingClientRect().height]
+      button.click()
+      const start = performance.now()
+      while (performance.now() - start < 210) {
+        await new Promise(requestAnimationFrame)
+        result.push(body.getBoundingClientRect().height)
+      }
+      return result
+    })
+  assert.ok(heights.some((height) => height > 0 && height < heights[0]))
+  assert.equal(heights.at(-1), 0)
+  await page.getByRole('button', { name: 'save', exact: true }).click()
+  await page
+    .getByRole('status', { name: 'unsaved changes' })
+    .waitFor({ state: 'hidden' })
+  assert.equal(await readFile(fixture, 'utf8'), await read())
+  await page.getByRole('button', { name: 'new', exact: true }).click()
+  await page.waitForFunction(
+    () => document.querySelector('.tiptap')?.textContent === '',
+  )
+  await page
+    .getByRole('button', { name: 'command palette', exact: true })
+    .click()
+  await page
+    .getByRole('combobox', { name: 'search commands' })
+    .fill('add frontmatter')
+  await page.getByRole('option').filter({ hasText: 'add frontmatter' }).click()
+  await properties.waitFor()
+  assert.equal(await read(), '---\n---\n\n')
 })
 
 test('frontmatter addon, inline rename, and centered workspace entry preserve documents', {

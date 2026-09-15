@@ -18,6 +18,7 @@ export type RegisteredCommand = AddonCommand & { addonId: string }
 type Environment = Omit<AddonContext, 'commands' | 'native' | 'editor'> & {
   invoke: (id: string, method: string, input?: unknown) => Promise<unknown>
   error: (error: unknown) => void
+  updateMarkdown: AddonContext['editor']['updateMarkdown']
 }
 
 export function useAddons(environment: Environment) {
@@ -94,6 +95,9 @@ export function useAddons(environment: Environment) {
         running.set(id, { addon, stop })
         addon.start({
           editor: {
+            updateMarkdown(transform) {
+              if (!disposed) latest.current.updateMarkdown(transform)
+            },
             registerMarkdown(extension) {
               if (disposed) return () => {}
               const key = `${id}.${extension.id}`
@@ -107,6 +111,7 @@ export function useAddons(environment: Environment) {
               extensions.set(key, {
                 id: key,
                 addonId: id,
+                ...(extension.Editor ? { Editor: extension.Editor } : {}),
                 parse(source) {
                   if (disposed) return null
                   try {

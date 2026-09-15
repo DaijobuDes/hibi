@@ -17,10 +17,10 @@ upload that file to any static host, usually as `index.html`. it also opens dire
 
 relative links between included markdown pages are rewritten for the exported site. `README.md` or `index.md` at the root is the initial page when present. the current document’s in-memory edits are included if it belongs to the workspace; exporting does not silently save those edits back to the original file.
 
-exports support up to 2,000 documents and 20 mib of markdown. the export contains every included markdown file, so review the selected folder before publishing. hidden files, symlinks, and `node_modules` are excluded.
+exports support up to 2,000 documents and 20 mib of markdown and embedded images. the export contains every included markdown file and its local Markdown images, so review the selected folder before publishing. hidden documents, symlinked documents, and `node_modules` are excluded.
 
 ## boundaries
 
 raw html is sanitized. scripts, forms, event handlers, and dangerous URLs are removed. a restrictive content security policy blocks network requests and unapproved scripts.
 
-external and relative images are not copied into this version of the export. embedded raster data images are supported. links to non-markdown files are disabled unless they are explicit external web/mail links. image/attachment packaging can be added through the documented addon API in a later compatible release.
+local Markdown images are embedded in the HTML, including relative paths, absolute paths, and local `file:` URLs. each image must be PNG, JPEG, GIF, WebP, AVIF, or SVG and no larger than 8 mib. relative paths resolve from each note's folder. missing or unsupported images retain their alt text. remote images are not fetched. links to non-markdown files are disabled unless they are explicit external web/mail links.

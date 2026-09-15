@@ -1,3 +1,4 @@
+import type { ComponentType } from 'react'
 import type { WorkspaceSnapshot, WorkspaceState } from '../shared/workspace'
 
 /** Increment when a public contract changes incompatibly. */
@@ -32,10 +33,22 @@ export type MarkdownExtension = {
   id: string
   /** Pure source-to-body projection; return null for unrecognized documents. */
   parse: (source: string) => MarkdownProjection | null
+  /** Optional properties UI above the rich editor. Receives the complete source. */
+  Editor?: ComponentType<MarkdownEditorProps>
+}
+
+export type MarkdownEditorProps = {
+  value: string
+  onChange: (source: string) => void
+  disabled: boolean
 }
 
 export type AddonContext = {
-  editor: { registerMarkdown: (extension: MarkdownExtension) => () => void }
+  editor: {
+    registerMarkdown: (extension: MarkdownExtension) => () => void
+    /** Apply a synchronous source transform to the active note; throws while busy. */
+    updateMarkdown: (transform: (source: string) => string) => void
+  }
   commands: { register: (command: AddonCommand) => () => void }
   workspace: {
     get: () => Promise<WorkspaceState | null>

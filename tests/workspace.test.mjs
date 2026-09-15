@@ -123,6 +123,10 @@ test('nested workspace editing, addon lifecycle, and offline static export', {
   await page
     .getByRole('textbox', { name: 'document editor' })
     .fill('unsaved workspace draft')
+  assert.equal(
+    await page.locator('.workspace-sidebar').getAttribute('data-open'),
+    'true',
+  )
   const draft = (await page.evaluate(() => window.hibi.getDocument())).markdown
   await app.evaluate(({ dialog }) => {
     dialog.showMessageBox = async () => ({

@@ -99,6 +99,15 @@ test('command palette, full-height settings, and local geist fonts', {
   await palette.waitFor({ state: 'hidden' })
   const settings = page.getByRole('main', { name: 'settings', exact: true })
   await settings.waitFor()
+  await page.waitForFunction(
+    () =>
+      getComputedStyle(document.querySelector('.editor-surface')).opacity ===
+      '0',
+  )
+  assert.equal(
+    await page.locator('.editor-surface').evaluate((element) => element.inert),
+    true,
+  )
   for (const category of ['appearance', 'addons', 'about hibi', 'hotkeys']) {
     await page.getByRole('tab', { name: category, exact: true }).click()
     if (category === 'hotkeys')

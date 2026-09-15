@@ -1,5 +1,7 @@
 # editing
 
+typing closes the workspace sidebar when no folder is open. an open workspace keeps its navigation visible. use the sidebar toggle to reopen the empty sidebar whenever needed.
+
 ## images
 
 normal and split views resolve relative image paths from the saved note's folder. absolute paths and local `file:` URLs also work. spaces can be percent encoded or enclosed in Markdown angle brackets. the stored Markdown keeps the original path.
@@ -7,6 +9,12 @@ normal and split views resolve relative image paths from the saved note's folder
 local PNG, JPEG, GIF, WebP, AVIF, and SVG images are supported up to 8 mib each. save a new note before using relative paths. unavailable images retain their alt text and a path hint. remote images are not fetched. SVGs display as images, never as executable document markup.
 
 documentation exports embed local Markdown images into the HTML, so they remain visible offline. the export limit is 20 mib including embedded image data.
+
+## frontmatter properties
+
+the frontmatter addon adds collapsible metadata fields to normal and split views. edit text, numbers, and booleans directly; add or remove properties from the same panel. use **yaml** for lists, objects, and other YAML structures, then **apply yaml**. invalid YAML cannot overwrite the note. the body stays unchanged when properties change.
+
+use **add frontmatter** in the command palette for a note without metadata. disable the addon under settings → addons to return to editing metadata in markdown only. see the [addon guide](../../src/addons/frontmatter/README.md) for preservation details.
 
 success and error notifications appear at the bottom right without moving your document. use the close button to dismiss them.
 
@@ -38,6 +46,6 @@ click the filename, enter a new name, and press enter. escape or clicking away c
 
 new, open, save, and save as use native dialogs. hibi checks for unsaved edits before replacing a document, and checks disk changes before overwriting the same file. saves write and sync a temporary file before renaming it over the destination.
 
-source switching preserves original markdown. rich edits may normalize markdown syntax. the [frontmatter addon](frontmatter.md) preserves metadata while allowing visual body edits. raw html, reference definitions, and frontmatter without its enabled addon stay editable in source mode; their rich preview is read-only, without a banner. images are preserved as references but external/local images are not loaded by the editor.
+source switching preserves original markdown. rich edits may normalize markdown syntax. the [frontmatter addon](frontmatter.md) preserves metadata while allowing visual body edits. raw html, reference definitions, and frontmatter without its enabled addon stay editable in source mode; their rich preview is read-only, without a banner. local images display without rewriting their Markdown references.
 
 documents are UTF-8 and limited to 2 mib. drafts are held in memory; renderer reloads recover them from the main process, but a full process or machine crash can lose unsaved edits.

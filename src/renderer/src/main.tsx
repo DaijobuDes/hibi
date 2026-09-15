@@ -97,6 +97,13 @@ function App() {
   }, [cursorSettings])
   const [notice, setNotice] = useState('')
   const addonHost = useAddons({
+    updateMarkdown(transform) {
+      if (busyRef.current || !document) throw new Error('the document is busy.')
+      const markdown = transform(document.markdown)
+      if (markdown === document.markdown) return
+      updateMarkdown(markdown)
+      setResetEditor((value) => value + 1)
+    },
     workspace: {
       get: () => window.hibi.getWorkspace(),
       open: openFolder,
@@ -157,11 +164,12 @@ function App() {
     if (
       settingsOpen ||
       paletteOpen ||
-      !hideTitlebar ||
       !(target instanceof HTMLElement) ||
       !target.closest('[contenteditable="true"]')
     )
       return
+    if (!workspace && sidebarOpen) setSidebarOpen(false)
+    if (!hideTitlebar) return
     clearTimeout(typingTimer.current)
     setTyping(true)
     typingTimer.current = setTimeout(() => setTyping(false), 1200)

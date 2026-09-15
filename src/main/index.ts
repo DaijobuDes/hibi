@@ -253,6 +253,14 @@ function createWindow(): void {
       })
   })
   void window.loadURL(rendererUrl).catch((error: unknown) => {
+    // Vite dependency optimization can replace the initial navigation with a reload.
+    if (
+      !app.isPackaged &&
+      error instanceof Error &&
+      'code' in error &&
+      error.code === 'ERR_ABORTED'
+    )
+      return
     console.error('failed to load app:', error)
     dialog.showErrorBox(
       'hibi could not start',

@@ -263,14 +263,17 @@ button:disabled {
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  opacity: 1;
   transform: translateX(0);
   transition:
     transform var(--motion-pane) var(--ease-out),
+    opacity var(--motion-selection) ease-out,
     visibility 0s;
 }
 .app[data-screen="settings"] .editor-surface {
+  opacity: 0;
   visibility: hidden;
-  transition-delay: 0s, var(--motion-selection);
+  transition-delay: 0s, 0s, var(--motion-selection);
 }
 .settings-screen {
   position: absolute;
