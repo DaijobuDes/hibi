@@ -1,0 +1,14 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      development:
+        patterns: ['*']
+        exclude-patterns: [electron]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
