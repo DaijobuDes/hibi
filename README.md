@@ -12,6 +12,8 @@ the compact title bar holds file actions, filename, formatting, and view control
 
 click the centered filename, press `cmd/ctrl+shift+p`, or press `f1` for the command palette. search file operations, view modes, settings, and top-bar behavior. use arrow keys and enter to run a command, or escape to dismiss. opening and closing settings, changing categories and views, and opening and dismissing the palette use short transitions; reduced-motion preferences disable them.
 
+`cmd/ctrl+f` opens find in note at the top right. matching is literal and case-insensitive; enter/shift+enter or the arrow buttons navigate matches. escape closes it. search uses rich text in normal view, source text in markdown view, and the last focused pane in side-by-side view. search includes the full document, including markdown outside the visible viewport.
+
 geist sans and geist mono come directly from [vercel's geist package](https://github.com/vercel/geist-font) and load from bundled woff2 files. no google fonts or font cdn requests. the font license ships in `resources/licenses/geist.txt`.
 
 startup and lazy editor loading show a centered, faded page icon with a shimmer. reduced-motion mode shows a static icon. lucide supplies interface icons; simple-icons is installed for future brand icons and is not bundled unless used.

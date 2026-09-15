@@ -2,6 +2,16 @@ import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import { markdown as markdownLanguage } from '@codemirror/lang-markdown'
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import {
+  closeSearchPanel,
+  findNext,
+  findPrevious,
+  getSearchQuery,
+  openSearchPanel,
+  SearchQuery,
+  search,
+  setSearchQuery,
+} from '@codemirror/search'
+import {
   Annotation,
   Compartment,
   EditorState,
@@ -10,6 +20,7 @@ import {
 import { EditorView, keymap, placeholder } from '@codemirror/view'
 import { tags } from '@lezer/highlight'
 import { useEffect, useRef } from 'react'
+import type { FindMove, FindStatus } from './FindBar'
 
 const externalChange = Annotation.define<boolean>()
 const highlighting = HighlightStyle.define([
@@ -29,11 +40,19 @@ export function SourceEditor({
   onChange,
   disabled,
   externalRevision,
+  findActive,
+  findQuery,
+  findMove,
+  onFindStatus,
 }: {
   value: string
   onChange: (value: string) => void
   disabled: boolean
   externalRevision: number
+  findActive: boolean
+  findQuery: string
+  findMove: FindMove
+  onFindStatus: (status: FindStatus) => void
 }) {
   const host = useRef<HTMLDivElement>(null)
   const view = useRef<EditorView | null>(null)
@@ -41,6 +60,9 @@ export function SourceEditor({
   const initialValue = useRef(value)
   const appliedRevision = useRef(externalRevision)
   const editable = useRef(new Compartment())
+  const find = useRef({ active: findActive, report: onFindStatus })
+  const handledFindMove = useRef(findMove.id)
+  find.current = { active: findActive, report: onFindStatus }
   change.current = onChange
 
   useEffect(() => {
@@ -50,6 +72,13 @@ export function SourceEditor({
       state: EditorState.create({
         doc: initialValue.current,
         extensions: [
+          search({
+            createPanel: () => {
+              const dom = window.document.createElement('div')
+              dom.hidden = true
+              return { dom }
+            },
+          }),
           editable.current.of(EditorView.editable.of(true)),
           markdownLanguage(),
           history(),
@@ -62,6 +91,27 @@ export function SourceEditor({
             spellcheck: 'false',
           }),
           EditorView.updateListener.of((update) => {
+            if (find.current.active) {
+              const query = getSearchQuery(update.state)
+              let total = 0
+              let current = 0
+              if (query.valid) {
+                const cursor = query.getCursor(update.state)
+                for (
+                  let match = cursor.next();
+                  !match.done;
+                  match = cursor.next()
+                ) {
+                  total += 1
+                  if (
+                    match.value.from === update.state.selection.main.from &&
+                    match.value.to === update.state.selection.main.to
+                  )
+                    current = total
+                }
+              }
+              find.current.report({ current, total })
+            }
             if (
               update.docChanged &&
               !update.transactions.some((transaction) =>
@@ -102,6 +152,31 @@ export function SourceEditor({
       effects: editable.current.reconfigure(EditorView.editable.of(!disabled)),
     })
   }, [disabled])
+
+  useEffect(() => {
+    const editor = view.current
+    if (!editor) return
+    if (!findActive) {
+      closeSearchPanel(editor)
+      return
+    }
+    openSearchPanel(editor)
+    const query = new SearchQuery({ search: findQuery, literal: true })
+    editor.dispatch({ effects: setSearchQuery.of(query) })
+    const first = query.valid ? query.getCursor(editor.state).next() : null
+    if (first && !first.done)
+      editor.dispatch({
+        selection: { anchor: first.value.from, head: first.value.to },
+        scrollIntoView: true,
+      })
+  }, [findActive, findQuery])
+
+  useEffect(() => {
+    if (handledFindMove.current === findMove.id) return
+    handledFindMove.current = findMove.id
+    if (findActive && view.current && findMove.id)
+      (findMove.direction === 'next' ? findNext : findPrevious)(view.current)
+  }, [findActive, findMove])
 
   return <div className="source-editor" ref={host} />
 }

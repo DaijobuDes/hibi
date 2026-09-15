@@ -1,3 +1,4 @@
+import { Extension } from '@tiptap/core'
 import { Image } from '@tiptap/extension-image'
 import { Placeholder } from '@tiptap/extension-placeholder'
 import { TableKit } from '@tiptap/extension-table'
@@ -6,8 +7,13 @@ import { TaskList } from '@tiptap/extension-task-list'
 import { Markdown } from '@tiptap/markdown'
 import { StarterKit } from '@tiptap/starter-kit'
 import { marked } from 'marked'
+import { search } from 'prosemirror-search'
 
 export const extensions = [
+  Extension.create({
+    name: 'findInNote',
+    addProseMirrorPlugins: () => [search()],
+  }),
   StarterKit.configure({ underline: false, link: { openOnClick: false } }),
   Markdown,
   TableKit.configure({ table: { resizable: false } }),

@@ -66,6 +66,7 @@ function App() {
   const [typing, setTyping] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const [findOpen, setFindOpen] = useState(false)
   const [padding, setPadding] = useState(() => {
     const value = Number(localStorage.getItem('editor-padding') ?? 48)
     return Number.isInteger(value) && value >= 0 && value <= 96 ? value : 48
@@ -113,6 +114,7 @@ function App() {
 
   function toggleSettings() {
     showTitlebar()
+    if (!settingsOpen) setFindOpen(false)
     void animateChange(() => setSettingsOpen(!settingsOpen)).then(() => {
       if (settingsOpen)
         requestAnimationFrame(() =>
@@ -123,6 +125,22 @@ function App() {
             ?.focus(),
         )
     })
+  }
+
+  function openFind() {
+    showTitlebar()
+    setPaletteOpen(false)
+    if (findOpen) {
+      const input =
+        window.document.querySelector<HTMLInputElement>('.find-bar input')
+      input?.focus()
+      input?.select()
+    }
+    if (settingsOpen)
+      void animateChange(() => setSettingsOpen(false)).then(() =>
+        setFindOpen(true),
+      )
+    else setFindOpen(true)
   }
 
   useEffect(() => {
@@ -205,6 +223,12 @@ function App() {
 
   const modifier = info?.platform === 'darwin' ? '⌘' : 'ctrl+'
   const paletteCommands: PaletteCommand[] = [
+    {
+      id: 'find',
+      label: 'edit: find in note',
+      shortcut: `${modifier}f`,
+      run: openFind,
+    },
     ...(!busy && document
       ? (['new', 'open', 'save', 'saveAs'] as const).map((command) => ({
           id: command,
@@ -254,6 +278,14 @@ function App() {
       onInputCapture={(event) => noteTyping(event.target)}
       onKeyDownCapture={(event) => {
         if (
+          (event.metaKey || event.ctrlKey) &&
+          event.key.toLowerCase() === 'f'
+        ) {
+          event.preventDefault()
+          openFind()
+          return
+        }
+        if (
           ((event.metaKey || event.ctrlKey) &&
             event.shiftKey &&
             event.key.toLowerCase() === 'p') ||
@@ -266,7 +298,18 @@ function App() {
         if ((event.metaKey || event.ctrlKey) && event.key === ',') {
           event.preventDefault()
           showTitlebar()
+          setFindOpen(false)
           void animateChange(() => setSettingsOpen(true))
+          return
+        }
+        if (
+          event.key === 'Escape' &&
+          findOpen &&
+          !settingsOpen &&
+          !paletteOpen
+        ) {
+          event.preventDefault()
+          setFindOpen(false)
           return
         }
         if (event.key === 'Escape' && settingsOpen && !paletteOpen) {
@@ -332,6 +375,8 @@ function App() {
             onChange={updateMarkdown}
             mode={mode}
             disabled={busy}
+            findOpen={findOpen && !settingsOpen}
+            onCloseFind={() => setFindOpen(false)}
           />
         )}
       </div>
