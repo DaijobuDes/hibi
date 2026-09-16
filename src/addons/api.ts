@@ -261,7 +261,14 @@ export type Addon = {
 
 /** Native modules are trusted application code, never loaded from a workspace. */
 export type NativeAddonContext = {
-  workspace: { snapshot: () => Promise<WorkspaceSnapshot> }
+  workspace: {
+    snapshot: () => Promise<WorkspaceSnapshot>
+    /** Trusted native modules only. Never exposed to workspace markdown. */
+    directory: () => string | null
+    hasUnsavedChanges: () => boolean
+    /** Reload the active saved file after native operations; rejects dirty buffers. */
+    reload: () => Promise<void>
+  }
   exportHtml: (
     html: string,
     suggestedName: string,

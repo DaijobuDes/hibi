@@ -1,4 +1,4 @@
-import { readFile, rename, writeFile } from 'node:fs/promises'
+import { lstat, readFile, rename, writeFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import { app, type BrowserWindow, dialog } from 'electron'
 import {
@@ -8,8 +8,14 @@ import {
   type NativeAddon,
 } from '../addons/api'
 import { exportedAppearance } from './appearance'
+import {
+  clearDocument,
+  getDocument,
+  getDocumentPath,
+  loadDocument,
+} from './document'
 import { writeText } from './files'
-import { snapshotWorkspace } from './workspace'
+import { refreshWorkspace, snapshotWorkspace, workspaceRoot } from './workspace'
 
 const manifests = Object.values(
   import.meta.glob<AddonManifest>(
@@ -104,6 +110,24 @@ export async function invokeAddon(
   if (!handler) throw new Error('unknown addon method.')
   return handler(input, {
     workspace: {
+      directory: workspaceRoot,
+      hasUnsavedChanges: () => getDocument().dirty,
+      async reload() {
+        if (getDocument().dirty)
+          throw new Error('save or discard edits before reloading files.')
+        const path = getDocumentPath()
+        if (path) {
+          const exists = await lstat(path).catch(
+            (error: NodeJS.ErrnoException) => {
+              if (error.code !== 'ENOENT') throw error
+              return null
+            },
+          )
+          if (exists?.isFile()) await loadDocument(window, path)
+          else clearDocument(window)
+        }
+        await refreshWorkspace()
+      },
       snapshot: async () => ({
         ...(await snapshotWorkspace()),
         appearance: exportedAppearance(),

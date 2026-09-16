@@ -161,7 +161,14 @@ function App() {
       busyRef.current = true
       setBusy(true)
       try {
-        return await window.hibi.invokeAddon(id, method, input)
+        const result = await window.hibi.invokeAddon(id, method, input)
+        const next = await window.hibi.getDocument()
+        if (next.revision !== document?.revision) {
+          setDocument(next)
+          savedText.current = next.savedMarkdown
+        }
+        setWorkspace(await window.hibi.getWorkspace())
+        return result
       } finally {
         busyRef.current = false
         setBusy(false)
