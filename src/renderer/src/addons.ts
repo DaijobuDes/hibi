@@ -11,6 +11,7 @@ import {
   type SourceExtension,
   type StatusItem,
 } from '../../addons/api'
+import { useDialogService } from '../../ui/DialogProvider'
 import { createAddonOverrides } from './addon-overrides'
 
 export const addons = Object.values(
@@ -22,7 +23,14 @@ export const addons = Object.values(
 export type RegisteredCommand = AddonCommand & { addonId: string }
 type Environment = Omit<
   AddonContext,
-  'commands' | 'native' | 'editor' | 'statusBar' | 'app' | 'styles' | 'patches'
+  | 'commands'
+  | 'native'
+  | 'editor'
+  | 'statusBar'
+  | 'app'
+  | 'styles'
+  | 'patches'
+  | 'dialogs'
 > & {
   invoke: (id: string, method: string, input?: unknown) => Promise<unknown>
   error: (error: unknown) => void
@@ -33,6 +41,7 @@ type Environment = Omit<
 }
 
 export function useAddons(environment: Environment) {
+  const dialogService = useDialogService()
   const latest = useRef(environment)
   latest.current = environment
   const app = useRef<AddonApp>({
@@ -114,6 +123,7 @@ export function useAddons(environment: Environment) {
         continue
       let disposed = false
       const overrides = createAddonOverrides(id)
+      const dialogScope = dialogService.scope(addon.manifest.name)
       const stop = () => {
         if (disposed) return
         disposed = true
@@ -136,6 +146,7 @@ export function useAddons(environment: Environment) {
           try {
             addon.stop?.()
           } finally {
+            dialogScope.dispose()
             overrides.dispose()
           }
         } catch (error) {
@@ -147,6 +158,7 @@ export function useAddons(environment: Environment) {
           throw new Error(`incompatible addon: ${id}`)
         running.set(id, { addon, stop })
         addon.start({
+          dialogs: dialogScope.api,
           app,
           styles: overrides.styles,
           patches: overrides.patches,
@@ -393,6 +405,7 @@ export function useAddons(environment: Environment) {
     status,
     app,
     rich,
+    dialogService,
   ])
   async function setEnabled(id: string, enabled: boolean) {
     try {

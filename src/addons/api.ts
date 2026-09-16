@@ -4,6 +4,15 @@ import type { ComponentType } from 'react'
 import type { DocumentCommand } from '../shared/desktop'
 import type { AppCommand } from '../shared/hotkeys'
 import type { WorkspaceSnapshot, WorkspaceState } from '../shared/workspace'
+import type { DialogApi } from '../ui/dialogs'
+
+export type {
+  DialogApi,
+  DialogHandle,
+  DialogOptions,
+  MessageDialogOptions,
+  PromptDialogOptions,
+} from '../ui/dialogs'
 
 /** Increment when a public contract changes incompatibly. */
 export const ADDON_API_VERSION = 1
@@ -137,6 +146,7 @@ export type MarkdownEditorProps = {
 }
 
 export type AddonContext = {
+  dialogs: DialogApi
   app: AddonApp
   styles: { register: (id: string, css: string) => StyleHandle }
   patches: PatchApi

@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { IconButton } from '../../ui/Controls'
+import { Modal } from '../../ui/Modal'
 import { ShortcutKeys } from '../../ui/ShortcutKeys'
 
 const categoryIcons = {
@@ -60,12 +61,9 @@ export function CommandPalette({
   const activeId = results[active]?.id
 
   useEffect(() => {
-    const element = dialog.current
-    element?.showModal()
     input.current?.focus()
     return () => {
       clearTimeout(closeTimer.current)
-      element?.close()
     }
   }, [])
 
@@ -96,10 +94,9 @@ export function CommandPalette({
   }
 
   return (
-    <dialog
+    <Modal
       ref={dialog}
       className="command-palette"
-      closedby="any"
       aria-label="command palette"
       onKeyDown={(event) => {
         if (event.key === 'Escape') {
@@ -107,20 +104,7 @@ export function CommandPalette({
           close()
         }
       }}
-      onCancel={(event) => {
-        event.preventDefault()
-        close()
-      }}
-      onClick={(event) => {
-        const rect = event.currentTarget.getBoundingClientRect()
-        if (
-          event.clientX < rect.left ||
-          event.clientX > rect.right ||
-          event.clientY < rect.top ||
-          event.clientY > rect.bottom
-        )
-          close()
-      }}
+      onDismiss={() => close()}
     >
       <div className="command-search">
         <Search size={16} aria-hidden="true" />
@@ -222,6 +206,6 @@ export function CommandPalette({
           <ShortcutKeys shortcut="escape" platform={platform} /> close
         </span>
       </footer>
-    </dialog>
+    </Modal>
   )
 }

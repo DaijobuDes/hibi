@@ -1,5 +1,9 @@
 # shared ui and theme tokens
 
+shared `Modal` supplies native focus trapping and dismissal for the command palette and dialog API. `DialogProvider` supplies the window-level queue; app and addon dialogs share tokens, controls, spacing, motion, and reduced-motion handling.
+
+titlebar titles receive 16 px of inset when no leading action icons are present. `--titlebar-edge-inset` and `--window-corner-radius` control outer chrome spacing. macOS reserves the traffic-light area and rounds the last button's top-right corner. Windows and Linux reserve right-side caption controls and adapt the first left button's top-left corner. platform selectors supply defaults; themes may override these tokens.
+
 desktop and exported documentation use the same `src/ui/tokens.css`. its [generated reference](../reference/theme-tokens.md) is checked by `npm run docs:check`.
 
 ## semantic colors

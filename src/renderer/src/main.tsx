@@ -24,6 +24,7 @@ import {
   type Hotkeys,
 } from '../../shared/hotkeys'
 import { IconButton } from '../../ui/Controls'
+import { DialogProvider, useDialogs } from '../../ui/DialogProvider'
 import './styles.css'
 import type { WorkspaceState } from '../../shared/workspace'
 import { useSidebarResize } from '../../ui/useSidebarResize'
@@ -69,6 +70,7 @@ class ErrorBoundary extends Component<
 }
 
 function App() {
+  const dialogs = useDialogs()
   const [document, setDocument] = useState<DocumentState | null>(null)
   const [resetEditor, setResetEditor] = useState(0)
   const savedText = useRef('')
@@ -241,36 +243,39 @@ function App() {
     }
   }, [])
 
-  const runCommand = useCallback(async (command: DocumentCommand) => {
-    if (busyRef.current) return false
-    busyRef.current = true
-    setBusy(true)
-    setError('')
-    try {
-      const next = await (command === 'new'
-        ? window.hibi.newDocument()
-        : command === 'open'
-          ? window.hibi.openDocument()
-          : window.hibi.saveDocument(command === 'saveAs'))
-      if (next) {
-        setDocument(next)
-        savedText.current = next.savedMarkdown
-        if (command === 'new' || command === 'open') setSettingsOpen(false)
-        setWorkspace(await window.hibi.getWorkspace())
+  const runCommand = useCallback(
+    async (command: DocumentCommand) => {
+      if (busyRef.current || dialogs.isOpen()) return false
+      busyRef.current = true
+      setBusy(true)
+      setError('')
+      try {
+        const next = await (command === 'new'
+          ? window.hibi.newDocument()
+          : command === 'open'
+            ? window.hibi.openDocument()
+            : window.hibi.saveDocument(command === 'saveAs'))
+        if (next) {
+          setDocument(next)
+          savedText.current = next.savedMarkdown
+          if (command === 'new' || command === 'open') setSettingsOpen(false)
+          setWorkspace(await window.hibi.getWorkspace())
+        }
+        return Boolean(next)
+      } catch (error) {
+        setError(
+          error instanceof Error
+            ? error.message
+            : 'could not complete file operation.',
+        )
+        return false
+      } finally {
+        busyRef.current = false
+        setBusy(false)
       }
-      return Boolean(next)
-    } catch (error) {
-      setError(
-        error instanceof Error
-          ? error.message
-          : 'could not complete file operation.',
-      )
-      return false
-    } finally {
-      busyRef.current = false
-      setBusy(false)
-    }
-  }, [])
+    },
+    [dialogs],
+  )
 
   async function openFolder(): Promise<WorkspaceState | null> {
     if (busyRef.current) return null
@@ -372,6 +377,7 @@ function App() {
   }
 
   function runAction(command: AppCommand) {
+    if (dialogs.isOpen()) return
     if (command === 'palette') {
       openPalette()
       return
@@ -616,7 +622,9 @@ if (!root) throw new Error('missing root element')
 createRoot(root).render(
   <StrictMode>
     <ErrorBoundary>
-      <App />
+      <DialogProvider>
+        <App />
+      </DialogProvider>
     </ErrorBoundary>
   </StrictMode>,
 )

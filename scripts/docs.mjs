@@ -3,6 +3,19 @@ import { basename, dirname } from 'node:path'
 
 const references = [
   [
+    'docs/reference/dialog-api.md',
+    'dialog api',
+    'src/ui/dialogs.ts',
+    (source) => source,
+  ],
+  [
+    'docs/reference/modal-api.md',
+    'shared modal component',
+    'src/ui/Modal.tsx',
+    (source) => source,
+    'tsx',
+  ],
+  [
     'docs/reference/controls-api.md',
     'shared controls',
     'src/ui/Controls.tsx',

@@ -32,6 +32,8 @@ generated from `src/ui/tokens.css`. update the source, then run `npm run docs`. 
   --radius-pill: 999px;
   --control-height: 28px;
   --status-bar-height: 32px;
+  --titlebar-edge-inset: 12px;
+  --window-corner-radius: 10px;
   --sidebar-row-height: 28px;
   --sidebar-section-height: 36px;
   --icon-size: 16px;

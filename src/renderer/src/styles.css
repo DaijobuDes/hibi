@@ -99,7 +99,7 @@ button:disabled {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding-right: 8px;
+  padding-right: var(--titlebar-edge-inset);
   background: transparent;
   -webkit-app-region: drag;
   user-select: none;
@@ -138,7 +138,22 @@ button:disabled {
 }
 .app[data-platform="win32"] .titlebar,
 .app[data-platform="linux"] .titlebar {
-  padding-right: 140px;
+  padding-right: calc(132px + var(--titlebar-edge-inset));
+}
+.app[data-platform="win32"] {
+  --titlebar-edge-inset: 8px;
+  --window-corner-radius: 8px;
+}
+.app[data-platform="linux"] {
+  --titlebar-edge-inset: 8px;
+  --window-corner-radius: 0px;
+}
+.app[data-platform="darwin"] .view-switch > button:last-child {
+  border-top-right-radius: var(--window-corner-radius);
+}
+.app[data-platform="win32"] .sidebar-toolbar > button:first-child,
+.app[data-platform="linux"] .sidebar-toolbar > button:first-child {
+  border-top-left-radius: var(--window-corner-radius);
 }
 .sidebar-toolbar {
   --window-controls-width: 80px;
@@ -165,6 +180,9 @@ button:disabled {
   min-width: 0;
   height: 100%;
   padding-left: 8px;
+}
+.document-toolbar:has(> .document-title:first-child) {
+  padding-left: var(--space-4);
 }
 .titlebar .document-title {
   -webkit-app-region: drag;
