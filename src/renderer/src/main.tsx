@@ -183,7 +183,6 @@ function App() {
     )
       return
     if (!workspace && sidebarOpen) setSidebarOpen(false)
-    if (!hideTitlebar) return
     clearTimeout(typingTimer.current)
     setTyping(true)
     typingTimer.current = setTimeout(() => setTyping(false), 1200)
@@ -455,7 +454,7 @@ function App() {
       style={{ '--sidebar-width': `${sidebarResize.width}px` } as CSSProperties}
       data-platform={info?.platform}
       data-screen={settingsOpen ? 'settings' : 'editor'}
-      data-typing={typing}
+      data-typing={typing && hideTitlebar}
       data-sidebar={sidebarOpen}
       onInputCapture={(event) => noteTyping(event.target)}
       onKeyDownCapture={(event) => {
@@ -492,7 +491,7 @@ function App() {
         if (event.clientY <= 36) showTitlebar()
       }}
       onFocusCapture={(event) => {
-        if (event.target.closest('.titlebar')) showTitlebar()
+        if (event.target.closest('.titlebar, .editor-toolbar')) showTitlebar()
       }}
     >
       <Titlebar
@@ -584,7 +583,7 @@ function App() {
         aria-hidden={settingsOpen}
         inert={settingsOpen}
       >
-        <EditorToolbar mode={mode} />
+        <EditorToolbar mode={mode} typing={typing} />
         <div className="editor-page">
           {document && (
             <MarkdownEditor

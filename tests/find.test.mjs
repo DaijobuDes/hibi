@@ -42,7 +42,12 @@ test('find in note searches rich text and offscreen markdown without editing it'
     () =>
       Math.abs(
         document.querySelector('.find-bar').getBoundingClientRect().top -
-          document.querySelector('.titlebar').getBoundingClientRect().bottom,
+          (document.querySelector('.editor-toolbar').getBoundingClientRect()
+            .bottom +
+            Number.parseFloat(
+              getComputedStyle(document.querySelector('.editor-toolbar'))
+                .marginBottom,
+            )),
       ) < 1,
   )
   const waitForCount = (expected) =>

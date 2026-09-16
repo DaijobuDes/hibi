@@ -5,12 +5,31 @@ import type {
 } from '../../ui/toolbar'
 
 const key = 'hibi:toolbar'
-let preferences: ToolbarPreferences = { visible: true, mode: 'icons' }
+const validOrder = (value: unknown): string[] =>
+  Array.isArray(value)
+    ? [
+        ...new Set(
+          value.filter(
+            (id): id is string =>
+              typeof id === 'string' &&
+              /^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/.test(id),
+          ),
+        ),
+      ]
+    : []
+let preferences: ToolbarPreferences = {
+  visible: true,
+  mode: 'icons',
+  autoHide: true,
+}
 try {
   const saved = JSON.parse(localStorage.getItem(key) ?? '{}')
   if (typeof saved?.visible === 'boolean') preferences.visible = saved.visible
+  if (typeof saved?.autoHide === 'boolean')
+    preferences.autoHide = saved.autoHide
   if (['icons', 'icons-and-text', 'text'].includes(saved?.mode))
     preferences.mode = saved.mode
+  preferences.order = validOrder(saved?.order)
 } catch {
   /* Keep defaults when stored preferences cannot be read. */
 }
@@ -18,11 +37,27 @@ const items = new Map<string, ToolbarItem>()
 let snapshot = { preferences, items: [] as ToolbarItem[] }
 const listeners = new Set<() => void>()
 const publish = () => {
-  snapshot = { preferences, items: [...items.values()] }
+  const rank = new Map(
+    (preferences.order ?? []).map((id, index) => [id, index]),
+  )
+  snapshot = {
+    preferences,
+    items: [...items.values()].sort(
+      (a, b) => (rank.get(a.id) ?? Infinity) - (rank.get(b.id) ?? Infinity),
+    ),
+  }
   for (const listener of listeners) listener()
 }
 function setPreferences(changes: Partial<ToolbarPreferences>) {
   preferences = {
+    autoHide:
+      typeof changes.autoHide === 'boolean'
+        ? changes.autoHide
+        : (preferences.autoHide ?? true),
+    order:
+      changes.order === undefined
+        ? (preferences.order ?? [])
+        : validOrder(changes.order),
     visible:
       typeof changes.visible === 'boolean'
         ? changes.visible
@@ -45,11 +80,22 @@ export const toolbar = {
     }
   },
   setPreferences,
+  move(id: string, target: string, after = false) {
+    if (id === target || !items.has(id) || !items.has(target)) return
+    const order = [
+      ...new Set([...(preferences.order ?? []), ...items.keys()]),
+    ].filter((item) => item !== id)
+    order.splice(order.indexOf(target) + Number(after), 0, id)
+    setPreferences({ order })
+  },
   scope(owner: string, onError: (error: unknown) => void) {
     let disposed = false
     const owned = new Set<() => void>()
     const api: ToolbarApi = {
-      getPreferences: () => ({ ...preferences }),
+      getPreferences: () => ({
+        ...preferences,
+        order: [...(preferences.order ?? [])],
+      }),
       setPreferences(changes) {
         if (!disposed) setPreferences(changes)
       },
@@ -88,6 +134,12 @@ export const toolbar = {
           dispose,
           update(changes) {
             if (!active || disposed) return
+            if (
+              Object.entries(changes).every(
+                ([key, value]) => item[key as keyof ToolbarItem] === value,
+              )
+            )
+              return
             item = { ...item, ...changes }
             render()
           },

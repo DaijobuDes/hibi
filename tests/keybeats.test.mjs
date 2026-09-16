@@ -94,6 +94,22 @@ test('keybeats uses local audio, editor input, toolbar controls, and clean addon
   await page.getByRole('button', { name: 'back to editor' }).click()
   const toolbar = page.getByRole('navigation', { name: 'editor toolbar' })
   await toolbar.waitFor()
+  const soundAction = toolbar.locator('[data-toolbar-id="keybeats.mute"]')
+  const toggleSound = async () => {
+    await page.mouse.move(500, 18)
+    await toolbar.waitFor()
+    if (
+      !(await soundAction.evaluate(
+        (element) =>
+          !element.closest('.toolbar-menu') ||
+          element.closest('.toolbar-menu').matches(':popover-open'),
+      ))
+    )
+      await toolbar
+        .getByRole('button', { name: 'more formatting actions', exact: true })
+        .click()
+    await soundAction.click()
+  }
   const sounds = () => page.evaluate(() => window.audioTest.starts)
   const typeKey = async (editor) => {
     await editor.click()
@@ -107,10 +123,10 @@ test('keybeats uses local audio, editor input, toolbar controls, and clean addon
   await page.keyboard.up('b')
   assert.equal(await sounds(), count + 2)
   count = await sounds()
-  await toolbar.getByRole('button', { name: 'mute keyboard sounds' }).click()
+  await toggleSound()
   await typeKey(rich)
   assert.equal(await sounds(), count)
-  await toolbar.getByRole('button', { name: 'unmute keyboard sounds' }).click()
+  await toggleSound()
   await page.getByRole('button', { name: 'markdown only', exact: true }).click()
   const source = page.getByRole('textbox', { name: 'markdown editor' })
   await typeKey(source)
@@ -144,7 +160,16 @@ test('keybeats uses local audio, editor input, toolbar controls, and clean addon
     const toolbar = document
       .querySelector('.editor-toolbar')
       .getBoundingClientRect()
-    return Math.abs(bar.top - toolbar.bottom) < 1
+    return (
+      Math.abs(
+        bar.top -
+          toolbar.bottom -
+          Number.parseFloat(
+            getComputedStyle(document.querySelector('.editor-toolbar'))
+              .marginBottom,
+          ),
+      ) < 1
+    )
   })
   await find.press('Escape')
   await page.getByRole('button', { name: 'editor settings' }).click()
@@ -169,16 +194,13 @@ test('keybeats uses local audio, editor input, toolbar controls, and clean addon
   await page.getByRole('button', { name: 'editor settings' }).click()
   await page.getByLabel('show toolbar', { exact: true }).check()
   await page.getByRole('button', { name: 'back to editor' }).click()
-  assert.equal(
-    await toolbar.getByRole('button').innerText(),
-    'mute keyboard sounds',
-  )
+  assert.equal(await soundAction.innerText(), 'mute keyboard sounds')
   await page.getByRole('button', { name: 'editor settings' }).click()
   await page.getByRole('tab', { name: 'addons', exact: true }).click()
   await page.locator('#addon-keybeats').click()
   await page.waitForFunction(() => window.audioTest.closed === 1)
   await page.getByRole('button', { name: 'back to editor' }).click()
-  assert.equal(await toolbar.count(), 0)
+  assert.equal(await soundAction.count(), 0)
   await typeKey(source)
   assert.equal(await sounds(), count)
   assert.deepEqual(errors, [])

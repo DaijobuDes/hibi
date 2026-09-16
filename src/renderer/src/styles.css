@@ -32,6 +32,11 @@
   font-display: swap;
 }
 
+@property --editor-top-fade {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
 :root {
   --sidebar-width: 196px;
   --editor-padding: 48px;
@@ -85,6 +90,8 @@ button:disabled {
   color: var(--selection-ink);
 }
 .app {
+  --editor-top-fade: 0px;
+  transition: --editor-top-fade var(--motion-feedback) ease-out;
   position: relative;
   height: 100svh;
   display: flex;
@@ -109,6 +116,9 @@ button:disabled {
 .app[data-typing="true"] .titlebar {
   opacity: 0;
   pointer-events: none;
+}
+.app[data-typing="true"] {
+  --editor-top-fade: var(--space-5);
 }
 .app[data-typing="true"] .titlebar:focus-within {
   opacity: 1;
@@ -292,29 +302,6 @@ button:disabled {
   flex-direction: column;
   flex: 1;
   min-height: 0;
-}
-.editor-toolbar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: var(--space-1) var(--space-3);
-  flex-shrink: 0;
-  overflow-x: auto;
-  background: var(--background);
-}
-.editor-toolbar .ui-button {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-shrink: 0;
-}
-.editor-toolbar[data-mode="icons"] .ui-button {
-  width: var(--control-height);
-  padding: 0;
-  justify-content: center;
-}
-.editor-toolbar .ui-button[aria-pressed="true"] {
-  background: var(--active);
 }
 .app[data-screen="settings"] .editor-surface {
   opacity: 0;
@@ -682,6 +669,11 @@ button:disabled {
   opacity: 1;
 }
 .editor-content {
+  mask-image: linear-gradient(
+    to bottom,
+    transparent,
+    #000 var(--editor-top-fade)
+  );
   position: absolute;
   inset: 0;
 }
@@ -893,6 +885,7 @@ button:disabled {
   caret-color: var(--caret);
 }
 .cm-editor .cm-gutters {
+  user-select: none;
   color: var(--muted);
   background: var(--background);
   border: 0;
@@ -1310,6 +1303,9 @@ summary {
   }
 }
 @media (prefers-reduced-motion: reduce) {
+  .app {
+    transition: none;
+  }
   .setting-toggle,
   .setting-toggle::after {
     transition: none;

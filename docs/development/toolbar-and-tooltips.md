@@ -16,7 +16,15 @@ const action = context.toolbar.register({
 
 `when: 'normal'` shows an action in normal and split views. `when: 'source'` shows it in markdown and split views. omitted `when` shows it in every editor view. settings never show the editor toolbar. empty toolbars occupy no space. icons are optional; icons-only mode uses a puzzle icon when none is supplied. labels always remain accessible.
 
-`getPreferences()` returns `{ visible, mode }`. `setPreferences(partial)` changes the shared, persistent preference. `mode` accepts `icons`, `icons-and-text`, or `text`. built-in appearance settings expose both controls. hiding the toolbar does not disable addons or their commands. the find bar sits directly under the visible toolbar, or directly under the top bar when no toolbar is shown.
+`getPreferences()` returns `{ visible, mode, order?, autoHide? }`. `setPreferences(partial)` changes the shared, persistent preference. `mode` accepts `icons`, `icons-and-text`, or `text`. `order` is an array of fully qualified item ids such as `format.bold` and `keybeats.mute`; duplicates and invalid ids are ignored. unlisted/new actions follow registration order, and temporarily disabled addons retain their saved places. an empty order restores defaults. returned order arrays are copies. these optional fields preserve API version 1.
+
+the renderer measures actual button widths and keeps overflow actions in an ellipsis menu, in their saved order. it adapts to sidebar width, fonts, and icons/text mode without horizontal scrolling. the toolbar uses one inset surface (12 px horizontally, 4 px vertically); individual buttons show backgrounds only on hover/active. overflow supports arrow keys, home/end, escape, and outside dismissal.
+
+appearance settings expose visibility, display mode, and **arrange toolbar actions**. drag rows or use their up/down buttons, then return to the editor; changes save immediately. the toolbar itself also accepts drag reordering. reset order restores the default arrangement without changing display mode or visibility.
+
+`hidden: true` hides a context-specific action while preserving its place in settings. the built-in formatting controls use the same registration API as addons, share their ordering and appearance, and follow the active editor pane. table structure actions appear when editing a rich-text table. unavailable actions are disabled. hiding the toolbar does not disable addons or their commands. the find bar sits under the visible toolbar and its small bottom margin, or directly under the top bar when no toolbar is shown.
+
+`autoHide` defaults to true. the toolbar and top bar share one editor-activity signal and 1.2-second idle timer. each has its own appearance setting. toolbar opacity and height animate on the same `--motion-feedback` timing as the top bar; collapsing its layout moves the editor up smoothly, and expansion moves it back down. the hidden row is inert and excluded from keyboard navigation. pointer movement to the top of the window, chrome focus, find, palette, and settings reveal both. reduced motion removes the transitions.
 
 ## tooltips
 

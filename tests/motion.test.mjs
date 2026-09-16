@@ -1,10 +1,194 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { basename, join, resolve } from 'node:path'
 import test from 'node:test'
 import { electron } from './electron.mjs'
 import { checkSidebarResize } from './sidebar-resize.mjs'
+
+test('switching documents retains split/source layout without replaying view transitions', {
+  timeout: 30000,
+}, async (t) => {
+  const folder = await mkdtemp(join(tmpdir(), 'hibi-file-motion-'))
+  const first = join(folder, 'first.md'),
+    second = join(folder, 'second.md')
+  await writeFile(first, '# first\n\nfirst note')
+  await writeFile(second, '# second\n\nsecond note')
+  const app = await electron.launch({
+    args: [resolve('.'), `--user-data-dir=${join(folder, 'profile')}`],
+  })
+  t.after(async () => {
+    await app.close()
+    await rm(folder, { recursive: true, force: true })
+  })
+  const page = await app.firstWindow()
+  page.setDefaultTimeout(6000)
+  const chooseFile = (file) =>
+    app.evaluate(({ dialog }, file) => {
+      dialog.showOpenDialog = async () => ({
+        canceled: false,
+        filePaths: [file],
+      })
+    }, file)
+  await page.getByRole('textbox', { name: 'document editor' }).waitFor()
+  await chooseFile(first)
+  await page.getByRole('button', { name: 'open', exact: true }).click()
+  await page.getByRole('heading', { name: 'first', exact: true }).waitFor()
+  for (const [mode, label, file] of [
+    ['side-by-side', 'side-by-side', second],
+    ['markdown', 'markdown only', first],
+  ]) {
+    await page.getByRole('button', { name: label, exact: true }).click()
+    await page.getByRole('textbox', { name: 'markdown editor' }).waitFor()
+    await page.evaluate(() =>
+      Promise.all(
+        document
+          .getAnimations()
+          .filter((animation) =>
+            Number.isFinite(animation.effect?.getComputedTiming().iterations),
+          )
+          .map((animation) => animation.finished.catch(() => {})),
+      ),
+    )
+    await chooseFile(file)
+    const frames = await page.evaluate(async () => {
+      const load = document.fonts.load.bind(document.fonts)
+      document.fonts.load = (font, text) =>
+        new Promise((resolve) =>
+          setTimeout(() => resolve(load(font, text)), 180),
+        )
+      const frames = []
+      try {
+        document.querySelector('button[aria-label="open"]').click()
+        const start = performance.now()
+        while (performance.now() - start < 500) {
+          await new Promise(requestAnimationFrame)
+          const panes = document.querySelector('.editor-panes')
+          const content = document.querySelector('.editor-content')
+          frames.push({
+            mode: panes.className,
+            contentAnimating: content
+              .getAnimations()
+              .filter((animation) =>
+                Number.isFinite(
+                  animation.effect?.getComputedTiming().iterations,
+                ),
+              )
+              .some((animation) => animation.playState === 'running'),
+            sourceTransform: getComputedStyle(
+              document.querySelector('.source-pane'),
+            ).transform,
+          })
+        }
+      } finally {
+        document.fonts.load = load
+      }
+      return frames
+    })
+    assert.ok(
+      frames.every(
+        (frame) =>
+          frame.mode === `editor-panes mode-${mode}` &&
+          !frame.contentAnimating &&
+          frame.sourceTransform === 'matrix(1, 0, 0, 1, 0, 0)',
+      ),
+      JSON.stringify(frames),
+    )
+    assert.equal(
+      (await page.evaluate(() => window.hibi.getDocument())).name,
+      basename(file),
+    )
+  }
+})
+
+test('split panes link scrolling in both directions without feedback or document changes', {
+  timeout: 30000,
+}, async (t) => {
+  const profile = await mkdtemp(join(tmpdir(), 'hibi-linked-scroll-'))
+  const app = await electron.launch({
+    args: [resolve('.'), `--user-data-dir=${profile}`],
+  })
+  t.after(async () => {
+    await app.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => ({ response: 1 })
+    })
+    await app.close()
+    await rm(profile, { recursive: true, force: true })
+  })
+  const page = await app.firstWindow()
+  page.setDefaultTimeout(6000)
+  await page.getByRole('textbox', { name: 'document editor' }).waitFor()
+  await page.getByRole('button', { name: 'side-by-side', exact: true }).click()
+  const source = page.getByRole('textbox', { name: 'markdown editor' })
+  const markdown = Array.from(
+    { length: 90 },
+    (_, index) =>
+      `## section ${index}\n\n${'words that wrap differently in each pane. '.repeat(12)}`,
+  ).join('\n\n')
+  await source.fill(markdown)
+  await page.mouse.move(500, 18)
+  await page.waitForFunction(() => {
+    const bar = document.querySelector('.editor-toolbar')
+    const style = getComputedStyle(bar)
+    return (
+      document.querySelector('.toolbar-slot').getBoundingClientRect().height ===
+      bar.getBoundingClientRect().height +
+        Number.parseFloat(style.marginTop) +
+        Number.parseFloat(style.marginBottom)
+    )
+  })
+  for (const [selector, ratio] of [
+    ['.rich-pane', 0.63],
+    ['.cm-scroller', 0.22],
+    ['.rich-pane', 1],
+    ['.cm-scroller', 0],
+  ]) {
+    await page.locator(selector).evaluate((element, ratio) => {
+      element.scrollTop = (element.scrollHeight - element.clientHeight) * ratio
+    }, ratio)
+    await page.waitForFunction(() => {
+      const fraction = (selector) => {
+        const element = document.querySelector(selector)
+        return element.scrollTop / (element.scrollHeight - element.clientHeight)
+      }
+      return Math.abs(fraction('.rich-pane') - fraction('.cm-scroller')) < 0.003
+    })
+    const samples = await page.evaluate(async () => {
+      const samples = []
+      for (let index = 0; index < 8; index++) {
+        await new Promise(requestAnimationFrame)
+        samples.push(document.querySelector('.rich-pane').scrollTop)
+      }
+      return samples
+    })
+    assert.ok(Math.max(...samples) - Math.min(...samples) < 2)
+  }
+  assert.equal(
+    (await page.evaluate(() => window.hibi.getDocument())).markdown,
+    markdown,
+  )
+  await page.getByRole('button', { name: 'normal', exact: true }).click()
+  await page.evaluate(() =>
+    Promise.all(
+      document
+        .getAnimations()
+        .filter((animation) =>
+          Number.isFinite(animation.effect?.getComputedTiming().iterations),
+        )
+        .map((animation) => animation.finished.catch(() => {})),
+    ),
+  )
+  const stopped = await page.evaluate(async () => {
+    const source = document.querySelector('.cm-scroller'),
+      rich = document.querySelector('.rich-pane')
+    const before = source.scrollTop
+    rich.scrollTop = (rich.scrollHeight - rich.clientHeight) / 2
+    for (let index = 0; index < 4; index++)
+      await new Promise(requestAnimationFrame)
+    return { before, after: source.scrollTop }
+  })
+  assert.equal(stopped.before, stopped.after)
+})
 
 test('source font and layout are ready before the pane starts moving', {
   timeout: 30000,
@@ -116,6 +300,9 @@ test('panes move horizontally and sidebar selection slides without fading settin
       Promise.all(
         document
           .getAnimations()
+          .filter((animation) =>
+            Number.isFinite(animation.effect?.getComputedTiming().iterations),
+          )
           .map((animation) => animation.finished.catch(() => {})),
       ),
     )
@@ -251,6 +438,9 @@ test('panes move horizontally and sidebar selection slides without fading settin
       frames,
       transitions: document
         .getAnimations()
+        .filter((animation) =>
+          Number.isFinite(animation.effect?.getComputedTiming().iterations),
+        )
         .some((animation) =>
           animation.effect?.pseudoElement?.includes('view-transition'),
         ),

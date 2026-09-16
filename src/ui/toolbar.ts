@@ -2,7 +2,11 @@ import type { ComponentType } from 'react'
 
 export type ToolbarPreferences = {
   visible: boolean
+  /** Defaults to true; uses the same typing/idle signal as the top bar. */
+  autoHide?: boolean
   mode: 'icons' | 'icons-and-text' | 'text'
+  /** Fully qualified item ids; omitted/new items retain registration order. */
+  order?: readonly string[]
 }
 export type ToolbarItem = {
   id: string
@@ -10,6 +14,8 @@ export type ToolbarItem = {
   icon?: ComponentType<{ size?: number; 'aria-hidden'?: boolean }>
   tooltip?: string
   disabled?: boolean
+  /** Hide context-specific actions without losing their saved position. */
+  hidden?: boolean
   pressed?: boolean
   when?: 'normal' | 'source'
   onClick: () => void | Promise<void>

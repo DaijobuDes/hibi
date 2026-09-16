@@ -1,4 +1,4 @@
-import { TextSelection } from '@tiptap/pm/state'
+import { AllSelection, TextSelection } from '@tiptap/pm/state'
 import { EditorContent, useEditor } from '@tiptap/react'
 import {
   findNext,
@@ -25,7 +25,9 @@ import { documentImage } from './DocumentImage'
 import { type CursorSettings, EditorCursor } from './EditorCursor'
 import { emitEditorKeyEvent } from './editor-events'
 import { FindBar, type FindMove, type FindStatus } from './FindBar'
+import { useFormattingToolbar } from './FormattingToolbar'
 import { LoadingScreen } from './LoadingScreen'
+import { linkScroll } from './linked-scroll'
 import { extensions, needsSourceEditing, projectMarkdown } from './markdown'
 
 const SourceEditor = lazy(() =>
@@ -86,8 +88,22 @@ export function MarkdownEditor({
     mode === 'normal' ? 'rich' : mode === 'markdown' ? 'source' : focusedPane
   const [sourceMounted, setSourceMounted] = useState(mode !== 'normal')
   const [sourceReady, setSourceReady] = useState(false)
-  const paneMode = sourceReady || mode === 'normal' ? mode : 'normal'
+  const [initialMode] = useState(mode)
+  // A new document starts in the selected view. Only a first opening from
+  // normal view waits for source layout before beginning the pane transition.
+  const paneMode = sourceReady || initialMode !== 'normal' ? mode : 'normal'
   const content = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (paneMode !== 'side-by-side' || !sourceReady) return
+    const rich = content.current?.querySelector<HTMLElement>('.rich-pane')
+    const source = content.current?.querySelector<HTMLElement>('.cm-scroller')
+    if (!rich || !source) return
+    return linkScroll(
+      rich,
+      source,
+      source.contains(window.document.activeElement) ? source : rich,
+    )
+  }, [paneMode, sourceReady])
   const previousMode = useRef(paneMode)
   useLayoutEffect(() => {
     if (previousMode.current === paneMode) return
@@ -130,6 +146,22 @@ export function MarkdownEditor({
       injectCSS: false,
       shouldRerenderOnTransaction: false,
       editorProps: {
+        handleKeyDown(view, event) {
+          if (
+            event.ctrlKey &&
+            !event.metaKey &&
+            !event.altKey &&
+            !event.shiftKey &&
+            event.key.toLowerCase() === 'a'
+          ) {
+            event.preventDefault()
+            view.dispatch(
+              view.state.tr.setSelection(new AllSelection(view.state.doc)),
+            )
+            return true
+          }
+          return false
+        },
         attributes: {
           'aria-label': 'document editor',
           role: 'textbox',
@@ -142,6 +174,12 @@ export function MarkdownEditor({
       },
     },
     [markdownExtensions],
+  )
+  const attachSourceFormatting = useFormattingToolbar(
+    editor,
+    paneMode,
+    focusedPane,
+    disabled || mode !== paneMode || (findTarget === 'rich' && sourceOnly),
   )
 
   useEffect(() => {
@@ -292,6 +330,7 @@ export function MarkdownEditor({
                 fallback={<LoadingScreen label="loading markdown editor" />}
               >
                 <SourceEditor
+                  onFormatting={attachSourceFormatting}
                   sourceExtensions={sourceExtensions}
                   showLineNumbers={showLineNumbers}
                   active={mode !== 'normal'}

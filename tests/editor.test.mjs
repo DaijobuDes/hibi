@@ -23,6 +23,7 @@ test('empty entry, three views, and lossless source switching', {
     await rm(profile, { recursive: true, force: true })
   })
   const page = await app.firstWindow()
+  page.setDefaultTimeout(7000)
   const rich = page.getByRole('textbox', { name: 'document editor' })
   await rich.waitFor()
   assert.equal((await rich.innerText()).trim(), '')
@@ -58,6 +59,13 @@ test('empty entry, three views, and lossless source switching', {
       .getBoundingClientRect()
     return {
       top: panes.top,
+      toolbarBottom:
+        document.querySelector('.editor-toolbar').getBoundingClientRect()
+          .bottom +
+        Number.parseFloat(
+          getComputedStyle(document.querySelector('.editor-toolbar'))
+            .marginBottom,
+        ),
       bottom: panes.bottom,
       viewport: innerHeight,
       padding: getComputedStyle(document.querySelector('.tiptap')).paddingTop,
@@ -72,7 +80,7 @@ test('empty entry, three views, and lossless source switching', {
           .borderWidth === '0px',
     }
   })
-  assert.equal(geometry.top, 36)
+  assert.equal(geometry.top, geometry.toolbarBottom)
   assert.equal(geometry.bottom, geometry.viewport)
   assert.equal(geometry.padding, '48px')
   assert.equal(geometry.besideSidebar, true)

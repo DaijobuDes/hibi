@@ -1,4 +1,9 @@
-import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
+import {
+  defaultKeymap,
+  history,
+  historyKeymap,
+  selectAll,
+} from '@codemirror/commands'
 import { markdown as markdownLanguage } from '@codemirror/lang-markdown'
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import {
@@ -22,6 +27,7 @@ import { tags } from '@lezer/highlight'
 import { useEffect, useRef } from 'react'
 import type { SourceExtension } from '../../addons/api'
 import type { FindMove, FindStatus } from './FindBar'
+import { type SourceFormatting, sourceFormatting } from './source-formatting'
 
 const externalChange = Annotation.define<boolean>()
 const highlighting = HighlightStyle.define([
@@ -48,6 +54,7 @@ export function SourceEditor({
   onFindStatus,
   showLineNumbers,
   sourceExtensions,
+  onFormatting,
 }: {
   active: boolean
   onReady: () => void
@@ -61,6 +68,7 @@ export function SourceEditor({
   onFindStatus: (status: FindStatus) => void
   showLineNumbers: boolean
   sourceExtensions: readonly SourceExtension[]
+  onFormatting: (formatting: SourceFormatting | null) => void
 }) {
   const host = useRef<HTMLDivElement>(null)
   const view = useRef<EditorView | null>(null)
@@ -73,6 +81,9 @@ export function SourceEditor({
   const find = useRef({ active: findActive, report: onFindStatus })
   const handledFindMove = useRef(findMove.id)
   const ready = useRef(onReady)
+  const formatting = useRef<SourceFormatting | null>(null)
+  const reportFormatting = useRef(onFormatting)
+  reportFormatting.current = onFormatting
   ready.current = onReady
   find.current = { active: findActive, report: onFindStatus }
   change.current = onChange
@@ -96,7 +107,11 @@ export function SourceEditor({
           numbers.current.of([]),
           markdownLanguage(),
           history(),
-          keymap.of([...defaultKeymap, ...historyKeymap]),
+          keymap.of([
+            { key: 'Ctrl-a', run: selectAll },
+            ...defaultKeymap,
+            ...historyKeymap,
+          ]),
           syntaxHighlighting(highlighting),
           EditorView.lineWrapping,
           placeholder('start typing'),
@@ -105,6 +120,14 @@ export function SourceEditor({
             spellcheck: 'false',
           }),
           EditorView.updateListener.of((update) => {
+            if (
+              update.docChanged ||
+              update.selectionSet ||
+              update.transactions.some(
+                (transaction) => transaction.effects.length,
+              )
+            )
+              reportFormatting.current(formatting.current)
             if (find.current.active) {
               const query = getSearchQuery(update.state)
               let total = 0
@@ -139,6 +162,8 @@ export function SourceEditor({
       }),
     })
     view.current = editor
+    formatting.current = sourceFormatting(editor)
+    reportFormatting.current(formatting.current)
     let disposed = false
     const measure = () => {
       if (!disposed)
@@ -150,6 +175,8 @@ export function SourceEditor({
     void window.document.fonts.load('13px "Geist Mono"').then(measure, measure)
     return () => {
       disposed = true
+      formatting.current = null
+      reportFormatting.current(null)
       editor.destroy()
       view.current = null
     }
@@ -197,7 +224,21 @@ export function SourceEditor({
   useEffect(() => {
     view.current?.dispatch({
       effects: numbers.current.reconfigure(
-        showLineNumbers ? lineNumbers() : [],
+        showLineNumbers
+          ? lineNumbers({
+              domEventHandlers: {
+                mousedown(view, line, event) {
+                  event.preventDefault()
+                  const text = view.state.doc.lineAt(line.from)
+                  view.dispatch({
+                    selection: { anchor: text.from, head: text.to },
+                  })
+                  view.focus()
+                  return true
+                },
+              },
+            })
+          : [],
       ),
     })
   }, [showLineNumbers])

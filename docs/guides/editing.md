@@ -1,5 +1,21 @@
 # editing
 
+## formatting toolbar
+
+the row below the top bar contains undo/redo, bold, italic, strikethrough, inline code, paragraph, headings 1–6, bullet/numbered/task lists, indent/outdent, quote, code block, divider, line break, links, images, and tables. the toolbar has one shared border and background, inset 12 px horizontally and 4 px vertically. individual buttons are flat, with hover and active backgrounds. actions that do not fit move into an ellipsis menu; arrow keys navigate it, escape closes it, and clicking outside dismisses it. formatting follows the last focused pane in split view and restores editor focus after an action. source actions edit selected markdown in a single undo step; rich actions use the editor's own commands. rich-only constructs that cannot be edited safely remain disabled.
+
+link and image buttons open shared dialogs. links preserve selected text; an empty selection inserts the address. images accept absolute paths or paths relative to the saved note, with a description for screen readers. insertion is canceled if the document changes while the dialog is open. in a rich-text table, extra actions add/remove rows and columns or delete the table. in source view, use the table button to insert a markdown table and edit its cells directly.
+
+appearance → toolbar controls icons/text, visibility, and **hide toolbar while typing** (on by default). it uses the top bar’s typing/idle timer: the toolbar fades and collapses while typing, moving the editor up, then smoothly restores its space after 1.2 seconds idle. move the pointer to the top to reveal both immediately. toolbar auto-hide can be disabled independently; reduced motion removes the movement. expand **arrange toolbar actions** to drag rows, use keyboard-accessible up/down buttons, or reset order. dragging toolbar buttons also changes their order. built-in and addon actions share this saved arrangement.
+
+select all stays within the active editor. switching views focuses the visible editor, and clicking a line number selects that source line without selecting gutter text. both cmd+a and ctrl+a select editor content; vim may own ctrl+a in its source modes. line numbers never enter the selected/copied text.
+
+switching files keeps the chosen view and its pane positions, including while the new source editor loads. pane sliding/fading runs only when changing views, so moving between files in split view does not replay a normal-to-split transition.
+
+split panes link vertical scrolling in both directions using their relative scroll positions, accounting for different rendered heights. scroll either pane to move the other; leaving split view removes the link. toolbar drag targets use a straight vertical insertion line between buttons.
+
+when the top bar hides, the first 24 px of the editor fade to transparent, softening partially scrolled lines. the fade uses the same timing as the chrome and leaves the split divider independent; it disappears when the top bar returns.
+
 typing closes the workspace sidebar when no folder is open. an open workspace keeps its navigation visible. use the sidebar toggle to reopen the empty sidebar whenever needed.
 
 ## images

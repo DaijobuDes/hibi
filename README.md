@@ -9,14 +9,14 @@ open a folder from the left sidebar to browse nested markdown files. the documen
 ## editing
 
 - **normal:** wysiwyg editing with markdown shortcuts.
-- **side-by-side:** syntax-highlighted markdown on the left and editable rich text on the right, synchronized in both directions. the divider fades to transparent at both ends.
+- **side-by-side:** syntax-highlighted markdown on the left and editable rich text on the right, with edits and scrolling linked in both directions. the divider fades to transparent at both ends. switching files retains the view without replaying its opening animation.
 - **markdown only:** edit the original source directly.
 
 the compact title bar holds file actions, filename, and view controls. editor panels fill the space below it. settings has a full-height sidebar: hibi, editor, appearance, hotkeys, addons, and settings pages contributed by enabled plugins. editor-only controls disappear on settings. adjust padding from 0–96 px (default 48 px), or change whether the top bar hides while typing. preferences persist across launches. use escape or the back button to return to your unchanged document.
 
 click the centered filename to rename it. the search button or `cmd/ctrl+k` opens the command palette. search file operations, view modes, settings, and top-bar behavior. command rows show icons, categories, individual keycaps, and a smoothly moving selection background. use arrow keys and enter to run a command, or escape to dismiss. normal view uses `cmd/ctrl+shift+[`, markdown uses `cmd/ctrl+shift+]`, and side-by-side uses `cmd/ctrl+|`.
 
-addons can add actions to a separate toolbar below the top bar. appearance settings can hide it or show icons, icons with text, or text. built-ins and addons share the tooltip API. [toolbar and tooltip contracts](docs/development/toolbar-and-tooltips.md).
+the formatting toolbar below the top bar covers supported markdown styles and insertions in the active pane. addons can add actions alongside it. drag buttons to rearrange them, or use appearance → toolbar → arrange toolbar actions (drag rows or use up/down buttons). order persists; settings can reset it, hide the toolbar, or show icons, icons with text, or text. built-ins and addons share the tooltip API. [toolbar and tooltip contracts](docs/development/toolbar-and-tooltips.md).
 
 [keybeats](docs/guides/keybeats.md) adds optional local keyboard sounds to rich and source editors, with 13 profiles, volume, and mute. disabled by default. credits and MIT notices for Yug Bhanushali and Thomas Lai ship alongside may's hibi port.
 
