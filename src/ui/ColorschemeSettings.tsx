@@ -3,7 +3,13 @@ import { Select, SettingRow } from './Controls'
 import type { ColorschemeStore } from './colorschemes'
 import './colorschemes.css'
 
-export function ColorschemeSettings({ store }: { store: ColorschemeStore }) {
+export function ColorschemeSettings({
+  store,
+  showLicense = true,
+}: {
+  store: ColorschemeStore
+  showLicense?: boolean
+}) {
   const { preferences, schemes, active } = useSyncExternalStore(
     store.subscribe,
     store.snapshot,
@@ -80,16 +86,18 @@ export function ColorschemeSettings({ store }: { store: ColorschemeStore }) {
           )
         })}
       </div>
-      <details className="colorscheme-license">
-        <summary>{active.name} · license and credits</summary>
-        <p>
-          {active.author} · {active.license.name}
-        </p>
-        <pre>{active.license.text}</pre>
-        {active.license.source && (
-          <p className="colorscheme-source">{active.license.source}</p>
-        )}
-      </details>
+      {showLicense && (
+        <details className="colorscheme-license">
+          <summary>{active.name} · license and credits</summary>
+          <p>
+            {active.author} · {active.license.name}
+          </p>
+          <pre>{active.license.text}</pre>
+          {active.license.source && (
+            <p className="colorscheme-source">{active.license.source}</p>
+          )}
+        </details>
+      )}
     </div>
   )
 }

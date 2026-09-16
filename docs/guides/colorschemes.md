@@ -19,7 +19,7 @@ addon palette code and CSS overrides are not copied into exports. if an author s
 
 ## credits and licenses
 
-the seven adapted third-party palettes use MIT-licensed source colors. full notices and pinned upstream revisions are retained in [catppuccin](../licenses/catppuccin.md), [vscode](../licenses/vscode.md), and [nord](../licenses/nord.md). notices ship with packaged apps and exported HTML, and can be read under **license and credits** in appearance settings. no upstream logos are bundled.
+the seven adapted third-party palettes use MIT-licensed source colors. full notices and pinned upstream revisions are retained in [catppuccin](../licenses/catppuccin.md), [vscode](../licenses/vscode.md), and [nord](../licenses/nord.md). notices ship with packaged apps and exported HTML. in the app, read them under **settings → hibi → open source licenses**. exported sites retain **license and credits** in their appearance dialog. no upstream logos are bundled.
 
 colors are mapped to hibi's semantic roles rather than importing another editor's theme engine. selected-row surfaces and latte's accent/link colors are adjusted for readable text contrast. these are hibi adaptations, not exact reproductions or officially endorsed ports.
 

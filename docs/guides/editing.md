@@ -22,11 +22,11 @@ start typing in a blank document. normal view is the rich-text editor; side-by-s
 
 view switches use a quick text fade: content fades out, reflows once while hidden, then fades back in as the panes slide. the divider fades independently as split view opens or closes. the markdown engine prepares during idle time and waits for its font and layout before appearing. reduced-motion preferences disable animations.
 
-default view shortcuts are `cmd/ctrl+[` for normal, `cmd/ctrl+]` for markdown, and `cmd/ctrl+|` (`cmd/ctrl+shift+\`) for side-by-side. these can be rebound in settings.
+default view shortcuts are `cmd/ctrl+shift+[` for normal, `cmd/ctrl+shift+]` for markdown, and `cmd/ctrl+|` (`cmd/ctrl+shift+\`) for side-by-side. these can be rebound in settings. existing unshifted bracket defaults migrate once when the new shortcuts are free; custom bindings remain intact.
 
 ## finding text
 
-`cmd/ctrl+f` opens find in note. enter advances; shift+enter goes back; escape closes. search is literal and case-insensitive. in side-by-side it searches the last focused pane, including offscreen markdown. the input width animates as the match count changes.
+`cmd/ctrl+f` opens find in note directly below the top bar, aligned with the editor page's right edge. enter advances; shift+enter goes back; escape closes. search is literal and case-insensitive. in side-by-side it searches the last focused pane, including offscreen markdown. the input width animates as the match count changes.
 
 ## commands and settings
 
@@ -34,7 +34,7 @@ default view shortcuts are `cmd/ctrl+[` for normal, `cmd/ctrl+]` for markdown, a
 
 click outside the palette or press escape to dismiss it. shortcut hints use the same keycaps throughout the app and exported documentation.
 
-settings contains editor, appearance, hotkeys, addons, and about. padding defaults to 48 px and can be changed from 0–96 px. the top bar can fade while typing. hotkeys can be rebound, cleared, or reset; conflicts and standard editing/window shortcuts are rejected. all command hints use the active bindings.
+settings starts with hibi, followed by editor, appearance, hotkeys, and addons. the hibi page contains app details, sponsorship, and open source license dialogs. padding defaults to 48 px and can be changed from 0–96 px. the top bar can fade while typing. hotkeys can be rebound, cleared, or reset; conflicts and standard editing/window shortcuts are rejected. all command hints use the active bindings.
 
 settings → editor → **show line numbers** toggles the markdown gutter in markdown-only and side-by-side views. it is hidden by default, saves on this device, and changes without resetting the document or undo history.
 

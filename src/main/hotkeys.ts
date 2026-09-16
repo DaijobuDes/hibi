@@ -2,9 +2,10 @@ import { readFile, rename, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { app } from 'electron'
 import {
-  actions,
   defaultHotkeys,
+  HOTKEYS_VERSION,
   type Hotkeys,
+  restoreHotkeys,
   validateHotkeys,
 } from '../shared/hotkeys'
 
@@ -16,12 +17,8 @@ export async function loadHotkeys(): Promise<void> {
     const stored = JSON.parse(
       await readFile(join(app.getPath('userData'), 'hotkeys.json'), 'utf8'),
     ) as Record<string, unknown>
-    const next = defaultHotkeys(process.platform)
-    for (const { id } of actions) {
-      if (typeof stored[id] === 'string') next[id] = stored[id]
-      else if (Object.values(stored).includes(next[id])) next[id] = ''
-    }
-    hotkeys = validateHotkeys(next, process.platform)
+    hotkeys = restoreHotkeys(stored, process.platform)
+    if (stored._version !== HOTKEYS_VERSION) await saveHotkeys(hotkeys)
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT')
       console.error('could not load hotkeys:', error)
@@ -34,7 +31,11 @@ export async function saveHotkeys(value: unknown): Promise<Hotkeys> {
   saving = true
   try {
     const path = join(app.getPath('userData'), 'hotkeys.json')
-    await writeFile(`${path}.tmp`, JSON.stringify(next), { mode: 0o600 })
+    await writeFile(
+      `${path}.tmp`,
+      JSON.stringify({ ...next, _version: HOTKEYS_VERSION }),
+      { mode: 0o600 },
+    )
     await rename(`${path}.tmp`, path)
     hotkeys = next
     return hotkeys

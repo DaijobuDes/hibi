@@ -37,6 +37,42 @@ test('command palette, full-height settings, and local geist fonts', {
   const palette = page.getByRole('dialog', { name: 'command palette' })
   const search = page.getByRole('combobox', { name: 'search commands' })
   await palette.waitFor()
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
+  const marker = palette.locator('.command-selection')
+  await marker.waitFor()
+  await page.waitForFunction(() =>
+    document
+      .querySelector('.command-palette')
+      .getAnimations()
+      .every((animation) => animation.playState !== 'running'),
+  )
+  const origin = await marker.evaluate((el) => el.getBoundingClientRect().top)
+  await search.press('ArrowDown')
+  const motion = await page.evaluate(async () => {
+    const selected = document.querySelector(
+      '[role="option"][aria-selected="true"]',
+    )
+    const marker = document.querySelector('.command-selection')
+    const target = selected.getBoundingClientRect().top
+    const samples = []
+    for (let i = 0; i < 18; i++) {
+      await new Promise(requestAnimationFrame)
+      samples.push(marker.getBoundingClientRect().top)
+    }
+    return { target, samples }
+  })
+  assert.ok(
+    motion.samples.some((top) => top > origin + 1 && top < motion.target - 1),
+  )
+  assert.ok(Math.abs(motion.samples.at(-1) - motion.target) < 1)
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  assert.equal(
+    await marker.evaluate((el) => getComputedStyle(el).transitionDuration),
+    '0s',
+  )
+  await search.fill('no-such-command-zzzz')
+  assert.equal(await marker.count(), 0)
+  await search.fill('')
   const keyStyle = (element) => {
     const style = getComputedStyle(element)
     return [

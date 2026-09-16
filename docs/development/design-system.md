@@ -1,10 +1,12 @@
 # shared ui and theme tokens
 
+command palette selection uses one moving background with the shared selection timing. keyboard navigation, hovering, and filtered results share that marker; reduced motion removes its transition.
+
 shared `Modal` supplies native focus trapping and dismissal for the command palette and dialog API. `DialogProvider` supplies the window-level queue; app and addon dialogs share tokens, controls, spacing, motion, and reduced-motion handling.
 
-titlebar titles receive 16 px of inset when no leading action icons are present. `--titlebar-edge-inset` and `--window-corner-radius` control outer chrome spacing. macOS reserves the traffic-light area and rounds the last button's top-right corner. Windows and Linux reserve right-side caption controls and adapt the first left button's top-left corner. platform selectors supply defaults; themes may override these tokens.
+titlebar titles receive 16 px of inset when no leading action icons are present. `--titlebar-edge-inset` controls outer chrome spacing: macOS reserves the traffic-light area, while Windows and Linux reserve right-side caption controls. buttons use the shared control radius; the native window shape remains controlled by the operating system.
 
-app and exported-site headers have an opaque page-colored backing, so scrolled settings, plugin pages, and document content cannot overlap their controls. its left edge follows the sidebar's slide and width, revealing the sidebar's own surface. resizing and reduced motion skip this transition. the backing stays in place from the first frame and needs no scroll listener.
+app and exported-site headers have an opaque page-colored backing, so scrolled settings, plugin pages, and document content cannot overlap their controls. app backings belong to the editor/settings page layers and inherit their position and fade. the site's backing sits below its full-height sidebar. no separate edge animation or scroll listener is needed, so opening settings, reversing a sidebar slide, and resizing cannot produce a second moving color boundary.
 
 desktop and exported documentation use the same `src/ui/tokens.css`. its [generated reference](../reference/theme-tokens.md) is checked by `npm run docs:check`.
 
@@ -19,6 +21,8 @@ base tokens live in CSS layer `hibi-base`; selected palettes live in `hibi-theme
 ## shared measurements
 
 UI fonts, type sizes, spacing, control/panel radii, icon size, and motion durations use tokens. durations use milliseconds; the editor's text-fade animation reads `--motion-feedback` too. document typography, pane geometry, and user-selected padding/sidebar width remain separate from UI decoration. reduced-motion preferences override animations.
+
+all rounded app components use the input's 6 px `--radius-control`. popover, panel, pill, shortcut-key, and outer-button radius tokens alias it. full-width navigation rows remain square.
 
 ## shortcuts
 

@@ -19,14 +19,14 @@ export const actions = [
   { id: 'saveAs', label: 'save as…', category: 'file', key: 'shift+s' },
   { id: 'find', label: 'find in note', category: 'edit', key: 'f' },
   { id: 'settings', label: 'open settings', category: 'preferences', key: ',' },
-  { id: 'normal', label: 'normal view', category: 'view', key: '[' },
+  { id: 'normal', label: 'normal view', category: 'view', key: 'shift+[' },
   {
     id: 'side-by-side',
     label: 'side-by-side view',
     category: 'view',
     key: 'shift+\\',
   },
-  { id: 'markdown', label: 'markdown only', category: 'view', key: ']' },
+  { id: 'markdown', label: 'markdown only', category: 'view', key: 'shift+]' },
   {
     id: 'toggle-titlebar',
     label: 'toggle top bar auto-hide',
@@ -37,6 +37,35 @@ export const actions = [
 
 export type AppCommand = (typeof actions)[number]['id']
 export type Hotkeys = Record<AppCommand, string>
+export const HOTKEYS_VERSION = 2
+
+export function restoreHotkeys(
+  stored: Record<string, unknown>,
+  platform: string,
+): Hotkeys {
+  const next = defaultHotkeys(platform)
+  for (const { id } of actions) {
+    if (typeof stored[id] === 'string') next[id] = stored[id]
+    else if (Object.values(stored).includes(next[id])) next[id] = ''
+  }
+  if (stored._version !== HOTKEYS_VERSION) {
+    const defaults = defaultHotkeys(platform)
+    const mod = platform === 'darwin' ? 'meta' : 'ctrl'
+    for (const [id, key] of [
+      ['normal', '['],
+      ['markdown', ']'],
+    ] as const) {
+      if (
+        next[id] === `${mod}+${key}` &&
+        !Object.entries(next).some(
+          ([other, value]) => other !== id && value === defaults[id],
+        )
+      )
+        next[id] = defaults[id]
+    }
+  }
+  return validateHotkeys(next, platform)
+}
 
 export function defaultHotkeys(platform: string): Hotkeys {
   const modifier = platform === 'darwin' ? 'meta' : 'ctrl'

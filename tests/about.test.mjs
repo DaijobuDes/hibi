@@ -138,4 +138,6 @@ test('hibi opens first, sponsor uses a fixed URL, and license dialogs stay reada
     await dialog.waitFor({ state: 'hidden' })
   }
   assert.deepEqual(errors, [])
+  await page.getByRole('tab', { name: 'appearance', exact: true }).click()
+  assert.equal(await page.locator('.colorscheme-license').count(), 0)
 })

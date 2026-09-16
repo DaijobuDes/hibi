@@ -68,13 +68,19 @@ test('documentation breadcrumbs, outline, pagination, and phone navigation', {
   const errors = []
   page.on('pageerror', (error) => errors.push(error.message))
   await page.getByRole('heading', { name: 'welcome', exact: true }).waitFor()
-  const headerSurface = await page.locator('.site-header').evaluate((el) => ({
-    background: getComputedStyle(el, '::before').backgroundColor,
-    page: getComputedStyle(document.body).backgroundColor,
-    clip: getComputedStyle(el, '::before').clipPath,
-  }))
+  const headerSurface = await page
+    .locator('.documentation-site')
+    .evaluate((el) => ({
+      background: getComputedStyle(el, '::before').backgroundColor,
+      page: getComputedStyle(document.body).backgroundColor,
+      layer: Number(getComputedStyle(el, '::before').zIndex),
+      sidebarLayer: Number(
+        getComputedStyle(document.querySelector('.site-layout .sidebar-slot'))
+          .zIndex,
+      ),
+    }))
   assert.equal(headerSurface.background, headerSurface.page)
-  assert.equal(headerSurface.clip, 'inset(0px 0px 0px 240px)')
+  assert.ok(headerSurface.layer < headerSurface.sidebarLayer)
   assert.equal(
     await page.locator('html').getAttribute('data-colorscheme'),
     'catppuccin-mocha',

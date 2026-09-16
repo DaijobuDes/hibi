@@ -202,7 +202,7 @@ export function SettingsScreen({
           hidden={category !== 'appearance'}
         >
           <h1>appearance</h1>
-          <ColorschemeSettings store={colorschemes} />
+          <ColorschemeSettings store={colorschemes} showLicense={false} />
           <h2>cursor</h2>
           <div className="settings-group">
             {(

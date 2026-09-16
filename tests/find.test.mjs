@@ -38,6 +38,13 @@ test('find in note searches rich text and offscreen markdown without editing it'
   await pressShortcut(app, shortcut)
   const input = page.getByRole('textbox', { name: 'find in note', exact: true })
   const bar = page.getByRole('search', { name: 'find in note' })
+  await page.waitForFunction(
+    () =>
+      Math.abs(
+        document.querySelector('.find-bar').getBoundingClientRect().top -
+          document.querySelector('.titlebar').getBoundingClientRect().bottom,
+      ) < 1,
+  )
   const waitForCount = (expected) =>
     page.waitForFunction(
       (count) =>

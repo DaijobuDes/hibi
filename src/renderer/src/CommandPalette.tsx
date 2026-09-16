@@ -6,7 +6,7 @@ import {
   Sun,
   X,
 } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { IconButton } from '../../ui/Controls'
 import { Modal } from '../../ui/Modal'
 import { ShortcutKeys } from '../../ui/ShortcutKeys'
@@ -49,6 +49,10 @@ export function CommandPalette({
   )
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState(0)
+  const list = useRef<HTMLDivElement>(null)
+  const [marker, setMarker] = useState<{ top: number; height: number } | null>(
+    null,
+  )
   const terms = query.toLowerCase().trim().split(/\s+/)
   const results = searchCommands
     ? searchCommands(query)
@@ -59,6 +63,29 @@ export function CommandPalette({
       )
   const active = Math.min(selected, results.length - 1)
   const activeId = results[active]?.id
+  const resultCount = results.length
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: selection and filtering change the measured row.
+  useLayoutEffect(() => {
+    const container = list.current
+    const row = container?.querySelector<HTMLElement>('[aria-selected="true"]')
+    if (!container || !row) {
+      setMarker(null)
+      return
+    }
+    const measure = () =>
+      setMarker((current) => {
+        const next = { top: row.offsetTop, height: row.offsetHeight }
+        return current?.top === next.top && current.height === next.height
+          ? current
+          : next
+      })
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(container)
+    observer.observe(row)
+    return () => observer.disconnect()
+  }, [activeId, resultCount])
 
   useEffect(() => {
     input.current?.focus()
@@ -154,10 +181,21 @@ export function CommandPalette({
       </div>
       <div
         id="command-results"
+        ref={list}
         className="command-results"
         role="listbox"
         aria-label="commands"
       >
+        {marker && (
+          <div
+            className="command-selection"
+            aria-hidden="true"
+            style={{
+              transform: `translateY(${marker.top}px)`,
+              height: marker.height,
+            }}
+          />
+        )}
         {results.map((command, index) => {
           const Icon = categoryIcons[command.category]
           return (

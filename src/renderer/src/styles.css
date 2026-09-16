@@ -142,11 +142,9 @@ button:disabled {
 }
 .app[data-platform="win32"] {
   --titlebar-edge-inset: 8px;
-  --window-corner-radius: 8px;
 }
 .app[data-platform="linux"] {
   --titlebar-edge-inset: 8px;
-  --window-corner-radius: 0px;
 }
 .app[data-platform="darwin"] .view-switch > button:last-child {
   border-top-right-radius: var(--window-corner-radius);
@@ -309,6 +307,27 @@ button:disabled {
   display: none;
   opacity: 0;
   pointer-events: none;
+}
+/* Each page covers its own scrolled content beneath the titlebar. Keeping this
+   in the page's layer shares its position and opacity with the sidebar. */
+.editor-surface::before,
+.settings-screen::before {
+  content: "";
+  position: absolute;
+  height: 36px;
+  background: var(--background);
+  pointer-events: none;
+  z-index: 2;
+}
+.editor-surface::before {
+  top: -36px;
+  left: 0;
+  width: 100vw;
+}
+.settings-screen::before {
+  top: 0;
+  left: var(--sidebar-width);
+  right: 0;
 }
 @starting-style {
   .settings-screen {
@@ -516,7 +535,7 @@ button:disabled {
   height: 20px;
   margin: 0;
   border: 0;
-  border-radius: 12px;
+  border-radius: var(--radius-control);
   background: var(--border);
   flex-shrink: 0;
   cursor: pointer;
@@ -529,7 +548,7 @@ button:disabled {
   top: 3px;
   width: 14px;
   height: 14px;
-  border-radius: 50%;
+  border-radius: var(--radius-control);
   background: var(--ink);
   transition: transform 140ms ease-out;
 }
@@ -875,7 +894,7 @@ summary {
 .find-bar {
   position: absolute;
   z-index: 3;
-  top: 44px;
+  top: 0;
   right: 12px;
   display: flex;
   align-items: center;
@@ -1019,11 +1038,13 @@ summary {
   color: var(--muted);
 }
 .command-results {
+  position: relative;
   padding: 6px;
   max-height: min(368px, calc(100vh - max(48px, 12vh) - 116px));
   overflow-y: auto;
 }
 .command-results [role="option"] {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -1032,10 +1053,16 @@ summary {
   border-radius: var(--radius-control);
   font-size: var(--text-ui);
   cursor: pointer;
-  transition: background-color 100ms ease-out;
 }
-.command-results [aria-selected="true"] {
+.command-selection {
+  position: absolute;
+  inset: 0 6px auto;
+  pointer-events: none;
   background: var(--active);
+  border-radius: var(--radius-control);
+  transition:
+    transform var(--motion-selection) var(--ease-out),
+    height var(--motion-selection) var(--ease-out);
 }
 .command-icon {
   color: var(--muted);
@@ -1270,7 +1297,8 @@ summary {
   .rich-pane,
   .source-pane,
   .editor-panes::after,
-  .sidebar-selection {
+  .sidebar-selection,
+  .command-selection {
     transition: none;
   }
   .find-bar {

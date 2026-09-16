@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path'
 import test from 'node:test'
 import {
   defaultHotkeys,
+  restoreHotkeys,
   shortcutFromEvent,
   shortcutLabels,
   validateHotkeys,
@@ -14,8 +15,27 @@ import { pressShortcut } from './keyboard.mjs'
 
 test('hotkey validation rejects conflicts and preserves standard editing keys', () => {
   const defaults = defaultHotkeys('darwin')
-  assert.equal(defaults.normal, 'meta+[')
-  assert.equal(defaults.markdown, 'meta+]')
+  assert.equal(defaults.normal, 'meta+shift+[')
+  assert.equal(defaults.markdown, 'meta+shift+]')
+  assert.equal(
+    restoreHotkeys(
+      { ...defaults, normal: 'meta+[', markdown: 'meta+]' },
+      'darwin',
+    ).normal,
+    defaults.normal,
+  )
+  assert.equal(
+    restoreHotkeys({ ...defaults, normal: 'meta+[', _version: 2 }, 'darwin')
+      .normal,
+    'meta+[',
+  )
+  assert.equal(
+    restoreHotkeys(
+      { ...defaults, normal: 'meta+[', find: defaults.normal },
+      'darwin',
+    ).normal,
+    'meta+[',
+  )
   assert.equal(defaults['side-by-side'], 'meta+shift+\\')
   assert.equal(defaultHotkeys('linux')['side-by-side'], 'ctrl+shift+\\')
   assert.deepEqual(shortcutLabels(defaults['side-by-side'], 'darwin'), [
@@ -94,9 +114,9 @@ test('rebind, conflict, clear, reset, native menus, and relaunch persistence', {
   await rich.waitFor()
   await rich.fill('keyboard checks')
   for (const [key, mode] of [
-    [']', 'markdown'],
+    ['Shift+]', 'markdown'],
     ['Shift+\\', 'side-by-side'],
-    ['[', 'normal'],
+    ['Shift+[', 'normal'],
   ]) {
     await pressShortcut(app, `${mod}+${key}`)
     await page.waitForFunction(
