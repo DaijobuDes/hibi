@@ -10,4 +10,6 @@ enable **documentation** under settings → addons. open a workspace, then choos
 
 the viewer uses the shared sidebar and command palette, DOMPurify, MiniSearch, and locally bundled Geist. local Markdown images are embedded from each note's folder, including absolute paths and local `file:` URLs. supported formats are PNG, JPEG, GIF, WebP, AVIF, and SVG, up to 8 mib each and 20 mib total with Markdown. remote images and other attachments are not copied. exports include in-memory edits to the current workspace document and do not save them back to disk.
 
+exports include nine bundled colorschemes, their full third-party license notices, and appearance preferences supplied by the host's workspace snapshot. readers can override appearance with the top-bar palette button. addon palettes fall back to hibi; addon code and CSS overrides are not exported.
+
 see [exporting](../../../docs/guides/exporting.md) and [addon development](../../../docs/development/addons.md).

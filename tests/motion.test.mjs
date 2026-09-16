@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { _electron as electron } from 'playwright'
+import { electron } from './electron.mjs'
 import { checkSidebarResize } from './sidebar-resize.mjs'
 
 test('source font and layout are ready before the pane starts moving', {

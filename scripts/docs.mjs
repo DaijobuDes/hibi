@@ -3,6 +3,12 @@ import { basename, dirname } from 'node:path'
 
 const references = [
   [
+    'docs/reference/colorscheme-api.md',
+    'colorscheme api',
+    'src/shared/colorschemes.ts',
+    (source) => source,
+  ],
+  [
     'docs/reference/dialog-api.md',
     'dialog api',
     'src/ui/dialogs.ts',

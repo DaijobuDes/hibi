@@ -29,7 +29,9 @@ upload that file to any static host, usually as `index.html`. it also opens dire
 - normal read-only markdown rendering; no editor or source-view controls.
 - the shared full-height nested sidebar, with a smooth slide from the left.
 - `cmd/ctrl+k` search with fuzzy matching, prefix matches, and keyword relevance. titles and paths receive extra weight. this is local text search, not an embedding model.
-- hash-based document and heading links, browser history, light/dark themes, bundled geist fonts, and reduced-motion support.
+- hash-based document and heading links, browser history, nine [colorschemes](colorschemes.md), bundled geist fonts, and reduced-motion support.
+
+the palette button in the top bar opens appearance settings. exports carry the author's system/light/dark mode and selected built-in palettes. a visitor's saved choice takes precedence. addon palettes fall back to hibi; addon code and CSS are not exported. full third-party palette license notices are included in the HTML and appearance settings.
 
 relative links between included markdown pages are rewritten for the exported site. `README.md` or `index.md` at the root is the initial page when present. the current document’s in-memory edits are included if it belongs to the workspace; exporting does not silently save those edits back to the original file.
 

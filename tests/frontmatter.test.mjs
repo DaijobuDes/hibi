@@ -3,7 +3,6 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { _electron as electron } from 'playwright'
 import { parseDocument } from 'yaml'
 import {
   addFrontmatter,
@@ -11,6 +10,7 @@ import {
   replaceFrontmatter,
   splitFrontmatter,
 } from '../src/addons/frontmatter/markdown.ts'
+import { electron } from './electron.mjs'
 
 test('frontmatter preserves raw metadata, spacing, and delimiter boundaries', () => {
   const prefix =

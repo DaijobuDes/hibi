@@ -3,7 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { _electron as electron } from 'playwright'
+import { electron } from './electron.mjs'
 
 test('titlebar insets titles without leading actions and adapts outer button corners', async (t) => {
   const profile = await mkdtemp(join(tmpdir(), 'hibi-titlebar-'))

@@ -3,8 +3,8 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { _electron as electron } from 'playwright'
 import { build } from 'vite'
+import { electron } from './electron.mjs'
 
 test('shared dialogs validate input, trap focus, queue, and clean up by addon owner', {
   timeout: 45000,

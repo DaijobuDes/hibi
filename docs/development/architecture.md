@@ -10,9 +10,13 @@
 
 the main process checks sender identity, main-frame identity, and the exact app URL for every privileged operation. file dialogs grant paths; workspace calls accept only relative markdown paths inside the selected canonical folder. native addon calls require an enabled addon and an explicitly registered method.
 
+colorschemes are data, with validated hex colors and required attribution. renderer/site selection uses the same store and CSS token roles. the appearance IPC accepts only a valid preference pair and opaque hex window colors; its native cache is written atomically and loaded before creating a window. exports receive preferences through the native workspace snapshot, without importing core code into the documentation addon.
+
 local image requests are bound to the current document revision. main resolves relative references from its native path, bounds reads to 8 mib, and checks image content before returning an image data URL. the bridge cannot return arbitrary file contents. documentation snapshots embed the same validated images.
 
 document replacement, exports, and addon preference writes share an operation guard. closing the app waits for the active operation and confirms unsaved edits. the workspace watcher is debounced and uses asynchronous IO.
+
+new save destinations resolve their parent directory before retaining a path. subsequent saves through a symlinked folder therefore compare the same canonical path and still check for external edits.
 
 the renderer is sandboxed and isolated, with no node integration. app assets use a traversal-checked local protocol. external navigation, child windows, downloads, and permissions are denied. development connects only to its local Vite server.
 

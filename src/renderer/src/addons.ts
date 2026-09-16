@@ -13,6 +13,7 @@ import {
 } from '../../addons/api'
 import { useDialogService } from '../../ui/DialogProvider'
 import { createAddonOverrides } from './addon-overrides'
+import { colorschemes } from './colorschemes'
 
 export const addons = Object.values(
   import.meta.glob<Addon>(
@@ -31,6 +32,7 @@ type Environment = Omit<
   | 'styles'
   | 'patches'
   | 'dialogs'
+  | 'colorschemes'
 > & {
   invoke: (id: string, method: string, input?: unknown) => Promise<unknown>
   error: (error: unknown) => void
@@ -124,6 +126,7 @@ export function useAddons(environment: Environment) {
       let disposed = false
       const overrides = createAddonOverrides(id)
       const dialogScope = dialogService.scope(addon.manifest.name)
+      const themeCleanup = new Set<() => void>()
       const stop = () => {
         if (disposed) return
         disposed = true
@@ -146,6 +149,8 @@ export function useAddons(environment: Environment) {
           try {
             addon.stop?.()
           } finally {
+            for (const remove of themeCleanup) remove()
+            themeCleanup.clear()
             dialogScope.dispose()
             overrides.dispose()
           }
@@ -158,6 +163,28 @@ export function useAddons(environment: Environment) {
           throw new Error(`incompatible addon: ${id}`)
         running.set(id, { addon, stop })
         addon.start({
+          colorschemes: {
+            register(scheme) {
+              if (disposed) return () => {}
+              if (!/^[a-z][a-z0-9-]*$/.test(scheme.id))
+                throw new Error('invalid addon colorscheme id')
+              const remove = colorschemes.register({
+                ...scheme,
+                id: `${id}.${scheme.id}`,
+              })
+              const cleanup = () => {
+                remove()
+                themeCleanup.delete(cleanup)
+              }
+              themeCleanup.add(cleanup)
+              return cleanup
+            },
+            list: () => colorschemes.snapshot().schemes,
+            getPreferences: () => ({ ...colorschemes.snapshot().preferences }),
+            setPreferences: (preferences) => {
+              if (!disposed) colorschemes.set(preferences)
+            },
+          },
           dialogs: dialogScope.api,
           app,
           styles: overrides.styles,

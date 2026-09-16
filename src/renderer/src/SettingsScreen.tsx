@@ -3,9 +3,11 @@ import { Component, type ReactNode, useState } from 'react'
 import type { AddonManifest, AddonState } from '../../addons/api'
 import type { AppInfo } from '../../shared/desktop'
 import type { Hotkeys } from '../../shared/hotkeys'
+import { ColorschemeSettings } from '../../ui/ColorschemeSettings'
 import { Button, Select, SettingRow, Toggle } from '../../ui/Controls'
 import { Sidebar, type SidebarProps } from '../../ui/Sidebar'
 import { addons } from './addons'
+import { colorschemes } from './colorschemes'
 import type { CursorSettings } from './EditorCursor'
 import { HotkeySettings } from './HotkeySettings'
 
@@ -191,6 +193,8 @@ export function SettingsScreen({
           hidden={category !== 'appearance'}
         >
           <h1>appearance</h1>
+          <ColorschemeSettings store={colorschemes} />
+          <h2>cursor</h2>
           <div className="settings-group">
             {(
               [

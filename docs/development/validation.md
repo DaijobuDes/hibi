@@ -17,4 +17,8 @@ Vite can replace its initial navigation when optimizing a newly added dependency
 
 tests use temporary profiles and real Electron windows. file dialogs are controlled against temporary fixtures. validation covers draft preservation, file writes, workspace traversal and nested navigation, local image resolution and offline embedding, frontmatter fields and YAML preservation, addon enable/disable, export sanitization, offline search and deep links, keyboard behavior, reduced motion, and pane geometry.
 
+native tests import `electron` from `tests/electron.mjs`. this launcher adds `--hibi-test`, keeping windows hidden and unfocusable, with background rendering enabled. on macOS the test app uses accessory activation policy, so it has no Dock icon. normal app launches keep their usual window behavior. screenshots and DOM input still run against real Electron renderers in the background.
+
+colorscheme checks cover all bundled token roles, text contrast, retained upstream notices, rejected CSS expressions, native window persistence, editor/undo preservation, system appearance, addon palette fallback/restoration, CSS override precedence, and exported appearance controls down to 320 px. native Windows/Linux caption rendering needs a check on those platforms.
+
 public SDK and sidebar references are generated from their real TypeScript declarations. update prose guides whenever behavior changes. release builds must pass `npm run check`; platform signing and notarization are separate distribution steps.

@@ -25,4 +25,8 @@ export type WorkspacePage = {
   /** Local Markdown image references mapped to embedded image data URLs. */
   images?: Record<string, string>
 }
-export type WorkspaceSnapshot = { name: string; pages: WorkspacePage[] }
+export type WorkspaceSnapshot = {
+  name: string
+  pages: WorkspacePage[]
+  appearance?: import('./colorschemes').ThemePreferences
+}

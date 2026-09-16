@@ -3,7 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { _electron as electron } from 'playwright'
+import { electron } from './electron.mjs'
 import { pressShortcut } from './keyboard.mjs'
 
 test('cursor appearance, movement, selection hiding, and persistence in both editors', {

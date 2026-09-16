@@ -4,8 +4,8 @@ import { stripTypeScriptTypes } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { _electron as electron } from 'playwright'
 import { createAddonOverrides } from '../src/renderer/src/addon-overrides.ts'
+import { electron } from './electron.mjs'
 
 test('patches compose, preserve this, and remove owners independently', () => {
   const first = createAddonOverrides('first')

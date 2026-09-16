@@ -13,6 +13,7 @@ import {
   session,
 } from 'electron'
 import { ADDON_CHANNELS } from '../addons/api'
+import { APPEARANCE_CHANNEL } from '../shared/colorschemes'
 import {
   APP_INFO_CHANNEL,
   type AppInfo,
@@ -27,6 +28,7 @@ import {
 } from '../shared/hotkeys'
 import { WORKSPACE_CHANNELS } from '../shared/workspace'
 import { enableAddon, getAddonStates, invokeAddon, loadAddons } from './addons'
+import { appearanceColors, loadAppearance, saveAppearance } from './appearance'
 import {
   confirmDiscard,
   discardChanges,
@@ -56,6 +58,9 @@ import {
 
 app.setName('hibi')
 app.enableSandbox()
+const testing = !app.isPackaged && app.commandLine.hasSwitch('hibi-test')
+if (testing && process.platform === 'darwin')
+  app.setActivationPolicy('accessory')
 protocol.registerSchemesAsPrivileged([
   {
     scheme: 'app',
@@ -117,8 +122,8 @@ function runFileOperation<T>(
 
 function titleBarColors() {
   return {
-    color: nativeTheme.shouldUseDarkColors ? '#181818' : '#ffffff',
-    symbolColor: nativeTheme.shouldUseDarkColors ? '#eeeeee' : '#222222',
+    color: appearanceColors().background,
+    symbolColor: appearanceColors().foreground,
     height: 36,
   }
 }
@@ -145,12 +150,13 @@ function createWindow(): void {
     minWidth: 480,
     minHeight: 360,
     show: false,
+    focusable: !testing,
     title: 'hibi',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
     ...(process.platform === 'darwin'
       ? { trafficLightPosition: { x: 12, y: 11 } }
       : { titleBarOverlay: titleBarColors(), autoHideMenuBar: true }),
-    backgroundColor: nativeTheme.shouldUseDarkColors ? '#181818' : '#ffffff',
+    backgroundColor: appearanceColors().background,
     webPreferences: {
       preload: join(import.meta.dirname, '../preload/index.cjs'),
       contextIsolation: true,
@@ -158,6 +164,7 @@ function createWindow(): void {
       nodeIntegration: false,
       webSecurity: true,
       webviewTag: false,
+      backgroundThrottling: !testing,
     },
   })
   mainWindow = window
@@ -215,6 +222,7 @@ function createWindow(): void {
       })
   })
   window.once('ready-to-show', () => {
+    if (testing) return
     if (!app.isPackaged && app.commandLine.hasSwitch('user-data-dir'))
       window.showInactive()
     else window.show()
@@ -345,6 +353,7 @@ if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
   app.on('second-instance', () => {
+    if (testing) return
     if (!mainWindow) createWindow()
     if (mainWindow?.isMinimized()) mainWindow.restore()
     mainWindow?.show()
@@ -362,6 +371,7 @@ if (!app.requestSingleInstanceLock()) {
     .then(async () => {
       await loadHotkeys()
       await loadAddons()
+      await loadAppearance()
       protocol.handle('app', serveAsset)
       session.defaultSession.setPermissionCheckHandler(() => false)
       session.defaultSession.setPermissionRequestHandler(
@@ -397,6 +407,14 @@ if (!app.requestSingleInstanceLock()) {
           electron: process.versions.electron,
           platform: process.platform,
         }
+      })
+      ipcMain.handle(APPEARANCE_CHANNEL, async (event, value: unknown) => {
+        const window = trustedWindow(event)
+        const saved = saveAppearance(value)
+        window.setBackgroundColor(appearanceColors().background)
+        if (process.platform !== 'darwin')
+          window.setTitleBarOverlay(titleBarColors())
+        await saved
       })
       ipcMain.handle(ADDON_CHANNELS.states, (event) => {
         trustedWindow(event)
@@ -495,6 +513,7 @@ if (!app.requestSingleInstanceLock()) {
       )
       installMenu()
       nativeTheme.on('updated', () => {
+        mainWindow?.setBackgroundColor(appearanceColors().background)
         if (process.platform !== 'darwin')
           mainWindow?.setTitleBarOverlay(titleBarColors())
       })

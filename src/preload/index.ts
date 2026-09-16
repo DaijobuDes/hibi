@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { ADDON_CHANNELS } from '../addons/api'
+import { APPEARANCE_CHANNEL } from '../shared/colorschemes'
 import {
   APP_INFO_CHANNEL,
   type DesktopApi,
@@ -10,6 +11,8 @@ import { WORKSPACE_CHANNELS, type WorkspaceState } from '../shared/workspace'
 
 if (process.isMainFrame) {
   contextBridge.exposeInMainWorld('hibi', {
+    setAppearance: (appearance) =>
+      ipcRenderer.invoke(APPEARANCE_CHANNEL, appearance),
     getAddonStates: () => ipcRenderer.invoke(ADDON_CHANNELS.states),
     setAddonEnabled: (id, enabled) =>
       ipcRenderer.invoke(ADDON_CHANNELS.enable, id, enabled),

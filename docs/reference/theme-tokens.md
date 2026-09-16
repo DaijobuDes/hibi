@@ -4,15 +4,45 @@ generated from `src/ui/tokens.css`. update the source, then run `npm run docs`. 
 
 ```css
 /* Shared desktop and static-site theme contract. Override semantic values, not selectors. */
+@layer hibi-base, hibi-theme;
+@layer hibi-base {
+  :root {
+    color-scheme: light dark;
+    --background: oklch(1 0 0);
+    --surface: oklch(0.97 0 0);
+    --ink: oklch(0.24 0.008 200);
+    --muted: oklch(0.49 0.012 200);
+    --accent: oklch(0.45 0.075 200);
+    --border: oklch(0.9 0 0);
+    --overlay: oklch(0 0 0 / 0.2);
+    --sidebar: var(--surface);
+    --hover: var(--surface);
+    --active: var(--border);
+    --selection: color-mix(in oklch, var(--accent) 22%, var(--background));
+    --selection-ink: var(--ink);
+    --caret: var(--ink);
+    --code-background: var(--surface);
+    --code-ink: var(--ink);
+    --syntax-heading: var(--ink);
+    --syntax-link: var(--accent);
+    --syntax-code: var(--accent);
+    --syntax-meta: var(--muted);
+    --syntax-quote: var(--muted);
+    --syntax-strong: var(--ink);
+    --syntax-emphasis: var(--ink);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --background: oklch(0.21 0 0);
+      --surface: oklch(0.25 0 0);
+      --ink: oklch(0.93 0.005 200);
+      --muted: oklch(0.7 0.012 200);
+      --accent: oklch(0.8 0.075 200);
+      --border: oklch(0.33 0 0);
+    }
+  }
+}
 :root {
-  color-scheme: light dark;
-  --background: oklch(1 0 0);
-  --surface: oklch(0.97 0 0);
-  --ink: oklch(0.24 0.008 200);
-  --muted: oklch(0.49 0.012 200);
-  --accent: oklch(0.45 0.075 200);
-  --border: oklch(0.9 0 0);
-  --overlay: oklch(0 0 0 / 0.2);
   --font-ui: "Geist", sans-serif;
   --font-mono: "Geist Mono", monospace;
   --text-xs: 11px;
@@ -48,15 +78,5 @@ generated from `src/ui/tokens.css`. update the source, then run `npm run docs`. 
   --motion-selection: 180ms;
   --motion-pane: 240ms;
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: oklch(0.21 0 0);
-    --surface: oklch(0.25 0 0);
-    --ink: oklch(0.93 0.005 200);
-    --muted: oklch(0.7 0.012 200);
-    --accent: oklch(0.8 0.075 200);
-    --border: oklch(0.33 0 0);
-  }
 }
 ```

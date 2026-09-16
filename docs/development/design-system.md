@@ -8,9 +8,11 @@ desktop and exported documentation use the same `src/ui/tokens.css`. its [genera
 
 ## semantic colors
 
-`--background`, `--surface`, `--ink`, `--muted`, `--accent`, `--border`, and `--overlay` describe roles. light and dark defaults live together. components consume these roles instead of defining their own palette.
+`--background`, `--surface`, `--sidebar`, `--ink`, `--muted`, `--accent`, `--border`, and `--overlay` describe surfaces and foregrounds. `--hover`, `--active`, `--selection`, `--selection-ink`, and `--caret` cover interaction. `--code-background`, `--code-ink`, and the `--syntax-*` roles cover source and rendered markdown. components consume these roles instead of defining their own palette.
 
-theme styles can override these variables on a root selector with greater specificity, such as `:root[data-theme="custom"]`. keep foreground/background contrast readable. a theme picker and theme-file loading are not implemented yet; Electron's native window controls still follow the system appearance.
+`src/shared/color-palettes.ts` holds the nine bundled schemes. `src/ui/colorschemes.ts` applies them for both the app and static site without remounting editors. appearance settings persist a mode and a light/dark pair. Electron receives validated solid background/foreground colors and persists them before the next window is created.
+
+base tokens live in CSS layer `hibi-base`; selected palettes live in `hibi-theme`. unlayered addon CSS overrides retain precedence. `:root[data-colorscheme="catppuccin-mocha"]` and `:root[data-appearance="dark"]` allow scoped overrides. use `context.colorschemes.register` for selectable palettes; arbitrary theme-file loading is not supported. preserve readable contrast. see [colorschemes](../guides/colorschemes.md) and the [generated contract](../reference/colorscheme-api.md).
 
 ## shared measurements
 

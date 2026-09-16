@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { _electron as electron } from 'playwright'
+import { electron } from './electron.mjs'
 
 test('documentation breadcrumbs, outline, pagination, and phone navigation', {
   timeout: 45000,
@@ -13,6 +13,11 @@ test('documentation breadcrumbs, outline, pagination, and phone navigation', {
   const paragraph = 'a short paragraph for this section.\n\n'.repeat(9)
   const snapshot = {
     name: 'hibi documentation',
+    appearance: {
+      mode: 'dark',
+      light: 'vscode-light',
+      dark: 'catppuccin-mocha',
+    },
     pages: [
       {
         path: 'README.md',
@@ -26,6 +31,10 @@ test('documentation breadcrumbs, outline, pagination, and phone navigation', {
     ],
   }
   const template = await readFile('out/site/template.html', 'utf8')
+  for (const name of ['catppuccin', 'vscode', 'nord'])
+    assert.ok(
+      template.includes(await readFile(`docs/licenses/${name}.md`, 'utf8')),
+    )
   await writeFile(
     html,
     template.replace('__HIBI_WORKSPACE_DATA__', () =>
@@ -59,6 +68,34 @@ test('documentation breadcrumbs, outline, pagination, and phone navigation', {
   const errors = []
   page.on('pageerror', (error) => errors.push(error.message))
   await page.getByRole('heading', { name: 'welcome', exact: true }).waitFor()
+  assert.equal(
+    await page.locator('html').getAttribute('data-colorscheme'),
+    'catppuccin-mocha',
+  )
+  await page.getByRole('button', { name: 'colorscheme', exact: true }).click()
+  const appearance = page.getByRole('dialog', {
+    name: 'appearance',
+    exact: true,
+  })
+  await appearance
+    .getByRole('combobox', { name: 'appearance', exact: true })
+    .selectOption('light')
+  assert.equal(
+    await page.locator('html').getAttribute('data-colorscheme'),
+    'vscode-light',
+  )
+  await page.keyboard.press(
+    process.platform === 'darwin' ? 'Meta+k' : 'Control+k',
+  )
+  assert.equal(await page.getByRole('dialog').count(), 1)
+  await page.keyboard.press('Escape')
+  await appearance.waitFor({ state: 'hidden' })
+  await page.reload()
+  await page.getByRole('heading', { name: 'welcome', exact: true }).waitFor()
+  assert.equal(
+    await page.locator('html').getAttribute('data-colorscheme'),
+    'vscode-light',
+  )
   assert.equal(await page.locator('.sidebar-header').count(), 0)
   const pagination = page.getByRole('navigation', { name: 'page navigation' })
   await pagination.getByRole('link', { name: 'next getting started' }).click()
@@ -129,6 +166,14 @@ test('documentation breadcrumbs, outline, pagination, and phone navigation', {
   await page.screenshot({ path: 'test-results/documentation-desktop.png' })
   for (const width of [320, 390, 768]) {
     await page.setViewportSize({ width, height: 844 })
+    await page.getByRole('button', { name: 'colorscheme', exact: true }).click()
+    await appearance.waitFor()
+    assert.equal(
+      await appearance.evaluate((el) => el.scrollWidth <= el.clientWidth),
+      true,
+    )
+    await page.keyboard.press('Escape')
+    await appearance.waitFor({ state: 'hidden' })
     await page.locator('.site-outline-mobile').waitFor()
     await page.waitForFunction(
       () =>

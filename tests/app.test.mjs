@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { _electron as electron } from 'playwright'
+import { electron } from './electron.mjs'
 
 test('desktop launch, isolation, offline reload, and recovery', {
   timeout: 60000,
@@ -23,18 +23,22 @@ test('desktop launch, isolation, offline reload, and recovery', {
   page.on('pageerror', (error) => errors.push(error.message))
   await page.getByRole('textbox', { name: 'document editor' }).waitFor()
   t.diagnostic(
-    `launch to visible content: ${Math.round(performance.now() - started)} ms`,
+    `launch to ready content: ${Math.round(performance.now() - started)} ms`,
   )
   assert.equal(page.url(), 'app://hibi/')
+  if (process.platform === 'darwin')
+    assert.equal(await app.evaluate(({ app }) => app.dock.isVisible()), false)
   assert.deepEqual(
     await app.evaluate(({ BrowserWindow }) => {
       const window = BrowserWindow.getAllWindows()[0]
       return {
         maximized: window.isMaximized(),
         fullscreen: window.isFullScreen(),
+        visible: window.isVisible(),
+        focused: window.isFocused(),
       }
     }),
-    { maximized: false, fullscreen: false },
+    { maximized: false, fullscreen: false, visible: false, focused: false },
   )
   await page.getByRole('button', { name: 'editor settings' }).click()
   await page.getByRole('tab', { name: 'about hibi' }).click()
@@ -53,6 +57,7 @@ test('desktop launch, isolation, offline reload, and recovery', {
       node: 'undefined',
       process: 'undefined',
       api: [
+        'setAppearance',
         'getAddonStates',
         'setAddonEnabled',
         'invokeAddon',

@@ -1,15 +1,24 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import {
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { _electron as electron } from 'playwright'
+import { electron } from './electron.mjs'
 
 test('native file operations preserve drafts and avoid silent overwrites', {
   timeout: 30000,
 }, async (t) => {
   const folder = await mkdtemp(join(tmpdir(), 'hibi-files-'))
-  const destination = join(folder, 'saved.md')
+  const alias = join(folder, 'linked')
+  await symlink(folder, alias, 'junction')
+  const destination = join(alias, 'saved.md')
   const fixture = join(folder, 'original.md')
   const original =
     '---\ntitle: source fidelity\n---\n\n<div data-note="keep">exact text</div>\n'
@@ -35,9 +44,9 @@ test('native file operations preserve drafts and avoid silent overwrites', {
   }, destination)
   await rich.fill('hello file')
   await page.getByRole('button', { name: 'save', exact: true }).click()
-  await page.waitForFunction(
-    async () => !(await window.hibi.getDocument()).dirty,
-  )
+  await page
+    .getByRole('status', { name: 'unsaved changes' })
+    .waitFor({ state: 'hidden' })
   assert.equal(await readFile(destination, 'utf8'), 'hello file')
   assert.equal(
     (await readdir(folder)).some((name) => name.endsWith('.tmp')),
@@ -51,7 +60,8 @@ test('native file operations preserve drafts and avoid silent overwrites', {
       checkboxChecked: false,
     })
   })
-  await page.getByRole('button', { name: 'new', exact: true }).click()
+  // Await cancellation before replacing the next dialog response.
+  assert.equal(await page.evaluate(() => window.hibi.newDocument()), null)
   assert.equal(
     (await page.evaluate(() => window.hibi.getDocument())).markdown,
     'unsaved draft',
@@ -64,7 +74,7 @@ test('native file operations preserve drafts and avoid silent overwrites', {
       checkboxChecked: false,
     })
   })
-  await page.getByRole('button', { name: 'save', exact: true }).click()
+  assert.equal(await page.evaluate(() => window.hibi.saveDocument(false)), null)
   assert.equal(await readFile(destination, 'utf8'), 'external change')
   assert.equal(
     (await page.evaluate(() => window.hibi.getDocument())).dirty,
@@ -77,18 +87,19 @@ test('native file operations preserve drafts and avoid silent overwrites', {
     })
   })
   await page.getByRole('button', { name: 'save', exact: true }).click()
-  await page.waitForFunction(
-    async () => !(await window.hibi.getDocument()).dirty,
-  )
+  await page
+    .getByRole('status', { name: 'unsaved changes' })
+    .waitFor({ state: 'hidden' })
   assert.equal(await readFile(destination, 'utf8'), 'unsaved draft')
 
   await app.evaluate(({ dialog }, path) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] })
   }, fixture)
   await page.getByRole('button', { name: 'open', exact: true }).click()
-  await page.waitForFunction(
-    async () => (await window.hibi.getDocument()).name === 'original.md',
-  )
+  await page
+    .getByRole('button', { name: 'rename document' })
+    .filter({ hasText: 'original.md' })
+    .waitFor()
   await page.getByRole('button', { name: 'markdown only', exact: true }).click()
   await page.getByRole('textbox', { name: 'markdown editor' }).waitFor()
   await page.getByRole('button', { name: 'save', exact: true }).click()

@@ -6,6 +6,7 @@ import {
   ChevronRight,
   FileText,
   Folder,
+  Palette,
   PanelLeft,
   Search,
 } from 'lucide-react'
@@ -18,7 +19,10 @@ import {
   type PaletteCommand,
 } from '../renderer/src/CommandPalette'
 import type { WorkspaceSnapshot } from '../shared/workspace'
+import { ColorschemeSettings } from '../ui/ColorschemeSettings'
 import { IconButton } from '../ui/Controls'
+import { createColorschemeStore } from '../ui/colorschemes'
+import { DialogProvider, useDialogs } from '../ui/DialogProvider'
 import { ShortcutKeys } from '../ui/ShortcutKeys'
 import { Sidebar, type SidebarItem } from '../ui/Sidebar'
 import { useSidebarResize } from '../ui/useSidebarResize'
@@ -27,6 +31,11 @@ import './site.css'
 const workspace = JSON.parse(
   document.getElementById('workspace-data')?.textContent ?? '{}',
 ) as WorkspaceSnapshot
+const colorschemes = createColorschemeStore(
+  'hibi-site-colorscheme',
+  workspace.appearance,
+)
+colorschemes.start()
 const pages = workspace.pages.map((page) => {
   const heading = marked
     .lexer(page.markdown)
@@ -216,6 +225,7 @@ function renderMarkdown(path: string, markdown: string) {
 }
 
 function DocumentationSite() {
+  const dialogs = useDialogs()
   const [current, setCurrent] = useState(route)
   const [palette, setPalette] = useState(false)
   const [sidebar, setSidebar] = useState(() => innerWidth > 700)
@@ -242,6 +252,7 @@ function DocumentationSite() {
       if (media.matches) setSidebar(false)
     }
     const keyboard = (event: KeyboardEvent) => {
+      if (dialogs.isOpen()) return
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault()
         setPalette(true)
@@ -260,7 +271,7 @@ function DocumentationSite() {
       window.removeEventListener('keydown', keyboard)
       media.removeEventListener('change', resized)
     }
-  }, [])
+  }, [dialogs])
   useEffect(() => {
     document.title = `${page?.title ?? 'page not found'} · ${workspace.name}`
     if (current.anchor)
@@ -397,6 +408,18 @@ function DocumentationSite() {
               platform={/Mac/.test(navigator.platform) ? 'darwin' : 'linux'}
             />
           </button>
+          <IconButton
+            aria-label="colorscheme"
+            title="colorscheme"
+            onClick={() =>
+              dialogs.open({
+                title: 'appearance',
+                content: () => <ColorschemeSettings store={colorschemes} />,
+              })
+            }
+          >
+            <Palette aria-hidden="true" />
+          </IconButton>
         </div>
       </header>
       <div className="site-layout">
@@ -505,4 +528,9 @@ function DocumentationSite() {
 }
 
 const root = document.getElementById('root')
-if (root) createRoot(root).render(<DocumentationSite />)
+if (root)
+  createRoot(root).render(
+    <DialogProvider>
+      <DocumentationSite />
+    </DialogProvider>,
+  )

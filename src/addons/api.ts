@@ -1,10 +1,23 @@
 import type { Extension } from '@codemirror/state'
 import type { Editor } from '@tiptap/core'
 import type { ComponentType } from 'react'
+import type {
+  Colorscheme,
+  ColorschemeInput,
+  ThemePreferences,
+} from '../shared/colorschemes'
 import type { DocumentCommand } from '../shared/desktop'
 import type { AppCommand } from '../shared/hotkeys'
 import type { WorkspaceSnapshot, WorkspaceState } from '../shared/workspace'
 import type { DialogApi } from '../ui/dialogs'
+
+export type {
+  Colorscheme,
+  ColorschemeColors,
+  ColorschemeInput,
+  ColorToken,
+  ThemePreferences,
+} from '../shared/colorschemes'
 
 export type {
   DialogApi,
@@ -146,6 +159,12 @@ export type MarkdownEditorProps = {
 }
 
 export type AddonContext = {
+  colorschemes: {
+    register: (scheme: ColorschemeInput) => () => void
+    list: () => readonly Colorscheme[]
+    getPreferences: () => ThemePreferences
+    setPreferences: (preferences: Partial<ThemePreferences>) => void
+  }
   dialogs: DialogApi
   app: AddonApp
   styles: { register: (id: string, css: string) => StyleHandle }

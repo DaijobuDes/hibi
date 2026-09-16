@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { _electron as electron } from 'playwright'
+import { electron } from './electron.mjs'
 
 test('plugin pages, metadata, shared controls, and full source vim editing', {
   timeout: 60000,
@@ -75,7 +75,7 @@ test('plugin pages, metadata, shared controls, and full source vim editing', {
   )
   assert.equal(
     await page.locator('#settings-appearance .select-control > svg').count(),
-    3,
+    6,
   )
   const footer = await page.locator('.settings-versions').evaluate((el) => ({
     bottom: el.getBoundingClientRect().bottom,

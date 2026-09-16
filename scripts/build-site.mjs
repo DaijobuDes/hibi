@@ -17,12 +17,15 @@ const licensePaths = [
   'marked/LICENSE',
 ]
 const licenses = (
-  await Promise.all(
-    licensePaths.map(
+  await Promise.all([
+    ...licensePaths.map(
       async (path) =>
         `${path}\n${await readFile(resolve('node_modules', path), 'utf8')}`,
     ),
-  )
+    ...['catppuccin', 'vscode', 'nord'].map((name) =>
+      readFile(resolve('docs/licenses', `${name}.md`), 'utf8'),
+    ),
+  ])
 )
   .join('\n\n')
   .replaceAll('-->', '--&gt;')

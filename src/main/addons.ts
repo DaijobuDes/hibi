@@ -7,6 +7,7 @@ import {
   type AddonState,
   type NativeAddon,
 } from '../addons/api'
+import { exportedAppearance } from './appearance'
 import { writeText } from './files'
 import { snapshotWorkspace } from './workspace'
 
@@ -93,7 +94,12 @@ export async function invokeAddon(
   const handler = addon.methods[method]
   if (!handler) throw new Error('unknown addon method.')
   return handler(input, {
-    workspace: { snapshot: snapshotWorkspace },
+    workspace: {
+      snapshot: async () => ({
+        ...(await snapshotWorkspace()),
+        appearance: exportedAppearance(),
+      }),
+    },
     async exportHtml(html, suggestedName, pages) {
       const result = await dialog.showSaveDialog(window, {
         title: 'export documentation',

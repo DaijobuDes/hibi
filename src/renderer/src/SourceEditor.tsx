@@ -25,14 +25,13 @@ import type { FindMove, FindStatus } from './FindBar'
 
 const externalChange = Annotation.define<boolean>()
 const highlighting = HighlightStyle.define([
-  { tag: tags.heading, color: 'var(--ink)', fontWeight: '600' },
-  { tag: tags.strong, fontWeight: '600' },
-  { tag: tags.emphasis, fontStyle: 'italic' },
-  { tag: [tags.link, tags.url, tags.monospace], color: 'var(--accent)' },
-  {
-    tag: [tags.meta, tags.quote, tags.processingInstruction],
-    color: 'var(--muted)',
-  },
+  { tag: tags.heading, color: 'var(--syntax-heading)', fontWeight: '600' },
+  { tag: tags.strong, color: 'var(--syntax-strong)', fontWeight: '600' },
+  { tag: tags.emphasis, color: 'var(--syntax-emphasis)', fontStyle: 'italic' },
+  { tag: [tags.link, tags.url], color: 'var(--syntax-link)' },
+  { tag: tags.monospace, color: 'var(--syntax-code)' },
+  { tag: [tags.meta, tags.processingInstruction], color: 'var(--syntax-meta)' },
+  { tag: tags.quote, color: 'var(--syntax-quote)' },
   { tag: tags.strikethrough, textDecoration: 'line-through' },
 ])
 

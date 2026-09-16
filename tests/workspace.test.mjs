@@ -10,7 +10,7 @@ import {
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { _electron as electron } from 'playwright'
+import { electron } from './electron.mjs'
 import { pressShortcut } from './keyboard.mjs'
 import { checkSidebarResize } from './sidebar-resize.mjs'
 
@@ -238,6 +238,16 @@ test('nested workspace editing, addon lifecycle, and offline static export', {
       .click()
   }
   const html = await readFile(output, 'utf8')
+  const exported = JSON.parse(
+    html.match(
+      /<script id="workspace-data" type="application\/json">([\s\S]*?)<\/script>/,
+    )[1],
+  )
+  assert.deepEqual(exported.appearance, {
+    mode: 'system',
+    light: 'hibi-light',
+    dark: 'hibi-dark',
+  })
   assert.ok(!html.includes('outside-secret') && !html.includes('hidden-secret'))
   assert.ok(
     html.includes('data:font/woff2;base64,') ||

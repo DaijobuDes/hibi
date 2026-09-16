@@ -3,6 +3,7 @@
 hibi is a local markdown editor with folder workspaces and code-defined addons.
 
 - [editing](guides/editing.md)
+- [colorschemes and credits](guides/colorschemes.md)
 - [frontmatter addon](guides/frontmatter.md)
 - [vim addon](guides/vim.md)
 - [slash commands addon](guides/slash-commands.md)
@@ -14,6 +15,7 @@ hibi is a local markdown editor with folder workspaces and code-defined addons.
 - [shared ui and theme tokens](development/design-system.md)
 - [development and validation](development/validation.md)
 - [addon api](reference/addon-api.md)
+- [colorscheme api](reference/colorscheme-api.md)
 - [dialog api](reference/dialog-api.md)
 - [shared modal component](reference/modal-api.md)
 - [workspace types](reference/workspace-api.md)

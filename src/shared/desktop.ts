@@ -26,6 +26,9 @@ export type AppInfo = {
 }
 
 export type DesktopApi = {
+  setAppearance: (
+    appearance: import('./colorschemes').NativeAppearance,
+  ) => Promise<void>
   getAddonStates: () => Promise<AddonState[]>
   setAddonEnabled: (id: string, enabled: boolean) => Promise<AddonState[]>
   invokeAddon: (id: string, method: string, input?: unknown) => Promise<unknown>

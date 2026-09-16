@@ -17,7 +17,7 @@
   min-height: 0;
   height: 100%;
   padding: 48px 0 12px;
-  background: var(--surface);
+  background: var(--sidebar);
   transform: translateX(0);
   visibility: visible;
   transition:
@@ -62,7 +62,7 @@
   position: absolute;
   inset: 0 0 auto;
   height: var(--sidebar-row-height);
-  background: var(--border);
+  background: var(--active);
   pointer-events: none;
   transition: transform var(--motion-selection) var(--ease-out);
 }

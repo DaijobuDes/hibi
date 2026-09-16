@@ -1,5 +1,29 @@
 # creating addons
 
+## colorschemes
+
+`context.colorschemes.register(scheme)` adds a palette to appearance settings and returns a disposer. the host prefixes its local id with the addon id (`my-addon.midnight`). registrations are removed when the addon stops, including failed startup and hot reload. disabling a selected palette falls back to hibi without erasing the preference; enabling it restores that selection.
+
+```ts
+context.colorschemes.register({
+  id: 'midnight',
+  name: 'midnight',
+  appearance: 'dark',
+  author: 'your name',
+  license: { name: 'your license', text: 'full license notice' },
+  colors: {
+    background: '#181818', surface: '#222222', ink: '#eeeeee',
+    muted: '#aaaaaa', accent: '#81cdd1', border: '#353535',
+  },
+})
+```
+
+the six base colors are required, opaque six-digit hex values. other roles default from them; optional role overrides accept six- or eight-digit hex. CSS expressions, URLs, unknown roles, and duplicate ids are rejected. license name, full text, and author are required; an optional source must use HTTPS. preserve upstream notices when distributing an adapted palette. registered data is copied and frozen.
+
+`list()` returns available palettes with fully qualified ids. `getPreferences()` returns `{ mode, light, dark }`; `setPreferences(partial)` updates mode or a light/dark selection using those ids. selected ids must match the requested appearance. the [generated contract](../reference/colorscheme-api.md) lists every role. this additive API keeps addon API version 1.
+
+base colors use the `hibi-base` CSS layer and palette colors use `hibi-theme`. existing unlayered `context.styles` rules retain precedence. a palette changes tokens without rebuilding either editor. workspace snapshots include optional appearance preferences; exported documentation bundles audited built-in palettes only, falling back to hibi for addon palette ids.
+
 hibi uses source-defined addons, similar to vencord’s plugin structure. addons are compiled with the app and enabled in settings. they are trusted application code, not sandboxed packages discovered in a document workspace.
 
 ## layout

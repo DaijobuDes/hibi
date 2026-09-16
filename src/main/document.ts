@@ -57,10 +57,11 @@ export async function saveDocument(
     if (result.canceled || !result.filePath) return null
     destination = result.filePath
   }
-  destination = await realpath(destination).catch(
-    (error: NodeJS.ErrnoException) => {
+  const chosen = destination
+  destination = await realpath(chosen).catch(
+    async (error: NodeJS.ErrnoException) => {
       if (error.code !== 'ENOENT') throw error
-      return destination as string
+      return join(await realpath(dirname(chosen)), basename(chosen))
     },
   )
   if (destination === path) {
