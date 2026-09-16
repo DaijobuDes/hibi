@@ -141,6 +141,31 @@ test('cursor appearance, movement, selection hiding, and persistence in both edi
   }
   await page.getByRole('button', { name: 'markdown only', exact: true }).click()
   const source = page.getByRole('textbox', { name: 'markdown editor' })
+  await source.fill('')
+  await source.focus()
+  await page.waitForFunction(() =>
+    document.querySelector('.source-pane .editor-cursor'),
+  )
+  const sourceGeometry = await page.evaluate(() => {
+    const caret = document
+      .querySelector('.source-pane .editor-cursor')
+      .getBoundingClientRect()
+    const placeholder = document.querySelector('.cm-placeholder')
+    const range = document.createRange()
+    range.selectNodeContents(placeholder)
+    const text = range.getBoundingClientRect()
+    return {
+      x: caret.x - text.x,
+      y: caret.y - text.y,
+      height: caret.height - text.height,
+    }
+  })
+  assert.ok(
+    Object.values(sourceGeometry).every(
+      (difference) => Math.abs(difference) < 2,
+    ),
+    JSON.stringify(sourceGeometry),
+  )
   await source.fill('source cursor sample')
   await cursor.waitFor()
   assert.equal(

@@ -8,7 +8,28 @@ import {
   undoDepth,
 } from '@codemirror/commands'
 import { EditorSelection, Transaction } from '@codemirror/state'
-import type { EditorView } from '@codemirror/view'
+import type { EditorView, KeyBinding } from '@codemirror/view'
+
+/** Same format actions as the toolbar; addon keymaps (including vim) run first. */
+const formatBindings: [string, string][] = [
+  ['Mod-b', 'bold'],
+  ['Mod-i', 'italic'],
+  ['Mod-e', 'inline-code'],
+  ['Mod-Shift-x', 'strike'],
+  ['Mod-Shift-7', 'numbered-list'],
+  ['Mod-Shift-8', 'bullet-list'],
+  ['Mod-Shift-9', 'checklist'],
+  ['Mod-Shift-b', 'quote'],
+  ['Mod-Alt-c', 'code-block'],
+  ['Mod-Alt-0', 'paragraph'],
+  ...Array.from({ length: 6 }, (_, i): [string, string] => [
+    `Mod-Alt-${i + 1}`,
+    `heading-${i + 1}`,
+  ]),
+]
+export const formattingKeymap: KeyBinding[] = formatBindings.map(
+  ([key, id]) => ({ key, run: (view) => sourceFormatting(view).run(id) }),
+)
 
 export type InsertValues = { url: string; alt: string }
 export type SourceFormatting = ReturnType<typeof sourceFormatting>

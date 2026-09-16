@@ -101,6 +101,11 @@ export type EditorKeyEvent = Readonly<{
   metaKey: boolean
   shiftKey: boolean
 }>
+/** Typed characters only: excludes paste, deletion, shortcuts, and programmatic edits. */
+export type EditorInputEvent = Readonly<{
+  characters: number
+  view: 'normal' | 'source'
+}>
 export type StatusHandle = {
   update: (changes: Partial<Omit<StatusItem, 'id'>>) => void
   dispose: () => void
@@ -213,6 +218,8 @@ export type AddonContext = {
   editor: {
     /** Observe editor keydown/keyup without consuming input. Removed on addon stop. */
     onKeyEvent: (listener: (event: EditorKeyEvent) => void) => () => void
+    /** Observe committed typing, including IME composition. Removed on addon stop. */
+    onInput: (listener: (event: EditorInputEvent) => void) => () => void
     registerRich: (extension: RichExtension) => () => void
     registerMarkdown: (extension: MarkdownExtension) => () => void
     registerSource: (extension: SourceExtension) => () => void

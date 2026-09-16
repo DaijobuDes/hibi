@@ -27,7 +27,11 @@ import { tags } from '@lezer/highlight'
 import { useEffect, useRef } from 'react'
 import type { SourceExtension } from '../../addons/api'
 import type { FindMove, FindStatus } from './FindBar'
-import { type SourceFormatting, sourceFormatting } from './source-formatting'
+import {
+  formattingKeymap,
+  type SourceFormatting,
+  sourceFormatting,
+} from './source-formatting'
 
 const externalChange = Annotation.define<boolean>()
 const highlighting = HighlightStyle.define([
@@ -109,6 +113,7 @@ export function SourceEditor({
           history(),
           keymap.of([
             { key: 'Ctrl-a', run: selectAll },
+            ...formattingKeymap,
             ...defaultKeymap,
             ...historyKeymap,
           ]),

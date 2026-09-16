@@ -1,3 +1,4 @@
+import { EditorView } from '@codemirror/view'
 import {
   type CSSProperties,
   type RefObject,
@@ -105,9 +106,21 @@ export function EditorCursor({
       }
       const fallback = anchor.getBoundingClientRect()
       const fontSize = Number.parseFloat(getComputedStyle(anchor).fontSize)
-      const x = rect.height ? rect.left : fallback.left
-      const y = rect.height ? rect.top : fallback.top
-      const height = rect.height || fontSize * 1.2
+      const source = active.classList.contains('cm-content')
+        ? EditorView.findFromDOM(active)
+        : null
+      // DOM ranges around CodeMirror's empty-line placeholder have line-box
+      // geometry, not caret geometry. Let the editor resolve its own position.
+      const sourceCaret = source?.coordsAtPos(source.state.selection.main.head)
+      if (source && (!source.state.selection.main.empty || !sourceCaret)) {
+        setPosition(null)
+        return
+      }
+      const x = sourceCaret?.left ?? (rect.height ? rect.left : fallback.left)
+      const y = sourceCaret?.top ?? (rect.height ? rect.top : fallback.top)
+      const height = sourceCaret
+        ? sourceCaret.bottom - sourceCaret.top
+        : rect.height || fontSize * 1.2
       const paneElement = active.closest<HTMLElement>(
         '.rich-pane, .source-pane',
       )
@@ -123,9 +136,10 @@ export function EditorCursor({
         setPosition(null)
         return
       }
-      let width = fontSize * 0.6
+      let width = source?.defaultCharacterWidth ?? fontSize * 0.6
       let cellX = x
       if (
+        !source &&
         range.startContainer.nodeType === Node.TEXT_NODE &&
         range.startOffset < (range.startContainer.textContent?.length ?? 0)
       ) {

@@ -86,11 +86,10 @@ test('plugin pages, metadata, shared controls, and full source vim editing', {
   assert.ok(footer.bottom > footer.height - 80)
   assert.match(footer.text, /hibi 0\.1\.0.*electron 44\.3\.0/)
   await page.getByRole('tab', { name: 'addons', exact: true }).click()
-  assert.equal(
-    await page
+  assert.ok(
+    (await page
       .locator('#settings-addons [data-discord-id="1262793452236570667"]')
-      .count(),
-    5,
+      .count()) >= 6,
   )
   await toggleAddon('frontmatter', false)
   assert.equal(

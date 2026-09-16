@@ -414,6 +414,9 @@ function App() {
         setHideTitlebar(!hideTitlebar)
         showTitlebar()
         break
+      case 'toggle-sidebar':
+        setSidebarOpen((open) => !open)
+        break
     }
   }
 

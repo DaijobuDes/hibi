@@ -15,7 +15,7 @@ import { useDialogService } from '../../ui/DialogProvider'
 import { createTooltipScope } from '../../ui/tooltip-store'
 import { createAddonOverrides } from './addon-overrides'
 import { colorschemes } from './colorschemes'
-import { onEditorKeyEvent } from './editor-events'
+import { onEditorInput, onEditorKeyEvent } from './editor-events'
 import { toolbar } from './toolbar'
 
 export const addons = Object.values(
@@ -254,6 +254,23 @@ export function useAddons(environment: Environment) {
             },
           },
           editor: {
+            onInput(listener) {
+              if (disposed) return () => {}
+              const remove = onEditorInput((event) => {
+                if (disposed) return
+                try {
+                  listener(event)
+                } catch (error) {
+                  latest.current.error(error)
+                }
+              })
+              const cleanup = () => {
+                remove()
+                cleanups.delete(cleanup)
+              }
+              cleanups.add(cleanup)
+              return cleanup
+            },
             onKeyEvent(listener) {
               if (disposed) return () => {}
               const remove = onEditorKeyEvent((event) => {
