@@ -195,17 +195,21 @@ function App() {
   }
 
   function toggleSettings() {
+    const previousFocus = window.document.activeElement
     showTitlebar()
     if (!settingsOpen) setFindOpen(false)
     setSettingsOpen(!settingsOpen)
     if (settingsOpen)
-      requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        // A click into either pane wins over this deferred focus restoration.
+        const active = window.document.activeElement
+        if (active !== previousFocus && active !== window.document.body) return
         window.document
           .querySelector<HTMLElement>(
             mode === 'markdown' ? '.cm-content' : '.tiptap',
           )
-          ?.focus(),
-      )
+          ?.focus()
+      })
   }
 
   function openFind() {

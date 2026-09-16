@@ -1,0 +1,52 @@
+import assert from 'node:assert/strict'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
+import test from 'node:test'
+import { electron } from './electron.mjs'
+
+test('closing settings never overrides a newer editor focus', {
+  timeout: 15000,
+}, async (t) => {
+  const profile = await mkdtemp(join(tmpdir(), 'hibi-focus-'))
+  const app = await electron.launch({
+    args: [resolve('.'), `--user-data-dir=${profile}`],
+  })
+  t.after(async () => {
+    await app.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => ({ response: 1 })
+    })
+    await app.close()
+    await rm(profile, { recursive: true, force: true })
+  })
+  const page = await app.firstWindow()
+  page.setDefaultTimeout(5000)
+  await page
+    .getByRole('textbox', { name: 'document editor' })
+    .fill('initial text')
+  await page.getByRole('button', { name: 'side-by-side', exact: true }).click()
+  const source = page.getByRole('textbox', { name: 'markdown editor' })
+  await source.waitFor()
+  await page.getByRole('button', { name: 'editor settings' }).click()
+  await page.evaluate(async () => {
+    document.activeElement.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+    )
+    // A new focus happens after React closes settings, before its queued frame.
+    await Promise.resolve()
+    document.querySelector('.cm-content').focus()
+    await new Promise(requestAnimationFrame)
+  })
+  assert.equal(
+    await source.evaluate((element) => element === document.activeElement),
+    true,
+  )
+  await source.fill('# source text')
+  await page
+    .getByRole('heading', { name: 'source text', exact: true })
+    .waitFor()
+  assert.equal(
+    (await page.evaluate(() => window.hibi.getDocument())).markdown,
+    '# source text',
+  )
+})
