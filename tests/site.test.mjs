@@ -59,6 +59,7 @@ test('documentation breadcrumbs, outline, pagination, and phone navigation', {
   const errors = []
   page.on('pageerror', (error) => errors.push(error.message))
   await page.getByRole('heading', { name: 'welcome', exact: true }).waitFor()
+  assert.equal(await page.locator('.sidebar-header').count(), 0)
   const pagination = page.getByRole('navigation', { name: 'page navigation' })
   await pagination.getByRole('link', { name: 'next getting started' }).click()
   await page

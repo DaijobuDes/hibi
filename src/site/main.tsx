@@ -418,7 +418,6 @@ function DocumentationSite() {
             if (innerWidth <= 700) setSidebar(false)
           }}
           label="documentation navigation"
-          header={<span>documentation</span>}
         />
         <main
           className="site-content"

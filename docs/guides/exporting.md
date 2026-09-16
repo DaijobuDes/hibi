@@ -1,5 +1,7 @@
 # exporting documentation
 
+the sidebar starts directly with the file tree; the top bar contains the workspace breadcrumbs and sidebar toggle.
+
 ## navigation and small screens
 
 breadcrumbs live in the top bar, with links back to the workspace and parent folders. previous and next page links sit below the document, separated by a divider, and follow sidebar order.
