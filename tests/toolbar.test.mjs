@@ -56,6 +56,9 @@ test('toolbar auto-hide defaults on, shares top-bar timing, and moves content sm
           title: Number(
             getComputedStyle(document.querySelector('.titlebar')).opacity,
           ),
+          toolbar: Number(
+            getComputedStyle(document.querySelector('.editor-toolbar')).opacity,
+          ),
           fade: Number.parseFloat(
             getComputedStyle(document.querySelector('.app')).getPropertyValue(
               '--editor-top-fade',
@@ -73,6 +76,13 @@ test('toolbar auto-hide defaults on, shares top-bar timing, and moves content sm
   assert.equal(hiding.at(-1).height, 0)
   assert.equal(hiding.at(-1).top, 36)
   assert.equal(hiding.at(-1).title, 0)
+  assert.equal(hiding.at(-1).toolbar, 0)
+  assert.ok(
+    hiding.some(
+      (value) =>
+        value.height > 2 && value.toolbar < value.height / expanded - 0.15,
+    ),
+  )
   assert.equal(hiding.at(-1).fade, 24)
   assert.match(
     await page
@@ -95,6 +105,14 @@ test('toolbar auto-hide defaults on, shares top-bar timing, and moves content sm
   assert.equal(showing.at(-1).height, expanded)
   assert.equal(showing.at(-1).top, 36 + expanded)
   assert.equal(showing.at(-1).title, 1)
+  assert.equal(showing.at(-1).toolbar, 1)
+  assert.ok(showing.some((value) => value.toolbar > 0 && value.toolbar < 1))
+  assert.ok(
+    showing.some(
+      (value) =>
+        value.height > 2 && value.toolbar < value.height / expanded - 0.15,
+    ),
+  )
   assert.equal(showing.at(-1).fade, 0)
   await page.getByRole('button', { name: 'editor settings' }).click()
   await autoHide.uncheck()

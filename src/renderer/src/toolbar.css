@@ -211,13 +211,17 @@
 .toolbar-slot .editor-toolbar {
   opacity: 1;
   transition:
-    opacity var(--motion-feedback) ease-out,
+    opacity calc(var(--motion-feedback) * 0.6) ease-out
+    calc(var(--motion-feedback) * 0.4),
     transform var(--motion-feedback) ease-out;
 }
-.toolbar-slot[data-hidden="true"] .editor-toolbar {
+.toolbar-slot:where([data-hidden="true"]) .editor-toolbar {
   opacity: 0;
   transform: translateY(-4px);
   pointer-events: none;
+  transition:
+    opacity calc(var(--motion-feedback) * 0.5) ease-out,
+    transform var(--motion-feedback) ease-out;
 }
 @media (prefers-reduced-motion: reduce) {
   .toolbar-slot,
