@@ -1,6 +1,8 @@
 # command discovery
 
-the command palette includes app actions, settings categories, individual settings, formatting and addon toolbar actions, addon enable/disable actions, addon settings, and available colorschemes. selecting a setting opens its category, scrolls to its row, and focuses its control. selecting a colorscheme applies it.
+the command palette includes app actions, settings categories, individual settings and shortcut bindings, formatting and addon toolbar actions, addon enable/disable/remove actions, addon settings, available colorschemes, and markdown flavors. selecting a setting opens its category, scrolls to its row, and focuses its control. selecting a colorscheme applies it.
+
+workspace commands share the explorer menu's actions: create, rename, duplicate, copy, move, and trash. file actions target the open workspace file; folder actions stay on their folder's menu. install themes or extensions from the palette as well as settings. their registered commands, settings, and colorschemes appear when enabled and disappear when removed.
 
 extensions and themes are discovered from the addon registry. declare `manifest.kind` as `extension` or `theme`; omitted values keep the api v1 extension behavior. no extra palette registration is needed for enabling an addon or opening its settings. colorschemes registered through `context.colorschemes.register` appear automatically and disappear when disposed.
 

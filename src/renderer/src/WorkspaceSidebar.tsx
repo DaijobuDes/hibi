@@ -18,6 +18,7 @@ import { useDialogs } from '../../ui/DialogProvider'
 import { useMenus } from '../../ui/MenuHost'
 import { Sidebar, type SidebarItem, type SidebarProps } from '../../ui/Sidebar'
 import type { RegisteredCommand } from './addons'
+import { type WorkspaceRename, workspaceMenuItems } from './workspace-menu'
 
 export function WorkspaceSidebar({
   workspace,
@@ -30,6 +31,8 @@ export function WorkspaceSidebar({
   dirty,
   onAction,
   onError,
+  editing,
+  onEditing: setEditing,
 }: {
   workspace: WorkspaceState | null
   onOpen: () => void
@@ -41,12 +44,11 @@ export function WorkspaceSidebar({
   dirty: boolean
   onAction: (action: WorkspaceAction) => Promise<WorkspaceActionResult | null>
   onError: (error: unknown) => void
+  editing: WorkspaceRename
+  onEditing: (target: WorkspaceRename) => void
 }) {
   const menu = useMenus(onError)
   const dialogs = useDialogs()
-  const [editing, setEditing] = useState<{ id: string; value: string } | null>(
-    null,
-  )
   const [renaming, setRenaming] = useState(false)
   async function create(kind: 'new-file' | 'new-folder', parent = '') {
     try {
@@ -91,72 +93,12 @@ export function WorkspaceSidebar({
     menu.open({
       label: `actions for ${entry.name}`,
       anchor,
-      items: [
-        ...(entry.kind === 'folder'
-          ? [
-              {
-                id: 'new-file',
-                label: 'new file',
-                onSelect: () => create('new-file', path),
-              },
-              {
-                id: 'new-folder',
-                label: 'new folder',
-                onSelect: () => create('new-folder', path),
-              },
-            ]
-          : []),
-        {
-          id: 'rename',
-          label: 'rename',
-          onSelect: () => setEditing({ id: path, value: entry.name }),
-        },
-        {
-          id: 'duplicate',
-          label: 'duplicate',
-          onSelect: async () => {
-            await onAction({ action: 'duplicate', path })
-          },
-        },
-        ...(['copy', 'move'] as const).map((action) => ({
-          id: action,
-          label: `${action} to…`,
-          async onSelect() {
-            const destination = await dialogs.prompt({
-              title: `${action} ${entry.name}`,
-              label: 'destination path',
-              description:
-                'relative to this workspace, including the file or folder name.',
-              defaultValue: path,
-            })
-            if (destination !== null)
-              await onAction({ action, path, destination })
-          },
-        })),
-        {
-          id: 'copy-path',
-          label: 'copy relative path',
-          onSelect: () => navigator.clipboard.writeText(path),
-        },
-        {
-          id: 'delete',
-          label: 'move to trash',
-          separatorBefore: true,
-          async onSelect() {
-            if (
-              await dialogs.confirm({
-                title: `move ${entry.name} to trash?`,
-                description:
-                  entry.kind === 'folder'
-                    ? 'this includes every file and folder inside it.'
-                    : 'you can recover it from the system trash.',
-                confirmLabel: 'move to trash',
-              })
-            )
-              await onAction({ action: 'delete', path })
-          },
-        },
-      ],
+      items: workspaceMenuItems(entry, {
+        dialogs,
+        onAction,
+        create,
+        rename: setEditing,
+      }),
     })
   }
   const items = useMemo(() => {

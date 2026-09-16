@@ -7,6 +7,7 @@ import { ColorschemeSettings } from '../../ui/ColorschemeSettings'
 import { Button, Select, SettingRow, Slider, Toggle } from '../../ui/Controls'
 import { Sidebar, type SidebarProps } from '../../ui/Sidebar'
 import { SettingsDiscovery } from '../../ui/settings-index'
+import { addonRegistry } from './addon-registry'
 import { addons } from './addons'
 import { colorschemes } from './colorschemes'
 import type { CursorSettings } from './EditorCursor'
@@ -23,9 +24,9 @@ export const settingsCategories = [
 ] as const
 
 function AddonMetadata({ manifest }: { manifest: AddonManifest }) {
-  if (!manifest.version && !manifest.authors?.length) return null
   return (
     <span className="addon-metadata">
+      <span>{manifest.kind ?? 'extension'}</span>
       {manifest.version && <span>v{manifest.version}</span>}
       {manifest.authors?.map((author) => (
         <span
@@ -82,6 +83,8 @@ export function SettingsScreen({
   onHotkeys,
   addonStates,
   onAddonEnabled,
+  onInstallAddon,
+  onRemoveAddon,
   resize,
   cursorSettings,
   onCursorSettings,
@@ -100,6 +103,8 @@ export function SettingsScreen({
   onHotkeys: (hotkeys: Hotkeys) => void
   addonStates: AddonState[]
   onAddonEnabled: (id: string, enabled: boolean) => Promise<void>
+  onInstallAddon: () => Promise<void>
+  onRemoveAddon: (id: string) => Promise<void>
   resize: NonNullable<SidebarProps['resize']>
   cursorSettings: CursorSettings
   onCursorSettings: (settings: CursorSettings) => void
@@ -318,6 +323,11 @@ export function SettingsScreen({
             hidden={category !== 'addons'}
           >
             <h1>addons</h1>
+            <p>
+              <Button onClick={() => void onInstallAddon()}>
+                install addon…
+              </Button>
+            </p>
             <div className="settings-group">
               {addons.map(({ manifest }) => (
                 <SettingRow
@@ -331,16 +341,23 @@ export function SettingsScreen({
                     </>
                   }
                 >
-                  <Toggle
-                    id={`addon-${manifest.id}`}
-                    aria-describedby={`addon-${manifest.id}-description`}
-                    checked={addonStates.some(
-                      (state) => state.id === manifest.id && state.enabled,
+                  <div className="addon-actions">
+                    {addonRegistry.isInstalled(manifest.id) && (
+                      <Button onClick={() => void onRemoveAddon(manifest.id)}>
+                        remove
+                      </Button>
                     )}
-                    onChange={(event) =>
-                      void onAddonEnabled(manifest.id, event.target.checked)
-                    }
-                  />
+                    <Toggle
+                      id={`addon-${manifest.id}`}
+                      aria-describedby={`addon-${manifest.id}-description`}
+                      checked={addonStates.some(
+                        (state) => state.id === manifest.id && state.enabled,
+                      )}
+                      onChange={(event) =>
+                        void onAddonEnabled(manifest.id, event.target.checked)
+                      }
+                    />
+                  </div>
                 </SettingRow>
               ))}
             </div>

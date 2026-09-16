@@ -36,6 +36,11 @@ const colorschemes = createColorschemeStore(
   workspace.appearance,
 )
 colorschemes.start()
+if (workspace.css) {
+  const styles = document.createElement('style')
+  styles.textContent = workspace.css
+  document.head.append(styles)
+}
 const pages = workspace.pages.map((page) => {
   const heading = marked
     .lexer(page.markdown)
@@ -100,56 +105,74 @@ function navigate(path: string, anchor = '') {
   location.hash = destination(path, anchor)
 }
 
-function renderMarkdown(path: string, markdown: string) {
+function renderMarkdown(path: string, markdown: string, html?: string) {
   const fragment = DOMPurify.sanitize(
-    marked.parse(markdown, { async: false }),
-    {
-      RETURN_DOM_FRAGMENT: true,
-      ALLOWED_TAGS: [
-        'h1',
-        'h2',
-        'h3',
-        'h4',
-        'h5',
-        'h6',
-        'p',
-        'strong',
-        'em',
-        'del',
-        's',
-        'blockquote',
-        'pre',
-        'code',
-        'ul',
-        'ol',
-        'li',
-        'a',
-        'img',
-        'table',
-        'thead',
-        'tbody',
-        'tr',
-        'th',
-        'td',
-        'hr',
-        'br',
-        'details',
-        'summary',
-        'input',
-      ],
-      ALLOWED_ATTR: [
-        'href',
-        'title',
-        'src',
-        'alt',
-        'colspan',
-        'rowspan',
-        'align',
-        'checked',
-        'disabled',
-        'type',
-      ],
-    },
+    html ?? marked.parse(markdown, { async: false }),
+    html === undefined
+      ? {
+          RETURN_DOM_FRAGMENT: true,
+          ALLOWED_TAGS: [
+            'h1',
+            'h2',
+            'h3',
+            'h4',
+            'h5',
+            'h6',
+            'p',
+            'strong',
+            'em',
+            'del',
+            's',
+            'blockquote',
+            'pre',
+            'code',
+            'ul',
+            'ol',
+            'li',
+            'a',
+            'img',
+            'table',
+            'thead',
+            'tbody',
+            'tr',
+            'th',
+            'td',
+            'hr',
+            'br',
+            'details',
+            'summary',
+            'input',
+          ],
+          ALLOWED_ATTR: [
+            'href',
+            'title',
+            'src',
+            'alt',
+            'colspan',
+            'rowspan',
+            'align',
+            'checked',
+            'disabled',
+            'type',
+          ],
+        }
+      : {
+          RETURN_DOM_FRAGMENT: true,
+          USE_PROFILES: { html: true, mathMl: true, svg: true },
+          FORBID_TAGS: [
+            'style',
+            'form',
+            'button',
+            'textarea',
+            'select',
+            'iframe',
+            'object',
+            'embed',
+            'audio',
+            'video',
+          ],
+          FORBID_ATTR: ['id', 'name'],
+        },
   )
   const slugs = new Map<string, number>()
   const outline: { id: string; label: string; depth: number }[] = []
@@ -236,7 +259,7 @@ function DocumentationSite() {
   const { html, outline } = useMemo(
     () =>
       page
-        ? renderMarkdown(page.path, page.markdown)
+        ? renderMarkdown(page.path, page.markdown, page.html)
         : { html: '', outline: [] },
     [page],
   )

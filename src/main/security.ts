@@ -2,12 +2,12 @@ import { isAbsolute, relative, resolve, sep } from 'node:path'
 
 export const CONTENT_SECURITY_POLICY = [
   "default-src 'none'",
-  "script-src 'self'",
+  "script-src 'self' app://hibi",
   // Editor engines insert stylesheets and layout attributes; scripts stay strict.
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data:",
-  "font-src 'self'",
-  "connect-src 'self'",
+  "style-src 'self' app://hibi 'unsafe-inline'",
+  "img-src 'self' app://hibi data:",
+  "font-src 'self' app://hibi data:",
+  "connect-src 'self' app://hibi",
   "base-uri 'none'",
   "frame-src 'none'",
   "frame-ancestors 'none'",

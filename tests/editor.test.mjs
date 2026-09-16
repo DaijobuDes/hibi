@@ -81,7 +81,7 @@ test('empty entry, three views, and lossless source switching', {
     }
   })
   assert.equal(geometry.top, geometry.toolbarBottom)
-  assert.equal(geometry.bottom, geometry.viewport)
+  assert.equal(geometry.bottom, geometry.viewport - 32)
   assert.equal(geometry.padding, '48px')
   assert.equal(geometry.besideSidebar, true)
   assert.equal(geometry.flat, true)

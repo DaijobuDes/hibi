@@ -3,6 +3,12 @@ import { basename, dirname } from 'node:path'
 
 const references = [
   [
+    'docs/reference/sideload-sdk.md',
+    'sideload sdk',
+    'src/addons/sdk.ts',
+    (source) => source,
+  ],
+  [
     'docs/reference/menu-api.md',
     'menu api',
     'src/ui/menus.ts',
@@ -78,7 +84,7 @@ const references = [
     (source) =>
       source.slice(
         source.indexOf('export type SidebarItem'),
-        source.indexOf('export function Sidebar'),
+        source.indexOf('function RenameInput'),
       ),
   ],
 ]

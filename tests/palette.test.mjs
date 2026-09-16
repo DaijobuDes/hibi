@@ -163,7 +163,10 @@ test('command palette, full-height settings, and local geist fonts', {
             viewport: innerWidth,
           }
         })
-      assert.ok(geometry.overflow <= 1 && geometry.right <= geometry.viewport)
+      assert.ok(
+        geometry.overflow <= 1 && geometry.right <= geometry.viewport,
+        `${category} ${width}: ${JSON.stringify(geometry)}`,
+      )
     }
     await page.setViewportSize({ width: 1000, height: 720 })
   }

@@ -14,6 +14,7 @@ export function createSlashMenu(
   editor: HTMLElement,
   reposition: () => void,
   context: AddonContext,
+  canRun: (command: SlashCommand) => boolean = () => true,
 ) {
   const menu = document.createElement('div')
   menu.className = 'slash-menu'
@@ -116,7 +117,7 @@ export function createSlashMenu(
         hide()
         return
       }
-      const available = filterCommands(next.query, context)
+      const available = filterCommands(next.query, context).filter(canRun)
       const changed =
         next.from !== match?.from ||
         next.query !== match?.query ||

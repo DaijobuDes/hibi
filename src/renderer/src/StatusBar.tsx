@@ -10,6 +10,7 @@ export function StatusBar({ items }: { items: readonly StatusItem[] }) {
             key={item.id}
             type="button"
             className="status-pill"
+            data-status-id={item.id}
             title={item.tooltip}
             onClick={() => void item.onClick?.()}
           >
@@ -19,6 +20,7 @@ export function StatusBar({ items }: { items: readonly StatusItem[] }) {
           <span
             key={item.id}
             className="status-pill"
+            data-status-id={item.id}
             title={item.tooltip}
             role="status"
           >

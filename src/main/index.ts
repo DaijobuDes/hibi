@@ -29,8 +29,16 @@ import {
   HOTKEY_CHANNELS,
   shortcutFromEvent,
 } from '../shared/hotkeys'
+import { SIDELOAD_CHANNELS } from '../shared/sideload'
 import { WORKSPACE_CHANNELS } from '../shared/workspace'
-import { enableAddon, getAddonStates, invokeAddon, loadAddons } from './addons'
+import {
+  enableAddon,
+  getAddonStates,
+  installAddon,
+  invokeAddon,
+  loadAddons,
+  removeAddon,
+} from './addons'
 import { appearanceColors, loadAppearance, saveAppearance } from './appearance'
 import {
   confirmDiscard,
@@ -53,12 +61,14 @@ import {
   isTrustedRendererUrl,
   resolveAssetPath,
 } from './security'
+import { installedAddons, installedAsset } from './sideload'
 import {
   getWorkspace,
   observeWorkspace,
   openWorkspace,
   openWorkspaceFile,
   refreshWorkspace,
+  snapshotWorkspace,
   workspaceRoot,
 } from './workspace'
 import { workspaceAction } from './workspace-actions'
@@ -141,13 +151,33 @@ function titleBarColors() {
 
 async function serveAsset(request: Request): Promise<Response> {
   if (request.method !== 'GET') return new Response(null, { status: 405 })
-  const path = resolveAssetPath(request.url, rendererRoot)
-  if (!path) return new Response(null, { status: 403 })
   try {
+    const parsed = new URL(request.url)
+    const isAddon = parsed.pathname.startsWith('/installed-addons/')
+    const path = isAddon
+      ? await installedAsset(request.url)
+      : resolveAssetPath(request.url, rendererRoot)
+    if (
+      !path ||
+      (isAddon &&
+        !getAddonStates().some(
+          (addon) =>
+            addon.id === parsed.pathname.split('/')[2] && addon.enabled,
+        ))
+    )
+      return new Response(null, { status: 403 })
     const response = await net.fetch(pathToFileURL(path).href)
     const headers = new Headers(response.headers)
     headers.set('Content-Security-Policy', CONTENT_SECURITY_POLICY)
     headers.set('X-Content-Type-Options', 'nosniff')
+    if (isAddon) {
+      headers.set(
+        'Access-Control-Allow-Origin',
+        devUrl ? new URL(devUrl).origin : 'app://hibi',
+      )
+      if (/\.m?js$/i.test(path))
+        headers.set('Content-Type', 'text/javascript; charset=utf-8')
+    }
     return new Response(response.body, { status: response.status, headers })
   } catch {
     return new Response(null, { status: 404 })
@@ -443,6 +473,16 @@ if (!app.requestSingleInstanceLock()) {
         trustedWindow(event)
         return getAddonStates()
       })
+      ipcMain.handle(SIDELOAD_CHANNELS.list, (event) => {
+        trustedWindow(event)
+        return installedAddons()
+      })
+      ipcMain.handle(SIDELOAD_CHANNELS.install, (event) =>
+        runFileOperation(event, installAddon),
+      )
+      ipcMain.handle(SIDELOAD_CHANNELS.remove, (event, id: unknown) =>
+        runFileOperation(event, () => removeAddon(id)),
+      )
       ipcMain.handle(
         ADDON_CHANNELS.enable,
         (event, id: unknown, enabled: unknown) =>
@@ -509,6 +549,9 @@ if (!app.requestSingleInstanceLock()) {
         trustedWindow(event)
         return getWorkspace()
       })
+      ipcMain.handle(WORKSPACE_CHANNELS.snapshot, (event) =>
+        runFileOperation(event, snapshotWorkspace),
+      )
       ipcMain.handle(WORKSPACE_CHANNELS.action, (event, input: unknown) =>
         runFileOperation(event, (window) => workspaceAction(window, input)),
       )

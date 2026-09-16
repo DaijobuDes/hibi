@@ -18,6 +18,7 @@ import {
 } from 'react'
 import type {
   MarkdownExtension,
+  MarkdownFlavor,
   RichExtension,
   SourceExtension,
 } from '../../addons/api'
@@ -29,7 +30,11 @@ import { useFormattingToolbar } from './FormattingToolbar'
 import { LoadingScreen } from './LoadingScreen'
 import { linkScroll } from './linked-scroll'
 import { MirrorCursor } from './MirrorCursor'
-import { extensions, needsSourceEditing, projectMarkdown } from './markdown'
+import {
+  editorExtensions,
+  needsSourceEditing,
+  projectMarkdown,
+} from './markdown'
 
 const SourceEditor = lazy(() =>
   import('./SourceEditor').then((module) => ({ default: module.SourceEditor })),
@@ -50,6 +55,8 @@ export function MarkdownEditor({
   cursorSettings,
   showLineNumbers,
   documentRevision,
+  flavors,
+  unsupportedFlavor,
 }: {
   value: string
   onChange: (value: string) => void
@@ -63,6 +70,8 @@ export function MarkdownEditor({
   cursorSettings: CursorSettings
   showLineNumbers: boolean
   documentRevision: number
+  flavors: readonly MarkdownFlavor[]
+  unsupportedFlavor: boolean
 }) {
   const projection = useMemo(
     () => projectMarkdown(value, markdownExtensions),
@@ -70,8 +79,10 @@ export function MarkdownEditor({
   )
   const sourceOnly = useMemo(
     () =>
-      Boolean(projection.readOnly) || needsSourceEditing(projection.content),
-    [projection],
+      unsupportedFlavor ||
+      Boolean(projection.readOnly) ||
+      needsSourceEditing(projection.content),
+    [projection, unsupportedFlavor],
   )
   const [richRevision, setRichRevision] = useState(0)
   const [findQuery, setFindQuery] = useState('')
@@ -140,7 +151,10 @@ export function MarkdownEditor({
   }, [mode])
   const editor = useEditor(
     {
-      extensions: [...extensions, documentImage(documentRevision)],
+      extensions: [
+        ...editorExtensions(flavors),
+        documentImage(documentRevision),
+      ],
       content: projection.content,
       contentType: 'markdown',
       autofocus: 'end',
@@ -174,7 +188,7 @@ export function MarkdownEditor({
         setRichRevision((revision) => revision + 1)
       },
     },
-    [markdownExtensions],
+    [markdownExtensions, flavors],
   )
   const attachSourceFormatting = useFormattingToolbar(
     editor,

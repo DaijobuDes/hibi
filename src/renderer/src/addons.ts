@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react'
 import {
   ADDON_API_VERSION,
   type Addon,
@@ -15,16 +21,15 @@ import { useDialogService } from '../../ui/DialogProvider'
 import { menus } from '../../ui/menu-store'
 import { createTooltipScope } from '../../ui/tooltip-store'
 import { createAddonOverrides } from './addon-overrides'
+import { addonRegistry } from './addon-registry'
 import { colorschemes } from './colorschemes'
 import { onEditorInput, onEditorKeyEvent } from './editor-events'
+import { flavors, renderMarkdown } from './flavors'
+import { projectMarkdown } from './markdown'
 import { toolbar } from './toolbar'
 
-export const addons = Object.values(
-  import.meta.glob<Addon>(
-    ['../../addons/*/index.{ts,tsx}', '../../useraddons/*/index.{ts,tsx}'],
-    { eager: true, import: 'default' },
-  ),
-)
+export { addons } from './addon-registry'
+
 export type RegisteredCommand = AddonCommand & { addonId: string }
 type Environment = Omit<
   AddonContext,
@@ -50,6 +55,10 @@ type Environment = Omit<
 }
 
 export function useAddons(environment: Environment) {
+  const catalog = useSyncExternalStore(
+    addonRegistry.subscribe,
+    addonRegistry.snapshot,
+  )
   const dialogService = useDialogService()
   const latest = useRef(environment)
   latest.current = environment
@@ -58,6 +67,8 @@ export function useAddons(environment: Environment) {
     runAction: (command) => latest.current.runAction(command),
   }).current
   const [states, setStates] = useState<AddonState[]>([])
+  const [loaded, setLoaded] = useState(false)
+  const [ready, setReady] = useState(false)
   const [commands, setCommands] = useState<RegisteredCommand[]>([])
   const status = useRef(
     new Map<string, StatusItem & { addonId: string }>(),
@@ -110,20 +121,30 @@ export function useAddons(environment: Environment) {
     }
   }, [running])
   useEffect(() => {
-    void window.hibi
-      .getAddonStates()
-      .then(setStates)
-      .catch((error: unknown) => latest.current.error(error))
+    void Promise.all([
+      window.hibi.getAddonStates(),
+      window.hibi.getInstalledAddons(),
+    ])
+      .then(([states, installed]) => {
+        setStates(states)
+        addonRegistry.hydrate(installed)
+        setLoaded(true)
+      })
+      .catch((error: unknown) => {
+        latest.current.error(error)
+        setReady(true)
+      })
   }, [])
   useEffect(() => {
+    if (!loaded) return
     for (const [id, runtime] of running) {
       if (
         !states.some((state) => state.id === id && state.enabled) ||
-        !addons.includes(runtime.addon)
+        !catalog.includes(runtime.addon)
       )
         runtime.stop()
     }
-    for (const addon of addons) {
+    for (const addon of catalog) {
       const id = addon.manifest.id
       if (
         running.has(id) ||
@@ -177,7 +198,7 @@ export function useAddons(environment: Environment) {
         if (addon.manifest.apiVersion !== ADDON_API_VERSION)
           throw new Error(`incompatible addon: ${id}`)
         running.set(id, { addon, stop })
-        addon.start({
+        const starting = addon.start({
           menus: menuScope.api,
           colorschemes: {
             register(scheme) {
@@ -259,6 +280,22 @@ export function useAddons(environment: Environment) {
             },
           },
           editor: {
+            registerFlavor(flavor) {
+              if (disposed) return () => {}
+              const remove = flavors.register(id, flavor)
+              const cleanup = () => {
+                remove()
+                cleanups.delete(cleanup)
+              }
+              cleanups.add(cleanup)
+              return cleanup
+            },
+            renderMarkdown(source, documentId) {
+              return renderMarkdown(
+                projectMarkdown(source, [...extensions.values()]).content,
+                documentId,
+              )
+            },
             onInput(listener) {
               if (disposed) return () => {}
               const remove = onEditorInput((event) => {
@@ -457,23 +494,46 @@ export function useAddons(environment: Environment) {
             },
           },
           workspace: {
+            snapshot: () =>
+              disposed
+                ? Promise.reject(new Error('addon is disabled.'))
+                : latest.current.workspace.snapshot(),
             get: () => latest.current.workspace.get(),
-            open: () => latest.current.workspace.open(),
-            openFile: (path) => latest.current.workspace.openFile(path),
+            open: () =>
+              disposed
+                ? Promise.resolve(null)
+                : latest.current.workspace.open(),
+            openFile: (path) =>
+              disposed
+                ? Promise.resolve()
+                : latest.current.workspace.openFile(path),
           },
           native: {
             invoke: <T>(method: string, input?: unknown) =>
-              latest.current.invoke(id, method, input) as Promise<T>,
+              disposed
+                ? Promise.reject(new Error('addon is disabled.'))
+                : (latest.current.invoke(id, method, input) as Promise<T>),
           },
-          notify: (message) => latest.current.notify(message),
+          notify: (message) => {
+            if (!disposed) latest.current.notify(message)
+          },
         })
+        if (starting)
+          void starting.catch((error: unknown) => {
+            if (disposed) return
+            stop()
+            latest.current.error(error)
+          })
       } catch (error) {
         stop()
         latest.current.error(error)
       }
     }
     setCommands([...registered.values()])
+    setReady(true)
   }, [
+    catalog,
+    loaded,
     states,
     registered,
     running,
@@ -493,7 +553,35 @@ export function useAddons(environment: Environment) {
       latest.current.error(error)
     }
   }
+  async function install() {
+    try {
+      await window.hibi.installAddon()
+      const [states, packages] = await Promise.all([
+        window.hibi.getAddonStates(),
+        window.hibi.getInstalledAddons(),
+      ])
+      setStates(states)
+      addonRegistry.hydrate(packages)
+    } catch (error) {
+      latest.current.error(error)
+    }
+  }
+  async function remove(id: string) {
+    try {
+      await window.hibi.removeAddon(id)
+      const [states, packages] = await Promise.all([
+        window.hibi.getAddonStates(),
+        window.hibi.getInstalledAddons(),
+      ])
+      setStates(states)
+      addonRegistry.hydrate(packages)
+    } catch (error) {
+      latest.current.error(error)
+    }
+  }
   return {
+    catalog,
+    ready,
     app,
     states,
     commands,
@@ -502,5 +590,7 @@ export function useAddons(environment: Environment) {
     sourceExtensions,
     statusItems,
     setEnabled,
+    install,
+    remove,
   }
 }

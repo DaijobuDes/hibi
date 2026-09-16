@@ -30,6 +30,9 @@ export type AppInfo = {
 }
 
 export type DesktopApi = {
+  getInstalledAddons: () => Promise<import('./sideload').InstalledAddon[]>
+  installAddon: () => Promise<void>
+  removeAddon: (id: string) => Promise<void>
   listVersions: () => Promise<import('./history').DocumentVersion[]>
   previewVersion: (id: string) => Promise<string>
   restoreVersion: (id: string) => Promise<DocumentState | null>
@@ -44,6 +47,7 @@ export type DesktopApi = {
   setAddonEnabled: (id: string, enabled: boolean) => Promise<AddonState[]>
   invokeAddon: (id: string, method: string, input?: unknown) => Promise<unknown>
   getWorkspace: () => Promise<WorkspaceState | null>
+  getWorkspaceSnapshot: () => Promise<import('./workspace').WorkspaceSnapshot>
   workspaceAction: (
     action: import('./workspace').WorkspaceAction,
   ) => Promise<import('./workspace').WorkspaceActionResult | null>

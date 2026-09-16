@@ -10,6 +10,7 @@ export const WORKSPACE_CHANNELS = {
   openFile: 'workspace:open-file',
   changed: 'workspace:changed',
   action: 'workspace:action',
+  snapshot: 'workspace:snapshot',
 } as const
 
 export type WorkspaceEntry = {
@@ -46,12 +47,16 @@ export type WorkspaceActionResult = {
 }
 
 export type WorkspacePage = {
+  id?: string
   path: string
   markdown: string
+  /** Pre-rendered by the enabled flavor pipeline. Always sanitized by the site. */
+  html?: string
   /** Local Markdown image references mapped to embedded image data URLs. */
   images?: Record<string, string>
 }
 export type WorkspaceSnapshot = {
+  css?: string
   name: string
   pages: WorkspacePage[]
   appearance?: import('./colorschemes').ThemePreferences

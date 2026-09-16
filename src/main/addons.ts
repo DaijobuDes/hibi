@@ -15,9 +15,15 @@ import {
   loadDocument,
 } from './document'
 import { writeText } from './files'
+import {
+  installedAddons,
+  installPackage,
+  loadInstalledAddons,
+  removePackage,
+} from './sideload'
 import { refreshWorkspace, snapshotWorkspace, workspaceRoot } from './workspace'
 
-const manifests = Object.values(
+const bundledManifests = Object.values(
   import.meta.glob<AddonManifest>(
     ['../addons/*/manifest.ts', '../useraddons/*/manifest.ts'],
     { eager: true, import: 'default' },
@@ -30,9 +36,13 @@ const natives = Object.values(
   ),
 )
 let enabled: Record<string, boolean> = {}
+const manifests = () => [
+  ...bundledManifests,
+  ...installedAddons().map((addon) => addon.manifest),
+]
 
 export function getAddonLicenses() {
-  return manifests.flatMap((manifest) =>
+  return manifests().flatMap((manifest) =>
     (manifest.licenses ?? []).map((license) => ({
       ...license,
       id: `addon:${manifest.id}:${license.id}`,
@@ -41,8 +51,9 @@ export function getAddonLicenses() {
 }
 
 export async function loadAddons(): Promise<void> {
+  await loadInstalledAddons(bundledManifests.map((manifest) => manifest.id))
   const ids = new Set<string>()
-  for (const manifest of manifests) {
+  for (const manifest of manifests()) {
     if (
       !/^[a-z][a-z0-9-]*$/.test(manifest.id) ||
       ids.has(manifest.id) ||
@@ -56,7 +67,7 @@ export async function loadAddons(): Promise<void> {
       await readFile(join(app.getPath('userData'), 'addons.json'), 'utf8'),
     ) as Record<string, unknown>
     enabled = Object.fromEntries(
-      manifests
+      manifests()
         .filter(({ id }) => typeof stored[id] === 'boolean')
         .map(({ id }) => [id, stored[id] as boolean]),
     )
@@ -67,7 +78,7 @@ export async function loadAddons(): Promise<void> {
 }
 
 export function getAddonStates(): AddonState[] {
-  return manifests.map(({ id, defaultEnabled }) => ({
+  return manifests().map(({ id, defaultEnabled }) => ({
     id,
     enabled: enabled[id] ?? defaultEnabled ?? false,
   }))
@@ -79,16 +90,50 @@ export async function enableAddon(
 ): Promise<AddonState[]> {
   if (
     typeof id !== 'string' ||
-    !manifests.some((manifest) => manifest.id === id) ||
+    !manifests().some((manifest) => manifest.id === id) ||
     typeof value !== 'boolean'
   )
     throw new Error('invalid addon preference.')
+  return saveEnabled(id, value)
+}
+
+async function saveEnabled(id: string, value: boolean): Promise<AddonState[]> {
   const next = { ...enabled, [id]: value }
   const path = join(app.getPath('userData'), 'addons.json')
   await writeFile(`${path}.tmp`, JSON.stringify(next), { mode: 0o600 })
   await rename(`${path}.tmp`, path)
   enabled = next
   return getAddonStates()
+}
+
+export async function installAddon(window: BrowserWindow): Promise<void> {
+  await installPackage(
+    window,
+    bundledManifests.map((manifest) => manifest.id),
+    async (id) => {
+      const previous = enabled[id] ?? false
+      await saveEnabled(id, false)
+      return async () => {
+        await saveEnabled(id, previous)
+      }
+    },
+  )
+}
+
+export async function removeAddon(id: unknown): Promise<void> {
+  if (
+    typeof id !== 'string' ||
+    !installedAddons().some((addon) => addon.manifest.id === id)
+  )
+    throw new Error('only sideloaded addons can be removed.')
+  const previous = enabled[id] ?? false
+  await saveEnabled(id, false)
+  try {
+    await removePackage(id)
+  } catch (error) {
+    await saveEnabled(id, previous)
+    throw error
+  }
 }
 
 export async function invokeAddon(

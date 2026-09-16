@@ -15,6 +15,7 @@ const licensePaths = [
   'scheduler/LICENSE',
   'lucide-react/LICENSE',
   'marked/LICENSE',
+  'katex/LICENSE',
 ]
 const licenses = (
   await Promise.all([

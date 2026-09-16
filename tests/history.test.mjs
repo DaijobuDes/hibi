@@ -48,7 +48,7 @@ test('local history snapshots on save, previews, and restores without overwritin
   )
   await pressShortcut(app, `${mod}+s`)
   await page.waitForFunction(
-    () => !document.querySelector('.app').hasAttribute('aria-busy'),
+    () => document.querySelector('.app').getAttribute('aria-busy') !== 'true',
   )
   assert.equal(
     (await page.evaluate(() => window.hibi.listVersions())).length,

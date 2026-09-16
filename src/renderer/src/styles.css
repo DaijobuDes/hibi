@@ -75,10 +75,17 @@ summary:hover {
 }
 .ui-action-row {
   position: relative;
-  width: calc(100% + 2 * var(--space-2));
-  margin-inline: calc(-1 * var(--space-2));
-  padding-inline: var(--space-2);
-  border-radius: var(--radius-control);
+  width: calc(100% + 2 * var(--space-4));
+  margin-inline: calc(-1 * var(--space-4));
+  padding-inline: var(--space-4);
+  border-radius: 0;
+}
+.settings-group:has(> .ui-action-row) {
+  overflow: hidden;
+}
+.ui-action-row:focus-visible {
+  outline-offset: -2px;
+  background: var(--hover);
 }
 button[aria-pressed="true"] {
   color: var(--ink);
@@ -481,10 +488,18 @@ button:disabled {
 }
 .addon-metadata {
   display: flex;
+  flex-wrap: wrap;
+  overflow-wrap: anywhere;
   gap: var(--space-2);
   margin-top: var(--space-1);
   font-size: var(--text-xs);
   color: var(--muted);
+}
+.addon-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--space-2);
 }
 .addon-metadata > span + span::before {
   content: "·";

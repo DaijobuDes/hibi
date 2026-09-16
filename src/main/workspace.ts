@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { type FSWatcher, watch } from 'node:fs'
 import { lstat, readdir, realpath } from 'node:fs/promises'
 import { basename, isAbsolute, join, relative, sep } from 'node:path'
@@ -216,7 +217,12 @@ export async function snapshotWorkspace(): Promise<WorkspaceSnapshot> {
             )
           images[source] = image
         }
-        pages.push({ path: item.path, markdown, images })
+        pages.push({
+          id: createHash('sha256').update(path).digest('hex'),
+          path: item.path,
+          markdown,
+          images,
+        })
       }
     }
   }

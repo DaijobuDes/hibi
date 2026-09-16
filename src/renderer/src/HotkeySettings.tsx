@@ -116,6 +116,7 @@ export function HotkeySettings({
                 <button
                   type="button"
                   className="hotkey-recorder"
+                  id={`hotkey-${id}`}
                   ref={recording === id ? recorder : undefined}
                   aria-label={`rebind ${label}`}
                   aria-pressed={recording === id}

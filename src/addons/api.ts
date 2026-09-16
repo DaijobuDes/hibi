@@ -1,5 +1,6 @@
 import type { Extension } from '@codemirror/state'
-import type { Editor } from '@tiptap/core'
+import type { AnyExtension, Editor } from '@tiptap/core'
+import type { MarkedExtension } from 'marked'
 import type { ComponentType } from 'react'
 import type {
   Colorscheme,
@@ -188,6 +189,20 @@ export type MarkdownProjection = {
   serialize: (content: string) => string
   readOnly?: boolean
 }
+/** Composable parser contributions. Declare descriptors on Addon.flavors for discovery. */
+export type MarkdownFlavor = {
+  id: string
+  name: string
+  kind: 'dialect' | 'syntax'
+  description: string
+  /** Content detection is a hint, not proof of the author's intended dialect. */
+  detect: (source: string) => boolean
+  markedOptions?: { gfm?: boolean; breaks?: boolean }
+  richExtensions?: readonly AnyExtension[]
+  /** Static exports run the same syntax parsers; their HTML is sanitized by the site. */
+  export?: { extensions?: readonly MarkedExtension[]; css?: string }
+}
+export type RenderedMarkdown = { html: string; css: string }
 export type MarkdownExtension = {
   id: string
   /** Pure source-to-body projection; return null for unrecognized documents. */
@@ -225,6 +240,9 @@ export type AddonContext = {
     registerRich: (extension: RichExtension) => () => void
     registerMarkdown: (extension: MarkdownExtension) => () => void
     registerSource: (extension: SourceExtension) => () => void
+    registerFlavor: (flavor: MarkdownFlavor) => () => void
+    /** Render with the file's flavor choice and active projections for static export. */
+    renderMarkdown: (source: string, documentId?: string) => RenderedMarkdown
     /** Uses the app's file dialogs, draft checks, and save handling. */
     runCommand: (command: DocumentCommand) => Promise<boolean>
     /** Apply a synchronous source transform to the active note; throws while busy. */
@@ -240,6 +258,7 @@ export type AddonContext = {
     getSlashCommands: () => readonly (AddonSlashCommand & { id: string })[]
   }
   workspace: {
+    snapshot: () => Promise<WorkspaceSnapshot>
     get: () => Promise<WorkspaceState | null>
     open: () => Promise<WorkspaceState | null>
     openFile: (path: string) => Promise<void>
@@ -253,7 +272,9 @@ export type AddonContext = {
 
 export type Addon = {
   manifest: AddonManifest
-  start: (context: AddonContext) => void
+  start: (context: AddonContext) => void | Promise<void>
+  /** Lightweight descriptors remain discoverable while a bundled addon is disabled. */
+  flavors?: readonly MarkdownFlavor[]
   stop?: () => void
   /** Optional settings content. The host supplies its heading and metadata. */
   Settings?: ComponentType

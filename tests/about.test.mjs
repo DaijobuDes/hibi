@@ -81,9 +81,18 @@ test('hibi opens first, sponsor uses a fixed URL, and license dialogs stay reada
       const style = getComputedStyle(element)
       return [style.borderRadius, style.paddingLeft, style.paddingRight]
     }),
-    ['6px', '8px', '8px'],
+    ['0px', '16px', '16px'],
   )
   const catalog = await page.evaluate(() => window.hibi.getLicenses())
+  const hoverBounds = await react.evaluate((element) => {
+    const row = element.getBoundingClientRect(),
+      card = element.parentElement.getBoundingClientRect()
+    return [row.left - card.left, card.right - row.right]
+  })
+  assert.ok(
+    hoverBounds.every((value) => Math.abs(value - 1) < 1),
+    JSON.stringify(hoverBounds),
+  )
   assert.equal(await panel.locator('.license-row').count(), catalog.length)
   assert.ok(catalog.every((entry) => !('text' in entry)))
   await assert.rejects(

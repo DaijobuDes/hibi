@@ -405,6 +405,13 @@ export function useFormattingToolbar(
     refresh.current = () => {
       const { editor, disabled } = latest.current
       const useSource = inSource()
+      const canFormat = (action: Action, editor: Editor) => {
+        try {
+          return action.rich(editor.can().chain(), editor).run()
+        } catch {
+          return false /* This flavor does not provide the requested node or mark. */
+        }
+      }
       actions.forEach((action, index) => {
         const state = useSource
           ? source.current?.state(action.id)
@@ -413,9 +420,7 @@ export function useFormattingToolbar(
                 pressed:
                   !!action.active &&
                   editor.isActive(action.active, action.attrs),
-                disabled:
-                  !editor.isEditable ||
-                  !action.rich(editor.can().chain(), editor).run(),
+                disabled: !editor.isEditable || !canFormat(action, editor),
               }
             : null
         handles[index]?.update({

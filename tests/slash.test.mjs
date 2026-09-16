@@ -44,6 +44,12 @@ test('slash commands work in both editors, preserve undo, and coexist with vim',
         .length === 12,
   )
   assert.equal(await menu.getByRole('option').count(), 12)
+  await menu
+    .getByRole('option', { name: 'text plain paragraph', exact: true })
+    .click()
+  assert.equal(await read(), '')
+  await rich.fill('/')
+  await menu.waitFor()
   await mkdir('test-results', { recursive: true })
   await page.screenshot({
     path: 'test-results/slash-commands.png',

@@ -20,6 +20,12 @@ export const actions = [
   { id: 'history', label: 'version history', category: 'file', key: '' },
   { id: 'find', label: 'find in note', category: 'edit', key: 'f' },
   { id: 'settings', label: 'open settings', category: 'preferences', key: ',' },
+  {
+    id: 'install-addon',
+    label: 'install theme or extension…',
+    category: 'preferences',
+    key: '',
+  },
   { id: 'toggle-sidebar', label: 'toggle sidebar', category: 'view', key: '/' },
   { id: 'normal', label: 'normal view', category: 'view', key: 'shift+[' },
   {

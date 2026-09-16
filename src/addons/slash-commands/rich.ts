@@ -93,7 +93,17 @@ export function attachRich(editor: Editor, context: AddonContext) {
       },
       view: (mountedView) => {
         view = mountedView
-        menu = createSlashMenu(view.dom, schedule, context)
+        menu = createSlashMenu(view.dom, schedule, context, (command) => {
+          if ('transform' in command) return true
+          try {
+            // Keep supported no-ops, such as plain text in a paragraph: selecting
+            // them still removes the slash query. Missing flavor commands throw.
+            command.rich(editor.can().chain())
+            return true
+          } catch {
+            return false
+          }
+        })
         schedule()
         return {
           update: schedule,

@@ -1,13 +1,14 @@
 import { Extension } from '@tiptap/core'
 import { Placeholder } from '@tiptap/extension-placeholder'
-import { TableKit } from '@tiptap/extension-table'
-import { TaskItem } from '@tiptap/extension-task-item'
-import { TaskList } from '@tiptap/extension-task-list'
-import { Markdown } from '@tiptap/markdown'
+import { Markdown, type MarkdownExtensionOptions } from '@tiptap/markdown'
 import { StarterKit } from '@tiptap/starter-kit'
-import { marked } from 'marked'
+import { Marked, marked } from 'marked'
 import { search } from 'prosemirror-search'
-import type { MarkdownExtension, MarkdownProjection } from '../../addons/api'
+import type {
+  MarkdownExtension,
+  MarkdownFlavor,
+  MarkdownProjection,
+} from '../../addons/api'
 import { readFrontmatter } from '../../shared/frontmatter'
 
 export function projectMarkdown(
@@ -31,22 +32,32 @@ export function projectMarkdown(
   return result
 }
 
-export const extensions = [
-  Extension.create({
-    name: 'findInNote',
-    addProseMirrorPlugins: () => [search()],
-  }),
-  StarterKit.configure({
-    underline: false,
-    trailingNode: false,
-    link: { openOnClick: false },
-  }),
-  Markdown,
-  TableKit.configure({ table: { resizable: false } }),
-  TaskList,
-  TaskItem.configure({ nested: true }),
-  Placeholder.configure({ placeholder: 'start typing' }),
-]
+export function editorExtensions(flavors: readonly MarkdownFlavor[]) {
+  const options = Object.assign(
+    { gfm: false, breaks: false },
+    ...flavors.map((flavor) => flavor.markedOptions),
+  )
+  // Tiptap types this as the callable singleton, but its manager uses the
+  // instance methods. A separate parser prevents disabled syntax leaking in.
+  const parser = new Marked(options) as unknown as NonNullable<
+    MarkdownExtensionOptions['marked']
+  >
+  return [
+    Extension.create({
+      name: 'findInNote',
+      addProseMirrorPlugins: () => [search()],
+    }),
+    StarterKit.configure({
+      strike: false,
+      underline: false,
+      trailingNode: false,
+      link: { openOnClick: false },
+    }),
+    Markdown.configure({ marked: parser, markedOptions: options }),
+    ...flavors.flatMap((flavor) => flavor.richExtensions ?? []),
+    Placeholder.configure({ placeholder: 'start typing' }),
+  ]
+}
 
 // Preserve source constructs the rich editor cannot round-trip without loss.
 export function needsSourceEditing(source: string): boolean {

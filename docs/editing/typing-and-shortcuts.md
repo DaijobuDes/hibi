@@ -17,4 +17,4 @@ markdown and split source panes share toolbar formatting actions and undo histor
 
 the optional typing speed extension shows rolling 60-second wpm/cpm in the status bar. extension authors can observe committed typing using `context.editor.onInput(listener)`. events contain a character count and editor view only, excluding pasted text, deletion, shortcuts, and programmatic changes. listeners are removed when the extension stops.
 
-split view shows a faint secondary caret in the inactive pane. it follows corresponding visible markdown text without moving focus, altering either selection, or adding undo steps. nonempty selections and offscreen positions hide the marker. metadata and custom syntax without a matching rich-text position do not get an invented caret.
+split view shows a faint secondary caret in the inactive pane. it follows corresponding visible markdown text without moving focus, altering either selection, or adding undo steps. nonempty selections, metadata, and offscreen positions hide the marker. markup and custom atoms map to their nearest visible text boundary.

@@ -9,10 +9,14 @@ import {
 } from '../shared/desktop'
 import { HISTORY_CHANNELS } from '../shared/history'
 import { type AppCommand, HOTKEY_CHANNELS } from '../shared/hotkeys'
+import { SIDELOAD_CHANNELS } from '../shared/sideload'
 import { WORKSPACE_CHANNELS, type WorkspaceState } from '../shared/workspace'
 
 if (process.isMainFrame) {
   contextBridge.exposeInMainWorld('hibi', {
+    getInstalledAddons: () => ipcRenderer.invoke(SIDELOAD_CHANNELS.list),
+    installAddon: () => ipcRenderer.invoke(SIDELOAD_CHANNELS.install),
+    removeAddon: (id) => ipcRenderer.invoke(SIDELOAD_CHANNELS.remove, id),
     listVersions: () => ipcRenderer.invoke(HISTORY_CHANNELS.list),
     previewVersion: (id) => ipcRenderer.invoke(HISTORY_CHANNELS.preview, id),
     restoreVersion: (id) => ipcRenderer.invoke(HISTORY_CHANNELS.restore, id),
@@ -35,6 +39,7 @@ if (process.isMainFrame) {
     invokeAddon: (id, method, input) =>
       ipcRenderer.invoke(ADDON_CHANNELS.invoke, id, method, input),
     getWorkspace: () => ipcRenderer.invoke(WORKSPACE_CHANNELS.get),
+    getWorkspaceSnapshot: () => ipcRenderer.invoke(WORKSPACE_CHANNELS.snapshot),
     workspaceAction: (action) =>
       ipcRenderer.invoke(WORKSPACE_CHANNELS.action, action),
     openWorkspace: () => ipcRenderer.invoke(WORKSPACE_CHANNELS.open),

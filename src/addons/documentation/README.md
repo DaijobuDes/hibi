@@ -1,5 +1,7 @@
 # documentation addon
 
+exports use the active flavor pipeline, including optional math. the site sanitizes generated html; required styles and fonts are embedded. per-file overrides are respected. if content changes while rendering, run export again.
+
 exports include top-bar breadcrumbs, previous/next links below a divider, and an **in this page** heading outline. the outline moves into a compact disclosure on narrower screens. phone navigation opens as a drawer with an outside-click backdrop and escape dismissal; selecting a page closes it. all navigation reuses the shared sidebar and tokens.
 
 the first hibi addon turns a folder of markdown into one deployable HTML document.

@@ -6,12 +6,12 @@ import { getAddonLicenses } from './addons'
 let catalog: Promise<(LicenseInfo & { text: string })[]> | undefined
 function load() {
   catalog ??= readFile(join(import.meta.dirname, '../licenses.json'), 'utf8')
-    .then((text) => [...JSON.parse(text), ...getAddonLicenses()])
+    .then((text) => JSON.parse(text) as (LicenseInfo & { text: string })[])
     .catch((error) => {
       catalog = undefined
       throw error
     })
-  return catalog
+  return catalog.then((entries) => [...entries, ...getAddonLicenses()])
 }
 export async function listLicenses(): Promise<LicenseInfo[]> {
   return (await load()).map(({ text: _text, ...info }) => info)
