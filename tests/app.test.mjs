@@ -41,7 +41,7 @@ test('desktop launch, isolation, offline reload, and recovery', {
     { maximized: false, fullscreen: false, visible: false, focused: false },
   )
   await page.getByRole('button', { name: 'editor settings' }).click()
-  await page.getByRole('tab', { name: 'about hibi' }).click()
+  await page.getByRole('tab', { name: 'hibi', exact: true }).click()
   await page
     .locator('.settings-sidebar .settings-versions')
     .getByText('electron 44.3.0', { exact: true })
@@ -57,6 +57,9 @@ test('desktop launch, isolation, offline reload, and recovery', {
       node: 'undefined',
       process: 'undefined',
       api: [
+        'getLicenses',
+        'getLicense',
+        'openSponsor',
         'setAppearance',
         'getAddonStates',
         'setAddonEnabled',

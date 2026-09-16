@@ -12,6 +12,8 @@ the main process checks sender identity, main-frame identity, and the exact app 
 
 colorschemes are data, with validated hex colors and required attribution. renderer/site selection uses the same store and CSS token roles. the appearance IPC accepts only a valid preference pair and opaque hex window colors; its native cache is written atomically and loaded before creating a window. exports receive preferences through the native workspace snapshot, without importing core code into the documentation addon.
 
+the hibi settings page reads a bundled license catalog through guarded IPC. list calls return metadata; license text loads only when a catalog id is selected. ids are looked up rather than interpreted as paths. the sponsor action opens one fixed HTTPS URL in the system browser and accepts no renderer-supplied destination. general navigation and new windows remain blocked.
+
 local image requests are bound to the current document revision. main resolves relative references from its native path, bounds reads to 8 mib, and checks image content before returning an image data URL. the bridge cannot return arbitrary file contents. documentation snapshots embed the same validated images.
 
 document replacement, exports, and addon preference writes share an operation guard. closing the app waits for the active operation and confirms unsaved edits. the workspace watcher is debounced and uses asynchronous IO.

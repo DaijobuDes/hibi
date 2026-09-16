@@ -11,8 +11,10 @@ import {
   net,
   protocol,
   session,
+  shell,
 } from 'electron'
 import { ADDON_CHANNELS } from '../addons/api'
+import { ABOUT_CHANNELS, SPONSOR_URL } from '../shared/about'
 import { APPEARANCE_CHANNEL } from '../shared/colorschemes'
 import {
   APP_INFO_CHANNEL,
@@ -42,6 +44,7 @@ import {
 } from './document'
 import { hotkeys, loadHotkeys, saveHotkeys } from './hotkeys'
 import { readDocumentImage } from './images'
+import { listLicenses, readLicense } from './licenses'
 import {
   CONTENT_SECURITY_POLICY,
   isTrustedRendererUrl,
@@ -415,6 +418,18 @@ if (!app.requestSingleInstanceLock()) {
         if (process.platform !== 'darwin')
           window.setTitleBarOverlay(titleBarColors())
         await saved
+      })
+      ipcMain.handle(ABOUT_CHANNELS.licenses, (event) => {
+        trustedWindow(event)
+        return listLicenses()
+      })
+      ipcMain.handle(ABOUT_CHANNELS.license, (event, id: unknown) => {
+        trustedWindow(event)
+        return readLicense(id)
+      })
+      ipcMain.handle(ABOUT_CHANNELS.sponsor, (event) => {
+        trustedWindow(event)
+        return shell.openExternal(SPONSOR_URL)
       })
       ipcMain.handle(ADDON_CHANNELS.states, (event) => {
         trustedWindow(event)

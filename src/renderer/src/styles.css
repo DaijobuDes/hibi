@@ -483,9 +483,6 @@ button:disabled {
   color: var(--muted);
   font: var(--text-xs) / 1.4 var(--font-ui);
 }
-.app:has(.app-statusbar) .workspace-sidebar {
-  bottom: var(--status-bar-height);
-}
 .setting-controls {
   display: flex;
   flex-direction: column;

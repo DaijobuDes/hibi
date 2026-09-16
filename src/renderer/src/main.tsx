@@ -596,6 +596,14 @@ function App() {
             onCloseFind={() => setFindOpen(false)}
           />
         )}
+        {!settingsOpen && (
+          <StatusBar
+            items={addonHost.statusItems.filter(
+              (item) =>
+                item.label && (item.when !== 'source' || mode !== 'normal'),
+            )}
+          />
+        )}
       </div>
       {failed && (
         <p role="alert">
@@ -604,14 +612,6 @@ function App() {
             retry
           </button>
         </p>
-      )}
-      {!settingsOpen && (
-        <StatusBar
-          items={addonHost.statusItems.filter(
-            (item) =>
-              item.label && (item.when !== 'source' || mode !== 'normal'),
-          )}
-        />
       )}
     </div>
   )

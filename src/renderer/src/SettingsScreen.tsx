@@ -1,4 +1,4 @@
-import { FileText, Info, Keyboard, PanelTop, Puzzle } from 'lucide-react'
+import { File, FileText, Keyboard, PanelTop, Puzzle } from 'lucide-react'
 import { Component, type ReactNode, useState } from 'react'
 import type { AddonManifest, AddonState } from '../../addons/api'
 import type { AppInfo } from '../../shared/desktop'
@@ -9,14 +9,15 @@ import { Sidebar, type SidebarProps } from '../../ui/Sidebar'
 import { addons } from './addons'
 import { colorschemes } from './colorschemes'
 import type { CursorSettings } from './EditorCursor'
+import { HibiSettings } from './HibiSettings'
 import { HotkeySettings } from './HotkeySettings'
 
 const categories = [
+  { id: 'hibi', label: 'hibi', icon: File },
   { id: 'editor', label: 'editor', icon: FileText },
   { id: 'appearance', label: 'appearance', icon: PanelTop },
   { id: 'hotkeys', label: 'hotkeys', icon: Keyboard },
   { id: 'addons', label: 'addons', icon: Puzzle },
-  { id: 'about', label: 'about hibi', icon: Info },
 ] as const
 
 function AddonMetadata({ manifest }: { manifest: AddonManifest }) {
@@ -92,7 +93,7 @@ export function SettingsScreen({
   showLineNumbers: boolean
   onShowLineNumbers: (show: boolean) => void
 }) {
-  const [selected, setCategory] = useState('editor')
+  const [selected, setCategory] = useState('hibi')
   const pluginPages = addons.filter(
     (addon) =>
       addon.Settings &&
@@ -111,7 +112,7 @@ export function SettingsScreen({
   ]
   const category = items.some((item) => item.id === selected)
     ? selected
-    : 'editor'
+    : 'hibi'
 
   return (
     <main
@@ -140,6 +141,14 @@ export function SettingsScreen({
         }
       />
       <div className="settings-content">
+        <section
+          id="settings-hibi"
+          role="tabpanel"
+          aria-labelledby="category-hibi"
+          hidden={category !== 'hibi'}
+        >
+          {open && category === 'hibi' && <HibiSettings info={info} />}
+        </section>
         <section
           id="settings-editor"
           role="tabpanel"
@@ -286,15 +295,6 @@ export function SettingsScreen({
               platform={info?.platform ?? 'darwin'}
             />
           )}
-        </section>
-        <section
-          id="settings-about"
-          role="tabpanel"
-          aria-labelledby="category-about"
-          hidden={category !== 'about'}
-        >
-          <h1>hibi</h1>
-          <p className="about-description">a quiet place to write markdown.</p>
         </section>
         <section
           id="settings-addons"

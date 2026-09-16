@@ -108,7 +108,7 @@ test('command palette, full-height settings, and local geist fonts', {
     await page.locator('.editor-surface').evaluate((element) => element.inert),
     true,
   )
-  for (const category of ['appearance', 'addons', 'about hibi', 'hotkeys']) {
+  for (const category of ['appearance', 'addons', 'hibi', 'hotkeys']) {
     await page.getByRole('tab', { name: category, exact: true }).click()
     if (category === 'hotkeys')
       assert.deepEqual(

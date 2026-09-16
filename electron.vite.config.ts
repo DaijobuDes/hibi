@@ -1,8 +1,9 @@
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'electron-vite'
+import { writeLicenses } from './scripts/licenses'
 
 export default defineConfig({
-  main: {},
+  main: { plugins: [{ name: 'app-licenses', buildStart: writeLicenses }] },
   preload: {
     build: {
       externalizeDeps: false,

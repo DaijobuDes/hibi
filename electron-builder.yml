@@ -7,6 +7,8 @@ files:
   - package.json
 asar: true
 extraResources:
+  - from: node_modules/electron/dist/LICENSES.chromium.html
+    to: licenses/electron-third-party.html
   - from: docs/licenses
     to: licenses/colorschemes
     filter: ["*.md"]

@@ -51,6 +51,7 @@ test('plugin pages, metadata, shared controls, and full source vim editing', {
     )
   }
   await page.getByRole('button', { name: 'editor settings' }).click()
+  await page.getByRole('tab', { name: 'editor', exact: true }).click()
   await mkdir('test-results', { recursive: true })
   await page.screenshot({
     path: 'test-results/settings-buttons.png',
@@ -136,9 +137,36 @@ test('plugin pages, metadata, shared controls, and full source vim editing', {
       left: element.getBoundingClientRect().left,
       bottom: element.getBoundingClientRect().bottom,
       height: innerHeight,
+      pageLeft: document
+        .querySelector('.editor-surface')
+        .getBoundingClientRect().left,
+      sidebarBottom: document
+        .querySelector('.workspace-sidebar')
+        .getBoundingClientRect().bottom,
     }))
-  assert.equal(statusBounds.left, 0)
+  assert.equal(statusBounds.left, statusBounds.pageLeft)
   assert.equal(statusBounds.bottom, statusBounds.height)
+  assert.equal(statusBounds.sidebarBottom, statusBounds.height)
+  for (const open of [false, true]) {
+    await page.getByRole('button', { name: 'toggle workspace sidebar' }).click()
+    await page.waitForFunction(
+      (open) =>
+        document.querySelector('.app-statusbar').getBoundingClientRect()
+          .left === (open ? 196 : 0),
+      open,
+    )
+    assert.equal(
+      await page
+        .locator('.app-statusbar')
+        .evaluate(
+          (el) =>
+            el.getBoundingClientRect().left ===
+            document.querySelector('.editor-surface').getBoundingClientRect()
+              .left,
+        ),
+      true,
+    )
+  }
   assert.equal(await read(), initial)
   await source.press('Escape')
   await source.pressSequentially('gg0dw')

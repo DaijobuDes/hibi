@@ -26,6 +26,9 @@ export type AppInfo = {
 }
 
 export type DesktopApi = {
+  getLicenses: () => Promise<import('./about').LicenseInfo[]>
+  getLicense: (id: string) => Promise<string>
+  openSponsor: () => Promise<void>
   setAppearance: (
     appearance: import('./colorschemes').NativeAppearance,
   ) => Promise<void>

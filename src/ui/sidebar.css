@@ -29,6 +29,24 @@
   visibility: hidden;
   transition-delay: 0s, var(--motion-pane);
 }
+:is(.app, .documentation-site) {
+  --header-sidebar-width: 0px;
+}
+:is(.app, .documentation-site)[data-sidebar="true"],
+.app[data-screen="settings"] {
+  --header-sidebar-width: var(--sidebar-width);
+}
+/* Cover scrolled page content while revealing the sidebar's own moving surface. */
+:is(.titlebar, .site-header)::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: var(--background);
+  clip-path: inset(0 0 0 var(--header-sidebar-width));
+  transition: clip-path var(--motion-pane) var(--ease-out);
+}
 .sidebar-header {
   display: flex;
   align-items: center;
@@ -165,11 +183,16 @@ html:has(.sidebar-resizer:is([data-dragging="true"], :focus-visible))
   :is(.sidebar, .sidebar-toolbar, .editor-surface, .site-content) {
   transition: none;
 }
+html:has(.sidebar-resizer:is([data-dragging="true"], :focus-visible))
+  :is(.titlebar, .site-header)::before {
+  transition: none;
+}
 @media (prefers-reduced-motion: reduce) {
   .sidebar-resizer::after,
   .sidebar-slot > .sidebar,
   .sidebar-selection,
-  .sidebar-chevron {
+  .sidebar-chevron,
+  :is(.titlebar, .site-header)::before {
     transition: none;
   }
 }

@@ -235,6 +235,9 @@ test('panes move horizontally and sidebar selection slides without fading settin
     const marker = document.querySelector('.category-selection')
     const top = () => marker.getBoundingClientRect().top
     const before = top()
+    const target = document
+      .querySelector('#category-hotkeys')
+      .getBoundingClientRect().top
     document.querySelector('#category-hotkeys').click()
     const frames = []
     const start = performance.now()
@@ -244,6 +247,7 @@ test('panes move horizontally and sidebar selection slides without fading settin
     }
     return {
       before,
+      target,
       frames,
       transitions: document
         .getAnimations()
@@ -258,10 +262,10 @@ test('panes move horizontally and sidebar selection slides without fading settin
   })
   assert.ok(
     selection.frames.some(
-      (top) => top > selection.before && top < selection.before + 56,
+      (top) => top > selection.before && top < selection.target,
     ),
   )
-  assert.equal(selection.frames.at(-1), selection.before + 56)
+  assert.equal(selection.frames.at(-1), selection.target)
   assert.equal(selection.transitions, false)
   assert.equal(selection.opacity, '1')
   assert.equal(selection.border, '0px')

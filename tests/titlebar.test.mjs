@@ -15,7 +15,24 @@ test('titlebar insets titles without leading actions and adapts outer button cor
     await rm(profile, { recursive: true, force: true })
   })
   const page = await app.firstWindow()
+  await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.getByRole('button', { name: 'editor settings' }).click()
+  for (const category of ['hibi', 'appearance']) {
+    await page.getByRole('tab', { name: category, exact: true }).click()
+    await page.locator('.settings-content').evaluate((el) => el.scrollTo(0, 0))
+    await page.evaluate(() => document.fonts.ready)
+    const clip = { x: 220, y: 0, width: 500, height: 36 }
+    const before = await page.screenshot({ clip, animations: 'disabled' })
+    await page.locator('.settings-content').evaluate((el) => el.scrollTo(0, 60))
+    await page.waitForFunction(
+      () => document.querySelector('.settings-content').scrollTop === 60,
+    )
+    const after = await page.screenshot({ clip, animations: 'disabled' })
+    assert.ok(
+      before.equals(after),
+      `${category}: scrolled content must not show through the titlebar`,
+    )
+  }
   const inset = await page
     .locator('.document-title')
     .evaluate(
@@ -25,6 +42,22 @@ test('titlebar insets titles without leading actions and adapts outer button cor
     )
   assert.equal(inset, 16)
   await page.getByRole('button', { name: 'back to editor' }).click()
+  for (const open of [false, true]) {
+    await page.getByRole('button', { name: 'toggle workspace sidebar' }).click()
+    const surface = await page.locator('.titlebar').evaluate((el) => {
+      const styles = getComputedStyle(el, '::before')
+      return {
+        clip: styles.clipPath,
+        background: styles.backgroundColor,
+        page: getComputedStyle(document.body).backgroundColor,
+      }
+    })
+    assert.equal(
+      Number.parseFloat(surface.clip.match(/[\d.]+px/g).at(-1)),
+      open ? 196 : 0,
+    )
+    assert.equal(surface.background, surface.page)
+  }
   for (const [platform, radius, rightPadding] of [
     ['darwin', '10px', '12px'],
     ['win32', '8px', '140px'],

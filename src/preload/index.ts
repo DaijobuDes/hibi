@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { ADDON_CHANNELS } from '../addons/api'
+import { ABOUT_CHANNELS } from '../shared/about'
 import { APPEARANCE_CHANNEL } from '../shared/colorschemes'
 import {
   APP_INFO_CHANNEL,
@@ -11,6 +12,9 @@ import { WORKSPACE_CHANNELS, type WorkspaceState } from '../shared/workspace'
 
 if (process.isMainFrame) {
   contextBridge.exposeInMainWorld('hibi', {
+    getLicenses: () => ipcRenderer.invoke(ABOUT_CHANNELS.licenses),
+    getLicense: (id) => ipcRenderer.invoke(ABOUT_CHANNELS.license, id),
+    openSponsor: () => ipcRenderer.invoke(ABOUT_CHANNELS.sponsor),
     setAppearance: (appearance) =>
       ipcRenderer.invoke(APPEARANCE_CHANNEL, appearance),
     getAddonStates: () => ipcRenderer.invoke(ADDON_CHANNELS.states),

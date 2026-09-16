@@ -1,0 +1,95 @@
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
+import { dirname, join, resolve } from 'node:path'
+import type { LicenseInfo } from '../src/shared/about.ts'
+import { themeLicenses } from '../src/shared/theme-licenses.ts'
+
+type Package = {
+  name: string
+  version: string
+  license?: string
+  dependencies?: Record<string, string>
+  devDependencies?: Record<string, string>
+}
+
+// All other direct dependencies are application code or assets. Electron's npm
+// dependencies install its binary; they are not shipped in the application bundle.
+const buildTools = new Set([
+  '@biomejs/biome',
+  '@vitejs/plugin-react',
+  'electron-builder',
+  'electron-vite',
+  'playwright',
+  'typescript',
+  'vite',
+])
+
+export async function collectLicenses(root = resolve('.')) {
+  const manifest: Package = JSON.parse(
+    await readFile(join(root, 'package.json'), 'utf8'),
+  )
+  const entries = new Map<string, LicenseInfo & { text: string }>()
+  async function visit(name: string, from = root): Promise<void> {
+    if (name.startsWith('@types/')) return
+    let folder: string, pkg: Package
+    for (;;) {
+      folder = join(from, 'node_modules', name)
+      try {
+        pkg = JSON.parse(await readFile(join(folder, 'package.json'), 'utf8'))
+        break
+      } catch (error) {
+        if (
+          (error as NodeJS.ErrnoException).code !== 'ENOENT' ||
+          dirname(from) === from
+        )
+          throw error
+        from = dirname(from)
+      }
+    }
+    const id = `${pkg.name}@${pkg.version}`
+    if (entries.has(id)) return
+    const notices = (await readdir(folder))
+      .filter((file) => /^(licen[cs]e|copying|notice)([.-]|$)/i.test(file))
+      .sort()
+    if (!notices.length) throw new Error(`missing license notice: ${id}`)
+    const text = (
+      await Promise.all(
+        notices.map(
+          async (file) =>
+            `${file}\n\n${await readFile(join(folder, file), 'utf8')}`,
+        ),
+      )
+    ).join('\n\n')
+    entries.set(id, {
+      id,
+      name: pkg.name,
+      version: pkg.version,
+      license: pkg.license ?? 'see notice',
+      text,
+    })
+    if (name !== 'electron')
+      for (const dependency of Object.keys(pkg.dependencies ?? {}))
+        await visit(dependency, folder)
+  }
+  for (const name of Object.keys({
+    ...manifest.dependencies,
+    ...manifest.devDependencies,
+  }))
+    if (!buildTools.has(name)) await visit(name)
+  for (const [name, license] of Object.entries(themeLicenses))
+    entries.set(`palette:${name}`, {
+      id: `palette:${name}`,
+      name: `${name} colorscheme`,
+      license: license.name,
+      text: `${license.text}\nsource: ${license.source}`,
+    })
+  return [...entries.values()].sort(
+    (a, b) =>
+      a.name.localeCompare(b.name) ||
+      (a.version ?? '').localeCompare(b.version ?? ''),
+  )
+}
+
+export async function writeLicenses() {
+  await mkdir('out', { recursive: true })
+  await writeFile('out/licenses.json', JSON.stringify(await collectLicenses()))
+}
