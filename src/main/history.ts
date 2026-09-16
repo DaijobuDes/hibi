@@ -1,0 +1,95 @@
+import { createHash, randomUUID } from 'node:crypto'
+import { mkdir, readFile, unlink } from 'node:fs/promises'
+import { join } from 'node:path'
+import { app } from 'electron'
+import type { DocumentVersion } from '../shared/history'
+import { readMarkdown, writeText } from './files'
+
+type Version = DocumentVersion & { hash: string }
+const directory = (path: string) =>
+  join(
+    app.getPath('userData'),
+    'history',
+    createHash('sha256').update(path).digest('hex'),
+  )
+async function versions(path: string): Promise<Version[]> {
+  try {
+    const data: unknown = JSON.parse(
+      await readFile(join(directory(path), 'index.json'), 'utf8'),
+    )
+    if (
+      !Array.isArray(data) ||
+      data.some(
+        (v) =>
+          !v ||
+          !validId(v.id) ||
+          typeof v.savedAt !== 'number' ||
+          typeof v.bytes !== 'number' ||
+          typeof v.hash !== 'string',
+      )
+    )
+      throw new Error('local history index is damaged.')
+    return data as Version[]
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []
+    throw error
+  }
+}
+const validId = (id: unknown): id is string =>
+  typeof id === 'string' && /^[0-9a-f-]{36}$/.test(id)
+export async function listVersions(
+  path: string | null,
+): Promise<DocumentVersion[]> {
+  return path
+    ? (await versions(path))
+        .map(({ hash: _hash, ...version }) => version)
+        .reverse()
+    : []
+}
+export async function previewVersion(
+  path: string | null,
+  id: unknown,
+): Promise<string> {
+  if (
+    !path ||
+    !validId(id) ||
+    !(await versions(path)).some((version) => version.id === id)
+  )
+    throw new Error('unknown document version.')
+  return readMarkdown(join(directory(path), `${id}.md`))
+}
+export async function recordVersion(
+  path: string,
+  markdown: string,
+): Promise<void> {
+  const current = await versions(path)
+  const hash = createHash('sha256').update(markdown).digest('hex')
+  if (current.at(-1)?.hash === hash) return
+  const folder = directory(path)
+  await mkdir(folder, { recursive: true, mode: 0o700 })
+  const id = randomUUID()
+  await writeText(join(folder, `${id}.md`), markdown)
+  const next = [
+    ...current,
+    { id, hash, savedAt: Date.now(), bytes: Buffer.byteLength(markdown) },
+  ]
+  let bytes = next.reduce((sum, version) => sum + version.bytes, 0)
+  const expired: Version[] = []
+  while (next.length > 1 && (next.length > 100 || bytes > 20 * 1024 * 1024)) {
+    const version = next.shift()
+    if (version) {
+      expired.push(version)
+      bytes -= version.bytes
+    }
+  }
+  await writeText(join(folder, 'index.json'), JSON.stringify(next))
+  await Promise.all(
+    expired.map((version) =>
+      unlink(join(folder, `${version.id}.md`)).catch(
+        (error: NodeJS.ErrnoException) => {
+          if (error.code !== 'ENOENT') throw error
+        },
+      ),
+    ),
+  )
+}

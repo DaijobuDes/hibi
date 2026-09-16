@@ -11,6 +11,10 @@ export const DOCUMENT_CHANNELS = {
 
 export const MAX_DOCUMENT_BYTES = 2 * 1024 * 1024
 export type DocumentState = {
+  /** Opaque identity for per-file preferences. Contains no filesystem path. */
+  id: string
+  /** Workspace draft with a target name but no file on disk yet. */
+  ephemeral: boolean
   markdown: string
   savedMarkdown: string
   name: string
@@ -26,6 +30,10 @@ export type AppInfo = {
 }
 
 export type DesktopApi = {
+  listVersions: () => Promise<import('./history').DocumentVersion[]>
+  previewVersion: (id: string) => Promise<string>
+  restoreVersion: (id: string) => Promise<DocumentState | null>
+  onNotice: (callback: (message: string) => void) => () => void
   getLicenses: () => Promise<import('./about').LicenseInfo[]>
   getLicense: (id: string) => Promise<string>
   openSponsor: () => Promise<void>
@@ -36,6 +44,9 @@ export type DesktopApi = {
   setAddonEnabled: (id: string, enabled: boolean) => Promise<AddonState[]>
   invokeAddon: (id: string, method: string, input?: unknown) => Promise<unknown>
   getWorkspace: () => Promise<WorkspaceState | null>
+  workspaceAction: (
+    action: import('./workspace').WorkspaceAction,
+  ) => Promise<import('./workspace').WorkspaceActionResult | null>
   openWorkspace: () => Promise<WorkspaceState | null>
   refreshWorkspace: () => Promise<WorkspaceState | null>
   openWorkspaceFile: (path: string) => Promise<DocumentState | null>

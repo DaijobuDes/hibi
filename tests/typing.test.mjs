@@ -6,6 +6,7 @@ import test from 'node:test'
 import { typingSpeed } from '../src/addons/typing-speed/speed.ts'
 import { electron } from './electron.mjs'
 import { pressShortcut } from './keyboard.mjs'
+import { waitForAsync } from './poll.mjs'
 
 test('typing speed expires samples at the rolling minute boundary', () => {
   const speed = typingSpeed()
@@ -47,14 +48,16 @@ test('typing pills, source formatting shortcuts, and sidebar shortcut', {
   const source = page.getByRole('textbox', { name: 'markdown editor' })
   await source.press(`${mod}+a`)
   await pressShortcut(app, `${mod}+b`)
-  await page.waitForFunction(
+  await waitForAsync(
+    page,
     async () => (await window.hibi.getDocument()).markdown === '**hello**',
   )
   await page.getByText('5 cpm', { exact: true }).waitFor()
   await pressShortcut(app, `${mod}+Shift+\\`)
   await source.focus()
   await pressShortcut(app, `${mod}+i`)
-  await page.waitForFunction(
+  await waitForAsync(
+    page,
     async () => (await window.hibi.getDocument()).markdown === '***hello***',
   )
   await source.press('ArrowRight')

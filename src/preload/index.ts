@@ -7,11 +7,23 @@ import {
   type DesktopApi,
   DOCUMENT_CHANNELS,
 } from '../shared/desktop'
+import { HISTORY_CHANNELS } from '../shared/history'
 import { type AppCommand, HOTKEY_CHANNELS } from '../shared/hotkeys'
 import { WORKSPACE_CHANNELS, type WorkspaceState } from '../shared/workspace'
 
 if (process.isMainFrame) {
   contextBridge.exposeInMainWorld('hibi', {
+    listVersions: () => ipcRenderer.invoke(HISTORY_CHANNELS.list),
+    previewVersion: (id) => ipcRenderer.invoke(HISTORY_CHANNELS.preview, id),
+    restoreVersion: (id) => ipcRenderer.invoke(HISTORY_CHANNELS.restore, id),
+    onNotice: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, message: string) =>
+        callback(message)
+      ipcRenderer.on(HISTORY_CHANNELS.notice, listener)
+      return () => {
+        ipcRenderer.removeListener(HISTORY_CHANNELS.notice, listener)
+      }
+    },
     getLicenses: () => ipcRenderer.invoke(ABOUT_CHANNELS.licenses),
     getLicense: (id) => ipcRenderer.invoke(ABOUT_CHANNELS.license, id),
     openSponsor: () => ipcRenderer.invoke(ABOUT_CHANNELS.sponsor),
@@ -23,6 +35,8 @@ if (process.isMainFrame) {
     invokeAddon: (id, method, input) =>
       ipcRenderer.invoke(ADDON_CHANNELS.invoke, id, method, input),
     getWorkspace: () => ipcRenderer.invoke(WORKSPACE_CHANNELS.get),
+    workspaceAction: (action) =>
+      ipcRenderer.invoke(WORKSPACE_CHANNELS.action, action),
     openWorkspace: () => ipcRenderer.invoke(WORKSPACE_CHANNELS.open),
     refreshWorkspace: () => ipcRenderer.invoke(WORKSPACE_CHANNELS.refresh),
     openWorkspaceFile: (path) =>

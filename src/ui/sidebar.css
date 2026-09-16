@@ -75,6 +75,49 @@
   font-size: var(--text-xs);
   color: var(--muted);
 }
+.sidebar-row {
+  position: relative;
+  flex-shrink: 0;
+  height: var(--sidebar-row-height);
+}
+.sidebar-row:has(.sidebar-more) > button:first-child {
+  padding-right: 32px;
+}
+.sidebar-items .sidebar-more,
+.sidebar-items .sidebar-more:hover {
+  position: absolute;
+  inset: 2px 4px auto auto;
+  width: 24px;
+  height: 24px;
+  padding: 4px;
+  border-radius: var(--radius-control);
+  opacity: 0;
+}
+.sidebar-row:is(:hover, :focus-within) .sidebar-more {
+  opacity: 1;
+}
+.sidebar-items .sidebar-more:hover {
+  background: var(--hover);
+}
+.sidebar-items .sidebar-dirty {
+  margin-left: auto;
+  font-size: 8px;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.sidebar-rename {
+  width: calc(100% - 24px);
+  margin: 1px 12px;
+  height: 26px;
+  min-width: 0;
+  font: inherit;
+  font-size: var(--text-ui);
+}
+@media (hover: none) {
+  .sidebar-items .sidebar-more {
+    opacity: 1;
+  }
+}
 .sidebar-items button,
 .sidebar-items button:hover {
   position: relative;

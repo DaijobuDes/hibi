@@ -1,3 +1,4 @@
+import { createHash, randomUUID } from 'node:crypto'
 import { constants } from 'node:fs'
 import {
   copyFile,
@@ -7,33 +8,51 @@ import {
   rename,
   unlink,
 } from 'node:fs/promises'
-import { basename, dirname, extname, join } from 'node:path'
+import {
+  basename,
+  dirname,
+  extname,
+  isAbsolute,
+  join,
+  relative,
+  sep,
+} from 'node:path'
 import { type BrowserWindow, dialog } from 'electron'
 import type { DocumentState } from '../shared/desktop'
+import { HISTORY_CHANNELS } from '../shared/history'
 import { readMarkdown, validateMarkdown, writeMarkdown } from './files'
+import { recordVersion } from './history'
 
 let markdown = ''
 let saved = ''
 let path: string | null = null
+let pendingPath: string | null = null
 let revision = 0
 let untitledName = 'untitled.md'
+let draftId = randomUUID()
 
 export function getDocumentPath(): string | null {
-  return path
+  return path ?? pendingPath
 }
 
 export function getDocument(): DocumentState {
+  const currentPath = getDocumentPath()
   return {
+    id: currentPath
+      ? createHash('sha256').update(currentPath).digest('hex')
+      : draftId,
     markdown,
     savedMarkdown: saved,
-    name: path ? basename(path) : untitledName,
-    dirty: markdown !== saved,
+    name: currentPath ? basename(currentPath) : untitledName,
+    dirty: markdown !== saved || !!pendingPath,
+    ephemeral: !!pendingPath,
     revision,
   }
 }
 
 export function discardChanges(): void {
   markdown = saved
+  pendingPath = null
   revision += 1
 }
 
@@ -47,7 +66,8 @@ export async function saveDocument(
   saveAs = false,
   defaultPath?: string,
 ): Promise<DocumentState | null> {
-  let destination = path
+  let destination = path ?? pendingPath
+  const exclusive = !!pendingPath && !saveAs
   const content = markdown
   if (!destination || saveAs) {
     const result = await dialog.showSaveDialog(window, {
@@ -64,6 +84,7 @@ export async function saveDocument(
       return join(await realpath(dirname(chosen)), basename(chosen))
     },
   )
+  let previous: string | null = null
   if (destination === path) {
     const disk = await readMarkdown(destination).catch(
       (error: NodeJS.ErrnoException) => {
@@ -71,6 +92,7 @@ export async function saveDocument(
         return null
       },
     )
+    previous = disk
     if (disk !== saved) {
       const choice = await dialog.showMessageBox(window, {
         type: 'warning',
@@ -83,15 +105,37 @@ export async function saveDocument(
       if (choice.response !== 0) return null
     }
   }
-  await writeMarkdown(destination, content)
+  await writeMarkdown(destination, content, exclusive)
   path = destination
+  pendingPath = null
   saved = content
+  window.setDocumentEdited(markdown !== saved)
+  try {
+    if (previous !== null) await recordVersion(destination, previous)
+    await recordVersion(destination, content)
+  } catch (error) {
+    console.error('local history failed:', error)
+    window.webContents.send(
+      HISTORY_CHANNELS.notice,
+      'file saved, but its local history could not be updated.',
+    )
+  }
+  return getDocument()
+}
+
+export function restoreDocument(
+  window: BrowserWindow,
+  content: string,
+): DocumentState {
+  validateMarkdown(content)
+  markdown = content
+  revision += 1
   window.setDocumentEdited(markdown !== saved)
   return getDocument()
 }
 
 export async function confirmDiscard(window: BrowserWindow): Promise<boolean> {
-  if (markdown === saved) return true
+  if (markdown === saved && !pendingPath) return true
   const result = await dialog.showMessageBox(window, {
     type: 'warning',
     message: `save changes to ${getDocument().name}?`,
@@ -109,12 +153,42 @@ export async function newDocument(
   window: BrowserWindow,
 ): Promise<DocumentState | null> {
   if (!(await confirmDiscard(window))) return null
+  return clearDocument(window)
+}
+
+export function clearDocument(window: BrowserWindow): DocumentState {
   markdown = saved = ''
+  draftId = randomUUID()
   path = null
+  pendingPath = null
   untitledName = 'untitled.md'
   revision += 1
   window.setDocumentEdited(false)
   return getDocument()
+}
+
+export async function newPendingDocument(
+  window: BrowserWindow,
+  destination: string,
+): Promise<DocumentState | null> {
+  if (!(await newDocument(window))) return null
+  pendingPath = destination
+  window.setDocumentEdited(true)
+  return getDocument()
+}
+
+export function relocateDocument(from: string, to: string): void {
+  const relocate = (current: string | null) => {
+    if (!current) return null
+    const child = relative(from, current)
+    return child === ''
+      ? to
+      : !isAbsolute(child) && child !== '..' && !child.startsWith(`..${sep}`)
+        ? join(to, child)
+        : current
+  }
+  path = relocate(path)
+  pendingPath = relocate(pendingPath)
 }
 
 export async function renameDocument(value: unknown): Promise<DocumentState> {
@@ -138,6 +212,17 @@ export async function renameDocument(value: unknown): Promise<DocumentState> {
   )
     throw new Error('choose a valid markdown file name.')
   if (!path) {
+    if (pendingPath) {
+      const destination = join(dirname(pendingPath), name)
+      const exists = await lstat(destination).catch(
+        (error: NodeJS.ErrnoException) => {
+          if (error.code !== 'ENOENT') throw error
+          return null
+        },
+      )
+      if (exists) throw new Error('a file with that name already exists.')
+      pendingPath = destination
+    }
     untitledName = name
     return getDocument()
   }
@@ -202,6 +287,7 @@ export async function loadDocument(
   if (markdown !== current)
     throw new Error('document changed while opening a file. please try again.')
   path = chosen
+  pendingPath = null
   markdown = saved = content
   revision += 1
   window.setDocumentEdited(false)

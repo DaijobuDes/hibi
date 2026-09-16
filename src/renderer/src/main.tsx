@@ -26,8 +26,13 @@ import {
 } from '../../shared/hotkeys'
 import { IconButton } from '../../ui/Controls'
 import { DialogProvider, useDialogs } from '../../ui/DialogProvider'
+import { MenuHost } from '../../ui/MenuHost'
 import './styles.css'
-import type { WorkspaceState } from '../../shared/workspace'
+import type {
+  WorkspaceAction,
+  WorkspaceActionResult,
+  WorkspaceState,
+} from '../../shared/workspace'
 import { settingsIndex } from '../../ui/settings-index'
 import { useSidebarResize } from '../../ui/useSidebarResize'
 import { addons, useAddons } from './addons'
@@ -42,6 +47,7 @@ import { SettingsScreen, settingsCategories } from './SettingsScreen'
 import { StatusBar } from './StatusBar'
 import { Titlebar } from './Titlebar'
 import { toolbar } from './toolbar'
+import { VersionHistory } from './VersionHistory'
 import { WorkspaceSidebar } from './WorkspaceSidebar'
 
 class ErrorBoundary extends Component<
@@ -393,6 +399,8 @@ function App() {
     window.hibi.onCommand((command) => addonHost.app.runAction(command)),
   )
 
+  useEffect(() => window.hibi.onNotice(setNotice), [])
+
   function updateMarkdown(markdown: string) {
     if (new TextEncoder().encode(markdown).length > MAX_DOCUMENT_BYTES) {
       setError('documents must stay under 2 mib. this edit was not applied.')
@@ -401,7 +409,11 @@ function App() {
     }
     setDocument((current) =>
       current
-        ? { ...current, markdown, dirty: markdown !== savedText.current }
+        ? {
+            ...current,
+            markdown,
+            dirty: markdown !== savedText.current || current.ephemeral,
+          }
         : current,
     )
     void window.hibi
@@ -415,6 +427,27 @@ function App() {
       )
   }
 
+  async function runWorkspaceAction(
+    action: WorkspaceAction,
+  ): Promise<WorkspaceActionResult | null> {
+    if (busyRef.current) return null
+    busyRef.current = true
+    setBusy(true)
+    try {
+      const result = await window.hibi.workspaceAction(action)
+      if (result) {
+        setWorkspace(result.workspace)
+        setDocument(result.document)
+        savedText.current = result.document.savedMarkdown
+        if (action.action === 'new-file') setSettingsOpen(false)
+      }
+      return result
+    } finally {
+      busyRef.current = false
+      setBusy(false)
+    }
+  }
+
   function runAction(command: AppCommand) {
     if (dialogs.isOpen()) return
     if (command === 'palette') {
@@ -423,6 +456,33 @@ function App() {
     }
     setPaletteOpen(false)
     switch (command) {
+      case 'history':
+        void dialogs
+          .open<string>({
+            title: 'version history',
+            size: 'wide',
+            description:
+              'local snapshots on save. restoring changes the editor; save to replace the file.',
+            content: ({ close }) => <VersionHistory close={close} />,
+          })
+          .result.then(async (id) => {
+            if (!id || busyRef.current) return
+            busyRef.current = true
+            setBusy(true)
+            try {
+              const next = await window.hibi.restoreVersion(id)
+              if (!next) return
+              setDocument(next)
+              savedText.current = next.savedMarkdown
+              setSettingsOpen(false)
+            } catch (error) {
+              setError(String(error))
+            } finally {
+              busyRef.current = false
+              setBusy(false)
+            }
+          })
+        break
       case 'new':
       case 'open':
       case 'save':
@@ -672,6 +732,9 @@ function App() {
         </div>
       </div>
       <WorkspaceSidebar
+        dirty={document?.dirty ?? false}
+        onAction={runWorkspaceAction}
+        onError={(error) => setError(String(error))}
         resize={sidebarResize}
         open={sidebarOpen && !settingsOpen}
         workspace={workspace}
@@ -680,6 +743,7 @@ function App() {
         onRefresh={() => void refreshFiles()}
         commands={addonHost.commands}
       />
+      <MenuHost />
       <SettingsScreen
         selected={settingsCategory}
         onCategory={setSettingsCategory}

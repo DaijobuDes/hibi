@@ -77,10 +77,33 @@ export async function scanWorkspace(base: string): Promise<WorkspaceEntry[]> {
 export function getWorkspace(): WorkspaceState | null {
   if (!root) return null
   const path = getDocumentPath()
+  const activePath = path ? relativePath(root, path) : null
+  let visible = entries
+  if (getDocument().ephemeral && activePath) {
+    const parts = activePath.split('/')
+    const addDraft = (
+      items: WorkspaceEntry[],
+      depth: number,
+    ): WorkspaceEntry[] => {
+      const name = parts[depth]
+      if (!name) return items
+      if (depth === parts.length - 1)
+        return [
+          ...items.filter((item) => item.path !== activePath),
+          { path: activePath, name, kind: 'file' },
+        ]
+      return items.map((item) =>
+        item.name === name && item.children
+          ? { ...item, children: addDraft(item.children, depth + 1) }
+          : item,
+      )
+    }
+    visible = addDraft(entries, 0)
+  }
   return {
     name: basename(root),
-    entries,
-    activePath: path ? relativePath(root, path) : null,
+    entries: visible,
+    activePath,
   }
 }
 
@@ -156,6 +179,8 @@ export async function resolveWorkspaceFile(
 
 export async function openWorkspaceFile(window: BrowserWindow, path: unknown) {
   if (!root) throw new Error('open a workspace first.')
+  if (typeof path === 'string' && getWorkspace()?.activePath === path)
+    return getDocument()
   if (!(await confirmDiscard(window))) return null
   return loadDocument(window, await resolveWorkspaceFile(root, path))
 }

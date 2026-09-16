@@ -1,9 +1,10 @@
 /** biome-ignore-all lint/a11y/useAriaPropsSupportedByRole: both conditional tree/tab roles support the corresponding ARIA attributes. */
-import { ChevronRight, type LucideIcon } from 'lucide-react'
+import { ChevronRight, type LucideIcon, MoreHorizontal } from 'lucide-react'
 import {
   Fragment,
   type ReactNode,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -18,6 +19,7 @@ export type SidebarItem = {
   children?: SidebarItem[]
   /** Optional section label immediately before this row. */
   section?: string
+  dirty?: boolean
 }
 export type SidebarProps = {
   items: readonly SidebarItem[]
@@ -32,12 +34,58 @@ export type SidebarProps = {
   header?: ReactNode
   footer?: ReactNode
   empty?: ReactNode
+  onMenu?: (id: string, anchor: HTMLElement) => void
+  editing?: {
+    id: string
+    value: string
+    disabled: boolean
+    onChange: (value: string) => void
+    onCommit: () => void
+    onCancel: () => void
+  } | null
   resize?: {
     width: number
     maxWidth: number
     onChange: (width: number) => void
     onReset: () => void
   }
+}
+
+function RenameInput({
+  editing,
+}: {
+  editing: NonNullable<SidebarProps['editing']>
+}) {
+  const input = useRef<HTMLInputElement>(null)
+  const id = editing.id
+  useLayoutEffect(() => {
+    const element = input.current
+    if (!id || !element) return
+    element.focus()
+    const dot = element.value.lastIndexOf('.')
+    element.setSelectionRange(0, dot > 0 ? dot : element.value.length)
+    element.scrollIntoView({ block: 'nearest' })
+  }, [id])
+  return (
+    <input
+      ref={input}
+      className="sidebar-rename"
+      aria-label="rename item"
+      value={editing.value}
+      disabled={editing.disabled}
+      onChange={(event) => editing.onChange(event.target.value)}
+      onKeyDown={(event) => {
+        event.stopPropagation()
+        if (event.key === 'Enter') {
+          event.preventDefault()
+          editing.onCommit()
+        } else if (event.key === 'Escape') {
+          event.preventDefault()
+          editing.onCancel()
+        }
+      }}
+    />
+  )
 }
 
 export function Sidebar({
@@ -53,6 +101,8 @@ export function Sidebar({
   header,
   footer,
   empty,
+  onMenu,
+  editing,
   resize,
 }: SidebarProps) {
   const drag = useRef<{ x: number; width: number; pointer: number } | null>(
@@ -65,19 +115,20 @@ export function Sidebar({
   useEffect(() => {
     if (mode === 'tabs') return
     const parents: string[] = []
-    function find(items: readonly SidebarItem[]): boolean {
+    function find(items: readonly SidebarItem[], target: string): boolean {
       return items.some((item) => {
-        if (item.id === selected) return true
-        if (item.children && find(item.children)) {
+        if (item.id === target) return true
+        if (item.children && find(item.children, target)) {
           parents.push(item.id)
           return true
         }
         return false
       })
     }
-    if (selected && find(items))
-      setExpanded((old) => new Set([...old, ...parents]))
-  }, [items, selected, mode])
+    if (selected) find(items, selected)
+    if (editing?.id) find(items, editing.id)
+    if (parents.length) setExpanded((old) => new Set([...old, ...parents]))
+  }, [items, selected, mode, editing?.id])
   const rows = useMemo(() => {
     const visible: {
       item: SidebarItem
@@ -157,87 +208,139 @@ export function Sidebar({
                       {item.section}
                     </div>
                   )}
-                  <button
-                    key={item.id}
-                    ref={(element) => {
-                      if (element) buttons.current.set(item.id, element)
-                      else buttons.current.delete(item.id)
-                    }}
-                    id={`${idPrefix}-${item.id}`}
-                    type="button"
-                    role={mode === 'tabs' ? 'tab' : 'treeitem'}
-                    aria-selected={selected === item.id}
-                    aria-expanded={
-                      item.children ? expanded.has(item.id) : undefined
-                    }
-                    aria-level={mode === 'tree' ? depth + 1 : undefined}
-                    aria-posinset={mode === 'tree' ? position : undefined}
-                    aria-setsize={mode === 'tree' ? size : undefined}
-                    aria-controls={
-                      mode === 'tabs' ? `${panelPrefix}${item.id}` : undefined
-                    }
-                    tabIndex={focusId === item.id ? 0 : -1}
-                    style={{ paddingLeft: 16 + depth * 14 }}
-                    title={item.label}
-                    onFocus={() => setFocused(item.id)}
-                    onClick={() => {
-                      if (item.children) toggle(item.id)
-                      else onSelect(item.id)
-                    }}
-                    onKeyDown={(event) => {
-                      switch (event.key) {
-                        case 'ArrowDown':
-                          event.preventDefault()
-                          focus(
-                            rows[Math.min(index + 1, rows.length - 1)]?.item.id,
-                          )
-                          break
-                        case 'ArrowUp':
-                          event.preventDefault()
-                          focus(rows[Math.max(index - 1, 0)]?.item.id)
-                          break
-                        case 'Home':
-                          event.preventDefault()
-                          focus(rows[0]?.item.id)
-                          break
-                        case 'End':
-                          event.preventDefault()
-                          focus(rows.at(-1)?.item.id)
-                          break
-                        case 'ArrowRight':
-                          if (item.children) {
-                            event.preventDefault()
-                            if (!expanded.has(item.id)) toggle(item.id)
-                            else focus(item.children[0]?.id)
-                          }
-                          break
-                        case 'ArrowLeft':
-                          event.preventDefault()
-                          if (item.children && expanded.has(item.id))
-                            toggle(item.id)
-                          else if (parent) focus(parent)
-                          break
-                      }
-                    }}
+                  <div
+                    className="sidebar-row"
+                    data-editing={editing?.id === item.id}
                   >
-                    {mode === 'tree' && (
-                      <ChevronRight
-                        className={`sidebar-chevron ${item.children ? '' : 'leaf'}`}
-                        size={12}
-                        style={{
-                          rotate:
-                            item.children && expanded.has(item.id)
-                              ? '90deg'
-                              : '0deg',
+                    {editing?.id === item.id ? (
+                      <RenameInput editing={editing} />
+                    ) : (
+                      <button
+                        key={item.id}
+                        ref={(element) => {
+                          if (element) buttons.current.set(item.id, element)
+                          else buttons.current.delete(item.id)
                         }}
-                        aria-hidden="true"
-                      />
+                        id={`${idPrefix}-${item.id}`}
+                        type="button"
+                        role={mode === 'tabs' ? 'tab' : 'treeitem'}
+                        aria-selected={selected === item.id}
+                        aria-expanded={
+                          item.children ? expanded.has(item.id) : undefined
+                        }
+                        aria-level={mode === 'tree' ? depth + 1 : undefined}
+                        aria-posinset={mode === 'tree' ? position : undefined}
+                        aria-setsize={mode === 'tree' ? size : undefined}
+                        aria-controls={
+                          mode === 'tabs'
+                            ? `${panelPrefix}${item.id}`
+                            : undefined
+                        }
+                        tabIndex={focusId === item.id ? 0 : -1}
+                        style={{ paddingLeft: 16 + depth * 14 }}
+                        title={item.label}
+                        aria-description={
+                          item.dirty ? 'unsaved changes' : undefined
+                        }
+                        onContextMenu={(event) => {
+                          if (onMenu) {
+                            event.preventDefault()
+                            onMenu(item.id, event.currentTarget)
+                          }
+                        }}
+                        onFocus={() => setFocused(item.id)}
+                        onClick={() => {
+                          if (item.children) toggle(item.id)
+                          else onSelect(item.id)
+                        }}
+                        onKeyDown={(event) => {
+                          if (
+                            onMenu &&
+                            (event.key === 'ContextMenu' ||
+                              (event.shiftKey && event.key === 'F10'))
+                          ) {
+                            event.preventDefault()
+                            onMenu(item.id, event.currentTarget)
+                            return
+                          }
+                          switch (event.key) {
+                            case 'ArrowDown':
+                              event.preventDefault()
+                              focus(
+                                rows[Math.min(index + 1, rows.length - 1)]?.item
+                                  .id,
+                              )
+                              break
+                            case 'ArrowUp':
+                              event.preventDefault()
+                              focus(rows[Math.max(index - 1, 0)]?.item.id)
+                              break
+                            case 'Home':
+                              event.preventDefault()
+                              focus(rows[0]?.item.id)
+                              break
+                            case 'End':
+                              event.preventDefault()
+                              focus(rows.at(-1)?.item.id)
+                              break
+                            case 'ArrowRight':
+                              if (item.children) {
+                                event.preventDefault()
+                                if (!expanded.has(item.id)) toggle(item.id)
+                                else focus(item.children[0]?.id)
+                              }
+                              break
+                            case 'ArrowLeft':
+                              event.preventDefault()
+                              if (item.children && expanded.has(item.id))
+                                toggle(item.id)
+                              else if (parent) focus(parent)
+                              break
+                          }
+                        }}
+                      >
+                        {mode === 'tree' && (
+                          <ChevronRight
+                            className={`sidebar-chevron ${item.children ? '' : 'leaf'}`}
+                            size={12}
+                            style={{
+                              rotate:
+                                item.children && expanded.has(item.id)
+                                  ? '90deg'
+                                  : '0deg',
+                            }}
+                            aria-hidden="true"
+                          />
+                        )}
+                        {Icon && (
+                          <Icon
+                            size={15}
+                            strokeWidth={1.5}
+                            aria-hidden="true"
+                          />
+                        )}
+                        <span>{item.label}</span>
+                        {item.dirty && (
+                          <span className="sidebar-dirty" aria-hidden="true">
+                            ●
+                          </span>
+                        )}
+                      </button>
                     )}
-                    {Icon && (
-                      <Icon size={15} strokeWidth={1.5} aria-hidden="true" />
+                    {onMenu && editing?.id !== item.id && (
+                      <button
+                        type="button"
+                        className="sidebar-more"
+                        aria-label={`actions for ${item.label}`}
+                        aria-haspopup="menu"
+                        onClick={(event) =>
+                          onMenu(item.id, event.currentTarget)
+                        }
+                      >
+                        <MoreHorizontal size={14} aria-hidden="true" />
+                      </button>
                     )}
-                    <span>{item.label}</span>
-                  </button>
+                  </div>
                 </Fragment>
               )
             })}

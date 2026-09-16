@@ -57,6 +57,21 @@ export function sourceFormatting(view: EditorView) {
   const marked = (id: string) => {
     const selection = view.state.selection.main
     const token = marks[id]
+    if (id === 'italic') {
+      const before = view.state.doc.lineAt(selection.from)
+      const after = view.state.doc.lineAt(selection.to)
+      return (
+        (before.text
+          .slice(0, selection.from - before.from)
+          .match(/(?<!\\)\*+$/)?.[0].length ?? 0) %
+          2 ===
+          1 &&
+        (after.text.slice(selection.to - after.from).match(/^\*+/)?.[0]
+          .length ?? 0) %
+          2 ===
+          1
+      )
+    }
     return (
       !!token &&
       view.state.sliceDoc(
@@ -92,7 +107,10 @@ export function sourceFormatting(view: EditorView) {
       } else if (
         selected.startsWith(token) &&
         selected.endsWith(token) &&
-        selected.length >= token.length * 2
+        selected.length >= token.length * 2 &&
+        (id !== 'italic' ||
+          ((selected.match(/^\*+/)?.[0].length ?? 0) % 2 === 1 &&
+            (selected.match(/(?<!\\)\*+$/)?.[0].length ?? 0) % 2 === 1))
       ) {
         insert = selected.slice(token.length, -token.length)
         end = insert.length

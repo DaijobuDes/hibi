@@ -17,6 +17,7 @@ export const actions = [
   },
   { id: 'save', label: 'save document', category: 'file', key: 's' },
   { id: 'saveAs', label: 'save as…', category: 'file', key: 'shift+s' },
+  { id: 'history', label: 'version history', category: 'file', key: '' },
   { id: 'find', label: 'find in note', category: 'edit', key: 'f' },
   { id: 'settings', label: 'open settings', category: 'preferences', key: ',' },
   { id: 'toggle-sidebar', label: 'toggle sidebar', category: 'view', key: '/' },

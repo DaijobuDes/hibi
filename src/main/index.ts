@@ -21,6 +21,7 @@ import {
   type AppInfo,
   DOCUMENT_CHANNELS,
 } from '../shared/desktop'
+import { HISTORY_CHANNELS } from '../shared/history'
 import {
   type AppCommand,
   accelerator,
@@ -39,9 +40,11 @@ import {
   newDocument,
   openDocument,
   renameDocument,
+  restoreDocument,
   saveDocument,
   updateDocument,
 } from './document'
+import { listVersions, previewVersion } from './history'
 import { hotkeys, loadHotkeys, saveHotkeys } from './hotkeys'
 import { readDocumentImage } from './images'
 import { listLicenses, readLicense } from './licenses'
@@ -58,6 +61,7 @@ import {
   refreshWorkspace,
   workspaceRoot,
 } from './workspace'
+import { workspaceAction } from './workspace-actions'
 
 app.setName('hibi')
 app.enableSandbox()
@@ -472,6 +476,21 @@ if (!app.requestSingleInstanceLock()) {
         trustedWindow(event)
         return getDocument()
       })
+      ipcMain.handle(HISTORY_CHANNELS.list, (event) => {
+        trustedWindow(event)
+        return listVersions(getDocumentPath())
+      })
+      ipcMain.handle(HISTORY_CHANNELS.preview, (event, id: unknown) => {
+        trustedWindow(event)
+        return previewVersion(getDocumentPath(), id)
+      })
+      ipcMain.handle(HISTORY_CHANNELS.restore, (event, id: unknown) =>
+        runFileOperation(event, async (window) => {
+          const content = await previewVersion(getDocumentPath(), id)
+          if (!(await confirmDiscard(window))) return null
+          return restoreDocument(window, content)
+        }),
+      )
       ipcMain.handle(
         DOCUMENT_CHANNELS.image,
         async (event, source: unknown, revision: unknown) => {
@@ -490,6 +509,9 @@ if (!app.requestSingleInstanceLock()) {
         trustedWindow(event)
         return getWorkspace()
       })
+      ipcMain.handle(WORKSPACE_CHANNELS.action, (event, input: unknown) =>
+        runFileOperation(event, (window) => workspaceAction(window, input)),
+      )
       ipcMain.handle(WORKSPACE_CHANNELS.open, (event) =>
         runFileOperation(event, openWorkspace),
       )

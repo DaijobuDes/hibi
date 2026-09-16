@@ -57,6 +57,10 @@ test('desktop launch, isolation, offline reload, and recovery', {
       node: 'undefined',
       process: 'undefined',
       api: [
+        'listVersions',
+        'previewVersion',
+        'restoreVersion',
+        'onNotice',
         'getLicenses',
         'getLicense',
         'openSponsor',
@@ -65,6 +69,7 @@ test('desktop launch, isolation, offline reload, and recovery', {
         'setAddonEnabled',
         'invokeAddon',
         'getWorkspace',
+        'workspaceAction',
         'openWorkspace',
         'refreshWorkspace',
         'openWorkspaceFile',

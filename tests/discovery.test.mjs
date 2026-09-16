@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { electron } from './electron.mjs'
 import { pressShortcut } from './keyboard.mjs'
+import { waitForAsync } from './poll.mjs'
 
 test('palette discovers settings, addon controls, themes, and formatting without visiting their pages', {
   timeout: 30000,
@@ -73,7 +74,8 @@ test('palette discovers settings, addon controls, themes, and formatting without
   await rich.fill('format from palette')
   await rich.press(`${mod}+a`)
   await choose('format bold')
-  await page.waitForFunction(
+  await waitForAsync(
+    page,
     async () =>
       (await window.hibi.getDocument()).markdown === '**format from palette**',
   )

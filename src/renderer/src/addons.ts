@@ -12,6 +12,7 @@ import {
   type StatusItem,
 } from '../../addons/api'
 import { useDialogService } from '../../ui/DialogProvider'
+import { menus } from '../../ui/menu-store'
 import { createTooltipScope } from '../../ui/tooltip-store'
 import { createAddonOverrides } from './addon-overrides'
 import { colorschemes } from './colorschemes'
@@ -35,6 +36,7 @@ type Environment = Omit<
   | 'styles'
   | 'patches'
   | 'dialogs'
+  | 'menus'
   | 'colorschemes'
   | 'toolbar'
   | 'tooltips'
@@ -131,6 +133,7 @@ export function useAddons(environment: Environment) {
       let disposed = false
       const overrides = createAddonOverrides(id)
       const dialogScope = dialogService.scope(addon.manifest.name)
+      const menuScope = menus.scope((error) => latest.current.error(error))
       const toolbarScope = toolbar.scope(id, (error) =>
         latest.current.error(error),
       )
@@ -161,6 +164,7 @@ export function useAddons(environment: Environment) {
             for (const remove of cleanups) remove()
             cleanups.clear()
             dialogScope.dispose()
+            menuScope.dispose()
             toolbarScope.dispose()
             tooltipScope.dispose()
             overrides.dispose()
@@ -174,6 +178,7 @@ export function useAddons(environment: Environment) {
           throw new Error(`incompatible addon: ${id}`)
         running.set(id, { addon, stop })
         addon.start({
+          menus: menuScope.api,
           colorschemes: {
             register(scheme) {
               if (disposed) return () => {}

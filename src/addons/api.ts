@@ -10,6 +10,7 @@ import type { DocumentCommand } from '../shared/desktop'
 import type { AppCommand } from '../shared/hotkeys'
 import type { WorkspaceSnapshot, WorkspaceState } from '../shared/workspace'
 import type { DialogApi } from '../ui/dialogs'
+import type { MenuApi } from '../ui/menus'
 import type { ToolbarApi } from '../ui/toolbar'
 import type { TooltipApi } from '../ui/tooltips'
 
@@ -27,6 +28,7 @@ export type {
   MessageDialogOptions,
   PromptDialogOptions,
 } from '../ui/dialogs'
+export type { MenuApi, MenuItem } from '../ui/menus'
 export type {
   ToolbarApi,
   ToolbarHandle,
@@ -208,6 +210,7 @@ export type AddonContext = {
     setPreferences: (preferences: Partial<ThemePreferences>) => void
   }
   dialogs: DialogApi
+  menus: MenuApi
   toolbar: ToolbarApi
   tooltips: TooltipApi
   app: AddonApp

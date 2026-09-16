@@ -3,6 +3,12 @@ import { basename, dirname } from 'node:path'
 
 const references = [
   [
+    'docs/reference/menu-api.md',
+    'menu api',
+    'src/ui/menus.ts',
+    (source) => source,
+  ],
+  [
     'docs/reference/toolbar-api.md',
     'toolbar api',
     'src/ui/toolbar.ts',

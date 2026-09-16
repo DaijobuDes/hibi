@@ -9,6 +9,7 @@ export const WORKSPACE_CHANNELS = {
   refresh: 'workspace:refresh',
   openFile: 'workspace:open-file',
   changed: 'workspace:changed',
+  action: 'workspace:action',
 } as const
 
 export type WorkspaceEntry = {
@@ -22,6 +23,26 @@ export type WorkspaceState = {
   name: string
   entries: WorkspaceEntry[]
   activePath: string | null
+}
+
+export type WorkspaceAction = {
+  action:
+    | 'new-file'
+    | 'new-folder'
+    | 'rename'
+    | 'copy'
+    | 'move'
+    | 'duplicate'
+    | 'delete'
+  /** Relative source path, or parent directory for new entries. Empty = root. */
+  path: string
+  /** New basename for rename; complete relative destination for copy/move. */
+  destination?: string
+}
+export type WorkspaceActionResult = {
+  workspace: WorkspaceState | null
+  document: import('./desktop').DocumentState
+  path: string
 }
 
 export type WorkspacePage = {

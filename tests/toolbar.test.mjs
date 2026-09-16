@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { electron } from './electron.mjs'
 import { pressShortcut } from './keyboard.mjs'
+import { waitForAsync } from './poll.mjs'
 
 test('toolbar auto-hide defaults on, shares top-bar timing, and moves content smoothly', {
   timeout: 30000,
@@ -192,7 +193,8 @@ test('markdown toolbar formats both panes, preserves undo, and persists drag ord
   const read = () =>
     page.evaluate(() => window.hibi.getDocument()).then((doc) => doc.markdown)
   const waitForMarkdown = (value) =>
-    page.waitForFunction(
+    waitForAsync(
+      page,
       async (value) => (await window.hibi.getDocument()).markdown === value,
       value,
     )
