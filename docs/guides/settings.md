@@ -6,7 +6,7 @@
 
 ## open source licenses
 
-the bottom section lists application dependencies and bundled colorscheme notices. each row shows the package version and license identifier. select a row to read its complete installed license/notice files in a shared dialog. escape, the close button, or clicking outside dismisses it and returns focus to the row. long text wraps inside the dialog.
+the bottom section lists application dependencies, bundled colorscheme notices, and addon-provided third-party notices. each row shows the package version when available and license identifier. select a row to read its complete license/notice text in a shared dialog. escape, the close button, or clicking outside dismisses it and returns focus to the row. long text wraps inside the dialog.
 
 the catalog is generated from installed runtime dependency manifests during desktop builds. build tools and Electron's binary installer dependencies are excluded; transitive application packages are included. different installed versions retain separate entries. notices are shipped locally in `out/licenses.json`, so viewing them works offline and no package text is fetched from the network. Electron's additional runtime notices are preserved separately in packaged resources at `licenses/electron-third-party.html`.
 

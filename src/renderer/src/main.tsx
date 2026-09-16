@@ -32,6 +32,7 @@ import { useAddons } from './addons'
 import { CommandPalette, type PaletteCommand } from './CommandPalette'
 import { MarkdownEditor, type ViewMode } from './Editor'
 import { loadCursor } from './EditorCursor'
+import { EditorToolbar } from './EditorToolbar'
 import { LoadingScreen } from './LoadingScreen'
 import { projectMarkdown } from './markdown'
 import { SettingsScreen } from './SettingsScreen'
@@ -579,31 +580,34 @@ function App() {
         aria-hidden={settingsOpen}
         inert={settingsOpen}
       >
-        {document && (
-          <MarkdownEditor
-            sourceExtensions={addonHost.sourceExtensions}
-            richExtensions={addonHost.richExtensions}
-            documentRevision={document.revision}
-            showLineNumbers={showLineNumbers}
-            cursorSettings={cursorSettings}
-            markdownExtensions={addonHost.markdownExtensions}
-            key={`${document.revision}-${resetEditor}`}
-            value={document.markdown}
-            onChange={updateMarkdown}
-            mode={mode}
-            disabled={busy}
-            findOpen={findOpen && !settingsOpen}
-            onCloseFind={() => setFindOpen(false)}
-          />
-        )}
-        {!settingsOpen && (
-          <StatusBar
-            items={addonHost.statusItems.filter(
-              (item) =>
-                item.label && (item.when !== 'source' || mode !== 'normal'),
-            )}
-          />
-        )}
+        <EditorToolbar mode={mode} />
+        <div className="editor-page">
+          {document && (
+            <MarkdownEditor
+              sourceExtensions={addonHost.sourceExtensions}
+              richExtensions={addonHost.richExtensions}
+              documentRevision={document.revision}
+              showLineNumbers={showLineNumbers}
+              cursorSettings={cursorSettings}
+              markdownExtensions={addonHost.markdownExtensions}
+              key={`${document.revision}-${resetEditor}`}
+              value={document.markdown}
+              onChange={updateMarkdown}
+              mode={mode}
+              disabled={busy}
+              findOpen={findOpen && !settingsOpen}
+              onCloseFind={() => setFindOpen(false)}
+            />
+          )}
+          {!settingsOpen && (
+            <StatusBar
+              items={addonHost.statusItems.filter(
+                (item) =>
+                  item.label && (item.when !== 'source' || mode !== 'normal'),
+              )}
+            />
+          )}
+        </div>
       </div>
       {failed && (
         <p role="alert">

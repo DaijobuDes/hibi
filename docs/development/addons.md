@@ -41,7 +41,15 @@ vite discovers these folders. add files and rebuild, or use `npm start` while de
 
 ## renderer entry
 
-manifests may include a plugin `version` and `authors`, an array of `{ discordId, displayName }` records. bundled plugins share entries from `src/addons/authors.ts`. these fields are optional for older API v1 addons; new plugins should supply both. settings → addons shows version and display names, with Discord IDs in author tooltips.
+manifests may include a plugin `version` and `authors`, an array of `{ displayName, discordId?, github?, role? }` records. bundled plugins share entries from `src/addons/authors.ts`. these fields are optional for older API v1 addons; new plugins should supply both version and authors. settings shows display names and roles, with Discord IDs or GitHub usernames in tooltips. do not invent missing identifiers.
+
+optional `licenses` entries (`id`, `name`, `license`, full `text`) expose shipped third-party notices in hibi → open source licenses, even when the addon is disabled. ids are namespaced by addon. preserve upstream copyright notices when porting code or assets.
+
+## editor input, toolbar, and tooltips
+
+`context.editor.onKeyEvent(listener)` observes keydown and keyup from active editable rich/source panes. events include phase (`down`/`up`), view (`normal`/`source`), key/code, repeat, and modifier flags. these synchronous observers cannot consume input. IME composition, readonly/hidden panes, dialogs, and non-editor fields are excluded. the returned disposer and addon shutdown remove listeners; listener errors are contained. a release may be absent if focus leaves the editor, so addons tracking held keys must reset on blur/focus changes. no operating-system hooks are exposed.
+
+`context.toolbar` registers actions below the top bar; `context.tooltips` shows lifecycle-owned plain-text help. built-ins and addons use the same shared controls and tokens. [usage and preferences](toolbar-and-tooltips.md).
 
 an addon may export a `Settings` React component alongside `manifest` and `start`. enabled plugins with that component get a page under the sidebar's **plugins** section. the entire section disappears when none are available. the host supplies the page heading and metadata; use shared `SettingRow`, `Toggle`, `Button`, and `Select` components for its content. a settings component is mounted only while its page is open. plugin settings failures are isolated from the editor.
 

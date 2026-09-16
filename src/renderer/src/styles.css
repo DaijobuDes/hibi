@@ -286,6 +286,36 @@ button:disabled {
     opacity var(--motion-selection) ease-out,
     visibility 0s;
 }
+.editor-page {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.editor-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-3);
+  flex-shrink: 0;
+  overflow-x: auto;
+  background: var(--background);
+}
+.editor-toolbar .ui-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+.editor-toolbar[data-mode="icons"] .ui-button {
+  width: var(--control-height);
+  padding: 0;
+  justify-content: center;
+}
+.editor-toolbar .ui-button[aria-pressed="true"] {
+  background: var(--active);
+}
 .app[data-screen="settings"] .editor-surface {
   opacity: 0;
   visibility: hidden;

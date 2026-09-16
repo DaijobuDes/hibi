@@ -7,6 +7,10 @@ import {
   useDialogs,
 } from '../../src/ui/DialogProvider'
 import '../../src/renderer/src/styles.css'
+import { EditorToolbar } from '../../src/renderer/src/EditorToolbar'
+import { toolbar } from '../../src/renderer/src/toolbar'
+import { Tooltip } from '../../src/ui/Tooltip'
+import { createTooltipScope } from '../../src/ui/tooltip-store'
 
 function Harness() {
   const dialogs = useDialogs()
@@ -15,16 +19,39 @@ function Harness() {
   useEffect(() => {
     const owner = service.scope('test addon')
     const other = service.scope('other addon')
+    const errors: unknown[] = []
+    const actions = toolbar.scope('test', (error) => errors.push(error))
+    const tips = createTooltipScope()
+    const otherTips = createTooltipScope()
     Object.assign(window, {
-      dialogTest: { dialogs, owner, other, createElement, service },
+      dialogTest: {
+        dialogs,
+        owner,
+        other,
+        createElement,
+        service,
+        actions,
+        toolbar,
+        tips,
+        otherTips,
+        errors,
+      },
     })
     return () => {
       owner.dispose()
       other.dispose()
+      actions.dispose()
+      tips.dispose()
+      otherTips.dispose()
     }
   }, [dialogs, service])
   return (
     <main>
+      <EditorToolbar mode="normal" />
+      <Tooltip text="shared help">
+        <Button aria-describedby="existing-help">tooltip target</Button>
+      </Tooltip>
+      <span id="existing-help">existing description</span>
       <Button
         onClick={async () =>
           setResult(

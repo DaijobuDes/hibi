@@ -23,6 +23,7 @@ import type {
 } from '../../addons/api'
 import { documentImage } from './DocumentImage'
 import { type CursorSettings, EditorCursor } from './EditorCursor'
+import { emitEditorKeyEvent } from './editor-events'
 import { FindBar, type FindMove, type FindStatus } from './FindBar'
 import { LoadingScreen } from './LoadingScreen'
 import { extensions, needsSourceEditing, projectMarkdown } from './markdown'
@@ -252,6 +253,8 @@ export function MarkdownEditor({
       <main
         className={`editor-panes mode-${paneMode}`}
         data-source-ready={sourceReady}
+        onKeyDownCapture={(event) => emitEditorKeyEvent(event.nativeEvent)}
+        onKeyUpCapture={(event) => emitEditorKeyEvent(event.nativeEvent)}
       >
         <div className="editor-content" ref={content}>
           <EditorCursor root={content} settings={cursorSettings} />

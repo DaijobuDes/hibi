@@ -59,6 +59,86 @@ test('shared dialogs validate input, trap focus, queue, and clean up by addon ow
   page.setDefaultTimeout(5000)
   await page.waitForFunction(() => Boolean(window.dialogTest))
   const prompt = page.getByRole('button', { name: 'open built-in prompt' })
+  const target = page.getByRole('button', { name: 'tooltip target' })
+  await target.focus()
+  const tip = page.getByRole('tooltip')
+  await tip.waitFor()
+  assert.equal(await tip.innerText(), 'shared help')
+  assert.match(await target.getAttribute('aria-describedby'), /^existing-help /)
+  await page.keyboard.press('Escape')
+  await tip.waitFor({ state: 'hidden' })
+  assert.equal(await target.getAttribute('aria-describedby'), 'existing-help')
+  await page.evaluate(() => {
+    const { tips, otherTips } = window.dialogTest
+    const anchor = document.querySelector('[data-tooltip="shared help"]')
+    tips.api.show({ anchor, text: 'old' })
+    otherTips.api.show({ anchor, text: 'new' })
+    tips.dispose()
+  })
+  assert.equal(await tip.innerText(), 'new')
+  await page.evaluate(() => window.dialogTest.otherTips.dispose())
+  await tip.waitFor({ state: 'hidden' })
+  await page.evaluate(() => {
+    const { actions } = window.dialogTest
+    window.toolbarClicks = 0
+    window.actionHandle = actions.api.register({
+      id: 'action',
+      label: 'test action',
+      onClick: () => {
+        window.toolbarClicks++
+      },
+    })
+    try {
+      actions.api.register({ id: 'action', label: 'duplicate', onClick() {} })
+    } catch {
+      window.duplicateRejected = true
+    }
+    actions.api.register({
+      id: 'source',
+      label: 'source only',
+      when: 'source',
+      onClick() {},
+    })
+  })
+  const action = page.getByRole('button', { name: 'test action' })
+  await action.waitFor()
+  assert.equal(await action.locator('svg').count(), 1)
+  assert.equal(await action.innerText(), '')
+  assert.equal(
+    await page.getByRole('button', { name: 'source only' }).count(),
+    0,
+  )
+  await action.click()
+  assert.equal(await page.evaluate(() => window.toolbarClicks), 1)
+  assert.equal(await page.evaluate(() => window.duplicateRejected), true)
+  for (const mode of ['text', 'icons-and-text']) {
+    await page.evaluate(
+      (mode) => window.dialogTest.actions.api.setPreferences({ mode }),
+      mode,
+    )
+    assert.equal(await action.innerText(), 'test action')
+    assert.equal(await action.locator('svg').count(), mode === 'text' ? 0 : 1)
+  }
+  await page.evaluate(() =>
+    window.dialogTest.actions.api.setPreferences({ visible: false }),
+  )
+  await action.waitFor({ state: 'hidden' })
+  await page.evaluate(() => {
+    const { actions, toolbar } = window.dialogTest
+    actions.api.setPreferences({ visible: true })
+    window.staleAction = toolbar.snapshot().items[0].onClick
+    window.actionHandle.update({ disabled: true, pressed: true })
+  })
+  assert.equal(await action.isDisabled(), true)
+  await page.evaluate(() => window.staleAction())
+  assert.equal(await page.evaluate(() => window.toolbarClicks), 1)
+  await page.evaluate(() => {
+    window.dialogTest.actions.dispose()
+    window.actionHandle.update({ disabled: false })
+    window.staleAction()
+  })
+  assert.equal(await action.count(), 0)
+  assert.equal(await page.evaluate(() => window.toolbarClicks), 1)
   await prompt.click()
   const dialog = page.getByRole('dialog', { name: 'name this note' })
   const input = dialog.getByRole('textbox', { name: 'name', exact: true })
@@ -177,6 +257,14 @@ test('shared dialogs validate input, trap focus, queue, and clean up by addon ow
   })
   const custom = page.getByRole('dialog', { name: 'keyboard custom' })
   await custom.getByRole('button', { name: 'keep open' }).focus()
+  await page.evaluate(() => {
+    const anchor = document.querySelector('dialog[open] button:last-child')
+    anchor.dataset.tooltip = 'inside modal'
+    anchor.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
+  })
+  await tip.waitFor()
+  assert.equal(await tip.innerText(), 'inside modal')
+  assert.equal(await tip.evaluate((el) => el.matches(':popover-open')), true)
   await page.keyboard.press('Space')
   assert.equal(await page.evaluate(() => window.customClicked), true)
   assert.equal(await custom.isVisible(), true)

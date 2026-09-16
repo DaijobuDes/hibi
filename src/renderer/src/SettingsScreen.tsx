@@ -9,6 +9,7 @@ import { Sidebar, type SidebarProps } from '../../ui/Sidebar'
 import { addons } from './addons'
 import { colorschemes } from './colorschemes'
 import type { CursorSettings } from './EditorCursor'
+import { ToolbarSettings } from './EditorToolbar'
 import { HibiSettings } from './HibiSettings'
 import { HotkeySettings } from './HotkeySettings'
 
@@ -27,11 +28,18 @@ function AddonMetadata({ manifest }: { manifest: AddonManifest }) {
       {manifest.version && <span>v{manifest.version}</span>}
       {manifest.authors?.map((author) => (
         <span
-          key={author.discordId}
-          title={`discord: ${author.discordId}`}
+          key={author.discordId ?? author.github ?? author.displayName}
+          data-tooltip={
+            author.discordId
+              ? `discord: ${author.discordId}`
+              : author.github
+                ? `github: ${author.github}`
+                : undefined
+          }
           data-discord-id={author.discordId}
         >
           {author.displayName}
+          {author.role ? ` · ${author.role}` : ''}
         </span>
       ))}
     </span>
@@ -280,6 +288,7 @@ export function SettingsScreen({
               />
             </SettingRow>
           </div>
+          <ToolbarSettings />
         </section>
         <section
           id="settings-hotkeys"

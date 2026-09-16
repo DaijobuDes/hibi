@@ -19,6 +19,7 @@ import type {
   PromptDialogOptions,
 } from './dialogs'
 import { Modal } from './Modal'
+import { TooltipHost } from './Tooltip'
 
 type Request = {
   id: number
@@ -176,6 +177,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
     <DialogContext.Provider value={service}>
       {children}
       <DialogHost service={service} />
+      <TooltipHost />
     </DialogContext.Provider>
   )
 }

@@ -25,6 +25,15 @@ const natives = Object.values(
 )
 let enabled: Record<string, boolean> = {}
 
+export function getAddonLicenses() {
+  return manifests.flatMap((manifest) =>
+    (manifest.licenses ?? []).map((license) => ({
+      ...license,
+      id: `addon:${manifest.id}:${license.id}`,
+    })),
+  )
+}
+
 export async function loadAddons(): Promise<void> {
   const ids = new Set<string>()
   for (const manifest of manifests) {

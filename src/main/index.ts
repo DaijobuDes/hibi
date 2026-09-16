@@ -62,6 +62,10 @@ import {
 app.setName('hibi')
 app.enableSandbox()
 const testing = !app.isPackaged && app.commandLine.hasSwitch('hibi-test')
+if (testing)
+  app.on('web-contents-created', (_event, contents) =>
+    contents.setAudioMuted(true),
+  )
 if (testing && process.platform === 'darwin')
   app.setActivationPolicy('accessory')
 protocol.registerSchemesAsPrivileged([

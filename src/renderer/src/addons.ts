@@ -12,8 +12,11 @@ import {
   type StatusItem,
 } from '../../addons/api'
 import { useDialogService } from '../../ui/DialogProvider'
+import { createTooltipScope } from '../../ui/tooltip-store'
 import { createAddonOverrides } from './addon-overrides'
 import { colorschemes } from './colorschemes'
+import { onEditorKeyEvent } from './editor-events'
+import { toolbar } from './toolbar'
 
 export const addons = Object.values(
   import.meta.glob<Addon>(
@@ -33,6 +36,8 @@ type Environment = Omit<
   | 'patches'
   | 'dialogs'
   | 'colorschemes'
+  | 'toolbar'
+  | 'tooltips'
 > & {
   invoke: (id: string, method: string, input?: unknown) => Promise<unknown>
   error: (error: unknown) => void
@@ -126,7 +131,11 @@ export function useAddons(environment: Environment) {
       let disposed = false
       const overrides = createAddonOverrides(id)
       const dialogScope = dialogService.scope(addon.manifest.name)
-      const themeCleanup = new Set<() => void>()
+      const toolbarScope = toolbar.scope(id, (error) =>
+        latest.current.error(error),
+      )
+      const tooltipScope = createTooltipScope()
+      const cleanups = new Set<() => void>()
       const stop = () => {
         if (disposed) return
         disposed = true
@@ -149,9 +158,11 @@ export function useAddons(environment: Environment) {
           try {
             addon.stop?.()
           } finally {
-            for (const remove of themeCleanup) remove()
-            themeCleanup.clear()
+            for (const remove of cleanups) remove()
+            cleanups.clear()
             dialogScope.dispose()
+            toolbarScope.dispose()
+            tooltipScope.dispose()
             overrides.dispose()
           }
         } catch (error) {
@@ -174,9 +185,9 @@ export function useAddons(environment: Environment) {
               })
               const cleanup = () => {
                 remove()
-                themeCleanup.delete(cleanup)
+                cleanups.delete(cleanup)
               }
-              themeCleanup.add(cleanup)
+              cleanups.add(cleanup)
               return cleanup
             },
             list: () => colorschemes.snapshot().schemes,
@@ -186,6 +197,8 @@ export function useAddons(environment: Environment) {
             },
           },
           dialogs: dialogScope.api,
+          toolbar: toolbarScope.api,
+          tooltips: tooltipScope.api,
           app,
           styles: overrides.styles,
           patches: overrides.patches,
@@ -241,6 +254,23 @@ export function useAddons(environment: Environment) {
             },
           },
           editor: {
+            onKeyEvent(listener) {
+              if (disposed) return () => {}
+              const remove = onEditorKeyEvent((event) => {
+                if (disposed) return
+                try {
+                  listener(event)
+                } catch (error) {
+                  latest.current.error(error)
+                }
+              })
+              const cleanup = () => {
+                remove()
+                cleanups.delete(cleanup)
+              }
+              cleanups.add(cleanup)
+              return cleanup
+            },
             registerRich(extension) {
               if (disposed) return () => {}
               const key = `${id}.${extension.id}`

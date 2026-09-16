@@ -3,6 +3,18 @@ import { basename, dirname } from 'node:path'
 
 const references = [
   [
+    'docs/reference/toolbar-api.md',
+    'toolbar api',
+    'src/ui/toolbar.ts',
+    (source) => source,
+  ],
+  [
+    'docs/reference/tooltip-api.md',
+    'tooltip api',
+    'src/ui/tooltips.ts',
+    (source) => source,
+  ],
+  [
     'docs/reference/colorscheme-api.md',
     'colorscheme api',
     'src/shared/colorschemes.ts',

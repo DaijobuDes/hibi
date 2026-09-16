@@ -1,9 +1,18 @@
 import { ChevronDown } from 'lucide-react'
 import type { ComponentProps, ReactNode } from 'react'
 
-export function Button({ className = '', ...props }: ComponentProps<'button'>) {
+export function Button({
+  className = '',
+  title,
+  ...props
+}: ComponentProps<'button'>) {
   return (
-    <button type="button" {...props} className={`ui-button ${className}`} />
+    <button
+      type="button"
+      data-tooltip={title}
+      {...props}
+      className={`ui-button ${className}`}
+    />
   )
 }
 
@@ -18,10 +27,16 @@ export function Select({ children, ...props }: ComponentProps<'select'>) {
 
 export function IconButton({
   className = '',
+  title,
   ...props
 }: ComponentProps<'button'> & { 'aria-label': string }) {
   return (
-    <button type="button" {...props} className={`icon-button ${className}`} />
+    <button
+      type="button"
+      data-tooltip={title}
+      {...props}
+      className={`icon-button ${className}`}
+    />
   )
 }
 

@@ -76,7 +76,7 @@ test('plugin pages, metadata, shared controls, and full source vim editing', {
   )
   assert.equal(
     await page.locator('#settings-appearance .select-control > svg').count(),
-    6,
+    7,
   )
   const footer = await page.locator('.settings-versions').evaluate((el) => ({
     bottom: el.getBoundingClientRect().bottom,
@@ -90,7 +90,7 @@ test('plugin pages, metadata, shared controls, and full source vim editing', {
     await page
       .locator('#settings-addons [data-discord-id="1262793452236570667"]')
       .count(),
-    4,
+    5,
   )
   await toggleAddon('frontmatter', false)
   assert.equal(

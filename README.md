@@ -12,9 +12,13 @@ open a folder from the left sidebar to browse nested markdown files. the documen
 - **side-by-side:** syntax-highlighted markdown on the left and editable rich text on the right, synchronized in both directions. the divider fades to transparent at both ends.
 - **markdown only:** edit the original source directly.
 
-the compact title bar holds file actions, filename, and view controls. editor panels fill the space below it. settings has a full-height sidebar with a flat category list: editor, appearance, hotkeys, and about. editor-only controls disappear on settings. adjust padding from 0–96 px (default 48 px), or change whether the top bar hides while typing. preferences persist across launches. use escape or the back button to return to your unchanged document.
+the compact title bar holds file actions, filename, and view controls. editor panels fill the space below it. settings has a full-height sidebar: hibi, editor, appearance, hotkeys, addons, and settings pages contributed by enabled plugins. editor-only controls disappear on settings. adjust padding from 0–96 px (default 48 px), or change whether the top bar hides while typing. preferences persist across launches. use escape or the back button to return to your unchanged document.
 
-click the centered filename or press `cmd/ctrl+k` for the command palette. search file operations, view modes, settings, and top-bar behavior. command rows show icons, categories, and individual keycaps. use arrow keys and enter to run a command, or escape to dismiss.
+click the centered filename to rename it. the search button or `cmd/ctrl+k` opens the command palette. search file operations, view modes, settings, and top-bar behavior. command rows show icons, categories, individual keycaps, and a smoothly moving selection background. use arrow keys and enter to run a command, or escape to dismiss. normal view uses `cmd/ctrl+shift+[`, markdown uses `cmd/ctrl+shift+]`, and side-by-side uses `cmd/ctrl+|`.
+
+addons can add actions to a separate toolbar below the top bar. appearance settings can hide it or show icons, icons with text, or text. built-ins and addons share the tooltip API. [toolbar and tooltip contracts](docs/development/toolbar-and-tooltips.md).
+
+[keybeats](docs/guides/keybeats.md) adds optional local keyboard sounds to rich and source editors, with 13 profiles, volume, and mute. disabled by default. credits and MIT notices for Yug Bhanushali and Thomas Lai ship alongside may's hibi port.
 
 settings → hotkeys lets you rebind, clear, or reset app shortcuts, including view modes. click a binding, press your new shortcut, then enter to save or escape to cancel. conflicts and standard editing/window shortcuts are rejected. bindings persist in the app profile and update native menus, tooltips, and the command palette. recording a shortcut suppresses native menu actions so pressing save or close cannot accidentally execute them.
 
@@ -32,7 +36,7 @@ the flat title bar keeps its filename centered on the window. it fades out while
 
 native file menu supports new (`cmd/ctrl+n`), open (`cmd/ctrl+o`), save (`cmd/ctrl+s`), and save as (`cmd/ctrl+shift+s`). opening another document, starting a new one, closing, or quitting asks before discarding unsaved changes. a dot beside the filename marks unsaved changes.
 
-switching views preserves the exact markdown source. rich edits serialize markdown and may normalize spacing or syntax. html, frontmatter, reference definitions, and footnotes stay editable in source mode; rich mode becomes read-only for those documents to prevent lossy conversion. headings, emphasis, links, code, quotes, lists, task lists, and tables are supported. image references are preserved, but external and document-relative images are not loaded yet.
+switching views preserves the exact markdown source. rich edits serialize markdown and may normalize spacing or syntax. unsupported constructs remain editable in source mode; rich mode becomes read-only where conversion would lose content. the frontmatter addon provides page properties and preserves their YAML separately from the rich body. headings, emphasis, links, code, quotes, lists, task lists, tables, and permitted local images are supported. relative image paths resolve against the saved document; image references remain in markdown.
 
 ## run
 

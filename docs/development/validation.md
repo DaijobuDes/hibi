@@ -17,7 +17,9 @@ Vite can replace its initial navigation when optimizing a newly added dependency
 
 tests use temporary profiles and real Electron windows. file dialogs are controlled against temporary fixtures. validation covers draft preservation, file writes, workspace traversal and nested navigation, local image resolution and offline embedding, frontmatter fields and YAML preservation, addon enable/disable, export sanitization, offline search and deep links, keyboard behavior, reduced motion, and pane geometry.
 
-native tests import `electron` from `tests/electron.mjs`. this launcher adds `--hibi-test`, keeping windows hidden and unfocusable, with background rendering enabled. on macOS the test app uses accessory activation policy, so it has no Dock icon. normal app launches keep their usual window behavior. screenshots and DOM input still run against real Electron renderers in the background.
+native tests import `electron` from `tests/electron.mjs`. this launcher adds `--hibi-test`, keeping windows hidden and unfocusable, with background rendering enabled and all web contents muted. on macOS the test app uses accessory activation policy, so it has no Dock icon. normal app launches keep their usual window behavior. screenshots and DOM input still run against real Electron renderers in the background.
+
+toolbar and tooltip checks exercise all display modes, visibility, scope cleanup, stale handles, keyboard help, existing descriptions, and help inside native dialogs. keybeats tests decode all 150 local recordings with audio output muted, exercise rich/source input, repeats, search exclusion, profile switching, mute, and disabling the addon. command palette tests sample the selection marker mid-transition and check reduced motion.
 
 colorscheme checks cover all bundled token roles, text contrast, retained upstream notices, rejected CSS expressions, native window persistence, editor/undo preservation, system appearance, addon palette fallback/restoration, CSS override precedence, and exported appearance controls down to 320 px. native Windows/Linux caption rendering needs a check on those platforms.
 

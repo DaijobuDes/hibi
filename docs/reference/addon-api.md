@@ -15,6 +15,8 @@ import type { DocumentCommand } from '../shared/desktop'
 import type { AppCommand } from '../shared/hotkeys'
 import type { WorkspaceSnapshot, WorkspaceState } from '../shared/workspace'
 import type { DialogApi } from '../ui/dialogs'
+import type { ToolbarApi } from '../ui/toolbar'
+import type { TooltipApi } from '../ui/tooltips'
 
 export type {
   Colorscheme,
@@ -23,7 +25,6 @@ export type {
   ColorToken,
   ThemePreferences,
 } from '../shared/colorschemes'
-
 export type {
   DialogApi,
   DialogHandle,
@@ -31,6 +32,13 @@ export type {
   MessageDialogOptions,
   PromptDialogOptions,
 } from '../ui/dialogs'
+export type {
+  ToolbarApi,
+  ToolbarHandle,
+  ToolbarItem,
+  ToolbarPreferences,
+} from '../ui/toolbar'
+export type { TooltipApi, TooltipOptions } from '../ui/tooltips'
 
 /** Increment when a public contract changes incompatibly. */
 export const ADDON_API_VERSION = 1
@@ -44,9 +52,21 @@ export type AddonManifest = {
   /** Plugin release version; optional for existing API v1 addons. */
   version?: string
   authors?: readonly AddonAuthor[]
+  /** Shipped third-party notices, shown under hibi's open source licenses. */
+  licenses?: readonly {
+    id: string
+    name: string
+    license: string
+    text: string
+  }[]
 }
 
-export type AddonAuthor = { discordId: string; displayName: string }
+export type AddonAuthor = {
+  discordId?: string
+  displayName: string
+  github?: string
+  role?: string
+}
 
 export type SourceExtension = {
   id: string
@@ -68,6 +88,19 @@ export type StatusItem = {
   when?: 'source'
   onClick?: () => void | Promise<void>
 }
+
+/** Editor-only input. Never emitted from settings, search, dialogs, or hidden panes. */
+export type EditorKeyEvent = Readonly<{
+  phase: 'down' | 'up'
+  view: 'normal' | 'source'
+  key: string
+  code: string
+  repeat: boolean
+  altKey: boolean
+  ctrlKey: boolean
+  metaKey: boolean
+  shiftKey: boolean
+}>
 export type StatusHandle = {
   update: (changes: Partial<Omit<StatusItem, 'id'>>) => void
   dispose: () => void
@@ -171,11 +204,15 @@ export type AddonContext = {
     setPreferences: (preferences: Partial<ThemePreferences>) => void
   }
   dialogs: DialogApi
+  toolbar: ToolbarApi
+  tooltips: TooltipApi
   app: AddonApp
   styles: { register: (id: string, css: string) => StyleHandle }
   patches: PatchApi
   statusBar: { register: (item: StatusItem) => StatusHandle }
   editor: {
+    /** Observe editor keydown/keyup without consuming input. Removed on addon stop. */
+    onKeyEvent: (listener: (event: EditorKeyEvent) => void) => () => void
     registerRich: (extension: RichExtension) => () => void
     registerMarkdown: (extension: MarkdownExtension) => () => void
     registerSource: (extension: SourceExtension) => () => void
