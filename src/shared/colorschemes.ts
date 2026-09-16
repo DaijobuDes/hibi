@@ -21,6 +21,10 @@ export const COLOR_TOKENS = [
   'syntax-quote',
   'syntax-strong',
   'syntax-emphasis',
+  'status-success',
+  'status-warning',
+  'status-danger',
+  'status-info',
 ] as const
 export type ColorToken = (typeof COLOR_TOKENS)[number]
 export type ColorschemeColors = Record<ColorToken, string>
@@ -137,6 +141,10 @@ export function defineColorscheme(input: ColorschemeInput): Colorscheme {
       'syntax-quote': c.muted,
       'syntax-strong': c.ink,
       'syntax-emphasis': c.ink,
+      'status-success': input.appearance === 'dark' ? '#b4e6a4' : '#236032',
+      'status-warning': input.appearance === 'dark' ? '#edcf8f' : '#704600',
+      'status-danger': input.appearance === 'dark' ? '#ffb0b0' : '#aa2233',
+      'status-info': input.appearance === 'dark' ? '#a4cbff' : '#254d9e',
       ...c,
     }),
   })

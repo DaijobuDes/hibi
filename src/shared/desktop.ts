@@ -46,6 +46,7 @@ export type DesktopApi = {
   getAddonStates: () => Promise<AddonState[]>
   setAddonEnabled: (id: string, enabled: boolean) => Promise<AddonState[]>
   invokeAddon: (id: string, method: string, input?: unknown) => Promise<unknown>
+  queryAddon: (id: string, method: string, input?: unknown) => Promise<unknown>
   getWorkspace: () => Promise<WorkspaceState | null>
   getWorkspaceSnapshot: () => Promise<import('./workspace').WorkspaceSnapshot>
   workspaceAction: (

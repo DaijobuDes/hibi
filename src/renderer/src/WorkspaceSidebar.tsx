@@ -6,7 +6,13 @@ import {
   FolderPlus,
   RefreshCw,
 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from 'react'
 import type {
   WorkspaceAction,
   WorkspaceActionResult,
@@ -18,6 +24,7 @@ import { useDialogs } from '../../ui/DialogProvider'
 import { useMenus } from '../../ui/MenuHost'
 import { Sidebar, type SidebarItem, type SidebarProps } from '../../ui/Sidebar'
 import type { RegisteredCommand } from './addons'
+import { explorerDecorations } from './explorer-decorations'
 import { type WorkspaceRename, workspaceMenuItems } from './workspace-menu'
 
 export function WorkspaceSidebar({
@@ -50,6 +57,19 @@ export function WorkspaceSidebar({
   const menu = useMenus(onError)
   const dialogs = useDialogs()
   const [renaming, setRenaming] = useState(false)
+  const decorations = useSyncExternalStore(
+    explorerDecorations.subscribe,
+    explorerDecorations.snapshot,
+  )
+  const rootDecoration = decorations.get('')
+  useLayoutEffect(() => {
+    explorerDecorations.setWorkspace(workspace)
+  }, [workspace])
+  useEffect(() => {
+    const refresh = () => explorerDecorations.setWorkspace(workspace)
+    window.addEventListener('focus', refresh)
+    return () => window.removeEventListener('focus', refresh)
+  }, [workspace])
   async function create(kind: 'new-file' | 'new-folder', parent = '') {
     try {
       const result = await onAction({ action: kind, path: parent })
@@ -108,10 +128,13 @@ export function WorkspaceSidebar({
         label: entry.name,
         icon: entry.kind === 'folder' ? Folder : FileText,
         dirty: dirty && workspace?.activePath === entry.path,
+        ...(decorations.has(entry.path)
+          ? { decoration: decorations.get(entry.path)! }
+          : {}),
         ...(entry.children ? { children: convert(entry.children) } : {}),
       }))
     return convert(workspace?.entries ?? [])
-  }, [workspace?.entries, workspace?.activePath, dirty])
+  }, [workspace?.entries, workspace?.activePath, dirty, decorations])
   return (
     <Sidebar
       resize={resize}
@@ -134,7 +157,16 @@ export function WorkspaceSidebar({
       header={
         workspace && (
           <>
-            <span>{workspace?.name ?? 'workspace'}</span>
+            <span
+              title={rootDecoration?.label}
+              style={{
+                color: rootDecoration?.color
+                  ? `var(--${rootDecoration.color})`
+                  : undefined,
+              }}
+            >
+              {workspace?.name ?? 'workspace'}
+            </span>
             <IconButton
               aria-label="new workspace file"
               title="new file"

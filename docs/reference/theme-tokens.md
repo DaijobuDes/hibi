@@ -30,6 +30,10 @@ generated from `src/ui/tokens.css`. update the source, then run `npm run docs`. 
     --syntax-quote: var(--muted);
     --syntax-strong: var(--ink);
     --syntax-emphasis: var(--ink);
+    --status-success: #236032;
+    --status-warning: #704600;
+    --status-danger: #aa2233;
+    --status-info: #254d9e;
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -39,6 +43,10 @@ generated from `src/ui/tokens.css`. update the source, then run `npm run docs`. 
       --muted: oklch(0.7 0.012 200);
       --accent: oklch(0.8 0.075 200);
       --border: oklch(0.33 0 0);
+      --status-success: #b4e6a4;
+      --status-warning: #edcf8f;
+      --status-danger: #ffb0b0;
+      --status-info: #a4cbff;
     }
   }
 }

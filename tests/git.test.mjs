@@ -3,6 +3,7 @@ import { execFile } from 'node:child_process'
 import {
   access,
   chmod,
+  mkdir,
   mkdtemp,
   readFile,
   rm,
@@ -32,6 +33,8 @@ test('git addon stages, commits, switches, pulls and pushes only to a disposable
           '-c',
           'core.hooksPath=/dev/null',
           '-c',
+          'core.fsmonitor=false',
+          '-c',
           'commit.gpgSign=false',
           ...args,
         ],
@@ -43,7 +46,10 @@ test('git addon stages, commits, switches, pulls and pushes only to a disposable
   await git(root, 'config', 'user.name', 'hibi test')
   await git(root, 'config', 'user.email', 'hibi@example.test')
   await writeFile(join(root, 'note.md'), 'initial')
-  await git(root, 'add', 'note.md')
+  await mkdir(join(root, 'guides'))
+  await writeFile(join(root, 'guides', 'nested.md'), 'nested')
+  await writeFile(join(root, 'guides', 'removed.md'), 'remove later')
+  await git(root, 'add', '.')
   await git(root, 'commit', '-m', 'initial')
   await git(root, 'remote', 'add', 'origin', remote)
   await git(root, 'push', '-u', 'origin', 'main')
@@ -152,9 +158,101 @@ test('git addon stages, commits, switches, pulls and pushes only to a disposable
   )
   await page.keyboard.press('Escape')
   await panel.waitFor({ state: 'hidden' })
+  await page.evaluate(() => {
+    window.gitBusyChanges = 0
+    window.gitBusyObserver = new MutationObserver((entries) => {
+      if (
+        entries.some(
+          (entry) => entry.target.getAttribute('aria-busy') === 'true',
+        )
+      )
+        window.gitBusyChanges++
+    })
+    window.gitBusyObserver.observe(document.querySelector('.app'), {
+      attributes: true,
+      attributeFilter: ['aria-busy'],
+    })
+  })
+  await writeFile(join(root, 'guides', 'nested.md'), 'modified nested file')
+  const guides = page.getByRole('treeitem', { name: 'guides', exact: true })
+  await guides.locator('.sidebar-decoration').waitFor()
+  assert.equal(await guides.getAttribute('aria-expanded'), 'false')
+  await guides.click()
+  const nested = page.getByRole('treeitem', { name: 'nested.md', exact: true })
+  await nested.locator('.sidebar-decoration').filter({ hasText: 'M' }).waitFor()
+  await git(root, 'add', 'guides/nested.md')
+  await page.waitForFunction(
+    () =>
+      document
+        .getElementById('sidebar-guides/nested.md')
+        ?.getAttribute('aria-description') === 'git: modified (staged)',
+  )
+  assert.equal(
+    await page.evaluate(() => {
+      window.gitBusyObserver.disconnect()
+      return window.gitBusyChanges
+    }),
+    0,
+  )
+  await nested.click()
+  await guides.click()
+  await writeFile(join(root, 'guides', 'new.md'), 'untracked file')
+  await page.waitForFunction(() =>
+    document
+      .getElementById('sidebar-guides')
+      ?.getAttribute('aria-description')
+      ?.includes('2 changed files'),
+  )
+  assert.equal(
+    await guides.getAttribute('aria-expanded'),
+    'false',
+    'background decorations must not reopen a collapsed folder',
+  )
+  await guides.click()
+  await page
+    .getByRole('treeitem', { name: 'new.md', exact: true })
+    .locator('.sidebar-decoration')
+    .filter({ hasText: 'U' })
+    .waitFor()
+  await rm(join(root, 'guides', 'removed.md'))
+  await page.waitForFunction(() =>
+    document
+      .getElementById('sidebar-guides')
+      ?.getAttribute('aria-description')
+      ?.includes('3 changed files'),
+  )
+  await page
+    .getByRole('treeitem', { name: 'removed.md', exact: true })
+    .waitFor({ state: 'hidden' })
+  await mkdir('test-results', { recursive: true })
+  await page.screenshot({
+    path: 'test-results/git-explorer.png',
+    animations: 'disabled',
+  })
+  await page.getByRole('treeitem', { name: 'note.md', exact: true }).click()
+  await page.getByRole('button', { name: 'editor settings' }).click()
+  await page.getByRole('tab', { name: 'addons', exact: true }).click()
+  await page.locator('#addon-git').click()
+  await page.waitForFunction(
+    () => !document.querySelector('.workspace-sidebar .sidebar-decoration'),
+  )
+  await assert.rejects(
+    page.evaluate(() => window.hibi.queryAddon('git', 'decorations')),
+    /not enabled/,
+  )
+  await page.locator('#addon-git').click()
+  await page.getByRole('button', { name: 'back to editor' }).click()
+  await nested.locator('.sidebar-decoration').waitFor()
+  await assert.rejects(
+    page.evaluate(() => window.hibi.queryAddon('git', 'stage', 'note.md')),
+    /unknown addon method/,
+  )
   await page
     .getByRole('textbox', { name: 'document editor' })
     .fill('unsaved edits')
+  const note = page.getByRole('treeitem', { name: 'note.md', exact: true })
+  await note.locator('.sidebar-dirty').waitFor()
+  assert.equal(await note.locator('.sidebar-decoration').count(), 0)
   await assert.rejects(invoke('switch', 'refs/heads/other'), /save edits/)
   await assert.rejects(invoke('pull'), /save edits/)
   await assert.rejects(
@@ -181,5 +279,30 @@ test('git addon stages, commits, switches, pulls and pushes only to a disposable
     'filter-ran',
     'remote-helper-ran',
   ])
-    await assert.rejects(access(join(root, file)))
+    await assert.rejects(access(join(root, file)), file)
+  const previousWorkspace = await page.evaluate(() =>
+    window.hibi.getWorkspace(),
+  )
+  const otherRoot = join(temp, 'other', 'workspace')
+  await mkdir(join(otherRoot, 'guides'), { recursive: true })
+  await writeFile(join(otherRoot, 'guides', 'nested.md'), 'not a repository')
+  await app.evaluate(({ dialog }, otherRoot) => {
+    dialog.showOpenDialog = async () => ({
+      canceled: false,
+      filePaths: [otherRoot],
+    })
+  }, otherRoot)
+  await pressShortcut(app, `${mod}+Shift+o`)
+  await waitForAsync(
+    page,
+    async (previousId) => (await window.hibi.getWorkspace()).id !== previousId,
+    previousWorkspace.id,
+  )
+  await page.waitForFunction(
+    () => !document.querySelector('.workspace-sidebar .sidebar-decoration'),
+  )
+  assert.equal(
+    await page.evaluate(() => window.hibi.queryAddon('git', 'decorations')),
+    null,
+  )
 })

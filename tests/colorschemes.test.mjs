@@ -46,7 +46,11 @@ test('bundled palettes retain licenses, provide every role, and keep text readab
       'hover',
       'active',
     ]) {
-      for (const foreground of ['ink', 'muted']) {
+      for (const foreground of [
+        'ink',
+        'muted',
+        ...COLOR_TOKENS.filter((token) => token.startsWith('status-')),
+      ]) {
         assert.ok(
           contrast(scheme.colors[foreground], scheme.colors[background]) >= 4.5,
           `${scheme.id}: ${foreground} on ${background}`,

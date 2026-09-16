@@ -9,7 +9,11 @@ import type {
 } from '../shared/colorschemes'
 import type { DocumentCommand } from '../shared/desktop'
 import type { AppCommand } from '../shared/hotkeys'
-import type { WorkspaceSnapshot, WorkspaceState } from '../shared/workspace'
+import type {
+  ExplorerDecorationProvider,
+  WorkspaceSnapshot,
+  WorkspaceState,
+} from '../shared/workspace'
 import type { DialogApi } from '../ui/dialogs'
 import type { MenuApi } from '../ui/menus'
 import type { ToastApi } from '../ui/toasts'
@@ -23,6 +27,10 @@ export type {
   ColorToken,
   ThemePreferences,
 } from '../shared/colorschemes'
+export type {
+  ExplorerDecoration,
+  ExplorerDecorationProvider,
+} from '../shared/workspace'
 export type {
   DialogApi,
   DialogHandle,
@@ -267,6 +275,8 @@ export type AddonContext = {
     getSlashCommands: () => readonly (AddonSlashCommand & { id: string })[]
   }
   workspace: {
+    /** Explorer-only badges/colors. Removed with this addon's lifecycle. */
+    registerDecorations: (provider: ExplorerDecorationProvider) => () => void
     snapshot: () => Promise<WorkspaceSnapshot>
     get: () => Promise<WorkspaceState | null>
     open: () => Promise<WorkspaceState | null>
@@ -274,6 +284,8 @@ export type AddonContext = {
   }
   /** Calls only the current addon's explicitly exported native methods. */
   native: {
+    /** Only explicitly exported native queries; does not lock editor/file actions. */
+    query: <T = unknown>(method: string, input?: unknown) => Promise<T>
     invoke: <T = unknown>(method: string, input?: unknown) => Promise<T>
   }
   notify: (message: string) => void
@@ -292,6 +304,7 @@ export type Addon = {
 /** Native modules are trusted application code, never loaded from a workspace. */
 export type NativeAddonContext = {
   workspace: {
+    id: () => string | null
     snapshot: () => Promise<WorkspaceSnapshot>
     /** Trusted native modules only. Never exposed to workspace markdown. */
     directory: () => string | null
@@ -308,6 +321,11 @@ export type NativeAddonContext = {
 
 export type NativeAddon = {
   id: string
+  /** Trusted read-only handlers. Must not mutate files or launch dialogs. */
+  queries?: Record<
+    string,
+    (input: unknown, context: NativeAddonContext) => Promise<unknown>
+  >
   methods: Record<
     string,
     (input: unknown, context: NativeAddonContext) => Promise<unknown>
@@ -322,4 +340,5 @@ export const ADDON_CHANNELS = {
   states: 'addons:states',
   enable: 'addons:enable',
   invoke: 'addons:invoke',
+  query: 'addons:query',
 } as const

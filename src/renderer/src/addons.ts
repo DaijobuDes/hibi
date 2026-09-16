@@ -25,6 +25,7 @@ import { createAddonOverrides } from './addon-overrides'
 import { addonRegistry } from './addon-registry'
 import { colorschemes } from './colorschemes'
 import { onEditorInput, onEditorKeyEvent } from './editor-events'
+import { explorerDecorations } from './explorer-decorations'
 import { flavors, renderMarkdown } from './flavors'
 import { projectMarkdown } from './markdown'
 import { toolbar } from './toolbar'
@@ -44,11 +45,13 @@ type Environment = Omit<
   | 'dialogs'
   | 'toasts'
   | 'notify'
+  | 'workspace'
   | 'menus'
   | 'colorschemes'
   | 'toolbar'
   | 'tooltips'
 > & {
+  workspace: Omit<AddonContext['workspace'], 'registerDecorations'>
   invoke: (id: string, method: string, input?: unknown) => Promise<unknown>
   error: (error: unknown) => void
   updateMarkdown: AddonContext['editor']['updateMarkdown']
@@ -501,6 +504,21 @@ export function useAddons(environment: Environment) {
             },
           },
           workspace: {
+            registerDecorations(provider) {
+              if (disposed) return () => {}
+              if (!/^[a-z][a-z0-9-]*$/.test(provider.id))
+                throw new Error('invalid explorer provider id.')
+              const remove = explorerDecorations.register(
+                `${id}.${provider.id}`,
+                provider,
+              )
+              const cleanup = () => {
+                remove()
+                cleanups.delete(cleanup)
+              }
+              cleanups.add(cleanup)
+              return cleanup
+            },
             snapshot: () =>
               disposed
                 ? Promise.reject(new Error('addon is disabled.'))
@@ -516,6 +534,10 @@ export function useAddons(environment: Environment) {
                 : latest.current.workspace.openFile(path),
           },
           native: {
+            query: <T>(method: string, input?: unknown) =>
+              disposed
+                ? Promise.reject(new Error('addon is disabled.'))
+                : (window.hibi.queryAddon(id, method, input) as Promise<T>),
             invoke: <T>(method: string, input?: unknown) =>
               disposed
                 ? Promise.reject(new Error('addon is disabled.'))

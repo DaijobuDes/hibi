@@ -25,6 +25,9 @@ let onChanged: () => void = () => {}
 export function workspaceRoot(): string | null {
   return root
 }
+export function workspaceId(): string | null {
+  return root ? createHash('sha256').update(root).digest('hex') : null
+}
 
 function relativePath(base: string, path: string): string | null {
   const value = relative(base, path)
@@ -102,6 +105,7 @@ export function getWorkspace(): WorkspaceState | null {
     visible = addDraft(entries, 0)
   }
   return {
+    id: workspaceId()!,
     name: basename(root),
     entries: visible,
     activePath,

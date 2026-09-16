@@ -495,6 +495,11 @@ if (!app.requestSingleInstanceLock()) {
             invokeAddon(window, id, method, input),
           ),
       )
+      ipcMain.handle(
+        ADDON_CHANNELS.query,
+        (event, id: unknown, method: unknown, input: unknown) =>
+          invokeAddon(trustedWindow(event), id, method, input, true),
+      )
       ipcMain.handle(HOTKEY_CHANNELS.get, (event) => {
         trustedWindow(event)
         return hotkeys

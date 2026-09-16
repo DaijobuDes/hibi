@@ -1,10 +1,24 @@
 import { defineAddon } from '../api'
+import { gitDecorations } from './decorations'
 import manifest from './manifest'
 import { GitPanel } from './Panel'
+import type { GitFile } from './types'
 
 export default defineAddon({
   manifest,
   start(context) {
+    context.workspace.registerDecorations({
+      id: 'status',
+      async provide(workspace) {
+        const state = await context.native.query<{
+          id: string
+          files: GitFile[]
+        } | null>('decorations')
+        return state && state.id === workspace.id
+          ? gitDecorations(state.files)
+          : []
+      },
+    })
     const open = () => {
       context.dialogs.open({
         title: 'git',

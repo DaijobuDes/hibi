@@ -16,9 +16,24 @@ export type WorkspaceEntry = {
 }
 
 export type WorkspaceState = {
+  /** Opaque identity; changes when a different folder is opened. */
+  id?: string
   name: string
   entries: WorkspaceEntry[]
   activePath: string | null
+}
+
+export type ExplorerDecoration = {
+  /** Workspace-relative file or folder path. Empty string decorates the workspace heading. */
+  path: string
+  label: string
+  badge?: string
+  color?: import('./colorschemes').ColorToken
+}
+export type ExplorerDecorationProvider = {
+  id: string
+  /** Called after workspace changes. Return a complete replacement set. */
+  provide: (workspace: WorkspaceState) => Promise<readonly ExplorerDecoration[]>
 }
 
 export type WorkspaceAction = {

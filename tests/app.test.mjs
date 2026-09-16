@@ -71,6 +71,7 @@ test('desktop launch, isolation, offline reload, and recovery', {
         'getAddonStates',
         'setAddonEnabled',
         'invokeAddon',
+        'queryAddon',
         'getWorkspace',
         'getWorkspaceSnapshot',
         'workspaceAction',

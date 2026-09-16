@@ -11,6 +11,7 @@ export type SidebarItem = {
   /** Optional section label immediately before this row. */
   section?: string
   dirty?: boolean
+  decoration?: Omit<ExplorerDecoration, 'path'>
 }
 export type SidebarProps = {
   items: readonly SidebarItem[]

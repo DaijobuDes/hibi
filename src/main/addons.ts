@@ -21,7 +21,12 @@ import {
   loadInstalledAddons,
   removePackage,
 } from './sideload'
-import { refreshWorkspace, snapshotWorkspace, workspaceRoot } from './workspace'
+import {
+  refreshWorkspace,
+  snapshotWorkspace,
+  workspaceId,
+  workspaceRoot,
+} from './workspace'
 
 const bundledManifests = Object.values(
   import.meta.glob<AddonManifest>(
@@ -141,6 +146,7 @@ export async function invokeAddon(
   id: unknown,
   method: unknown,
   input: unknown,
+  query = false,
 ): Promise<unknown> {
   if (
     typeof id !== 'string' ||
@@ -149,12 +155,14 @@ export async function invokeAddon(
   )
     throw new Error('addon is not enabled.')
   const addon = natives.find((addon) => addon.id === id)
-  if (!addon || !Object.hasOwn(addon.methods, method))
+  const handlers = query ? addon?.queries : addon?.methods
+  if (!handlers || !Object.hasOwn(handlers, method))
     throw new Error('unknown addon method.')
-  const handler = addon.methods[method]
+  const handler = handlers[method]
   if (!handler) throw new Error('unknown addon method.')
   return handler(input, {
     workspace: {
+      id: workspaceId,
       directory: workspaceRoot,
       hasUnsavedChanges: () => getDocument().dirty,
       async reload() {

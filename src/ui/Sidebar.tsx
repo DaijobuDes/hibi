@@ -10,6 +10,7 @@ import {
   useState,
 } from 'react'
 import './sidebar.css'
+import type { ExplorerDecoration } from '../shared/workspace'
 import { MIN_SIDEBAR_WIDTH } from './useSidebarResize'
 
 export type SidebarItem = {
@@ -20,6 +21,7 @@ export type SidebarItem = {
   /** Optional section label immediately before this row. */
   section?: string
   dirty?: boolean
+  decoration?: Omit<ExplorerDecoration, 'path'>
 }
 export type SidebarProps = {
   items: readonly SidebarItem[]
@@ -112,6 +114,7 @@ export function Sidebar({
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [focused, setFocused] = useState<string | null>(null)
   const buttons = useRef(new Map<string, HTMLButtonElement>())
+  const revealed = useRef('')
   useEffect(() => {
     if (mode === 'tabs') return
     const parents: string[] = []
@@ -127,6 +130,9 @@ export function Sidebar({
     }
     if (selected) find(items, selected)
     if (editing?.id) find(items, editing.id)
+    const key = JSON.stringify([selected, editing?.id, parents])
+    if (revealed.current === key) return
+    revealed.current = key
     if (parents.length) setExpanded((old) => new Set([...old, ...parents]))
   }, [items, selected, mode, editing?.id])
   const rows = useMemo(() => {
@@ -237,10 +243,22 @@ export function Sidebar({
                             : undefined
                         }
                         tabIndex={focusId === item.id ? 0 : -1}
-                        style={{ paddingLeft: 16 + depth * 14 }}
-                        title={item.label}
+                        style={{
+                          paddingLeft: 16 + depth * 14,
+                          color: item.decoration?.color
+                            ? `var(--${item.decoration.color})`
+                            : undefined,
+                        }}
+                        title={[item.label, item.decoration?.label]
+                          .filter(Boolean)
+                          .join(' · ')}
                         aria-description={
-                          item.dirty ? 'unsaved changes' : undefined
+                          [
+                            item.dirty ? 'unsaved changes' : '',
+                            item.decoration?.label,
+                          ]
+                            .filter(Boolean)
+                            .join('; ') || undefined
                         }
                         onContextMenu={(event) => {
                           if (onMenu) {
@@ -319,10 +337,18 @@ export function Sidebar({
                             aria-hidden="true"
                           />
                         )}
-                        <span>{item.label}</span>
+                        <span className="sidebar-label">{item.label}</span>
                         {item.dirty && (
                           <span className="sidebar-dirty" aria-hidden="true">
                             ●
+                          </span>
+                        )}
+                        {item.decoration?.badge && (
+                          <span
+                            className="sidebar-decoration"
+                            aria-hidden="true"
+                          >
+                            {item.decoration.badge}
                           </span>
                         )}
                       </button>

@@ -2,6 +2,16 @@
 
 optional extension by may. enable in settings → addons, then open the repository root as your workspace. click the git status pill or use the git commands in the palette.
 
+## explorer integration
+
+the explorer shows `M` for modified files, `A` for additions, `U` for untracked files, `R` for renames, and `!` for merge conflicts. changed files and their parent folders use theme status colors; folder dots and the workspace heading include change counts in their descriptions/tooltips. tooltips distinguish staged and unstaged changes. the existing unsaved-edit dot stays independent: git compares files on disk with the index and commit.
+
+collapsed folders stay collapsed when status refreshes. renames mark both old and new parent folders. deleted files disappear from the normal explorer but still mark their remaining parent folders; the git dialog lists them as `D`. folder counts also include changed files that the markdown explorer does not display.
+
+status refreshes after workspace filesystem events, explicit refresh, and window focus. reads are debounced and run through a read-only native query without locking editor/save actions. git optional index writes are disabled to prevent refresh loops. when a linked worktree's git metadata lives outside the opened folder, focus or refresh updates changes made there by another git client. switching workspaces or disabling the extension clears its markers and ignores stale requests. ordinary folders show no git markers.
+
+decorations use the shared [explorer decoration api](../../../docs/extensions/explorer-decorations.md). themes can override `status-success`, `status-warning`, `status-danger`, and `status-info`; older themes receive defaults.
+
 - view branch, changed files, staged/unstaged diffs, and ahead/behind counts.
 - stage or unstage individual paths, and commit staged changes with a message.
 - switch local branches or create a tracking branch from a known remote branch.

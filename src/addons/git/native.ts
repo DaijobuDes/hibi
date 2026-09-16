@@ -49,6 +49,7 @@ async function repository(context: NativeAddonContext) {
           SSH_ASKPASS: '',
           GIT_PAGER: 'cat',
           GIT_LITERAL_PATHSPECS: '1',
+          GIT_OPTIONAL_LOCKS: '0',
         },
       })
       return result.stdout
@@ -148,6 +149,19 @@ async function changedPath(
 }
 export default {
   id: manifest.id,
+  queries: {
+    async decorations(_input, context) {
+      const id = context.workspace.id()
+      if (!id) return null
+      try {
+        const repo = await repository(context)
+        return { id, files: await repo.files() }
+      } catch {
+        // Ordinary folders have no Git decorations. The panel reports errors on demand.
+        return null
+      }
+    },
+  },
   methods: {
     state: (_input, context) => state(context),
     async diff(input, context) {
