@@ -6,6 +6,7 @@ import test from 'node:test'
 import { _electron as electron } from 'playwright'
 import { parseDocument } from 'yaml'
 import {
+  addFrontmatter,
   parseFrontmatter,
   replaceFrontmatter,
   splitFrontmatter,
@@ -38,9 +39,107 @@ test('frontmatter preserves raw metadata, spacing, and delimiter boundaries', ()
     assert.equal(parseFrontmatter(source), null)
   assert.ok(parseFrontmatter('---\n{}\n---\n'))
   assert.equal(
+    addFrontmatter('\uFEFFbody\r\n'),
+    '\uFEFF---\r\n{}\r\n---\r\n\r\nbody\r\n',
+  )
+  assert.equal(
+    addFrontmatter(`${prefix}original body`),
+    `${prefix}original body`,
+  )
+  assert.equal(
     replaceFrontmatter(`${prefix}original body`, 'title: changed\n'),
     '\uFEFF---  \r\ntitle: changed\r\n...\r\n\r\noriginal body',
   )
+})
+
+test('frontmatter contributes slash actions in rich and source panes only while available', {
+  timeout: 30000,
+}, async (t) => {
+  const folder = await mkdtemp(join(tmpdir(), 'hibi-frontmatter-slash-'))
+  const app = await electron.launch({
+    args: [resolve('.'), `--user-data-dir=${folder}`],
+  })
+  t.after(async () => {
+    await app.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => ({ response: 1 })
+    })
+    await app.close()
+    await rm(folder, { recursive: true, force: true })
+  })
+  const page = await app.firstWindow()
+  page.setDefaultTimeout(5000)
+  const errors = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  const rich = page.getByRole('textbox', { name: 'document editor' })
+  const source = page.getByRole('textbox', { name: 'markdown editor' })
+  const menu = page.getByRole('listbox', { name: 'slash commands' })
+  const action = menu.getByRole('option', {
+    name: 'frontmatter add page properties',
+  })
+  const read = () =>
+    page.evaluate(async () => (await window.hibi.getDocument()).markdown)
+  const mode = async (name) => {
+    await page.mouse.move(450, 18)
+    await page.getByRole('button', { name, exact: true }).click()
+  }
+  await rich.waitFor()
+  await mode('markdown only')
+  await source.fill('# keep heading\n\nfirst\n\n/frontmatter\n\nafter')
+  await mode('normal')
+  await rich.locator('p').filter({ hasText: '/frontmatter' }).click()
+  await rich.press('End')
+  await action.click()
+  await page.getByRole('region', { name: 'frontmatter properties' }).waitFor()
+  const result = await read()
+  assert.match(result, /^---\n\{\}\n---\n/)
+  assert.ok(!result.includes('/frontmatter'))
+  assert.match(
+    splitFrontmatter(result).content,
+    /^# keep heading\n\nfirst[\s\S]*after$/,
+  )
+
+  await mode('markdown only')
+  const original = 'hello\n\n/properties\n\nworld'
+  await source.fill(original)
+  await source.press('ArrowUp')
+  await source.press('ArrowUp')
+  await source.press('End')
+  await action.waitFor()
+  await source.press('Enter')
+  assert.equal(
+    await read(),
+    addFrontmatter(original.replace('/properties', '')),
+  )
+  await source.press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z')
+  assert.equal(await read(), original)
+
+  const existing = '---\ntitle: keep\n---\n\n/frontmatter'
+  await source.fill(existing)
+  await menu.waitFor()
+  assert.equal(await action.count(), 0)
+  assert.equal(await read(), existing)
+  await source.press('Escape')
+  const toggle = async () => {
+    await mode('editor settings')
+    await page.getByRole('tab', { name: 'addons', exact: true }).click()
+    await page.locator('#addon-frontmatter').click()
+    await page.getByRole('button', { name: 'back to editor' }).click()
+  }
+  await toggle()
+  await source.fill('/yaml')
+  await menu.waitFor()
+  assert.equal(await action.count(), 0)
+  await source.press('Escape')
+  await toggle()
+  await source.fill('')
+  await source.fill('/yaml')
+  await action.waitFor()
+  await source.press('Enter')
+  assert.equal(await read(), addFrontmatter(''))
+  await mode('side-by-side')
+  await page.getByRole('region', { name: 'frontmatter properties' }).waitFor()
+  assert.equal(await page.locator('.error-message').innerText(), '')
+  assert.deepEqual(errors, [])
 })
 
 test('frontmatter fields preserve comments, types, nested YAML and body edits', {

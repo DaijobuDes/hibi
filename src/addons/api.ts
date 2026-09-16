@@ -100,7 +100,18 @@ export type AddonCommand = {
   label: string
   /** Also show this command below the workspace tree. */
   workspace?: boolean
+  /** Optional whole-note action exposed by the slash-commands addon. */
+  slash?: AddonSlashCommand
   run: () => void | Promise<void>
+}
+
+export type AddonSlashCommand = {
+  label: string
+  description: string
+  keywords?: string
+  when?: (source: string) => boolean
+  /** Receives the complete note with the slash query removed. Null cancels. */
+  transform: (source: string) => string | null
 }
 
 export type ExportResult = { path: string; pages: number }
@@ -137,9 +148,17 @@ export type AddonContext = {
     /** Uses the app's file dialogs, draft checks, and save handling. */
     runCommand: (command: DocumentCommand) => Promise<boolean>
     /** Apply a synchronous source transform to the active note; throws while busy. */
-    updateMarkdown: (transform: (source: string) => string) => void
+    updateMarkdown: (
+      transform: (source: string) => string | null,
+      /** Replace the projected rich-editor body before applying the transform. */
+      options?: { body: string },
+    ) => void
   }
-  commands: { register: (command: AddonCommand) => () => void }
+  commands: {
+    register: (command: AddonCommand) => () => void
+    /** Enabled commands whose slash action is available for the active note. */
+    getSlashCommands: () => readonly (AddonSlashCommand & { id: string })[]
+  }
   workspace: {
     get: () => Promise<WorkspaceState | null>
     open: () => Promise<WorkspaceState | null>

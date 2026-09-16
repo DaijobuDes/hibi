@@ -2,10 +2,11 @@ import type { Editor } from '@tiptap/core'
 import { closeHistory } from '@tiptap/pm/history'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import type { EditorView } from '@tiptap/pm/view'
+import type { AddonContext } from '../api'
 import { slashQuery } from './commands'
 import { createSlashMenu } from './menu'
 
-export function attachRich(editor: Editor) {
+export function attachRich(editor: Editor, context: AddonContext) {
   const key = new PluginKey('slashCommands')
   let menu: ReturnType<typeof createSlashMenu> | null = null
   let view: EditorView | null = null
@@ -45,6 +46,14 @@ export function attachRich(editor: Editor) {
                 latest.query !== match.query
               )
                 return
+              if ('transform' in command) {
+                const draft = editor.state.tr.deleteRange(match.from, match.to)
+                const body = editor.storage.markdown.manager.serialize(
+                  draft.doc.toJSON(),
+                )
+                context.editor.updateMarkdown(command.transform, { body })
+                return
+              }
               command
                 .rich(
                   editor
@@ -84,7 +93,7 @@ export function attachRich(editor: Editor) {
       },
       view: (mountedView) => {
         view = mountedView
-        menu = createSlashMenu(view.dom, schedule)
+        menu = createSlashMenu(view.dom, schedule, context)
         schedule()
         return {
           update: schedule,

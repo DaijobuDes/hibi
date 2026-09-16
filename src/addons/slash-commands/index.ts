@@ -7,10 +7,14 @@ export default defineAddon({
   manifest,
   start(context) {
     context.styles.register('menu', css)
-    context.editor.registerRich({ id: 'menu', attach: attachRich })
+    context.editor.registerRich({
+      id: 'menu',
+      attach: (editor) => attachRich(editor, context),
+    })
     context.editor.registerSource({
       id: 'menu',
-      create: async () => (await import('./source')).sourceSlashCommands(),
+      create: async () =>
+        (await import('./source')).sourceSlashCommands(context),
     })
   },
 })

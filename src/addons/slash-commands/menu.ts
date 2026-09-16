@@ -1,4 +1,5 @@
 import { shortcutLabels } from '../../shared/hotkeys'
+import type { AddonContext } from '../api'
 import { filterCommands, type SlashCommand } from './commands'
 
 export type SlashMatch = {
@@ -9,7 +10,11 @@ export type SlashMatch = {
   run: (command: SlashCommand) => void
 }
 
-export function createSlashMenu(editor: HTMLElement, reposition: () => void) {
+export function createSlashMenu(
+  editor: HTMLElement,
+  reposition: () => void,
+  context: AddonContext,
+) {
   const menu = document.createElement('div')
   menu.className = 'slash-menu'
   menu.popover = 'manual'
@@ -111,7 +116,13 @@ export function createSlashMenu(editor: HTMLElement, reposition: () => void) {
         hide()
         return
       }
-      const changed = next.from !== match?.from || next.query !== match?.query
+      const available = filterCommands(next.query, context)
+      const changed =
+        next.from !== match?.from ||
+        next.query !== match?.query ||
+        available.length !== results.length ||
+        available.some((command, index) => command.id !== results[index]?.id)
+      results = available
       if (
         next.from !== match?.from ||
         !next.query.startsWith(match?.query ?? '')
@@ -124,7 +135,6 @@ export function createSlashMenu(editor: HTMLElement, reposition: () => void) {
         return
       }
       if (changed || !open()) {
-        results = filterCommands(next.query)
         active = 0
         list.replaceChildren(
           ...results.map((command, index) => {

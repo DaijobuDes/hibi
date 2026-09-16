@@ -41,9 +41,9 @@ test('slash commands work in both editors, preserve undo, and coexist with vim',
   await page.waitForFunction(
     () =>
       document.querySelectorAll('.slash-menu:popover-open [role="option"]')
-        .length === 11,
+        .length === 12,
   )
-  assert.equal(await menu.getByRole('option').count(), 11)
+  assert.equal(await menu.getByRole('option').count(), 12)
   await mkdir('test-results', { recursive: true })
   await page.screenshot({
     path: 'test-results/slash-commands.png',

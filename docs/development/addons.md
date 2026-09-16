@@ -64,6 +64,29 @@ export default defineAddon({
 
 private addons import the SDK from `../../addons/api`. use a unique lowercase id containing letters, numbers, or hyphens. commands receive an automatic `<addon-id>.` prefix. the host unregisters commands when an addon stops; addons must clean up their own event listeners and timers in `stop`.
 
+### slash actions from addons
+
+an existing command can opt into the slash menu with `slash: { label, description, keywords?, when?, transform }`. `when(source)` controls availability for the complete active note. `transform(source)` synchronously receives the whole note with the slash query removed and returns its replacement, or `null` to cancel without an edit. keep transforms pure. frontmatter's command shares one `addFrontmatter` transform between the palette and slash menu.
+
+```typescript
+context.commands.register({
+  id: 'properties',
+  label: 'add properties',
+  run: () => context.editor.updateMarkdown(addProperties),
+  slash: {
+    label: 'properties',
+    description: 'add page metadata',
+    keywords: 'frontmatter yaml',
+    when: source => !hasProperties(source),
+    transform: addProperties,
+  },
+})
+```
+
+`context.commands.getSlashCommands()` returns currently available contributions from enabled addons. ids are prefixed by their owner; unregister and stop remove contributions, and stale transforms cancel safely. predicate or transform errors are reported by the host without committing the draft edit. slash queries remain untouched when a transform cancels.
+
+`context.editor.updateMarkdown(transform, { body })` can replace the projected rich body before applying a whole-note transform. the host reconstructs any metadata through the current markdown projections first. query removal and the transform commit together. this retains the existing whole-note behavior: rich editor state is rebuilt and its undo history resets. source slash actions use one CodeMirror transaction and retain undo. built-in block slash commands retain undo in either editor.
+
 `context.workspace` opens or reads the selected workspace. `context.native.invoke` can call only that addon’s exported native methods. errors are shown in the app. native methods receive input as `unknown` and must validate their own arguments.
 
 ## css overrides and method patches

@@ -3,6 +3,7 @@ import { syntaxTree } from '@codemirror/language'
 import { Prec, Transaction } from '@codemirror/state'
 import { EditorView, ViewPlugin } from '@codemirror/view'
 import { readFrontmatter } from '../../shared/frontmatter'
+import type { AddonContext } from '../api'
 import { slashQuery } from './commands'
 import { createSlashMenu } from './menu'
 
@@ -36,7 +37,7 @@ function current(view: EditorView) {
   return { from: line.from, to: selection.head, query }
 }
 
-export function sourceSlashCommands() {
+export function sourceSlashCommands(context: AddonContext) {
   return Prec.highest(
     ViewPlugin.fromClass(
       class {
@@ -44,7 +45,11 @@ export function sourceSlashCommands() {
         frame = 0
         destroyed = false
         constructor(readonly view: EditorView) {
-          this.menu = createSlashMenu(view.contentDOM, () => this.schedule())
+          this.menu = createSlashMenu(
+            view.contentDOM,
+            () => this.schedule(),
+            context,
+          )
           this.schedule()
         }
         schedule() {
@@ -70,6 +75,28 @@ export function sourceSlashCommands() {
                       latest.query !== match.query
                     )
                       return
+                    if ('transform' in command) {
+                      const source = this.view.state.doc.toString()
+                      const markdown = command.transform(
+                        source.slice(0, match.from) + source.slice(match.to),
+                      )
+                      if (markdown === null) return
+                      this.view.dispatch({
+                        changes: {
+                          from: 0,
+                          to: source.length,
+                          insert: markdown,
+                        },
+                        selection: { anchor: markdown.length },
+                        annotations: [
+                          Transaction.userEvent.of('input.complete'),
+                          isolateHistory.of('full'),
+                        ],
+                        scrollIntoView: true,
+                      })
+                      this.view.focus()
+                      return
+                    }
                     this.view.dispatch({
                       changes: {
                         from: match.from,

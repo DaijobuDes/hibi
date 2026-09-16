@@ -1,6 +1,7 @@
 import type { ChainedCommands } from '@tiptap/core'
+import type { AddonContext } from '../api'
 
-export type SlashCommand = {
+type BlockCommand = {
   id: string
   label: string
   description: string
@@ -10,7 +11,17 @@ export type SlashCommand = {
   rich: (chain: ChainedCommands) => ChainedCommands
 }
 
-export const commands: SlashCommand[] = [
+export type SlashCommand =
+  | BlockCommand
+  | {
+      id: string
+      label: string
+      description: string
+      keywords: string
+      transform: (source: string) => string | null
+    }
+
+export const commands: BlockCommand[] = [
   {
     id: 'text',
     label: 'text',
@@ -94,9 +105,15 @@ export function slashQuery(text: string) {
   return /^\/([\p{L}\p{N} -]{0,48})$/u.exec(text)?.[1] ?? null
 }
 
-export function filterCommands(query: string) {
+export function filterCommands(query: string, context: AddonContext) {
   const terms = query.toLowerCase().trim().split(/\s+/)
-  return commands.filter((command) =>
+  const available: SlashCommand[] = [
+    ...commands,
+    ...context.commands
+      .getSlashCommands()
+      .map((command) => ({ ...command, keywords: command.keywords ?? '' })),
+  ]
+  return available.filter((command) =>
     terms.every((term) =>
       `${command.label} ${command.description} ${command.keywords}`.includes(
         term,

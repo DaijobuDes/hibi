@@ -3,6 +3,13 @@ import type { MarkdownProjection } from '../api'
 
 export { splitFrontmatter }
 
+export function addFrontmatter(source: string): string {
+  if (parseFrontmatter(source)) return source
+  const bom = source.startsWith('\uFEFF') ? '\uFEFF' : ''
+  const eol = source.includes('\r\n') ? '\r\n' : '\n'
+  return `${bom}---${eol}{}${eol}---${eol}${eol}${source.slice(bom.length)}`
+}
+
 export function replaceFrontmatter(source: string, yaml: string): string {
   const block = splitFrontmatter(source)
   if (!block) return source

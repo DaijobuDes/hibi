@@ -29,6 +29,7 @@ type Environment = Omit<
   updateMarkdown: AddonContext['editor']['updateMarkdown']
   runCommand: AddonContext['editor']['runCommand']
   runAction: AddonApp['runAction']
+  getMarkdown: () => string
 }
 
 export function useAddons(environment: Environment) {
@@ -262,8 +263,8 @@ export function useAddons(environment: Environment) {
                 if (!disposed && mounted.current) publishSources()
               }
             },
-            updateMarkdown(transform) {
-              if (!disposed) latest.current.updateMarkdown(transform)
+            updateMarkdown(transform, options) {
+              if (!disposed) latest.current.updateMarkdown(transform, options)
             },
             registerMarkdown(extension) {
               if (disposed) return () => {}
@@ -301,17 +302,52 @@ export function useAddons(environment: Environment) {
             },
           },
           commands: {
+            getSlashCommands() {
+              if (disposed) return []
+              const source = latest.current.getMarkdown()
+              return [...registered.values()].flatMap(({ id, slash }) =>
+                slash && (!slash.when || slash.when(source))
+                  ? [{ ...slash, id }]
+                  : [],
+              )
+            },
             register(command) {
               if (disposed) return () => {}
               const key = `${id}.${command.id}`
               if (!/^[a-z][a-z0-9-]*$/.test(command.id) || registered.has(key))
                 throw new Error(`duplicate or invalid command: ${key}`)
+              let active = true
               registered.set(key, {
                 ...command,
                 id: key,
                 addonId: id,
+                ...(command.slash
+                  ? {
+                      slash: {
+                        ...command.slash,
+                        when(source) {
+                          if (!active || disposed) return false
+                          try {
+                            return command.slash?.when?.(source) ?? true
+                          } catch (error) {
+                            latest.current.error(error)
+                            return false
+                          }
+                        },
+                        transform(source) {
+                          if (!active || disposed) return null
+                          try {
+                            return command.slash?.transform(source) ?? null
+                          } catch (error) {
+                            latest.current.error(error)
+                            return null
+                          }
+                        },
+                      },
+                    }
+                  : {}),
                 run: async () => {
-                  if (disposed) return
+                  if (!active || disposed) return
                   try {
                     await command.run()
                   } catch (error) {
@@ -321,6 +357,8 @@ export function useAddons(environment: Environment) {
               })
               if (mounted.current) setCommands([...registered.values()])
               return () => {
+                if (!active || disposed) return
+                active = false
                 registered.delete(key)
                 if (!disposed && mounted.current)
                   setCommands([...registered.values()])

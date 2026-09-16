@@ -32,6 +32,7 @@ import { CommandPalette, type PaletteCommand } from './CommandPalette'
 import { MarkdownEditor, type ViewMode } from './Editor'
 import { loadCursor } from './EditorCursor'
 import { LoadingScreen } from './LoadingScreen'
+import { projectMarkdown } from './markdown'
 import { SettingsScreen } from './SettingsScreen'
 import { StatusBar } from './StatusBar'
 import { Titlebar } from './Titlebar'
@@ -98,12 +99,19 @@ function App() {
   }, [cursorSettings])
   const [notice, setNotice] = useState('')
   const addonHost = useAddons({
+    getMarkdown: () => document?.markdown ?? '',
     runAction: (command) => runAction(command),
     runCommand: (command) => runCommand(command),
-    updateMarkdown(transform) {
+    updateMarkdown(transform, options) {
       if (busyRef.current || !document) throw new Error('the document is busy.')
-      const markdown = transform(document.markdown)
-      if (markdown === document.markdown) return
+      const source = options
+        ? projectMarkdown(
+            document.markdown,
+            addonHost.markdownExtensions,
+          ).serialize(options.body)
+        : document.markdown
+      const markdown = transform(source)
+      if (markdown === null || markdown === document.markdown) return
       updateMarkdown(markdown)
       setResetEditor((value) => value + 1)
     },
