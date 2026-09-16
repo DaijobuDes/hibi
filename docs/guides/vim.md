@@ -17,3 +17,5 @@ this is an embedded vim editing engine. it does not run vimscript, terminal comm
 ## preferences
 
 settings → plugins → vim controls starting in insert mode and showing the current mode in a bottom-left status pill. command prompts stay inside the source pane and remain available when status is hidden. preferences persist; the starting mode applies to new source editor sessions. disabling the plugin removes its key handling and status pill while preserving the document and source undo history.
+
+the status bar sits below the editor page, beside the sidebar. its second pill builds the pending command as you type (`2` → `22` → `22k`) and keeps the completed sequence visible until the next one begins. `22k` runs when you press `k`; pressing enter afterward leaves the pill showing `22k`. escape cancels a pending command and restores the previous display. search (`/`, `?`) and `:` prompts are included. text typed in insert mode is not shown. **show vim status** hides or shows both pills.

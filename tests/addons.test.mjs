@@ -169,7 +169,25 @@ test('plugin pages, metadata, shared controls, and full source vim editing', {
   }
   assert.equal(await read(), initial)
   await source.press('Escape')
+  const pendingCommand = page.locator(
+    '.app-statusbar [title="pending vim command"]',
+  )
+  const lastCommand = page.locator('.app-statusbar [title="last vim command"]')
+  await source.pressSequentially('2')
+  assert.equal(await pendingCommand.innerText(), '2')
+  await source.pressSequentially('2')
+  assert.equal(await pendingCommand.innerText(), '22')
+  await source.pressSequentially('k')
+  assert.equal(await lastCommand.innerText(), '22k')
+  await source.press('Enter')
+  assert.equal(await lastCommand.innerText(), '22k')
+  await source.pressSequentially('d')
+  assert.equal(await pendingCommand.innerText(), 'd')
+  await source.press('Escape')
+  assert.equal(await lastCommand.innerText(), '22k')
+  assert.equal(await read(), initial)
   await source.pressSequentially('gg0dw')
+  assert.equal(await lastCommand.innerText(), 'dw')
   assert.match(await read(), /^beta gamma/)
   await source.press('u')
   assert.equal(await read(), initial)
@@ -182,6 +200,7 @@ test('plugin pages, metadata, shared controls, and full source vim editing', {
   await source.pressSequentially('gg0ciw')
   await page.getByRole('status').filter({ hasText: 'vim · insert' }).waitFor()
   await page.keyboard.type('omega')
+  assert.equal(await lastCommand.innerText(), 'ciw')
   await page.keyboard.press('Escape')
   await source.pressSequentially('w.')
   assert.match(await read(), /^omega omega gamma/)
@@ -189,7 +208,14 @@ test('plugin pages, metadata, shared controls, and full source vim editing', {
     await source.pressSequentially(':')
     const input = page.locator('.cm-vim-panel input')
     await input.fill(command)
+    await page.waitForFunction(
+      (command) =>
+        document.querySelector('.app-statusbar [title="pending vim command"]')
+          ?.textContent === `:${command}`,
+      command,
+    )
     await input.press('Enter')
+    assert.equal(await lastCommand.innerText(), `:${command}`)
   }
   await ex('%s/omega/alpha/g')
   assert.match(await read(), /^alpha alpha gamma/)
@@ -206,9 +232,17 @@ test('plugin pages, metadata, shared controls, and full source vim editing', {
     .waitFor({ state: 'attached' })
   await source.press('Escape')
   const beforeSearch = await read()
+  const beforePrompt = await lastCommand.innerText()
+  await source.press('/')
+  await page.locator('.cm-vim-panel input').fill('cancel this')
+  assert.equal(await pendingCommand.innerText(), '/cancel this')
+  await page.locator('.cm-vim-panel input').press('Escape')
+  assert.equal(await lastCommand.innerText(), beforePrompt)
   await source.press('/')
   await page.locator('.cm-vim-panel input').fill('second')
+  assert.equal(await pendingCommand.innerText(), '/second')
   await page.locator('.cm-vim-panel input').press('Enter')
+  assert.equal(await lastCommand.innerText(), '/second')
   assert.equal(await read(), beforeSearch)
   await ex('w')
   await page
@@ -223,6 +257,15 @@ test('plugin pages, metadata, shared controls, and full source vim editing', {
     path: 'test-results/vim-status.png',
     animations: 'disabled',
   })
+  await page.getByRole('button', { name: 'editor settings' }).click()
+  await page.getByRole('tab', { name: 'vim', exact: true }).click()
+  await page.getByRole('checkbox', { name: 'show vim status' }).uncheck()
+  await page.getByRole('button', { name: 'back to editor' }).click()
+  assert.equal(await page.locator('.app-statusbar').count(), 0)
+  await page.getByRole('button', { name: 'editor settings' }).click()
+  await page.getByRole('checkbox', { name: 'show vim status' }).check()
+  await page.getByRole('button', { name: 'back to editor' }).click()
+  assert.equal(await lastCommand.innerText(), ':w')
   await page.getByRole('button', { name: 'editor settings' }).click()
   await page.getByRole('tab', { name: 'addons', exact: true }).click()
   await toggleAddon('vim', false)
