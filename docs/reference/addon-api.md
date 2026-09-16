@@ -6,6 +6,7 @@ generated from `src/addons/api.ts`. update the source, then run `npm run docs`. 
 import type { Extension } from '@codemirror/state'
 import type { ComponentType } from 'react'
 import type { DocumentCommand } from '../shared/desktop'
+import type { AppCommand } from '../shared/hotkeys'
 import type { WorkspaceSnapshot, WorkspaceState } from '../shared/workspace'
 
 /** Increment when a public contract changes incompatibly. */
@@ -43,6 +44,54 @@ export type StatusHandle = {
   dispose: () => void
 }
 
+export type StyleHandle = {
+  update: (css: string) => void
+  dispose: () => void
+}
+
+type Method = (...args: never[]) => unknown
+type MethodKey<T> = {
+  [K in keyof T]-?: T[K] extends Method ? K : never
+}[keyof T]
+type MethodOf<T, K extends keyof T> = Extract<T[K], Method>
+
+/** Patches mutable renderer methods. Every registration returns an undo function. */
+export type PatchApi = {
+  before: <T extends object, K extends MethodKey<T>>(
+    target: T,
+    key: K,
+    callback: (
+      args: Parameters<MethodOf<T, K>>,
+      receiver: T,
+      // biome-ignore lint/suspicious/noConfusingVoidType: observer hooks may return nothing.
+    ) => Parameters<MethodOf<T, K>> | void,
+  ) => () => void
+  after: <T extends object, K extends MethodKey<T>>(
+    target: T,
+    key: K,
+    callback: (
+      args: Parameters<MethodOf<T, K>>,
+      result: ReturnType<MethodOf<T, K>>,
+      receiver: T,
+    ) => ReturnType<MethodOf<T, K>>,
+  ) => () => void
+  instead: <T extends object, K extends MethodKey<T>>(
+    target: T,
+    key: K,
+    callback: (
+      args: Parameters<MethodOf<T, K>>,
+      next: (...args: Parameters<MethodOf<T, K>>) => ReturnType<MethodOf<T, K>>,
+      receiver: T,
+    ) => ReturnType<MethodOf<T, K>>,
+  ) => () => void
+}
+
+/** Shared renderer actions used by the toolbar, palette, shortcuts, and addons. */
+export type AddonApp = {
+  runAction: (command: AppCommand) => void
+  runCommand: (command: DocumentCommand) => Promise<boolean>
+}
+
 export type AddonCommand = {
   /** Local id; the host prefixes it with the addon id. */
   id: string
@@ -75,6 +124,9 @@ export type MarkdownEditorProps = {
 }
 
 export type AddonContext = {
+  app: AddonApp
+  styles: { register: (id: string, css: string) => StyleHandle }
+  patches: PatchApi
   statusBar: { register: (item: StatusItem) => StatusHandle }
   editor: {
     registerMarkdown: (extension: MarkdownExtension) => () => void

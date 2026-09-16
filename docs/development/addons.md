@@ -64,6 +64,46 @@ private addons import the SDK from `../../addons/api`. use a unique lowercase id
 
 `context.workspace` opens or reads the selected workspace. `context.native.invoke` can call only that addon’s exported native methods. errors are shown in the app. native methods receive input as `unknown` and must validate their own arguments.
 
+## css overrides and method patches
+
+`context.styles.register(id, css)` appends an addon-owned stylesheet and returns `update(css)` and `dispose()`. ids are local and unique while registered. styles use the normal CSS cascade; prefer the shared theme tokens and targeted selectors. import CSS with `?inline` when passing it to this API. unlike a plain CSS import, this stylesheet disappears when the addon stops, fails to start, or reloads. the vim addon uses this for its editor styles.
+
+```typescript
+const style = context.styles.register('appearance', `
+  :root { --accent: #a6d3e8; }
+  .app-statusbar { font-size: 11px; }
+`)
+style.update('.app-statusbar { font-size: 12px; }')
+style.dispose()
+```
+
+`context.patches.before`, `after`, and `instead` wrap mutable renderer methods. each takes a target object, method name, and callback, and returns an undo function. the target must own a function-valued data property; pass a class prototype explicitly to patch its methods. getters, frozen objects, and immutable module exports are not patch targets.
+
+- `before(target, key, (args, receiver) => newArgs | void)` can replace arguments.
+- `after(target, key, (args, result, receiver) => result)` must return the result to keep or replace it. promise-returning methods pass the promise unchanged; return a chained promise to change its resolved value.
+- `instead(target, key, (args, next, receiver) => result)` replaces behavior. calling `next(...args)` continues through the remaining patches and base method with the original `this`. skipping `next` suppresses that behavior.
+
+`context.app` exposes shared `runAction(AppCommand)` and `runCommand(DocumentCommand)` methods. toolbar, palette, and keyboard actions use these same targets; addon file commands also use `runCommand`. this lets an addon change base command behavior without patching a private React closure. normal `runCommand` retains native file dialogs, unsaved-edit checks, and path validation. skipping it does not grant filesystem access or bypass the main process.
+
+```typescript
+const undo = context.patches.instead(
+  context.app,
+  'runAction',
+  ([command], next) => next(command === 'normal' ? 'markdown' : command),
+)
+context.patches.after(context.app, 'runCommand', ([command], result) =>
+  result.then(saved => {
+    if (saved && command === 'save') context.notify('saved by my addon')
+    return saved
+  }),
+)
+undo()
+```
+
+patches compose in registration order, with the first patch outermost (`before` hooks run first-to-last and `after` hooks unwind last-to-first). each invocation uses a snapshot of its chain. disabling an addon removes only its patches, even when other addons patch the same method. the original property descriptor returns after the last patch is removed; a method replaced outside the API is left alone. calls already running may finish, so addons must cancel their own asynchronous work when needed. callback errors propagate; the host never retries a potentially destructive operation after a failed hook.
+
+these APIs run trusted renderer code. they do not load code or CSS from note contents, add native permissions, or rewrite source strings at runtime. renderer overrides are not copied into exported documentation sites. keep overrides in addon source, document their effects, and use `stop` for resources not owned by these APIs.
+
 ## native entry
 
 export a `NativeAddon` with an id and a map of asynchronous methods. `context.workspace.snapshot()` returns markdown pages with relative paths. `context.exportHtml()` asks the user where to save and writes the HTML there. never register a generic filesystem or arbitrary IPC dispatcher.

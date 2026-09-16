@@ -98,6 +98,7 @@ function App() {
   }, [cursorSettings])
   const [notice, setNotice] = useState('')
   const addonHost = useAddons({
+    runAction: (command) => runAction(command),
     runCommand: (command) => runCommand(command),
     updateMarkdown(transform) {
       if (busyRef.current || !document) throw new Error('the document is busy.')
@@ -336,7 +337,9 @@ function App() {
     }
   }
 
-  useEffect(() => window.hibi.onCommand(runAction))
+  useEffect(() =>
+    window.hibi.onCommand((command) => addonHost.app.runAction(command)),
+  )
 
   function updateMarkdown(markdown: string) {
     if (new TextEncoder().encode(markdown).length > MAX_DOCUMENT_BYTES) {
@@ -371,7 +374,7 @@ function App() {
       case 'open':
       case 'save':
       case 'saveAs':
-        void runCommand(command)
+        void addonHost.app.runCommand(command)
         break
       case 'open-workspace':
         void openFolder()
@@ -414,7 +417,7 @@ function App() {
               : 'hide top bar while typing'
             : label,
       shortcut: hotkeys[id],
-      run: () => runAction(id),
+      run: () => addonHost.app.runAction(id),
     }))
   paletteCommands.push(
     ...addonHost.commands.map((command) => ({
@@ -482,14 +485,11 @@ function App() {
         platform={info?.platform ?? 'darwin'}
         document={document}
         settingsOpen={settingsOpen}
-        onSettings={toggleSettings}
-        onPalette={openPalette}
+        onSettings={() => addonHost.app.runAction('settings')}
+        onPalette={() => addonHost.app.runAction('palette')}
         mode={mode}
-        onMode={(view) => {
-          showTitlebar()
-          setMode(view)
-        }}
-        onCommand={(command) => void runCommand(command)}
+        onMode={(view) => addonHost.app.runAction(view)}
+        onCommand={(command) => void addonHost.app.runCommand(command)}
         disabled={!document}
       />
       {paletteOpen && (
@@ -535,7 +535,7 @@ function App() {
         resize={sidebarResize}
         open={sidebarOpen && !settingsOpen}
         workspace={workspace}
-        onOpen={() => void openFolder()}
+        onOpen={() => addonHost.app.runAction('open-workspace')}
         onFile={(path) => void openFile(path)}
         onRefresh={() => void refreshFiles()}
         commands={addonHost.commands}

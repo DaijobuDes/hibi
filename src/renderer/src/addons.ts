@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ADDON_API_VERSION,
   type Addon,
+  type AddonApp,
   type AddonCommand,
   type AddonContext,
   type AddonState,
@@ -9,6 +10,7 @@ import {
   type SourceExtension,
   type StatusItem,
 } from '../../addons/api'
+import { createAddonOverrides } from './addon-overrides'
 
 export const addons = Object.values(
   import.meta.glob<Addon>(
@@ -19,17 +21,22 @@ export const addons = Object.values(
 export type RegisteredCommand = AddonCommand & { addonId: string }
 type Environment = Omit<
   AddonContext,
-  'commands' | 'native' | 'editor' | 'statusBar'
+  'commands' | 'native' | 'editor' | 'statusBar' | 'app' | 'styles' | 'patches'
 > & {
   invoke: (id: string, method: string, input?: unknown) => Promise<unknown>
   error: (error: unknown) => void
   updateMarkdown: AddonContext['editor']['updateMarkdown']
   runCommand: AddonContext['editor']['runCommand']
+  runAction: AddonApp['runAction']
 }
 
 export function useAddons(environment: Environment) {
   const latest = useRef(environment)
   latest.current = environment
+  const app = useRef<AddonApp>({
+    runCommand: (command) => latest.current.runCommand(command),
+    runAction: (command) => latest.current.runAction(command),
+  }).current
   const [states, setStates] = useState<AddonState[]>([])
   const [commands, setCommands] = useState<RegisteredCommand[]>([])
   const status = useRef(
@@ -100,7 +107,9 @@ export function useAddons(environment: Environment) {
       )
         continue
       let disposed = false
+      const overrides = createAddonOverrides(id)
       const stop = () => {
+        if (disposed) return
         disposed = true
         running.delete(id)
         for (const [key, command] of registered)
@@ -115,7 +124,11 @@ export function useAddons(environment: Environment) {
         if (mounted.current) publishExtensions()
         if (mounted.current) publishSources()
         try {
-          addon.stop?.()
+          try {
+            addon.stop?.()
+          } finally {
+            overrides.dispose()
+          }
         } catch (error) {
           latest.current.error(error)
         }
@@ -125,6 +138,9 @@ export function useAddons(environment: Environment) {
           throw new Error(`incompatible addon: ${id}`)
         running.set(id, { addon, stop })
         addon.start({
+          app,
+          styles: overrides.styles,
+          patches: overrides.patches,
           statusBar: {
             register(initial) {
               if (disposed) return { update() {}, dispose() {} }
@@ -178,9 +194,7 @@ export function useAddons(environment: Environment) {
           },
           editor: {
             runCommand: (command) =>
-              disposed
-                ? Promise.resolve(false)
-                : latest.current.runCommand(command),
+              disposed ? Promise.resolve(false) : app.runCommand(command),
             registerSource(extension) {
               if (disposed) return () => {}
               const key = `${id}.${extension.id}`
@@ -297,6 +311,7 @@ export function useAddons(environment: Environment) {
     sources,
     publishSources,
     status,
+    app,
   ])
   async function setEnabled(id: string, enabled: boolean) {
     try {
@@ -306,6 +321,7 @@ export function useAddons(environment: Environment) {
     }
   }
   return {
+    app,
     states,
     commands,
     markdownExtensions,

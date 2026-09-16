@@ -2,7 +2,6 @@ import { drawSelection, EditorView, ViewPlugin } from '@codemirror/view'
 import { getCM, Vim, vim } from '@replit/codemirror-vim'
 import type { AddonContext, StatusHandle } from '../api'
 import { vimPreferences } from './Settings'
-import './vim.css'
 
 const contexts = new WeakMap<object, AddonContext>()
 

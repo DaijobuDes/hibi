@@ -97,6 +97,10 @@ test('plugin pages, metadata, shared controls, and full source vim editing', {
     0,
   )
   await toggleAddon('vim', true)
+  assert.equal(
+    await page.locator('style[data-addon-style="vim.editor"]').count(),
+    1,
+  )
   await page.getByRole('tab', { name: 'vim', exact: true }).click()
   await page.waitForFunction(() => {
     const selected = document.querySelector(
@@ -194,6 +198,10 @@ test('plugin pages, metadata, shared controls, and full source vim editing', {
   await page.getByRole('button', { name: 'editor settings' }).click()
   await page.getByRole('tab', { name: 'addons', exact: true }).click()
   await toggleAddon('vim', false)
+  assert.equal(
+    await page.locator('style[data-addon-style="vim.editor"]').count(),
+    0,
+  )
   assert.equal(
     await page.locator('.settings-sidebar .sidebar-section').count(),
     0,
