@@ -20,6 +20,10 @@ const categoryIcons = {
   appearance: Sun,
   addons: Settings2,
   documents: FileText,
+  settings: Settings2,
+  extensions: Settings2,
+  themes: Sun,
+  format: FileText,
 }
 
 export type PaletteCommand = {
@@ -27,6 +31,7 @@ export type PaletteCommand = {
   label: string
   category: keyof typeof categoryIcons
   shortcut?: string
+  keywords?: string
   run: () => void
 }
 
@@ -58,7 +63,9 @@ export function CommandPalette({
     ? searchCommands(query)
     : commands.filter((command) =>
         terms.every((term) =>
-          `${command.category} ${command.label}`.toLowerCase().includes(term),
+          `${command.category} ${command.label} ${command.keywords ?? ''}`
+            .toLowerCase()
+            .includes(term),
         ),
       )
   const active = Math.min(selected, results.length - 1)

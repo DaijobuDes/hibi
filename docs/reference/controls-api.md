@@ -4,7 +4,15 @@ generated from `src/ui/Controls.tsx`. update the source, then run `npm run docs`
 
 ```tsx
 import { ChevronDown } from 'lucide-react'
-import type { ComponentProps, ReactNode } from 'react'
+import {
+  type ComponentProps,
+  type CSSProperties,
+  type ReactNode,
+  useContext,
+  useEffect,
+  useRef,
+} from 'react'
+import { SettingsDiscovery, settingsIndex } from './settings-index'
 
 export function Button({
   className = '',
@@ -51,6 +59,33 @@ export function Toggle(
   return <input {...props} type="checkbox" className="setting-toggle" />
 }
 
+/** Native range semantics with a shared themed track and thumb. */
+export function Slider({
+  min = 0,
+  max = 100,
+  value,
+  style,
+  className = '',
+  ...props
+}: Omit<ComponentProps<'input'>, 'type' | 'defaultValue'> & { value: number }) {
+  const range = Number(max) - Number(min)
+  const fill =
+    range > 0
+      ? Math.max(0, Math.min(100, ((value - Number(min)) / range) * 100))
+      : 0
+  return (
+    <input
+      {...props}
+      type="range"
+      min={min}
+      max={max}
+      value={value}
+      className={`ui-slider ${className}`}
+      style={{ ...style, '--slider-fill': `${fill}%` } as CSSProperties}
+    />
+  )
+}
+
 export function SettingRow({
   id,
   label,
@@ -62,8 +97,14 @@ export function SettingRow({
   description: ReactNode
   children: ReactNode
 }) {
+  const row = useRef<HTMLDivElement>(null)
+  const discover = useContext(SettingsDiscovery)
+  useEffect(() => {
+    if (discover && row.current)
+      return settingsIndex.register(row.current, id, label)
+  }, [discover, id, label])
   return (
-    <div className="setting-row">
+    <div className="setting-row" ref={row}>
       <div className="setting-copy">
         <label htmlFor={id}>{label}</label>
         <p id={`${id}-description`}>{description}</p>

@@ -9,6 +9,7 @@ import {
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react'
 import { createRoot } from 'react-dom/client'
 import type {
@@ -27,17 +28,20 @@ import { IconButton } from '../../ui/Controls'
 import { DialogProvider, useDialogs } from '../../ui/DialogProvider'
 import './styles.css'
 import type { WorkspaceState } from '../../shared/workspace'
+import { settingsIndex } from '../../ui/settings-index'
 import { useSidebarResize } from '../../ui/useSidebarResize'
-import { useAddons } from './addons'
+import { addons, useAddons } from './addons'
 import { CommandPalette, type PaletteCommand } from './CommandPalette'
+import { colorschemes } from './colorschemes'
 import { MarkdownEditor, type ViewMode } from './Editor'
 import { loadCursor } from './EditorCursor'
 import { EditorToolbar } from './EditorToolbar'
 import { LoadingScreen } from './LoadingScreen'
 import { projectMarkdown } from './markdown'
-import { SettingsScreen } from './SettingsScreen'
+import { SettingsScreen, settingsCategories } from './SettingsScreen'
 import { StatusBar } from './StatusBar'
 import { Titlebar } from './Titlebar'
+import { toolbar } from './toolbar'
 import { WorkspaceSidebar } from './WorkspaceSidebar'
 
 class ErrorBoundary extends Component<
@@ -71,6 +75,29 @@ class ErrorBoundary extends Component<
 }
 
 function App() {
+  const [settingsCategory, setSettingsCategory] = useState('hibi')
+  const [settingTarget, setSettingTarget] = useState<string | null>(null)
+  const indexedSettings = useSyncExternalStore(
+    settingsIndex.subscribe,
+    settingsIndex.snapshot,
+  )
+  const themeSnapshot = useSyncExternalStore(
+    colorschemes.subscribe,
+    colorschemes.snapshot,
+  )
+  const toolbarSnapshot = useSyncExternalStore(
+    toolbar.subscribe,
+    toolbar.snapshot,
+  )
+  useEffect(() => {
+    if (!settingTarget) return
+    const target = window.document.getElementById(settingTarget)
+    target
+      ?.closest('.setting-row')
+      ?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    target?.focus({ preventScroll: true })
+    setSettingTarget(null)
+  }, [settingTarget])
   const dialogs = useDialogs()
   const [document, setDocument] = useState<DocumentState | null>(null)
   const [resetEditor, setResetEditor] = useState(0)
@@ -209,6 +236,14 @@ function App() {
           )
           ?.focus()
       })
+  }
+
+  function openSetting(category: string, id?: string) {
+    showTitlebar()
+    setFindOpen(false)
+    setSettingsCategory(category)
+    setSettingsOpen(true)
+    setSettingTarget(id ?? null)
   }
 
   function openFind() {
@@ -441,10 +476,94 @@ function App() {
       run: () => addonHost.app.runAction(id),
     }))
   paletteCommands.push(
+    ...settingsCategories.map(({ id, label }) => ({
+      id: `settings.${id}`,
+      category: 'settings' as const,
+      label: `open ${label} settings`,
+      run: () => openSetting(id),
+    })),
+    ...indexedSettings
+      .filter((setting) => !setting.id.startsWith('addon-'))
+      .map((setting) => ({
+        id: `setting.${setting.id}`,
+        category: 'settings' as const,
+        label: setting.label,
+        keywords: `${setting.category} ${setting.keywords}`,
+        run: () => openSetting(setting.category, setting.id),
+      })),
+    ...addons.flatMap(({ manifest, Settings }) => {
+      const enabled = addonHost.states.some(
+        (state) => state.id === manifest.id && state.enabled,
+      )
+      return [
+        {
+          id: `addon.toggle.${manifest.id}`,
+          category:
+            manifest.kind === 'theme'
+              ? ('themes' as const)
+              : ('extensions' as const),
+          label: `${enabled ? 'disable' : 'enable'} ${manifest.name}`,
+          keywords: manifest.description,
+          run: () => {
+            void addonHost.setEnabled(manifest.id, !enabled)
+          },
+        },
+        ...(Settings && enabled
+          ? [
+              {
+                id: `addon.settings.${manifest.id}`,
+                category: 'settings' as const,
+                label: `${manifest.name} settings`,
+                keywords: manifest.description,
+                run: () => openSetting(`plugin-${manifest.id}`),
+              },
+            ]
+          : []),
+      ]
+    }),
+    ...themeSnapshot.schemes.map((scheme) => ({
+      id: `theme.${scheme.id}`,
+      category: 'themes' as const,
+      label: scheme.name,
+      keywords: `${scheme.appearance} ${scheme.author}`,
+      run: () =>
+        colorschemes.set({
+          mode: scheme.appearance,
+          [scheme.appearance]: scheme.id,
+        }),
+    })),
+    ...toolbarSnapshot.items
+      .filter(
+        (item) =>
+          !item.disabled &&
+          !item.hidden &&
+          (!item.when ||
+            (item.when === 'normal' ? mode !== 'markdown' : mode !== 'normal')),
+      )
+      .map((item) => ({
+        id: `toolbar.${item.id}`,
+        category: 'format' as const,
+        label: item.label,
+        run: () => {
+          void item.onClick()
+        },
+      })),
+    {
+      id: 'toolbar.toggle',
+      category: 'view',
+      label: toolbarSnapshot.preferences.visible
+        ? 'hide toolbar'
+        : 'show toolbar',
+      run: () =>
+        toolbar.setPreferences({
+          visible: !toolbarSnapshot.preferences.visible,
+        }),
+    },
     ...addonHost.commands.map((command) => ({
       id: command.id,
       label: command.label,
       category: 'addons' as const,
+      keywords: command.keywords ?? '',
       run: () => {
         void command.run()
       },
@@ -562,6 +681,8 @@ function App() {
         commands={addonHost.commands}
       />
       <SettingsScreen
+        selected={settingsCategory}
+        onCategory={setSettingsCategory}
         showLineNumbers={showLineNumbers}
         onShowLineNumbers={setShowLineNumbers}
         cursorSettings={cursorSettings}

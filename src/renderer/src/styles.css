@@ -73,6 +73,13 @@ summary:hover {
   color: var(--ink);
   background: var(--hover);
 }
+.ui-action-row {
+  position: relative;
+  width: calc(100% + 2 * var(--space-2));
+  margin-inline: calc(-1 * var(--space-2));
+  padding-inline: var(--space-2);
+  border-radius: var(--radius-control);
+}
 button[aria-pressed="true"] {
   color: var(--ink);
   background: var(--active);
@@ -552,7 +559,7 @@ button:disabled {
   height: 20px;
   margin: 0;
   border: 0;
-  border-radius: var(--radius-control);
+  border-radius: var(--radius-round);
   background: var(--border);
   flex-shrink: 0;
   cursor: pointer;
@@ -565,7 +572,7 @@ button:disabled {
   top: 3px;
   width: 14px;
   height: 14px;
-  border-radius: var(--radius-control);
+  border-radius: var(--radius-round);
   background: var(--ink);
   transition: transform 140ms ease-out;
 }
@@ -575,6 +582,57 @@ button:disabled {
 .setting-toggle:checked::after {
   background: var(--background);
   transform: translateX(12px);
+}
+.ui-slider {
+  appearance: none;
+  background: transparent;
+  height: 24px;
+  cursor: pointer;
+}
+.ui-slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: var(--radius-round);
+  background: linear-gradient(
+    to right,
+    var(--accent) var(--slider-fill),
+    var(--border) var(--slider-fill)
+  );
+}
+.ui-slider::-webkit-slider-thumb {
+  appearance: none;
+  margin-top: -5px;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--accent);
+  border-radius: var(--radius-round);
+  background: var(--background);
+  box-shadow: 0 1px 3px var(--overlay);
+  transition: box-shadow var(--motion-fast) var(--ease-out);
+}
+.ui-slider:is(:hover, :focus-visible)::-webkit-slider-thumb {
+  box-shadow: 0 0 0 4px color-mix(in oklch, var(--accent) 16%, transparent);
+}
+.ui-slider::-moz-range-track {
+  height: 4px;
+  border-radius: var(--radius-round);
+  background: var(--border);
+}
+.ui-slider::-moz-range-progress {
+  height: 4px;
+  border-radius: var(--radius-round);
+  background: var(--accent);
+}
+.ui-slider::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--accent);
+  border-radius: var(--radius-round);
+  background: var(--background);
+}
+.ui-slider:disabled,
+.setting-toggle:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 .app-details {
   margin: 0;
@@ -687,6 +745,15 @@ button:disabled {
   z-index: 2;
   pointer-events: none;
   color: var(--caret);
+}
+.mirror-cursor {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 2px;
+  pointer-events: none;
+  background: var(--caret);
+  opacity: 0.35;
+  z-index: 2;
 }
 .editor-cursor[data-move="true"] {
   transition: transform 80ms var(--ease-out);

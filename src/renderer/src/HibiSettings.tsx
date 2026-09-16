@@ -114,7 +114,7 @@ export function HibiSettings({ info }: { info: AppInfo | null }) {
           licenses.map((license) => (
             <button
               key={license.id}
-              className="license-row"
+              className="ui-action-row license-row"
               type="button"
               aria-haspopup="dialog"
               onClick={() =>

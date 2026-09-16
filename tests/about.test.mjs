@@ -75,6 +75,14 @@ test('hibi opens first, sponsor uses a fixed URL, and license dialogs stay reada
     .getByRole('button')
     .filter({ has: page.locator('.license-name', { hasText: /^react19/ }) })
   await react.waitFor()
+  await react.hover()
+  assert.deepEqual(
+    await react.evaluate((element) => {
+      const style = getComputedStyle(element)
+      return [style.borderRadius, style.paddingLeft, style.paddingRight]
+    }),
+    ['6px', '8px', '8px'],
+  )
   const catalog = await page.evaluate(() => window.hibi.getLicenses())
   assert.equal(await panel.locator('.license-row').count(), catalog.length)
   assert.ok(catalog.every((entry) => !('text' in entry)))

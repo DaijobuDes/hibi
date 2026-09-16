@@ -58,15 +58,17 @@
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  width: 100%;
   min-height: 52px;
-  padding: var(--space-3) 0;
+  padding-block: var(--space-3);
   text-align: left;
   color: var(--ink);
-  border-radius: 0;
 }
-.license-row + .license-row {
-  border-top: 1px solid var(--border);
+.license-row + .license-row::before {
+  content: "";
+  position: absolute;
+  inset: 0 var(--space-2) auto;
+  height: 1px;
+  background: var(--border);
 }
 .license-name {
   flex: 1;

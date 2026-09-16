@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Select, SettingRow, Toggle } from '../ui'
+import { Select, SettingRow, Slider, Toggle } from '../ui'
 import { getPreferences, setPreferences, settingsEvent } from './preferences'
 import { profiles } from './profiles'
 
@@ -36,9 +36,8 @@ export function Settings() {
       >
         <div className="setting-controls">
           <div className="padding-control">
-            <input
+            <Slider
               id="keybeats-volume"
-              type="range"
               min="0"
               max="100"
               value={Math.round(preferences.volume * 100)}

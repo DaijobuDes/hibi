@@ -28,6 +28,7 @@ import { FindBar, type FindMove, type FindStatus } from './FindBar'
 import { useFormattingToolbar } from './FormattingToolbar'
 import { LoadingScreen } from './LoadingScreen'
 import { linkScroll } from './linked-scroll'
+import { MirrorCursor } from './MirrorCursor'
 import { extensions, needsSourceEditing, projectMarkdown } from './markdown'
 
 const SourceEditor = lazy(() =>
@@ -296,6 +297,18 @@ export function MarkdownEditor({
       >
         <div className="editor-content" ref={content}>
           <EditorCursor root={content} settings={cursorSettings} />
+          <MirrorCursor
+            editor={editor}
+            root={content}
+            source={value}
+            body={projection.content}
+            active={
+              paneMode === 'side-by-side' &&
+              sourceReady &&
+              !disabled &&
+              !sourceOnly
+            }
+          />
           <section
             className="rich-pane"
             onFocusCapture={() => setFocusedPane('rich')}

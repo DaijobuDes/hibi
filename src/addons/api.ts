@@ -43,6 +43,8 @@ export type AddonManifest = {
   name: string
   description: string
   apiVersion: typeof ADDON_API_VERSION
+  /** Existing API v1 addons default to extension. */
+  kind?: 'theme' | 'extension'
   defaultEnabled?: boolean
   /** Plugin release version; optional for existing API v1 addons. */
   version?: string
@@ -158,6 +160,8 @@ export type AddonCommand = {
   /** Local id; the host prefixes it with the addon id. */
   id: string
   label: string
+  /** Searchable terms in the command palette, without duplicating the label. */
+  keywords?: string
   /** Also show this command below the workspace tree. */
   workspace?: boolean
   /** Optional whole-note action exposed by the slash-commands addon. */

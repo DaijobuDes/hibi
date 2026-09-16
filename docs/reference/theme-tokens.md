@@ -57,6 +57,7 @@ generated from `src/ui/tokens.css`. update the source, then run `npm run docs`. 
   --space-5: 24px;
   --space-6: 32px;
   --radius-control: 6px;
+  --radius-round: 999px;
   --radius-popover: var(--radius-control);
   --radius-panel: var(--radius-control);
   --radius-pill: var(--radius-control);
