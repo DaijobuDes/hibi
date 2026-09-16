@@ -215,16 +215,21 @@ test('nested workspace editing, addon lifecycle, and offline static export', {
     }
     await page.waitForFunction((kind) => {
       const notice = document
-        .querySelector(`.${kind}-message`)
-        .getBoundingClientRect()
-      return Math.abs(notice.bottom - innerHeight + 16) < 1
+        .querySelector(
+          `.toast[data-variant="${kind === 'error' ? 'error' : 'info'}"]`,
+        )
+        ?.getBoundingClientRect()
+      return notice && Math.abs(notice.bottom - innerHeight + 16) < 1
     }, kind)
     const geometry = await page.evaluate(
       (kind) => ({
         right:
           innerWidth -
-          document.querySelector(`.${kind}-message`).getBoundingClientRect()
-            .right,
+          document
+            .querySelector(
+              `.toast[data-variant="${kind === 'error' ? 'error' : 'info'}"]`,
+            )
+            .getBoundingClientRect().right,
         editorTop: document
           .querySelector('.editor-surface')
           .getBoundingClientRect().top,

@@ -3,6 +3,12 @@ import { basename, dirname } from 'node:path'
 
 const references = [
   [
+    'docs/reference/toast-api.md',
+    'sonner notification api',
+    'src/ui/toasts.ts',
+    (source) => source,
+  ],
+  [
     'docs/reference/sideload-sdk.md',
     'sideload sdk',
     'src/addons/sdk.ts',

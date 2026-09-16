@@ -9,12 +9,14 @@ import {
 import '../../src/renderer/src/styles.css'
 import { EditorToolbar } from '../../src/renderer/src/EditorToolbar'
 import { toolbar } from '../../src/renderer/src/toolbar'
+import { ToastProvider, useToastService } from '../../src/ui/Sonner'
 import { Tooltip } from '../../src/ui/Tooltip'
 import { createTooltipScope } from '../../src/ui/tooltip-store'
 
 function Harness() {
   const dialogs = useDialogs()
   const service = useDialogService()
+  const toastService = useToastService()
   const [result, setResult] = useState('ready')
   useEffect(() => {
     const owner = service.scope('test addon')
@@ -23,6 +25,8 @@ function Harness() {
     const actions = toolbar.scope('test', (error) => errors.push(error))
     const tips = createTooltipScope()
     const otherTips = createTooltipScope()
+    const toastOwner = toastService.scope()
+    const otherToasts = toastService.scope()
     Object.assign(window, {
       dialogTest: {
         dialogs,
@@ -35,6 +39,10 @@ function Harness() {
         tips,
         otherTips,
         errors,
+        toastService,
+        toasts: toastService.api,
+        toastOwner,
+        otherToasts,
       },
     })
     return () => {
@@ -43,8 +51,10 @@ function Harness() {
       actions.dispose()
       tips.dispose()
       otherTips.dispose()
+      toastOwner.dispose()
+      otherToasts.dispose()
     }
-  }, [dialogs, service])
+  }, [dialogs, service, toastService])
   return (
     <main>
       <EditorToolbar mode="normal" />
@@ -92,8 +102,10 @@ const root = document.createElement('div')
 document.body.append(root)
 createRoot(root).render(
   <StrictMode>
-    <DialogProvider>
-      <Harness />
-    </DialogProvider>
+    <ToastProvider>
+      <DialogProvider>
+        <Harness />
+      </DialogProvider>
+    </ToastProvider>
   </StrictMode>,
 )

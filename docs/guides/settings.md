@@ -4,6 +4,10 @@
 
 **sponsor on github** opens [may's GitHub Sponsors page](https://github.com/sponsors/schmayterling) in your default browser. this action uses a fixed destination; workspace content and addons cannot supply arbitrary external URLs through it.
 
+## notifications
+
+appearance → notifications controls notification placement (top/bottom, left/middle/right) and automatic dismissal (3, 5, 8, or 10 seconds, or never). **show preview** tries the current settings. notifications slide upward and fade in, with a bottom progress line. hover or keyboard focus pauses the countdown; leaving resumes it. the dismiss button always closes immediately with a short exit fade.
+
 ## open source licenses
 
 the bottom section lists application dependencies, bundled colorscheme notices, and addon-provided third-party notices. each row shows the package version when available and license identifier. select a row to read its complete license/notice text in a shared dialog. escape, the close button, or clicking outside dismisses it and returns focus to the row. long text wraps inside the dialog.

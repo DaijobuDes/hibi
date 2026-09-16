@@ -17,6 +17,18 @@ test('titlebar insets titles without leading actions and adapts outer button cor
   const page = await app.firstWindow()
   await page.setViewportSize({ width: 1000, height: 600 })
   await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page
+    .getByRole('button', { name: 'rename document', exact: true })
+    .click()
+  const rename = page.getByRole('textbox', { name: 'file name', exact: true })
+  assert.deepEqual(
+    await rename.evaluate((input) => {
+      const style = getComputedStyle(input)
+      return { border: style.borderTopWidth, background: style.backgroundColor }
+    }),
+    { border: '0px', background: 'rgba(0, 0, 0, 0)' },
+  )
+  await rename.press('Escape')
   await page.getByRole('button', { name: 'editor settings' }).click()
   for (const category of ['hibi', 'appearance']) {
     await page.getByRole('tab', { name: category, exact: true }).click()
@@ -42,6 +54,19 @@ test('titlebar insets titles without leading actions and adapts outer button cor
         element.parentElement.getBoundingClientRect().left,
     )
   assert.equal(inset, 16)
+  await page.getByLabel('position', { exact: true }).selectOption('top-center')
+  await page.getByLabel('dismiss after', { exact: true }).selectOption('3000')
+  await page.getByRole('button', { name: 'show preview', exact: true }).click()
+  await page.locator('.sonner[data-position="top-center"]').waitFor()
+  assert.deepEqual(
+    await page.evaluate(() =>
+      JSON.parse(localStorage.getItem('toast-preferences')),
+    ),
+    { position: 'top-center', duration: 3000 },
+  )
+  await page
+    .getByRole('button', { name: 'dismiss notice', exact: true })
+    .click()
   await page.getByRole('button', { name: 'back to editor' }).click()
   for (const open of [false, true]) {
     await page.getByRole('button', { name: 'toggle workspace sidebar' }).click()

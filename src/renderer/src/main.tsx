@@ -1,4 +1,3 @@
-import { X } from 'lucide-react'
 import {
   Component,
   type CSSProperties,
@@ -25,9 +24,10 @@ import {
   defaultHotkeys,
   type Hotkeys,
 } from '../../shared/hotkeys'
-import { IconButton } from '../../ui/Controls'
 import { DialogProvider, useDialogs } from '../../ui/DialogProvider'
 import { MenuHost } from '../../ui/MenuHost'
+import { ToastProvider, useToasts } from '../../ui/Sonner'
+import type { ToastHandle } from '../../ui/toasts'
 import './styles.css'
 import type {
   WorkspaceAction,
@@ -116,6 +116,23 @@ function App() {
     setSettingTarget(null)
   }, [settingTarget])
   const dialogs = useDialogs()
+  const toasts = useToasts()
+  const errorNotice = useRef<ToastHandle | null>(null)
+  const setError = useCallback(
+    (message: string) => {
+      errorNotice.current?.dismiss()
+      errorNotice.current = message
+        ? toasts.show({ message, variant: 'error' })
+        : null
+    },
+    [toasts],
+  )
+  const setNotice = useCallback(
+    (message: string) => {
+      if (message) toasts.show({ message })
+    },
+    [toasts],
+  )
   const [document, setDocument] = useState<DocumentState | null>(null)
   const currentDocument = useRef(document)
   currentDocument.current = document
@@ -161,7 +178,6 @@ function App() {
   const savedText = useRef('')
   const busyRef = useRef(false)
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
   const [mode, setMode] = useState<ViewMode>('normal')
   const [info, setInfo] = useState<AppInfo | null>(null)
   const [failed, setFailed] = useState(false)
@@ -185,7 +201,6 @@ function App() {
   useEffect(() => {
     localStorage.setItem('cursor-settings', JSON.stringify(cursorSettings))
   }, [cursorSettings])
-  const [notice, setNotice] = useState('')
   const addonHost = useAddons({
     getMarkdown: () => document?.markdown ?? '',
     runAction: (command) => runAction(command),
@@ -227,7 +242,6 @@ function App() {
         setBusy(false)
       }
     },
-    notify: setNotice,
     error: (error) =>
       setError(error instanceof Error ? error.message : 'addon failed.'),
   })
@@ -379,7 +393,7 @@ function App() {
         setBusy(false)
       }
     },
-    [dialogs, acceptDocument],
+    [dialogs, acceptDocument, setError],
   )
 
   async function openFolder(): Promise<WorkspaceState | null> {
@@ -460,7 +474,7 @@ function App() {
     window.hibi.onCommand((command) => addonHost.app.runAction(command)),
   )
 
-  useEffect(() => window.hibi.onNotice(setNotice), [])
+  useEffect(() => window.hibi.onNotice(setNotice), [setNotice])
 
   function updateMarkdown(markdown: string) {
     if (new TextEncoder().encode(markdown).length > MAX_DOCUMENT_BYTES) {
@@ -970,38 +984,6 @@ function App() {
           onClose={() => setPaletteOpen(false)}
         />
       )}
-      <div className="notification-stack">
-        <div
-          className="notification error-message"
-          role="alert"
-          hidden={!error}
-          inert={!error}
-        >
-          <span>{error}</span>
-          <IconButton
-            type="button"
-            aria-label="dismiss error"
-            onClick={() => setError('')}
-          >
-            <X size={15} aria-hidden="true" />
-          </IconButton>
-        </div>
-        <div
-          className="notification notice-message"
-          role="status"
-          hidden={!notice}
-          inert={!notice}
-        >
-          <span>{notice}</span>
-          <IconButton
-            type="button"
-            aria-label="dismiss notice"
-            onClick={() => setNotice('')}
-          >
-            <X size={15} aria-hidden="true" />
-          </IconButton>
-        </div>
-      </div>
       <WorkspaceSidebar
         editing={workspaceRename}
         onEditing={setWorkspaceRename}
@@ -1104,9 +1086,11 @@ if (!root) throw new Error('missing root element')
 createRoot(root).render(
   <StrictMode>
     <ErrorBoundary>
-      <DialogProvider>
-        <App />
-      </DialogProvider>
+      <ToastProvider>
+        <DialogProvider>
+          <App />
+        </DialogProvider>
+      </ToastProvider>
     </ErrorBoundary>
   </StrictMode>,
 )

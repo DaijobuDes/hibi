@@ -19,6 +19,7 @@ import {
 } from '../../addons/api'
 import { useDialogService } from '../../ui/DialogProvider'
 import { menus } from '../../ui/menu-store'
+import { useToastService } from '../../ui/Sonner'
 import { createTooltipScope } from '../../ui/tooltip-store'
 import { createAddonOverrides } from './addon-overrides'
 import { addonRegistry } from './addon-registry'
@@ -41,6 +42,8 @@ type Environment = Omit<
   | 'styles'
   | 'patches'
   | 'dialogs'
+  | 'toasts'
+  | 'notify'
   | 'menus'
   | 'colorschemes'
   | 'toolbar'
@@ -60,6 +63,7 @@ export function useAddons(environment: Environment) {
     addonRegistry.snapshot,
   )
   const dialogService = useDialogService()
+  const toastService = useToastService()
   const latest = useRef(environment)
   latest.current = environment
   const app = useRef<AddonApp>({
@@ -154,6 +158,7 @@ export function useAddons(environment: Environment) {
       let disposed = false
       const overrides = createAddonOverrides(id)
       const dialogScope = dialogService.scope(addon.manifest.name)
+      const toastScope = toastService.scope()
       const menuScope = menus.scope((error) => latest.current.error(error))
       const toolbarScope = toolbar.scope(id, (error) =>
         latest.current.error(error),
@@ -185,6 +190,7 @@ export function useAddons(environment: Environment) {
             for (const remove of cleanups) remove()
             cleanups.clear()
             dialogScope.dispose()
+            toastScope.dispose()
             menuScope.dispose()
             toolbarScope.dispose()
             tooltipScope.dispose()
@@ -223,6 +229,7 @@ export function useAddons(environment: Environment) {
             },
           },
           dialogs: dialogScope.api,
+          toasts: toastScope.api,
           toolbar: toolbarScope.api,
           tooltips: tooltipScope.api,
           app,
@@ -515,7 +522,7 @@ export function useAddons(environment: Environment) {
                 : (latest.current.invoke(id, method, input) as Promise<T>),
           },
           notify: (message) => {
-            if (!disposed) latest.current.notify(message)
+            if (!disposed) toastScope.api.show({ message })
           },
         })
         if (starting)
@@ -545,6 +552,7 @@ export function useAddons(environment: Environment) {
     app,
     rich,
     dialogService,
+    toastService,
   ])
   async function setEnabled(id: string, enabled: boolean) {
     try {

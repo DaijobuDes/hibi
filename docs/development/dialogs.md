@@ -24,7 +24,9 @@ if (confirmed) await context.dialogs.alert({ title: 'name selected', description
 
 ## custom content
 
-`open<T>({ title, description?, content, size?, closeOnOutsideClick? })` returns `{ result: Promise<T | null>, close(value?) }`. the `content({ close })` render function must be pure; render a component inside it when you need hooks. `size` is `normal` or `wide`; both fit the viewport. outside clicks dismiss by default and can be disabled for a form; escape and the close button remain available.
+`open<T>({ title, description?, content, footer?, size?, closeOnOutsideClick? })` returns `{ result: Promise<T | null>, close(value?) }`. the `content({ close })` and optional `footer({ close })` render functions must be pure; render a component inside them when you need hooks. `size` is `normal` or `wide`; both fit the viewport. outside clicks dismiss by default and can be disabled for a form; escape and the close button remain available.
+
+headers and optional footers stay visible while the body scrolls. modals share settings surfaces, typography, corners, buttons, and field controls. use `dialog-form` for forms: shared setting rows stack labels above full-width inputs so fields do not squeeze labels out of narrow dialogs. group related fields with `settings-group`. the image/link insertion form uses these same primitives.
 
 ```tsx
 import { Button } from '../ui'

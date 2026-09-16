@@ -12,6 +12,8 @@ export type DialogOptions<T> = {
   closeOnOutsideClick?: boolean
   /** Use a component for content that needs React hooks. */
   content: (controls: { close: (value: T | null) => void }) => ReactNode
+  /** Optional actions outside the scrolling content. */
+  footer?: (controls: { close: (value: T | null) => void }) => ReactNode
 }
 
 export type DialogHandle<T> = {

@@ -117,7 +117,7 @@ export function Titlebar({
           ) : renaming ? (
             <input
               ref={input}
-              className="rename-input"
+              className="inline-edit rename-input"
               aria-label="file name"
               value={name}
               spellCheck={false}

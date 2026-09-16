@@ -14,6 +14,7 @@ import type { CursorSettings } from './EditorCursor'
 import { ToolbarSettings } from './EditorToolbar'
 import { HibiSettings } from './HibiSettings'
 import { HotkeySettings } from './HotkeySettings'
+import { NotificationSettings } from './NotificationSettings'
 
 export const settingsCategories = [
   { id: 'hibi', label: 'hibi', icon: File },
@@ -300,6 +301,7 @@ export function SettingsScreen({
               </SettingRow>
             </div>
             <ToolbarSettings />
+            <NotificationSettings />
           </section>
           <section
             id="settings-hotkeys"

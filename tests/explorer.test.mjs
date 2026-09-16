@@ -42,6 +42,14 @@ test('workspace popovers, durable folders, ephemeral files, inline rename, dirty
   await page.getByRole('button', { name: 'new workspace folder' }).click()
   const rename = page.getByRole('textbox', { name: 'rename item' })
   await rename.waitFor()
+  const renameStyle = await rename.evaluate((input) => {
+    const style = getComputedStyle(input)
+    return { border: style.borderTopWidth, background: style.backgroundColor }
+  })
+  assert.deepEqual(renameStyle, {
+    border: '0px',
+    background: 'rgba(0, 0, 0, 0)',
+  })
   await access(join(root, 'untitled folder'))
   await rename.fill('guides')
   await rename.press('Enter')

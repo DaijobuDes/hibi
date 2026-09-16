@@ -138,7 +138,10 @@ test('frontmatter contributes slash actions in rich and source panes only while 
   assert.equal(await read(), addFrontmatter(''))
   await mode('side-by-side')
   await page.getByRole('region', { name: 'frontmatter properties' }).waitFor()
-  assert.equal(await page.locator('.error-message').innerText(), '')
+  assert.deepEqual(
+    await page.locator('.toast[data-variant="error"]').allTextContents(),
+    [],
+  )
   assert.deepEqual(errors, [])
 })
 
@@ -494,5 +497,7 @@ test('frontmatter addon, inline rename, and centered workspace entry preserve do
     .getByRole('button', { name: 'rename document' })
     .filter({ hasText: 'final.md' })
     .waitFor()
-  await page.locator('.error-message').waitFor({ state: 'hidden' })
+  await page
+    .locator('.toast[data-variant="error"]')
+    .waitFor({ state: 'hidden' })
 })

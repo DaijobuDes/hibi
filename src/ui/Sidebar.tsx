@@ -69,7 +69,7 @@ function RenameInput({
   return (
     <input
       ref={input}
-      className="sidebar-rename"
+      className="inline-edit sidebar-rename"
       aria-label="rename item"
       value={editing.value}
       disabled={editing.disabled}

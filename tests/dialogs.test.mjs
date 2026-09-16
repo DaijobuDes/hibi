@@ -288,4 +288,131 @@ test('shared dialogs validate input, trap focus, queue, and clean up by addon ow
     await page.evaluate(() => window.dialogTest.dialogs.isOpen()),
     false,
   )
+
+  // Countdown and progress share one clock; hover and keyboard focus pause it independently.
+  await page.mouse.move(4, 4)
+  await page.evaluate(() =>
+    window.dialogTest.toasts.show({ message: 'timed notice', duration: 1200 }),
+  )
+  const toast = page.locator('.toast').filter({ hasText: 'timed notice' })
+  await toast.waitFor()
+  await page.waitForFunction(() => {
+    const bar = document.querySelector('.toast-progress')
+    return bar && new DOMMatrix(getComputedStyle(bar).transform).a < 0.9
+  })
+  await toast.hover()
+  const progress = () =>
+    toast
+      .locator('.toast-progress')
+      .evaluate((bar) => new DOMMatrix(getComputedStyle(bar).transform).a)
+  const paused = await progress()
+  await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 1300)))
+  assert.equal(await toast.isVisible(), true)
+  assert.ok(Math.abs((await progress()) - paused) < 0.01)
+  await toast.getByRole('button').focus()
+  await page.mouse.move(4, 4)
+  await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 1300)))
+  assert.equal(await toast.isVisible(), true)
+  await prompt.focus()
+  await toast.waitFor({ state: 'hidden' })
+
+  await page.evaluate(() => {
+    window.notice = window.dialogTest.toasts.show({
+      message: 'persistent notice',
+      duration: 0,
+    })
+  })
+  assert.equal(await page.locator('.toast-progress').count(), 0)
+  for (const position of [
+    'top-left',
+    'top-center',
+    'top-right',
+    'bottom-left',
+    'bottom-center',
+    'bottom-right',
+  ]) {
+    await page.evaluate(
+      (position) => window.dialogTest.toasts.setPreferences({ position }),
+      position,
+    )
+    await page.locator(`.sonner[data-position="${position}"]`).waitFor()
+    const rect = await page.locator('.sonner').evaluate((element) => {
+      const r = element.getBoundingClientRect()
+      return {
+        x: r.x,
+        right: r.right,
+        top: r.top,
+        bottom: r.bottom,
+        middle: r.x + r.width / 2,
+        width: innerWidth,
+        height: innerHeight,
+      }
+    })
+    assert.ok(
+      Math.abs(
+        position.startsWith('top')
+          ? rect.top - 44
+          : rect.bottom - rect.height + 16,
+      ) < 1,
+    )
+    assert.ok(
+      Math.abs(
+        position.endsWith('left')
+          ? rect.x - 16
+          : position.endsWith('right')
+            ? rect.right - rect.width + 16
+            : rect.middle - rect.width / 2,
+      ) < 1,
+    )
+  }
+  await page.evaluate(() =>
+    window.notice.update({
+      message: 'updated notice',
+      description: 'kept in place',
+      variant: 'success',
+    }),
+  )
+  assert.equal(await page.locator('.toast').count(), 1)
+  await page.getByRole('status').filter({ hasText: 'updated notice' }).waitFor()
+  // Notifications stay interactive above a native modal, without dismissing that modal.
+  await page.evaluate(() => {
+    const { dialogs, createElement } = window.dialogTest
+    window.footerDialog = dialogs.open({
+      title: 'fixed actions',
+      content: () => createElement('p', null, 'long content '.repeat(600)),
+      footer: ({ close }) =>
+        createElement(
+          'button',
+          { onClick: () => close('saved') },
+          'footer action',
+        ),
+    })
+  })
+  const footerDialog = page.getByRole('dialog', { name: 'fixed actions' })
+  await footerDialog.waitFor()
+  await footerDialog.locator('.sonner').waitFor()
+  await footerDialog.getByRole('button', { name: 'dismiss notice' }).click()
+  await page.locator('.toast').waitFor({ state: 'hidden' })
+  assert.equal(await footerDialog.isVisible(), true)
+  const footerBounds = await footerDialog
+    .locator('.dialog-footer')
+    .boundingBox()
+  assert.ok(footerBounds.y + footerBounds.height <= 560)
+  await footerDialog.getByRole('button', { name: 'footer action' }).click()
+  assert.equal(await page.evaluate(() => window.footerDialog.result), 'saved')
+  await page.evaluate(() => {
+    const { toastOwner, otherToasts } = window.dialogTest
+    window.staleToast = toastOwner.api.show({
+      message: 'owned notice',
+      duration: 0,
+    })
+    otherToasts.api.show({ message: 'other notice', duration: 0 })
+    toastOwner.dispose()
+    window.staleToast.update({ message: 'must not return' })
+    toastOwner.api.show({ message: 'must not appear' })
+  })
+  assert.equal(await page.locator('.toast').count(), 1)
+  assert.match(await page.locator('.toast').innerText(), /other notice/)
+  await page.evaluate(() => window.dialogTest.otherToasts.dispose())
+  await page.locator('.sonner').waitFor({ state: 'hidden' })
 })

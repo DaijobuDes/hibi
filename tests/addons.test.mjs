@@ -76,7 +76,7 @@ test('plugin pages, metadata, shared controls, and full source vim editing', {
   )
   assert.equal(
     await page.locator('#settings-appearance .select-control > svg').count(),
-    7,
+    await page.locator('#settings-appearance .select-control > select').count(),
   )
   const footer = await page.locator('.settings-versions').evaluate((el) => ({
     bottom: el.getBoundingClientRect().bottom,
@@ -126,9 +126,12 @@ test('plugin pages, metadata, shared controls, and full source vim editing', {
   await page.waitForFunction(
     () =>
       document.querySelector('[data-vim-plugin="true"]') ||
-      document.querySelector('.error-message')?.textContent,
+      document.querySelector('.toast[data-variant="error"]')?.textContent,
   )
-  assert.equal(await page.locator('.error-message').innerText(), '')
+  assert.deepEqual(
+    await page.locator('.toast[data-variant="error"]').allTextContents(),
+    [],
+  )
   await page.getByRole('status').filter({ hasText: 'vim · normal' }).waitFor()
   const statusBounds = await page
     .locator('.app-statusbar')

@@ -330,6 +330,21 @@ test('markdown toolbar formats both panes, preserves undo, and persists drag ord
   await source.press('Control+a')
   await run('image')
   const image = page.getByRole('dialog', { name: 'insert image', exact: true })
+  await image.waitFor()
+  assert.ok(
+    await image
+      .locator('.setting-copy')
+      .evaluateAll((labels) =>
+        labels.every((label) => label.getBoundingClientRect().width > 100),
+      ),
+  )
+  assert.ok(
+    await image
+      .locator('.setting-row input')
+      .evaluateAll((inputs) =>
+        inputs.every((input) => input.getBoundingClientRect().width > 100),
+      ),
+  )
   await image
     .getByLabel('image path', { exact: true })
     .fill('images/my image.png')

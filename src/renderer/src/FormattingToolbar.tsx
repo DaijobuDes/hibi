@@ -263,41 +263,49 @@ function InsertForm({
         close({ ...value, url: value.url.trim() })
       }}
     >
-      <SettingRow
-        id="insert-url"
-        label={image ? 'image path' : 'link destination'}
-        description={
-          image
-            ? 'absolute path, or a path relative to this note.'
-            : 'web address, file path, or heading anchor.'
-        }
-      >
-        <input
-          id="insert-url"
-          ref={input}
-          required
-          value={value.url}
-          onChange={(event) => setValue({ ...value, url: event.target.value })}
-        />
-      </SettingRow>
-      {image && (
+      <div className="settings-group">
         <SettingRow
-          id="insert-alt"
-          label="description"
-          description="describe the image for screen readers."
+          id="insert-url"
+          label={image ? 'image path' : 'link destination'}
+          description={
+            image
+              ? 'absolute path, or a path relative to this note.'
+              : 'web address, file path, or heading anchor.'
+          }
         >
           <input
-            id="insert-alt"
-            value={value.alt}
+            id="insert-url"
+            ref={input}
+            required
+            value={value.url}
             onChange={(event) =>
-              setValue({ ...value, alt: event.target.value })
+              setValue({ ...value, url: event.target.value })
             }
           />
         </SettingRow>
-      )}
+        {image && (
+          <SettingRow
+            id="insert-alt"
+            label="description"
+            description="describe the image for screen readers."
+          >
+            <input
+              id="insert-alt"
+              value={value.alt}
+              onChange={(event) =>
+                setValue({ ...value, alt: event.target.value })
+              }
+            />
+          </SettingRow>
+        )}
+      </div>
       <div className="dialog-actions">
         <Button onClick={() => close(null)}>cancel</Button>
-        <Button type="submit" disabled={!value.url.trim()}>
+        <Button
+          type="submit"
+          className="dialog-primary"
+          disabled={!value.url.trim()}
+        >
           insert
         </Button>
       </div>

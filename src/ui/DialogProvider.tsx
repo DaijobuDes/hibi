@@ -19,6 +19,7 @@ import type {
   PromptDialogOptions,
 } from './dialogs'
 import { Modal } from './Modal'
+import { useToastContainer } from './Sonner'
 import { TooltipHost } from './Tooltip'
 
 type Request = {
@@ -86,12 +87,11 @@ export function createDialogService() {
       async alert(options) {
         await api.open<void>({
           ...options,
-          content: ({ close }) => (
-            <div className="dialog-actions">
-              <Button className="dialog-primary" onClick={() => close(null)}>
-                {options.confirmLabel ?? 'ok'}
-              </Button>
-            </div>
+          content: () => null,
+          footer: ({ close }) => (
+            <Button className="dialog-primary" onClick={() => close(null)}>
+              {options.confirmLabel ?? 'ok'}
+            </Button>
           ),
         }).result
       },
@@ -99,15 +99,16 @@ export function createDialogService() {
         return (
           (await api.open<boolean>({
             ...options,
-            content: ({ close }) => (
-              <div className="dialog-actions">
+            content: () => null,
+            footer: ({ close }) => (
+              <>
                 <Button onClick={() => close(false)}>
                   {options.cancelLabel ?? 'cancel'}
                 </Button>
                 <Button className="dialog-primary" onClick={() => close(true)}>
                   {options.confirmLabel ?? 'confirm'}
                 </Button>
-              </div>
+              </>
             ),
           }).result) === true
         )
@@ -213,11 +214,15 @@ class ContentBoundary extends Component<
 function DialogContent({
   request,
   close,
+  footer = false,
 }: {
   request: Request
   close: (value: unknown) => void
+  footer?: boolean
 }) {
-  return request.options.content({ close })
+  return footer
+    ? request.options.footer?.({ close })
+    : request.options.content({ close })
 }
 
 function DialogFrame({
@@ -229,6 +234,7 @@ function DialogFrame({
 }) {
   const description = useId()
   const modal = useRef<HTMLDialogElement>(null)
+  useToastContainer(modal)
   const close = (value: unknown = null) => service.close(request, value)
   useEffect(() => {
     if (!request.closing) return
@@ -259,21 +265,28 @@ function DialogFrame({
           {request.owner !== 'hibi' && (
             <p className="dialog-owner">{request.owner}</p>
           )}
+          {request.options.description && (
+            <p id={description} className="dialog-description">
+              {request.options.description}
+            </p>
+          )}
         </div>
         <IconButton aria-label="close dialog" onClick={() => close()}>
           <X size={16} aria-hidden="true" />
         </IconButton>
       </header>
-      {request.options.description && (
-        <p id={description} className="dialog-description">
-          {request.options.description}
-        </p>
-      )}
       <div className="dialog-content">
         <ContentBoundary close={() => close()}>
           <DialogContent request={request} close={close} />
         </ContentBoundary>
       </div>
+      {request.options.footer && (
+        <footer className="dialog-footer">
+          <ContentBoundary close={() => close()}>
+            <DialogContent request={request} close={close} footer />
+          </ContentBoundary>
+        </footer>
+      )}
     </Modal>
   )
 }

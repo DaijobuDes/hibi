@@ -1,3 +1,5 @@
+@import "./inline-edit.css";
+
 .sidebar-slot {
   position: relative;
   width: var(--sidebar-width, 196px);
@@ -112,6 +114,7 @@
   min-width: 0;
   font: inherit;
   font-size: var(--text-ui);
+  padding-inline: 0;
 }
 @media (hover: none) {
   .sidebar-items .sidebar-more {
