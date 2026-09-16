@@ -89,7 +89,7 @@ test('plugin pages, metadata, shared controls, and full source vim editing', {
     await page
       .locator('#settings-addons [data-discord-id="1262793452236570667"]')
       .count(),
-    3,
+    4,
   )
   await toggleAddon('frontmatter', false)
   assert.equal(

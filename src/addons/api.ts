@@ -1,4 +1,5 @@
 import type { Extension } from '@codemirror/state'
+import type { Editor } from '@tiptap/core'
 import type { ComponentType } from 'react'
 import type { DocumentCommand } from '../shared/desktop'
 import type { AppCommand } from '../shared/hotkeys'
@@ -24,6 +25,12 @@ export type SourceExtension = {
   id: string
   /** Created per source editor; may lazy-load an editor integration. */
   create: () => Extension | Promise<Extension>
+}
+
+export type RichExtension = {
+  id: string
+  /** Attach editor behavior without rebuilding its schema or undo history. */
+  attach: (editor: Editor) => () => void
 }
 
 export type StatusItem = {
@@ -124,6 +131,7 @@ export type AddonContext = {
   patches: PatchApi
   statusBar: { register: (item: StatusItem) => StatusHandle }
   editor: {
+    registerRich: (extension: RichExtension) => () => void
     registerMarkdown: (extension: MarkdownExtension) => () => void
     registerSource: (extension: SourceExtension) => () => void
     /** Uses the app's file dialogs, draft checks, and save handling. */

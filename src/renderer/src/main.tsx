@@ -568,6 +568,7 @@ function App() {
         {document && (
           <MarkdownEditor
             sourceExtensions={addonHost.sourceExtensions}
+            richExtensions={addonHost.richExtensions}
             documentRevision={document.revision}
             showLineNumbers={showLineNumbers}
             cursorSettings={cursorSettings}

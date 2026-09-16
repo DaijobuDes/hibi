@@ -23,6 +23,8 @@ an addon may export a `Settings` React component alongside `manifest` and `start
 
 `context.editor.registerSource({ id, create })` installs a CodeMirror extension in each source editor. `create` may return a promise for a lazy import. keep its resources scoped to the editor lifecycle; registrations disappear when the addon stops. reconfiguration preserves document content and history. `context.editor.runCommand(command)` runs hibi's normal file flow and resolves to `false` on cancellation or failure. the vim addon demonstrates both APIs.
 
+`context.editor.registerRich({ id, attach })` attaches behavior to each visual editor without recreating its schema or undo history. `attach(editor)` receives the Tiptap editor and must return a cleanup function. register and unregister ProseMirror plugins through the editor, and remove any other listeners in that cleanup. the host detaches on unregister, addon shutdown, editor replacement, and unmount; errors use the addon error notification. this hook cannot add schema nodes or marks. the slash-commands addon demonstrates paired rich and source integrations with one popup.
+
 ## status pills
 
 `context.statusBar.register({ id, label, tooltip?, when?, onClick? })` adds a bottom-left status pill and returns `update(changes)` and `dispose()`. use a local unique id; the host prefixes it with the addon id. `when: 'source'` limits the pill to markdown and split views. an empty label hides it, and an empty status bar takes no space. settings hides editor status pills. labels are plain text; an optional click handler makes a pill a button.

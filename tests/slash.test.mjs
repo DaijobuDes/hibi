@@ -1,0 +1,174 @@
+import assert from 'node:assert/strict'
+import { mkdir, mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
+import test from 'node:test'
+import { _electron as electron } from 'playwright'
+
+test('slash commands work in both editors, preserve undo, and coexist with vim', {
+  timeout: 60000,
+}, async (t) => {
+  const profile = await mkdtemp(join(tmpdir(), 'hibi-slash-'))
+  const app = await electron.launch({
+    args: [resolve('.'), `--user-data-dir=${profile}`],
+  })
+  t.after(async () => {
+    await app.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => ({ response: 1 })
+    })
+    await app.close()
+    await rm(profile, { recursive: true, force: true })
+  })
+  const page = await app.firstWindow()
+  page.setDefaultTimeout(5000)
+  const errors = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  const rich = page.getByRole('textbox', { name: 'document editor' })
+  const source = page.getByRole('textbox', { name: 'markdown editor' })
+  const menu = page.getByRole('listbox', { name: 'slash commands' })
+  const read = () =>
+    page.evaluate(async () => (await window.hibi.getDocument()).markdown)
+  const undo = process.platform === 'darwin' ? 'Meta+z' : 'Control+z'
+  await rich.waitFor()
+  await rich.fill('/h2')
+  await menu.waitFor()
+  await rich.press('Enter')
+  assert.equal(await rich.locator('h2').count(), 1)
+  await rich.press(undo)
+  assert.equal(await read(), '/h2')
+  await rich.fill('/')
+  await menu.waitFor()
+  await page.waitForFunction(
+    () =>
+      document.querySelectorAll('.slash-menu:popover-open [role="option"]')
+        .length === 11,
+  )
+  assert.equal(await menu.getByRole('option').count(), 11)
+  await mkdir('test-results', { recursive: true })
+  await page.screenshot({
+    path: 'test-results/slash-commands.png',
+    animations: 'disabled',
+  })
+  await rich.press('ArrowDown')
+  await rich.press('Enter')
+  assert.equal(await rich.locator('h1').count(), 1)
+  await rich.fill('/quote')
+  await menu.waitFor()
+  await menu.getByRole('option', { name: 'quote blockquote' }).click()
+  assert.equal(await rich.locator('blockquote').count(), 1)
+  await rich.fill('/')
+  await menu.waitFor()
+  const beforeDismiss = await read()
+  await rich.press('Escape')
+  await menu.waitFor({ state: 'hidden' })
+  assert.equal(await read(), beforeDismiss)
+  await rich.pressSequentially('literal')
+  assert.equal(await menu.isVisible(), false)
+  await rich.fill('/table')
+  await menu.waitFor()
+  await rich.press('Tab')
+  assert.equal(await rich.locator('table').count(), 1)
+
+  await page.mouse.move(450, 18)
+  await page.getByRole('button', { name: 'markdown only', exact: true }).click()
+  await source.waitFor()
+  await source.fill('/code')
+  await menu.waitFor()
+  await source.press('Enter')
+  await source.pressSequentially('sample')
+  assert.equal(await read(), '```\nsample\n```')
+  await source.press(undo)
+  await source.press(undo)
+  assert.equal(await read(), '/code')
+  await source.fill('/h1')
+  await menu.waitFor()
+  await page.mouse.click(500, 20)
+  await menu.waitFor({ state: 'hidden' })
+  assert.equal(await read(), '/h1')
+
+  for (const text of [
+    'https://example.com/path',
+    '/tmp/file',
+    '```\n/code\n```',
+    '---\ntitle: note\n/h1\n---',
+  ]) {
+    await source.fill(text)
+    if (text.startsWith('```') || text.startsWith('---')) {
+      await source.press('ArrowUp')
+      await source.press('End')
+    }
+    await page.waitForFunction(
+      () => !document.querySelector('.slash-menu:popover-open'),
+    )
+    assert.equal(await read(), text)
+  }
+  await source.fill('/not-a-command')
+  await menu.waitFor()
+  assert.match(await menu.innerText(), /no commands found/)
+  await source.press('Escape')
+
+  await app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()[0].setContentSize(720, 520),
+  )
+  await source.fill(`${'paragraph\n\n'.repeat(24)}/h2`)
+  await menu.waitFor()
+  const bounds = await page
+    .locator('.slash-menu:popover-open')
+    .evaluate((element) => {
+      const rect = element.getBoundingClientRect()
+      return {
+        left: rect.left,
+        right: rect.right,
+        top: rect.top,
+        bottom: rect.bottom,
+        width: innerWidth,
+        height: innerHeight,
+      }
+    })
+  assert.ok(bounds.left >= 0 && bounds.right <= bounds.width)
+  assert.ok(bounds.top >= 0 && bounds.bottom <= bounds.height)
+  await source.press('Enter')
+  await page.mouse.move(400, 18)
+  await page.getByRole('button', { name: 'side-by-side', exact: true }).click()
+  await rich.locator('h2').last().click()
+  await rich.pressSequentially('/quote')
+  await menu.waitFor()
+  await rich.press('Enter')
+  assert.equal(await rich.locator('blockquote').count(), 1)
+  assert.match(await read(), />/)
+  await page.mouse.move(400, 18)
+  await page.getByRole('button', { name: 'markdown only', exact: true }).click()
+
+  await page.mouse.move(450, 18)
+  await page.getByRole('button', { name: 'editor settings' }).click()
+  await page.getByRole('tab', { name: 'addons', exact: true }).click()
+  await page.locator('#addon-slash-commands').click()
+  await page.waitForFunction(
+    () =>
+      !document.querySelector('style[data-addon-style="slash-commands.menu"]'),
+  )
+  await page.getByRole('button', { name: 'back to editor' }).click()
+  await source.fill('/h1')
+  assert.equal(await menu.count(), 0)
+  const beforeToggle = await read()
+  await page.mouse.move(450, 18)
+  await page.getByRole('button', { name: 'editor settings' }).click()
+  await page.getByRole('tab', { name: 'addons', exact: true }).click()
+  await page.locator('#addon-slash-commands').click()
+  await page.locator('#addon-vim').click()
+  await page.getByRole('button', { name: 'back to editor' }).click()
+  assert.equal(await read(), beforeToggle)
+  await page.getByRole('status').filter({ hasText: 'vim · normal' }).waitFor()
+  await source.press('Escape')
+  await source.press('/')
+  await page.locator('.cm-vim-panel input').waitFor()
+  assert.equal(await page.locator('.slash-menu:popover-open').count(), 0)
+  await page.locator('.cm-vim-panel input').press('Escape')
+  await source.pressSequentially('gg0cc')
+  await page.keyboard.type('/h3')
+  await menu.waitFor()
+  await source.press('Enter')
+  assert.equal(await read(), '### ')
+  await page.getByRole('status').filter({ hasText: 'vim · insert' }).waitFor()
+  assert.deepEqual(errors, [])
+})

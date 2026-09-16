@@ -16,7 +16,11 @@ import {
   useRef,
   useState,
 } from 'react'
-import type { MarkdownExtension, SourceExtension } from '../../addons/api'
+import type {
+  MarkdownExtension,
+  RichExtension,
+  SourceExtension,
+} from '../../addons/api'
 import { documentImage } from './DocumentImage'
 import { type CursorSettings, EditorCursor } from './EditorCursor'
 import { FindBar, type FindMove, type FindStatus } from './FindBar'
@@ -38,6 +42,7 @@ export function MarkdownEditor({
   onCloseFind,
   markdownExtensions,
   sourceExtensions,
+  richExtensions,
   cursorSettings,
   showLineNumbers,
   documentRevision,
@@ -50,6 +55,7 @@ export function MarkdownEditor({
   onCloseFind: () => void
   markdownExtensions: readonly MarkdownExtension[]
   sourceExtensions: readonly SourceExtension[]
+  richExtensions: readonly RichExtension[]
   cursorSettings: CursorSettings
   showLineNumbers: boolean
   documentRevision: number
@@ -141,6 +147,28 @@ export function MarkdownEditor({
     if (!editor) return
     editor.setEditable(!sourceOnly && !disabled, false)
   }, [editor, sourceOnly, disabled])
+
+  useEffect(() => {
+    if (!editor) return
+    let detach: (() => void)[] = []
+    const cleanup = () => {
+      for (const remove of detach) remove()
+      detach = []
+    }
+    const attach = () => {
+      cleanup()
+      if (!editor.isDestroyed)
+        detach = richExtensions.map((extension) => extension.attach(editor))
+    }
+    editor.on('mount', attach)
+    editor.on('unmount', cleanup)
+    attach()
+    return () => {
+      editor.off('mount', attach)
+      editor.off('unmount', cleanup)
+      cleanup()
+    }
+  }, [editor, richExtensions])
 
   useEffect(() => {
     if (!editor || !findOpen || findTarget !== 'rich') return

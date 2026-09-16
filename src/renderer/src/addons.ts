@@ -7,6 +7,7 @@ import {
   type AddonContext,
   type AddonState,
   type MarkdownExtension,
+  type RichExtension,
   type SourceExtension,
   type StatusItem,
 } from '../../addons/api'
@@ -50,6 +51,10 @@ export function useAddons(environment: Environment) {
   const [markdownExtensions, setMarkdownExtensions] = useState<
     MarkdownExtension[]
   >([])
+  const rich = useRef(
+    new Map<string, RichExtension & { addonId: string }>(),
+  ).current
+  const [richExtensions, setRichExtensions] = useState<RichExtension[]>([])
   const sources = useRef(
     new Map<string, SourceExtension & { addonId: string }>(),
   ).current
@@ -118,6 +123,9 @@ export function useAddons(environment: Environment) {
           if (extension.addonId === id) extensions.delete(key)
         for (const [key, extension] of sources)
           if (extension.addonId === id) sources.delete(key)
+        for (const [key, extension] of rich)
+          if (extension.addonId === id) rich.delete(key)
+        if (mounted.current) setRichExtensions([...rich.values()])
         for (const [key, item] of status)
           if (item.addonId === id) status.delete(key)
         if (mounted.current) setStatusItems([...status.values()])
@@ -193,6 +201,40 @@ export function useAddons(environment: Environment) {
             },
           },
           editor: {
+            registerRich(extension) {
+              if (disposed) return () => {}
+              const key = `${id}.${extension.id}`
+              if (!/^[a-z][a-z0-9-]*$/.test(extension.id) || rich.has(key))
+                throw new Error(`duplicate or invalid rich extension: ${key}`)
+              rich.set(key, {
+                id: key,
+                addonId: id,
+                attach(editor) {
+                  if (disposed) return () => {}
+                  try {
+                    const detach = extension.attach(editor)
+                    return () => {
+                      try {
+                        detach()
+                      } catch (error) {
+                        latest.current.error(error)
+                      }
+                    }
+                  } catch (error) {
+                    latest.current.error(error)
+                    return () => {}
+                  }
+                },
+              })
+              if (mounted.current) setRichExtensions([...rich.values()])
+              let active = true
+              return () => {
+                if (!active || disposed) return
+                active = false
+                if (rich.delete(key) && mounted.current)
+                  setRichExtensions([...rich.values()])
+              }
+            },
             runCommand: (command) =>
               disposed ? Promise.resolve(false) : app.runCommand(command),
             registerSource(extension) {
@@ -312,6 +354,7 @@ export function useAddons(environment: Environment) {
     publishSources,
     status,
     app,
+    rich,
   ])
   async function setEnabled(id: string, enabled: boolean) {
     try {
@@ -325,6 +368,7 @@ export function useAddons(environment: Environment) {
     states,
     commands,
     markdownExtensions,
+    richExtensions,
     sourceExtensions,
     statusItems,
     setEnabled,
