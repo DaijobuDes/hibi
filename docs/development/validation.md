@@ -9,6 +9,7 @@ npm run docs        # refresh generated API references
 npm run docs:check  # reject stale references
 npm run export:docs # export docs to out/docs/index.html
 npm run check       # lint, API docs, typecheck, builds, native tests
+npm run bench       # markdown, workspace, and settings benchmarks
 npm run package     # unpacked local application
 ```
 
@@ -41,6 +42,12 @@ colorscheme checks cover all bundled token roles, text contrast, retained upstre
 hibi settings checks compare installed license text with the generated catalog, verify the first tab and responsive license dialogs, reject arbitrary license paths, and intercept the sponsor action to verify its fixed URL without opening a browser.
 
 public SDK and sidebar references are generated from their real TypeScript declarations. update prose guides whenever behavior changes. release builds must pass `npm run check`; platform signing and notarization are separate distribution steps.
+
+## performance benchmarks
+
+`bench/` holds vitest benchmarks for pure logic only: the Markdown flavor pipeline (core lexing, alerts, math, typst, text extras), note graph and tag collection over generated workspaces, frontmatter splitting, colorscheme derivation, hotkey restoration, and UI sentence casing. Fixtures are generated from a seeded pseudo-random source, so every run measures identical work. Electron, DOM, and filesystem behavior stays in the native suites under `tests/`.
+
+`.github/workflows/benchmarks.yml` runs the same `npm run bench` command through CodSpeed on pull requests and pushes to `main`, using CPU simulation for hardware-independent results and OpenID Connect for authentication. Results and per-benchmark comparisons appear on the [CodSpeed dashboard](https://app.codspeed.io/schmayterling/hibi) and as a pull request report.
 
 ## automatic documentation publishing
 

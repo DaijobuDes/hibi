@@ -1,5 +1,7 @@
 # hibi
 
+[![CodSpeed](https://img.shields.io/endpoint?url=https://codspeed.io/badge.json)](https://app.codspeed.io/schmayterling/hibi?utm_source=badge)
+
 minimal markdown editor built on electron 44.3.0, react, strict typescript, and electron-vite. starts with an empty, focused editor and a `start typing` placeholder. normal resizable window, integrated title area, native window controls.
 
 [documentation](docs/README.md) covers editing, folder workspaces, nested navigation, static exports, and the versioned addon API. API references are generated from their TypeScript source and checked for drift by `npm run check`.
