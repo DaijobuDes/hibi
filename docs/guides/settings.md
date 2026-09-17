@@ -1,5 +1,9 @@
 # settings
 
+## autosave
+
+editor settings include an autosave switch (off by default) and a delay from one to thirty seconds after typing stops. its status-bar pill opens those settings and shows off, save first, waiting, saving, saved, or paused. new and remote drafts need one manual save to choose a local destination. external file changes pause autosave; use manual save to review the conflict. autosave uses the same local-history snapshots as manual saves and never opens a file dialog or silently replaces external edits.
+
 **hibi** is the first settings page and the initial selection. it shows the page icon, app name, version, and creator credit using hibi's shared panels and controls. app and Electron versions also remain in the sidebar footer.
 
 **back to app** sits above the settings categories in its own unlabeled sidebar section. it returns to the current document and restores editor focus, like the top-bar back button.

@@ -17,6 +17,7 @@ import { Button, Select, SettingRow, Slider, Toggle } from '../../ui/Controls'
 import { Sidebar, type SidebarProps } from '../../ui/Sidebar'
 import { SettingsDiscovery } from '../../ui/settings-index'
 import { AddonMetadata, AddonSettings } from './AddonSettings'
+import { AutosaveSettings } from './AutosaveSettings'
 import { addons } from './addons'
 import { CodeSyntaxSettings } from './CodeSyntaxSettings'
 import { colorschemes } from './colorschemes'
@@ -173,6 +174,7 @@ export function SettingsScreen({
             hidden={category !== 'editor'}
           >
             <h1>editor</h1>
+            <AutosaveSettings />
             <div className="settings-group">
               <SettingRow
                 id="editor-padding"

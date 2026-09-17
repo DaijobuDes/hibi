@@ -96,6 +96,7 @@ test('desktop launch, isolation, offline reload, and recovery', {
         'openDocument',
         'newDocument',
         'saveDocument',
+        'autosaveDocument',
         'renameDocument',
         'readDocumentImage',
         'getHotkeys',

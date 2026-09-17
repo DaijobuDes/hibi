@@ -42,6 +42,7 @@ import { settingsIndex } from '../../ui/settings-index'
 import { useSidebarResize } from '../../ui/useSidebarResize'
 import { addonRegistry } from './addon-registry'
 import { addons, useAddons } from './addons'
+import { useAutosave } from './autosave'
 import { CommandPalette, type PaletteCommand } from './CommandPalette'
 import { colorschemes } from './colorschemes'
 import { documentFormats, editorDocument } from './document-formats'
@@ -186,6 +187,21 @@ function App() {
   const savedText = useRef('')
   const busyRef = useRef(false)
   const [busy, setBusy] = useState(false)
+  const acknowledgeSave = useCallback((saved: DocumentState) => {
+    const current = currentDocument.current
+    if (current?.id !== saved.id || current.revision !== saved.revision) return
+    savedText.current = saved.savedMarkdown
+    setDocument((latest) =>
+      latest?.id === saved.id && latest.revision === saved.revision
+        ? {
+            ...latest,
+            savedMarkdown: saved.savedMarkdown,
+            dirty: latest.markdown !== saved.savedMarkdown || latest.ephemeral,
+          }
+        : latest,
+    )
+  }, [])
+  const autosaveStatus = useAutosave(document, busy, acknowledgeSave)
   const [mode, setMode] = useState<ViewMode>('normal')
   const [info, setInfo] = useState<AppInfo | null>(null)
   const [failed, setFailed] = useState(false)
@@ -1345,6 +1361,11 @@ function App() {
                       ? 'some detected syntax is disabled; choose a flavor or enable its extension'
                       : `${flavorChoice.dialect === 'auto' ? 'detected' : 'selected'} markdown flavor · click to change`,
                   onClick: openFlavors,
+                },
+                {
+                  id: 'autosave',
+                  ...autosaveStatus,
+                  onClick: () => openSetting('editor', 'autosave-enabled'),
                 },
                 ...addonHost.statusItems.filter(
                   (item) =>

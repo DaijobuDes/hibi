@@ -5,6 +5,7 @@ export const DOCUMENT_CHANNELS = {
   open: 'document:open',
   new: 'document:new',
   save: 'document:save',
+  autosave: 'document:autosave',
   rename: 'document:rename',
   image: 'document:image',
   navigate: 'document:navigate',
@@ -24,6 +25,12 @@ export type DocumentState = {
   name: string
   dirty: boolean
   revision: number
+  /** True only after this document has a real local save destination. */
+  canAutosave: boolean
+}
+export type AutosaveResult = {
+  status: 'saved' | 'skipped' | 'conflict'
+  document: DocumentState | null
 }
 export type DocumentCommand = 'new' | 'open' | 'save' | 'saveAs'
 
@@ -93,6 +100,7 @@ export type DesktopApi = {
   openDocument: () => Promise<DocumentState | null>
   newDocument: () => Promise<DocumentState | null>
   saveDocument: (saveAs: boolean) => Promise<DocumentState | null>
+  autosaveDocument: (revision: number) => Promise<AutosaveResult>
   renameDocument: (name: string) => Promise<DocumentState>
   readDocumentImage: (
     source: string,

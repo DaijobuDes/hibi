@@ -97,6 +97,8 @@ if (process.isMainFrame) {
     newDocument: () => ipcRenderer.invoke(DOCUMENT_CHANNELS.new),
     saveDocument: (saveAs) =>
       ipcRenderer.invoke(DOCUMENT_CHANNELS.save, saveAs),
+    autosaveDocument: (revision) =>
+      ipcRenderer.invoke(DOCUMENT_CHANNELS.autosave, revision),
     renameDocument: (name) =>
       ipcRenderer.invoke(DOCUMENT_CHANNELS.rename, name),
     readDocumentImage: (source, revision) =>

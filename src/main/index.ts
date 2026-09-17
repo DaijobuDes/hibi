@@ -43,6 +43,7 @@ import {
 } from './addons'
 import { appearanceColors, loadAppearance, saveAppearance } from './appearance'
 import {
+  autosaveDocument,
   confirmDiscard,
   discardChanges,
   getDocument,
@@ -686,6 +687,13 @@ if (!app.requestSingleInstanceLock()) {
             saveAs,
             join(workspaceRoot() ?? '', getDocument().name),
           ),
+        )
+      })
+      ipcMain.handle(DOCUMENT_CHANNELS.autosave, (event, revision: unknown) => {
+        trustedWindow(event)
+        if (fileOperation) return { status: 'skipped', document: null }
+        return runFileOperation(event, (window) =>
+          autosaveDocument(window, revision),
         )
       })
       ipcMain.handle(DOCUMENT_CHANNELS.rename, (event, name: unknown) =>

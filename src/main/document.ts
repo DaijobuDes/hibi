@@ -18,7 +18,7 @@ import {
   sep,
 } from 'node:path'
 import { type BrowserWindow, dialog } from 'electron'
-import type { DocumentState } from '../shared/desktop'
+import type { AutosaveResult, DocumentState } from '../shared/desktop'
 import {
   isMarkdownDocument,
   markdownExtensions,
@@ -93,6 +93,7 @@ export function getDocument(): DocumentState {
     dirty: markdown !== saved || !!pendingPath,
     ephemeral: !!pendingPath,
     revision,
+    canAutosave: path !== null,
   }
 }
 
@@ -111,11 +112,13 @@ export async function saveDocument(
   window: BrowserWindow,
   saveAs = false,
   defaultPath?: string,
+  automatic = false,
 ): Promise<DocumentState | null> {
   let destination = path ?? pendingPath
   const exclusive = !!pendingPath && !saveAs
   const content = markdown
   if (!destination || saveAs) {
+    if (automatic) return null
     const result = await dialog.showSaveDialog(window, {
       defaultPath: destination ?? defaultPath ?? untitledName,
       filters: [
@@ -147,6 +150,7 @@ export async function saveDocument(
     )
     previous = disk
     if (disk !== saved) {
+      if (automatic) return null
       const choice = await dialog.showMessageBox(window, {
         type: 'warning',
         message: 'this file changed outside hibi.',
@@ -174,6 +178,16 @@ export async function saveDocument(
     )
   }
   return getDocument()
+}
+
+export async function autosaveDocument(
+  window: BrowserWindow,
+  expectedRevision: unknown,
+): Promise<AutosaveResult> {
+  if (expectedRevision !== revision || !path || !getDocument().dirty)
+    return { status: 'skipped', document: null }
+  const document = await saveDocument(window, false, undefined, true)
+  return { status: document ? 'saved' : 'conflict', document }
 }
 
 export function restoreDocument(
