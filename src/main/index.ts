@@ -85,6 +85,9 @@ import {
 import { workspaceAction } from './workspace-actions'
 
 app.setName('hibi')
+const appIcon = app.isPackaged
+  ? join(process.resourcesPath, 'icon.png')
+  : join(app.getAppPath(), 'build/icon.png')
 app.enableSandbox()
 const testing = !app.isPackaged && app.commandLine.hasSwitch('hibi-test')
 if (testing)
@@ -210,6 +213,7 @@ function createWindow(): void {
     show: false,
     focusable: !testing,
     title: 'hibi',
+    icon: appIcon,
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
     ...(process.platform === 'darwin'
       ? { trafficLightPosition: { x: 12, y: 11 } }
@@ -442,6 +446,7 @@ if (!app.requestSingleInstanceLock()) {
   void app
     .whenReady()
     .then(async () => {
+      if (process.platform === 'darwin') app.dock?.setIcon(appIcon)
       await loadHotkeys()
       await loadAddons()
       await loadAppearance()

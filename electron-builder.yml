@@ -7,6 +7,8 @@ files:
   - package.json
 asar: true
 extraResources:
+  - from: build/icon.png
+    to: icon.png
   - from: node_modules/electron/dist/LICENSES.chromium.html
     to: licenses/electron-third-party.html
   - from: docs/licenses
@@ -23,8 +25,11 @@ electronFuses:
   enableEmbeddedAsarIntegrityValidation: true
   onlyLoadAppFromAsar: true
 mac:
+  icon: build/icon.icns
   target: [dmg, zip]
 win:
+  icon: build/icon.ico
   target: [nsis]
 linux:
+  icon: build/icon.png
   target: [AppImage]

@@ -1,5 +1,8 @@
 import { fork, spawn } from 'node:child_process'
 import { resolve } from 'node:path'
+import { electronEnvironment } from './electron-runtime.mjs'
+
+const env = await electronEnvironment()
 
 const site = fork(resolve('scripts/build-site.mjs'), ['--watch'], {
   stdio: ['inherit', 'inherit', 'inherit', 'ipc'],
@@ -25,7 +28,7 @@ site.once('message', () => {
       'dev',
       '--watch',
     ],
-    { stdio: 'inherit' },
+    { stdio: 'inherit', env },
   )
   desktop.on('exit', (code) => stop(code ?? 0))
 })
