@@ -63,7 +63,7 @@ an addon may export a `Settings` React component alongside `manifest` and `start
 
 ## status pills
 
-`context.statusBar.register({ id, label, tooltip?, when?, onClick? })` adds a status pill at the editor page's bottom-left and returns `update(changes)` and `dispose()`. it follows the page when the sidebar opens, closes, or resizes, leaving the sidebar full-height. use a local unique id; the host prefixes it with the addon id. `when: 'source'` limits the pill to markdown and split views. an empty label hides it, and an empty status bar takes no space. settings hides editor status pills. labels are plain text; an optional click handler makes a pill a button.
+`context.statusBar.register({ id, label, tooltip?, when?, onClick? })` adds a status pill at the editor page's bottom-left and returns `update(changes)` and `dispose()`. it follows the page when the sidebar opens, closes, or resizes, leaving the sidebar full-height. use a local unique id; the host prefixes it with the addon id. `when: 'source'` limits the pill to markdown and split views; `when: 'normal'` limits it to normal view. an empty label hides it, and an empty status bar takes no space. settings hides editor status pills. labels are plain text; an optional click handler makes a pill a button.
 
 ```typescript
 const mode = context.statusBar.register({
