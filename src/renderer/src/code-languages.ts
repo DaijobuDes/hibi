@@ -80,26 +80,75 @@ const listeners = new Set<() => void>()
 let version = 0
 let languages = new Map<string, CodeLanguage['language']>()
 let aliases = new Map<string, string>()
+let catalog: readonly {
+  id: string
+  aliases: readonly string[]
+  owner: string
+  enabled: boolean
+}[] = []
+const disabled = new Set<string>()
+try {
+  const saved: unknown = JSON.parse(
+    localStorage.getItem('hibi:code-syntax-disabled') ?? '[]',
+  )
+  if (Array.isArray(saved))
+    for (const id of saved) if (typeof id === 'string') disabled.add(id)
+} catch {
+  /* Keep all languages enabled when preferences are unavailable. */
+}
 function publish() {
   languages = new Map()
   aliases = new Map()
-  for (const entry of [...builtin, ...registered.values()]) {
+  const entries = new Map<string, (typeof catalog)[number]>()
+  const definitions = [
+    ...builtin.map((entry) => ({ ...entry, owner: 'built-in' })),
+    ...[...registered].map(([key, entry]) => ({
+      ...entry,
+      owner: key.slice(0, key.length - entry.id.length - 1),
+    })),
+  ]
+  for (const entry of definitions) {
     languages.set(entry.id.toLowerCase(), entry.language)
+    entries.set(entry.id.toLowerCase(), {
+      id: entry.id.toLowerCase(),
+      aliases: [],
+      owner: entry.owner,
+      enabled: !disabled.has(entry.id.toLowerCase()),
+    })
     for (const name of [entry.id, ...(entry.aliases ?? [])])
       aliases.set(name.toLowerCase(), entry.id.toLowerCase())
   }
+  catalog = [...entries.values()].map((entry) => ({
+    ...entry,
+    aliases: [...aliases]
+      .filter(([alias, id]) => id === entry.id && alias !== entry.id)
+      .map(([alias]) => alias),
+  }))
   version++
   for (const listener of listeners) listener()
 }
 publish()
 export const codeLanguages = {
   version: () => version,
+  snapshot: () => catalog,
+  setEnabled(id: string, enabled: boolean) {
+    if (!languages.has(id) || enabled === !disabled.has(id)) return
+    if (enabled) disabled.delete(id)
+    else disabled.add(id)
+    try {
+      localStorage.setItem(
+        'hibi:code-syntax-disabled',
+        JSON.stringify([...disabled]),
+      )
+    } catch {
+      /* Session preferences still apply. */
+    }
+    publish()
+  },
   resolve(info: string) {
-    return (
-      languages.get(
-        aliases.get(info.trim().split(/\s+/)[0]?.toLowerCase() ?? '') ?? '',
-      ) ?? null
-    )
+    const id =
+      aliases.get(info.trim().split(/\s+/)[0]?.toLowerCase() ?? '') ?? ''
+    return disabled.has(id) ? null : (languages.get(id) ?? null)
   },
   subscribe(listener: () => void) {
     listeners.add(listener)

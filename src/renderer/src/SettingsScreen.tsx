@@ -1,5 +1,6 @@
 import {
   ArrowLeft,
+  Code,
   File,
   FileText,
   Keyboard,
@@ -16,6 +17,7 @@ import { Sidebar, type SidebarProps } from '../../ui/Sidebar'
 import { SettingsDiscovery } from '../../ui/settings-index'
 import { addonRegistry } from './addon-registry'
 import { addons } from './addons'
+import { CodeSyntaxSettings } from './CodeSyntaxSettings'
 import { colorschemes } from './colorschemes'
 import type { CursorSettings } from './EditorCursor'
 import { ToolbarSettings } from './EditorToolbar'
@@ -26,6 +28,7 @@ import { NotificationSettings } from './NotificationSettings'
 export const settingsCategories = [
   { id: 'hibi', label: 'hibi', icon: File },
   { id: 'editor', label: 'editor', icon: FileText },
+  { id: 'code-syntax', label: 'code syntax', icon: Code },
   { id: 'appearance', label: 'appearance', icon: PanelTop },
   { id: 'hotkeys', label: 'hotkeys', icon: Keyboard },
   { id: 'addons', label: 'addons', icon: Puzzle },
@@ -231,6 +234,14 @@ export function SettingsScreen({
                 />
               </SettingRow>
             </div>
+          </section>
+          <section
+            id="settings-code-syntax"
+            role="tabpanel"
+            aria-labelledby="category-code-syntax"
+            hidden={category !== 'code-syntax'}
+          >
+            <CodeSyntaxSettings />
           </section>
           <section
             id="settings-appearance"

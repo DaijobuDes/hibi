@@ -74,3 +74,38 @@ test('language contributions override aliases and restore built-ins on cleanup',
     /invalid/,
   )
 })
+
+test('language switches cover aliases, retain plain code, and follow extension registration', () => {
+  codeLanguages.setEnabled('javascript', false)
+  assert.equal(codeLanguages.resolve('js'), null)
+  assert.equal(codeHtml('const value = 1 < 2', 'js'), 'const value = 1 &lt; 2')
+  codeLanguages.setEnabled('javascript', true)
+  assert.ok(codeLanguages.resolve('js'))
+  const language = StreamLanguage.define({
+    token(stream) {
+      stream.skipToEnd()
+      return 'keyword'
+    },
+  })
+  const remove = codeLanguages.register('test-plugin', {
+    id: 'customlang',
+    aliases: ['custom'],
+    language,
+  })
+  assert.equal(
+    codeLanguages.snapshot().find((item) => item.id === 'customlang').owner,
+    'test-plugin',
+  )
+  codeLanguages.setEnabled('customlang', false)
+  assert.equal(codeLanguages.resolve('custom'), null)
+  remove()
+  assert.ok(!codeLanguages.snapshot().some((item) => item.id === 'customlang'))
+  const cleanup = codeLanguages.register('test-plugin', {
+    id: 'customlang',
+    aliases: ['custom'],
+    language,
+  })
+  assert.equal(codeLanguages.resolve('custom'), null)
+  codeLanguages.setEnabled('customlang', true)
+  cleanup()
+})

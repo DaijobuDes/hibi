@@ -1,5 +1,7 @@
 # code highlighting
 
+settings → **code syntax** lists built-in languages and active extension contributions. toggle a language to enable/disable highlighting in source fences, rich code blocks, and documentation exports. its aliases share the same toggle. disabled code remains intact and readable; preferences persist across restarts and extension reloads. new registered languages appear automatically.
+
 label fenced code with a language (`javascript`, `ts`, `python`, and so on). hibi uses the same parser registry in markdown/source panes, normal view, and documentation exports. highlighting is visual: it does not execute code, change Markdown, move selections, or reset undo history. unlabelled and unknown languages stay plain text.
 
 built-ins: javascript, typescript, jsx, tsx, html, css, json, python, yaml, sql, java, c/c++, rust, go, shell, powershell, c#, ruby, swift, toml, and dockerfile. common short names such as `js`, `ts`, `py`, `yml`, `sh`, `rb`, and `cs` are recognized. fence names are case-insensitive; trailing info such as a filename does not affect the language.
