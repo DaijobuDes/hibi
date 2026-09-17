@@ -8,7 +8,8 @@ import {
   shortcutError,
   shortcutFromEvent,
 } from '../../shared/hotkeys'
-import { Button, IconButton, TextInput } from '../../ui/Controls'
+import { IconButton } from '../../ui/Controls'
+import { SettingsFilter } from '../../ui/SettingsFilter'
 import { ShortcutKeys } from '../../ui/ShortcutKeys'
 
 export function HotkeySettings({
@@ -76,27 +77,16 @@ export function HotkeySettings({
       <p className="settings-description">
         choose a shortcut to rebind it. changes save on this device.
       </p>
-      <div className="hotkey-tools">
-        <TextInput
-          type="search"
-          aria-label="filter hotkeys"
-          placeholder="filter commands…"
-          value={query}
-          disabled={!!recording || saving}
-          onChange={(event) => setQuery(event.target.value)}
-        />
-        <Button
-          type="button"
-          disabled={
-            !!recording ||
-            saving ||
-            actions.every(({ id }) => hotkeys[id] === defaults[id])
-          }
-          onClick={() => void save(defaults)}
-        >
-          reset all
-        </Button>
-      </div>
+      <SettingsFilter
+        id="hotkey-filter"
+        label="filter hotkeys"
+        placeholder="filter commands…"
+        value={query}
+        onChange={setQuery}
+        disabled={!!recording || saving}
+        resetDisabled={actions.every(({ id }) => hotkeys[id] === defaults[id])}
+        onReset={() => void save(defaults)}
+      />
       <div className="settings-group hotkey-list">
         {actions
           .filter(({ label, category }) =>

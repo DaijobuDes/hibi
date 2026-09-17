@@ -9,6 +9,10 @@ import { electron } from './electron.mjs'
 test('license catalog retains dependency and palette notices, excluding build tools', async () => {
   const entries = await collectLicenses()
   assert.equal(new Set(entries.map((entry) => entry.id)).size, entries.length)
+  assert.match(
+    entries.find((entry) => entry.name === 'isarray').text,
+    /Copyright.*Julian Gruber/,
+  )
   for (const name of [
     'react',
     'react-dom',

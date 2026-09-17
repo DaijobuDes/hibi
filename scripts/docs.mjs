@@ -71,6 +71,13 @@ const references = [
     'tsx',
   ],
   [
+    'docs/reference/settings-filter-api.md',
+    'shared settings filter',
+    'src/ui/SettingsFilter.tsx',
+    (source) => source,
+    'tsx',
+  ],
+  [
     'docs/reference/authors.md',
     'plugin authors',
     'src/addons/authors.ts',

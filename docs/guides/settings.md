@@ -6,9 +6,21 @@
 
 **sponsor on github** opens [may's GitHub Sponsors page](https://github.com/sponsors/schmayterling) in your default browser. this action uses a fixed destination; workspace content and addons cannot supply arbitrary external URLs through it.
 
-## syntax and code syntax
+## syntax and code highlighting
 
-**syntax** toggles markdown features individually, including each heading level and extension-provided formats. **code syntax** toggles highlighting per language. both retain the original source. see [markdown syntax](../extensions/markdown-syntax.md) and [code languages](../extensions/code-languages.md).
+**syntax** toggles markdown features individually, including each heading level and extension-provided formats. **code highlighting** toggles highlighting per language. both retain the original source. the compact filter/reset row is shared with hotkeys and addons. filtered-out settings remain discoverable in the command palette; navigating to one clears that page’s filter. see [markdown syntax](../extensions/markdown-syntax.md) and [code languages](../extensions/code-languages.md).
+
+## addons
+
+addons are grouped into **enabled** and **disabled**. their metadata identifies **built-in** addons shipped with hibi, **local** developer/folder packages, and **third-party** packages installed from a url. search by name, description, kind, author, or source. **reset all** restores addon enablement defaults without removing packages.
+
+**hibi garden** opens [hibi.garden/addons](https://hibi.garden/addons). **install from url** accepts public https git repositories and addon zip packages. **open plugins folder** reveals the installed package directory. local-folder installation remains available through **install theme or extension…** in the command palette. see [sideloading](../extensions/sideloading.md).
+
+## recovery screen
+
+hibi → diagnostics → **preview explode screen** opens a dismissible preview of the recovery screen. escape or **back to settings** returns without unmounting the editor or changing the document.
+
+when a renderer component fails, the real screen offers **reload hibi**, **save a copy** of the draft still held by the main process, and expandable error details with a copy button. hibi does not claim unsent edits survived, and it never sends diagnostics automatically. native process crashes retain the operating system’s reload prompt.
 
 ## notifications
 

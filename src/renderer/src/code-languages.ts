@@ -128,6 +128,17 @@ function publish() {
   for (const listener of listeners) listener()
 }
 publish()
+function savePreferences() {
+  try {
+    localStorage.setItem(
+      'hibi:code-syntax-disabled',
+      JSON.stringify([...disabled]),
+    )
+  } catch {
+    /* Session preferences still apply. */
+  }
+  publish()
+}
 export const codeLanguages = {
   version: () => version,
   snapshot: () => catalog,
@@ -135,15 +146,11 @@ export const codeLanguages = {
     if (!languages.has(id) || enabled === !disabled.has(id)) return
     if (enabled) disabled.delete(id)
     else disabled.add(id)
-    try {
-      localStorage.setItem(
-        'hibi:code-syntax-disabled',
-        JSON.stringify([...disabled]),
-      )
-    } catch {
-      /* Session preferences still apply. */
-    }
-    publish()
+    savePreferences()
+  },
+  reset() {
+    disabled.clear()
+    savePreferences()
   },
   resolve(info: string) {
     const id =

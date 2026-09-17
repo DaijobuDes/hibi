@@ -70,7 +70,7 @@ import {
   isTrustedRendererUrl,
   resolveAssetPath,
 } from './security'
-import { installedAddons, installedAsset } from './sideload'
+import { installedAddons, installedAsset, openAddonsFolder } from './sideload'
 import {
   getWorkspace,
   observeWorkspace,
@@ -507,9 +507,17 @@ if (!app.requestSingleInstanceLock()) {
         trustedWindow(event)
         return installedAddons()
       })
-      ipcMain.handle(SIDELOAD_CHANNELS.install, (event) =>
-        runFileOperation(event, installAddon),
+      ipcMain.handle(SIDELOAD_CHANNELS.install, (event, url: unknown) =>
+        runFileOperation(event, (window) => installAddon(window, url)),
       )
+      ipcMain.handle(SIDELOAD_CHANNELS.folder, (event) => {
+        trustedWindow(event)
+        return openAddonsFolder()
+      })
+      ipcMain.handle(SIDELOAD_CHANNELS.garden, (event) => {
+        trustedWindow(event)
+        return shell.openExternal('https://hibi.garden/addons')
+      })
       ipcMain.handle(SIDELOAD_CHANNELS.remove, (event, id: unknown) =>
         runFileOperation(event, () => removeAddon(id)),
       )

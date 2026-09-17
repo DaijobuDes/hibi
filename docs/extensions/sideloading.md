@@ -1,6 +1,12 @@
 # sideloading
 
-choose **install addon…** in settings → addons, or **install theme or extension…** in the palette. select a package folder containing `hibi-addon.json` and `README.md`. review its metadata and trust notice. packages install disabled; enable or remove them in settings. no restart is needed.
+choose **install from url** in settings → addons for a public https git repository or zip package. **install theme or extension…** in the palette still accepts a local package folder. packages need `hibi-addon.json`, `README.md`, and their declared compiled entry. review metadata and the trust notice before installing. packages start disabled; enable or remove them in settings without restarting.
+
+git links support `.git` urls and normal github, gitlab, and codeberg repository links. other urls are downloaded as archives; non-zip responses are tried as git repositories. hibi uses the repository’s default branch and a shallow bare clone, then reads a zip archive. git must be installed. no checkout filters, hooks, submodules, dependency installation, or build scripts run. system/global git configuration and credential helpers are disabled; private/ssh repositories and repositories that need a build are not supported. git downloads have a 30-second clone timeout and a 64 mib repository limit; archive generation has a 20-second timeout and the normal package size limit.
+
+zip downloads must stay under 25 mib and use https throughout redirects. packages may sit at the archive root or within one wrapping folder. single-volume, non-zip64 archives are supported; encrypted files, duplicate paths, traversal, symlinks, and special files are rejected. actual decompressed bytes and checksums are checked before installation. temporary downloads are removed on success, cancellation, and failure.
+
+the **hibi garden** button opens `https://hibi.garden/addons`. **open plugins folder** reveals the private installed-addons directory. source labels are set by hibi: bundled code is built-in, folder/developer installs are local, and url/git installs are third-party. a package cannot label itself built-in.
 
 packages live in private application data. opening a workspace never installs or executes its code. disabled installed extensions are not imported. replacement installs use a fresh module url and start disabled; their old package goes to trash after successful replacement. removal stops contributions and moves the package to trash.
 

@@ -6,7 +6,7 @@ import test from 'node:test'
 import { electron } from './electron.mjs'
 import { pressShortcut } from './keyboard.mjs'
 
-test('code syntax controls update both panes, persist, and discover addon languages', {
+test('code highlighting controls update both panes, persist, and discover addon languages', {
   timeout: 30000,
 }, async (t) => {
   const profile = await mkdtemp(join(tmpdir(), 'hibi-code-syntax-'))
@@ -34,7 +34,9 @@ test('code syntax controls update both panes, persist, and discover addon langua
   await page
     .getByRole('button', { name: 'editor settings', exact: true })
     .click()
-  await page.getByRole('tab', { name: 'code syntax', exact: true }).click()
+  await page
+    .getByRole('tab', { name: 'code highlighting', exact: true })
+    .click()
   await page.getByRole('checkbox', { name: 'javascript', exact: true }).click()
   await page.waitForFunction(
     () =>
@@ -50,7 +52,9 @@ test('code syntax controls update both panes, persist, and discover addon langua
   await page
     .getByRole('button', { name: 'editor settings', exact: true })
     .click()
-  await page.getByRole('tab', { name: 'code syntax', exact: true }).click()
+  await page
+    .getByRole('tab', { name: 'code highlighting', exact: true })
+    .click()
   assert.equal(
     await page
       .getByRole('checkbox', { name: 'javascript', exact: true })
@@ -63,7 +67,9 @@ test('code syntax controls update both panes, persist, and discover addon langua
     .waitFor({ state: 'attached' })
   await page.getByRole('tab', { name: 'addons', exact: true }).click()
   await page.locator('#addon-typst').click()
-  await page.getByRole('tab', { name: 'code syntax', exact: true }).click()
+  await page
+    .getByRole('tab', { name: 'code highlighting', exact: true })
+    .click()
   await page.getByRole('checkbox', { name: 'typst', exact: true }).waitFor()
   assert.equal(
     (await page.evaluate(() => window.hibi.getDocument())).markdown,

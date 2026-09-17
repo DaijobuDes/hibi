@@ -1,6 +1,6 @@
 # code highlighting
 
-settings → **code syntax** lists built-in languages and active extension contributions. toggle a language to enable/disable highlighting in source fences, rich code blocks, and documentation exports. its aliases share the same toggle. disabled code remains intact and readable; preferences persist across restarts and extension reloads. new registered languages appear automatically.
+settings → **code highlighting** lists built-in languages and active extension contributions. toggle a language to enable/disable highlighting in source fences, rich code blocks, and documentation exports. its aliases share the same toggle. disabled code remains intact and readable; preferences persist across restarts and extension reloads. new registered languages appear automatically. the compact filter searches names and aliases; **reset all** enables every language, including entries hidden by the current filter.
 
 label fenced code with a language (`javascript`, `ts`, `python`, and so on). hibi uses the same parser registry in markdown/source panes, normal view, and documentation exports. highlighting is visual: it does not execute code, change Markdown, move selections, or reset undo history. unlabelled and unknown languages stay plain text.
 

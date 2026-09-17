@@ -143,11 +143,15 @@ test('empty entry, three views, and lossless source switching', {
     .getByRole('tab', { name: 'appearance', exact: true })
     .press('ArrowUp')
   await page
-    .getByRole('tab', { name: 'code syntax', exact: true, selected: true })
+    .getByRole('tab', {
+      name: 'code highlighting',
+      exact: true,
+      selected: true,
+    })
     .waitFor()
   assert.equal(
     await page
-      .getByRole('tab', { name: 'code syntax', exact: true })
+      .getByRole('tab', { name: 'code highlighting', exact: true })
       .getAttribute('aria-selected'),
     'true',
   )

@@ -664,9 +664,9 @@ export function useAddons(environment: Environment) {
       latest.current.error(error)
     }
   }
-  async function install() {
+  async function install(url?: string) {
     try {
-      await window.hibi.installAddon()
+      await window.hibi.installAddon(url)
       const [states, packages] = await Promise.all([
         window.hibi.getAddonStates(),
         window.hibi.getInstalledAddons(),

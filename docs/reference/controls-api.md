@@ -144,11 +144,13 @@ export function SettingRow({
   label,
   description,
   children,
+  hidden = false,
 }: {
   id: string
   label: string
   description: ReactNode
   children: ReactNode
+  hidden?: boolean
 }) {
   const row = useRef<HTMLDivElement>(null)
   const discover = useContext(SettingsDiscovery)
@@ -157,7 +159,7 @@ export function SettingRow({
       return settingsIndex.register(row.current, id, label)
   }, [discover, id, label])
   return (
-    <div className="setting-row" ref={row}>
+    <div className="setting-row" ref={row} hidden={hidden}>
       <div className="setting-copy">
         <label htmlFor={id}>{label}</label>
         <p id={`${id}-description`}>{description}</p>

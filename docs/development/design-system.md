@@ -34,6 +34,8 @@ use `ShortcutKeys` from `src/addons/ui.ts` in addons, or `src/ui/ShortcutKeys.ts
 
 group related rows on one surface with inset separators. each row puts its label and description on the left and its control on the right. controls wrap inside narrow panels, including when the sidebar is widened. keep native input semantics, labels, descriptions, and keyboard focus behavior.
 
+use `SettingsFilter` for a compact search field and reset-all action. keep filtered `SettingRow` components mounted with `hidden`, so the command palette can still discover every setting. navigation from the palette reveals its target by clearing the filter. reset applies to the whole page, including hidden results. see the [generated component reference](../reference/settings-filter-api.md).
+
 ## reusable components
 
 `src/ui/controls.css` owns shared field and action styling. text-like native inputs and textareas inherit themed defaults, including controls supplied by installed extensions. checkbox, radio, range, file, color, and hidden inputs keep their own semantics. extension css should describe layout and document-specific rendering, not recreate field colors, borders, type, padding, or focus rings.

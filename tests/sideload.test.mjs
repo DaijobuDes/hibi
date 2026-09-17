@@ -130,9 +130,11 @@ test('sideloads reviewed packages disabled, discovers their settings/themes/comm
   )
   await page.getByRole('button', { name: 'editor settings' }).click()
   await page.getByRole('tab', { name: 'addons', exact: true }).click()
+  await pressShortcut(app, `${mod}+k`)
   await page
-    .getByRole('button', { name: 'install addon…', exact: true })
-    .click()
+    .getByRole('combobox', { name: 'search commands' })
+    .fill('install theme or extension')
+  await page.getByRole('option').first().click()
   await page.locator('#addon-fixture-addon').waitFor()
   assert.equal(await page.locator('#addon-fixture-addon').isChecked(), false)
   assert.equal(await page.evaluate(() => window.fixtureStarts), undefined)

@@ -13,6 +13,7 @@ export {
   Toggle,
 } from '../ui/Controls'
 export { Modal, type ModalProps } from '../ui/Modal'
+export { SettingsFilter } from '../ui/SettingsFilter'
 export { ShortcutKeys } from '../ui/ShortcutKeys'
 export { Sidebar, type SidebarItem, type SidebarProps } from '../ui/Sidebar'
 export { Tooltip, TooltipHost } from '../ui/Tooltip'

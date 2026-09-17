@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import {
   lstat,
   mkdir,
+  mkdtemp,
   readdir,
   readFile,
   realpath,
@@ -13,30 +14,24 @@ import { extname, join } from 'node:path'
 import { app, type BrowserWindow, dialog, shell } from 'electron'
 import { ADDON_API_VERSION, type AddonManifest } from '../addons/api'
 import {
+  MAX_ADDON_BYTES,
+  MAX_ADDON_ENTRIES,
+  MAX_ADDON_FILE_BYTES,
+  validAddonPath as validPath,
+} from '../shared/addon-package'
+import {
   type ColorschemeInput,
   defineColorscheme,
 } from '../shared/colorschemes'
 import type { InstalledAddon } from '../shared/sideload'
+import { downloadAddon, unpackAddon } from './addon-download'
+import { downloadRepository, repositoryUrl } from './addon-repository'
 
 type Package = InstalledAddon & { entry: string; hash: string; files: string[] }
 let installed: Package[] = []
 const root = () => join(app.getPath('userData'), 'installed-addons')
 const validId = (value: unknown): value is string =>
   typeof value === 'string' && /^[a-z][a-z0-9-]{0,47}$/.test(value)
-function validPath(value: unknown): value is string {
-  return (
-    typeof value === 'string' &&
-    value.length < 2048 &&
-    value
-      .split('/')
-      .every(
-        (part) =>
-          !!part &&
-          !part.startsWith('.') &&
-          !/[\\:?%#<>"|*]|\p{Cc}/u.test(part),
-      )
-  )
-}
 
 import { validDocumentExtensions } from '../shared/document-types'
 
@@ -169,10 +164,11 @@ function descriptor(data: Omit<Package, 'url'>): Package {
   }
 }
 export function installedAddons(): InstalledAddon[] {
-  return installed.map(({ manifest, url, themes }) => ({
+  return installed.map(({ manifest, url, themes, source }) => ({
     manifest,
     url,
     themes,
+    source: source ?? 'local',
   }))
 }
 export async function loadInstalledAddons(builtinIds: readonly string[]) {
@@ -200,11 +196,18 @@ export async function loadInstalledAddons(builtinIds: readonly string[]) {
         data.manifest.id !== entry.name ||
         !/^[a-f\d]{64}$/.test(record.hash) ||
         !Array.isArray(record.files) ||
-        record.files.length > 1000 ||
+        record.files.length > MAX_ADDON_ENTRIES ||
         !record.files.every(validPath)
       )
         throw new Error('invalid installation record.')
-      next.push(descriptor({ ...data, hash: record.hash, files: record.files }))
+      next.push(
+        descriptor({
+          ...data,
+          hash: record.hash,
+          files: record.files,
+          source: record.source === 'third-party' ? 'third-party' : 'local',
+        }),
+      )
     } catch (error) {
       console.error(`could not load installed addon ${entry.name}:`, error)
     }
@@ -215,20 +218,58 @@ export async function installPackage(
   window: BrowserWindow,
   builtinIds: readonly string[],
   disable: (id: string) => Promise<() => Promise<void>>,
+  url?: unknown,
 ): Promise<boolean> {
+  if (url !== undefined) {
+    const temporary = await mkdtemp(join(app.getPath('temp'), 'hibi-addon-'))
+    try {
+      let download = repositoryUrl(url)
+        ? await downloadRepository(url, temporary)
+        : await downloadAddon(url)
+      if (
+        download.zip.length < 4 ||
+        download.zip.readUInt32LE(0) !== 0x04034b50
+      )
+        download = await downloadRepository(url, temporary)
+      const packageDirectory = join(temporary, 'package')
+      await mkdir(packageDirectory, { mode: 0o700 })
+      await unpackAddon(download.zip, packageDirectory)
+      return await installDirectory(
+        window,
+        packageDirectory,
+        builtinIds,
+        disable,
+        'third-party',
+        download.host,
+      )
+    } finally {
+      await rm(temporary, { recursive: true, force: true })
+    }
+  }
   const selection = await dialog.showOpenDialog(window, {
     title: 'install addon package folder',
     properties: ['openDirectory'],
   })
   if (selection.canceled || !selection.filePaths[0]) return false
   const source = await realpath(selection.filePaths[0])
+  return installDirectory(window, source, builtinIds, disable, 'local')
+}
+
+async function installDirectory(
+  window: BrowserWindow,
+  source: string,
+  builtinIds: readonly string[],
+  disable: (id: string) => Promise<() => Promise<void>>,
+  origin: 'local' | 'third-party',
+  host?: string,
+): Promise<boolean> {
   const data = await readManifest(source)
   if (builtinIds.includes(data.manifest.id))
     throw new Error('an installed package cannot replace a bundled addon.')
   const verdict = await dialog.showMessageBox(window, {
     type: data.manifest.kind === 'extension' ? 'warning' : 'question',
     message: `install ${data.manifest.name} ${data.manifest.version}?`,
-    detail: `${data.manifest.description}\n\nby ${data.manifest.authors?.map((author) => author.displayName).join(', ')}\n\n${data.manifest.kind === 'extension' ? 'extensions run trusted renderer code and can read and edit documents through hibi’s api. only install code you trust. ' : ''}the addon will be installed disabled.`,
+    detail: `${data.manifest.description}\n\nby ${data.manifest.authors?.map((author) => author.displayName).join(', ')}${host ? `\n\ndownloaded from ${host}` : ''}\n\n${data.manifest.kind === 'extension' ? 'extensions run trusted renderer code and can read and edit documents through hibi’s api. only install code you trust. ' : ''}the addon will be installed disabled.`,
     buttons: [
       'cancel',
       installed.some((item) => item.manifest.id === data.manifest.id)
@@ -258,7 +299,7 @@ export async function installPackage(
       )
       for (const entry of entries) {
         if (entry.name.startsWith('.')) continue
-        if (++count > 1000)
+        if (++count > MAX_ADDON_ENTRIES)
           throw new Error('addon packages support up to 1,000 entries.')
         const relative = parent ? `${parent}/${entry.name}` : entry.name
         if (!validPath(relative) || entry.isSymbolicLink())
@@ -299,13 +340,13 @@ export async function installPackage(
         const stat = await lstat(path)
         if (
           stat.isSymbolicLink() ||
-          stat.size > 5 * 1024 * 1024 ||
-          files.length >= 1000
+          stat.size > MAX_ADDON_FILE_BYTES ||
+          files.length >= MAX_ADDON_ENTRIES
         )
           throw new Error('addon package exceeds file limits.')
         const content = await readFile(path)
         bytes += content.length
-        if (bytes > 25 * 1024 * 1024)
+        if (bytes > MAX_ADDON_BYTES)
           throw new Error('addon package must stay under 25 mib.')
         await writeFile(target, content, { mode: 0o600, flag: 'wx' })
         files.push(relative)
@@ -324,7 +365,7 @@ export async function installPackage(
     const fingerprint = hash.digest('hex')
     await writeFile(
       join(staging, '.hibi-install.json'),
-      JSON.stringify({ hash: fingerprint, files }),
+      JSON.stringify({ hash: fingerprint, files, source: origin }),
       { mode: 0o600 },
     )
     const exists = await lstat(destination).catch(
@@ -347,7 +388,7 @@ export async function installPackage(
     replaced = true
     installed = [
       ...installed.filter((item) => item.manifest.id !== data.manifest.id),
-      descriptor({ ...copied, hash: fingerprint, files }),
+      descriptor({ ...copied, hash: fingerprint, files, source: origin }),
     ]
     if (backedUp)
       await shell
@@ -367,6 +408,11 @@ export async function removePackage(id: unknown): Promise<void> {
   if (!packageInfo) throw new Error('only sideloaded addons can be removed.')
   await shell.trashItem(join(root(), packageInfo.manifest.id))
   installed = installed.filter((item) => item !== packageInfo)
+}
+export async function openAddonsFolder(): Promise<void> {
+  await mkdir(root(), { recursive: true, mode: 0o700 })
+  const error = await shell.openPath(root())
+  if (error) throw new Error(error)
 }
 export async function installedAsset(url: string): Promise<string | null> {
   const parsed = new URL(url)
@@ -394,5 +440,5 @@ export async function installedAsset(url: string): Promise<string | null> {
     if ((await lstat(path)).isSymbolicLink()) return null
   }
   const stat = await lstat(path)
-  return stat.isFile() && stat.size <= 5 * 1024 * 1024 ? path : null
+  return stat.isFile() && stat.size <= MAX_ADDON_FILE_BYTES ? path : null
 }

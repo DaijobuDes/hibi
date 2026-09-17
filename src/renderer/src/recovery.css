@@ -1,0 +1,112 @@
+.recovery-screen {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: 100svh;
+  background: var(--background);
+  color: var(--ink);
+  font: var(--text-ui) / 1.5 var(--font-ui);
+}
+.recovery-chrome {
+  display: flex;
+  justify-content: space-between;
+  flex-shrink: 0;
+  min-height: 36px;
+  padding: var(--space-2) 148px var(--space-2) 88px;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  -webkit-app-region: drag;
+}
+.recovery-body {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: var(--space-5);
+}
+.recovery-content {
+  width: min(100%, 480px);
+  animation: recovery-in var(--motion-pane) var(--ease-out);
+}
+.recovery-icon {
+  display: block;
+  margin-bottom: var(--space-5);
+  color: var(--muted);
+}
+.recovery-content h1 {
+  margin: 0 0 var(--space-3);
+  font-size: 26px;
+  line-height: 1.2;
+  font-weight: 600;
+  text-wrap: balance;
+}
+.recovery-content p {
+  margin: 0;
+  color: var(--muted);
+}
+.recovery-draft,
+.recovery-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-5);
+}
+.recovery-draft > span:first-of-type {
+  overflow-wrap: anywhere;
+}
+.recovery-draft > span:last-child {
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+.recovery-content .recovery-hint {
+  margin-top: var(--space-2);
+  font-size: var(--text-sm);
+}
+.recovery-details {
+  margin-top: var(--space-5);
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-3);
+  color: var(--muted);
+}
+.recovery-details summary {
+  cursor: pointer;
+}
+.recovery-details pre {
+  max-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: var(--text-xs) / 1.6 var(--font-mono);
+}
+.recovery-content .recovery-status {
+  min-height: 1.5em;
+  margin-top: var(--space-2);
+  font-size: var(--text-sm);
+}
+.modal.recovery-preview {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  overflow: auto;
+}
+@keyframes recovery-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .recovery-content {
+    animation: none;
+  }
+}

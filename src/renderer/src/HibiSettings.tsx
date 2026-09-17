@@ -4,6 +4,8 @@ import type { LicenseInfo } from '../../shared/about'
 import type { AppInfo } from '../../shared/desktop'
 import { Button, SettingRow } from '../../ui/Controls'
 import { useDialogs } from '../../ui/DialogProvider'
+import { Modal } from '../../ui/Modal'
+import { RecoveryScreen } from './RecoveryScreen'
 import './hibi-settings.css'
 
 function LicenseText({ id }: { id: string }) {
@@ -34,6 +36,7 @@ export function HibiSettings({ info }: { info: AppInfo | null }) {
   const [licenses, setLicenses] = useState<LicenseInfo[] | null>(null)
   const [failed, setFailed] = useState(false)
   const [sponsoring, setSponsoring] = useState(false)
+  const [preview, setPreview] = useState(false)
   useEffect(() => {
     let active = true
     void window.hibi.getLicenses().then(
@@ -99,6 +102,34 @@ export function HibiSettings({ info }: { info: AppInfo | null }) {
           </Button>
         </SettingRow>
       </div>
+      <h2>diagnostics</h2>
+      <div className="settings-group">
+        <SettingRow
+          id="recovery-preview"
+          label="explode screen"
+          description="preview the recovery screen without interrupting your document."
+        >
+          <Button
+            id="recovery-preview"
+            aria-label="preview explode screen"
+            onClick={() => setPreview(true)}
+          >
+            preview explode screen
+          </Button>
+        </SettingRow>
+      </div>
+      {preview && (
+        <Modal
+          className="recovery-preview"
+          aria-label="recovery preview"
+          onDismiss={() => setPreview(false)}
+        >
+          <RecoveryScreen
+            error={new Error('preview: this is an example error.')}
+            onBack={() => setPreview(false)}
+          />
+        </Modal>
+      )}
       <h2 id="open-source-licenses">open source licenses</h2>
       <section
         className="settings-group license-list"

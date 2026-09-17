@@ -210,6 +210,21 @@ span.select-control > svg {
 .ui-control-row > .ui-field {
   flex: 1 1 160px;
 }
+.settings-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+.settings-filter-bar > input {
+  flex: 1;
+}
+.settings-filter-bar > button {
+  flex-shrink: 0;
+}
+.setting-row[hidden] {
+  display: none;
+}
 @media (prefers-reduced-motion: reduce) {
   .ui-field,
   button.ui-button {

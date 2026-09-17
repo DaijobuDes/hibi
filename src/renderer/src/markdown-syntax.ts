@@ -175,6 +175,17 @@ function publish() {
   for (const listener of listeners) listener()
 }
 publish()
+function savePreferences() {
+  try {
+    localStorage.setItem(
+      'hibi:markdown-syntax-disabled',
+      JSON.stringify([...disabled]),
+    )
+  } catch {
+    /* Session preferences still apply. */
+  }
+  publish()
+}
 export const markdownSyntax = {
   snapshot: () => snapshot,
   version: () => version,
@@ -205,15 +216,11 @@ export const markdownSyntax = {
     if (!registry.has(id) || enabled === !disabled.has(id)) return
     if (enabled) disabled.delete(id)
     else disabled.add(id)
-    try {
-      localStorage.setItem(
-        'hibi:markdown-syntax-disabled',
-        JSON.stringify([...disabled]),
-      )
-    } catch {
-      /* Session preferences still apply. */
-    }
-    publish()
+    savePreferences()
+  },
+  reset() {
+    disabled.clear()
+    savePreferences()
   },
   register(owner: string, feature: MarkdownSyntaxFeature) {
     const id = `${owner}.${feature.id}`

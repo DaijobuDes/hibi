@@ -56,7 +56,9 @@ export type DesktopApi = {
     workspace?: WorkspaceState | null
   } | null>
   getInstalledAddons: () => Promise<import('./sideload').InstalledAddon[]>
-  installAddon: () => Promise<void>
+  installAddon: (url?: string) => Promise<void>
+  openAddonsFolder: () => Promise<void>
+  openAddonGarden: () => Promise<void>
   removeAddon: (id: string) => Promise<void>
   listVersions: () => Promise<import('./history').DocumentVersion[]>
   previewVersion: (id: string) => Promise<string>

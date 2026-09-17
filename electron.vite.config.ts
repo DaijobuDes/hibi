@@ -7,6 +7,8 @@ export default defineConfig({
   main: {
     plugins: [{ name: 'app-licenses', buildStart: writeLicenses }],
     build: {
+      // unzipper's optional S3 adapter must stay lazy; hibi only opens local buffers.
+      commonjsOptions: { ignore: ['@aws-sdk/client-s3'] },
       rollupOptions: {
         input: {
           index: resolve('src/main/index.ts'),

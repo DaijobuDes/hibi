@@ -6,9 +6,13 @@ export type InstalledAddon = {
   /** Versioned local module URL. Themes contain data only. */
   url: string | null
   themes: ColorschemeInput[]
+  /** Installation provenance supplied by the host, never the addon manifest. */
+  source?: 'local' | 'third-party'
 }
 export const SIDELOAD_CHANNELS = {
   list: 'addons:installed',
   install: 'addons:install',
+  folder: 'addons:folder',
+  garden: 'addons:garden',
   remove: 'addons:remove',
 } as const

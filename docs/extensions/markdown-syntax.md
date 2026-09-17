@@ -4,7 +4,7 @@ settings → **syntax** controls which formatting hibi renders. each heading lev
 
 turning a feature off shows its original markdown in rich editing and exports. it does not delete content or rewrite the source. these preferences apply across documents and persist between launches. disabled rich-formatting commands become unavailable; source remains plain editable markdown. paragraphs and plain text always remain available. html still passes through export sanitization, and unsupported raw html keeps the rich editor's existing read-only protection.
 
-**code syntax** is separate: its switches control highlighting per language, while code blocks remain readable. see [code languages](code-languages.md).
+**code highlighting** is separate: its switches control highlighting per language, while code blocks remain readable. both pages use a compact filter and **reset all** button. reset enables all features, including filtered-out entries. see [code languages](code-languages.md).
 
 ## subscript and small text
 

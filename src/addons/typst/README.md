@@ -37,6 +37,6 @@ automatic package downloads are blocked through a local denying proxy honored by
 - [typst.ts](https://github.com/Myriad-Dreamin/typst.ts): myriad-dreamin and contributors, apache-2.0.
 - bundled fonts and assets retain their [upstream notices](../../../docs/licenses/typst-assets.md), also available in hibi's open source licenses.
 
-settings → syntax can disable typst blocks inside markdown, preserving their fences as editable literal text. this does not disable `.typ` document previews or pdf export. settings → code syntax independently controls typst source highlighting.
+settings → syntax can disable typst blocks inside markdown, preserving their fences as editable literal text. this does not disable `.typ` document previews or pdf export. settings → code highlighting independently controls typst source highlighting.
 
 the lightweight source highlighter uses codemirror; the typst compiler validates actual syntax. see [document format api](../../../docs/development/document-formats.md) for the reusable host APIs.

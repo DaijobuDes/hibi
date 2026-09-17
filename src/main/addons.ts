@@ -128,7 +128,10 @@ async function saveEnabled(id: string, value: boolean): Promise<AddonState[]> {
   return getAddonStates()
 }
 
-export async function installAddon(window: BrowserWindow): Promise<void> {
+export async function installAddon(
+  window: BrowserWindow,
+  url?: unknown,
+): Promise<void> {
   await installPackage(
     window,
     bundledManifests.map((manifest) => manifest.id),
@@ -139,6 +142,7 @@ export async function installAddon(window: BrowserWindow): Promise<void> {
         await saveEnabled(id, previous)
       }
     },
+    url,
   )
 }
 

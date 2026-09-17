@@ -1,5 +1,6 @@
 import { useState, useSyncExternalStore } from 'react'
-import { SettingRow, TextInput, Toggle } from '../../ui/Controls'
+import { SettingRow, Toggle } from '../../ui/Controls'
+import { SettingsFilter } from '../../ui/SettingsFilter'
 import { codeLanguages } from './code-languages'
 
 export function CodeSyntaxSettings() {
@@ -16,57 +17,56 @@ export function CodeSyntaxSettings() {
   )
   return (
     <>
-      <h1>code syntax</h1>
-      <div className="settings-group">
-        <SettingRow
-          id="code-syntax-filter"
-          label="filter languages"
-          description="disabled languages remain readable as plain code."
-        >
-          <TextInput
-            type="search"
-            className="settings-filter"
-            id="code-syntax-filter"
-            placeholder="filter languages…"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-          />
-        </SettingRow>
-      </div>
-      {[...new Set(matching.map((language) => language.owner))].map((owner) => (
-        <div key={owner}>
-          <h2>
-            {owner === 'built-in' ? 'languages' : owner.replaceAll('-', ' ')}
-          </h2>
-          <div className="settings-group">
-            {matching
-              .filter((language) => language.owner === owner)
-              .map((language) => (
-                <SettingRow
-                  key={language.id}
-                  id={`code-syntax-${language.id}`}
-                  label={language.id}
-                  description={
-                    language.aliases.length
-                      ? `also applies to ${language.aliases.join(', ')}.`
-                      : 'highlight matching code blocks.'
-                  }
-                >
-                  <Toggle
+      <h1>code highlighting</h1>
+      <SettingsFilter
+        id="code-syntax-filter"
+        label="filter languages"
+        placeholder="filter languages…"
+        value={query}
+        onChange={setQuery}
+        resetDisabled={languages.every((language) => language.enabled)}
+        onReset={codeLanguages.reset}
+      />
+      {[...new Set(languages.map((language) => language.owner))].map(
+        (owner) => (
+          <div
+            key={owner}
+            hidden={!matching.some((language) => language.owner === owner)}
+          >
+            <h2>
+              {owner === 'built-in' ? 'languages' : owner.replaceAll('-', ' ')}
+            </h2>
+            <div className="settings-group">
+              {languages
+                .filter((language) => language.owner === owner)
+                .map((language) => (
+                  <SettingRow
+                    key={language.id}
                     id={`code-syntax-${language.id}`}
-                    checked={language.enabled}
-                    onChange={(event) =>
-                      codeLanguages.setEnabled(
-                        language.id,
-                        event.target.checked,
-                      )
+                    label={language.id}
+                    hidden={!matching.includes(language)}
+                    description={
+                      language.aliases.length
+                        ? `also applies to ${language.aliases.join(', ')}.`
+                        : 'highlight matching code blocks.'
                     }
-                  />
-                </SettingRow>
-              ))}
+                  >
+                    <Toggle
+                      id={`code-syntax-${language.id}`}
+                      checked={language.enabled}
+                      onChange={(event) =>
+                        codeLanguages.setEnabled(
+                          language.id,
+                          event.target.checked,
+                        )
+                      }
+                    />
+                  </SettingRow>
+                ))}
+            </div>
           </div>
-        </div>
-      ))}
+        ),
+      )}
       {!matching.length && <p>no matching languages.</p>}
     </>
   )

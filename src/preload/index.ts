@@ -41,7 +41,9 @@ if (process.isMainFrame) {
     openDroppedFile: (file) =>
       ipcRenderer.invoke(MEDIA_CHANNELS.open, webUtils.getPathForFile(file)),
     getInstalledAddons: () => ipcRenderer.invoke(SIDELOAD_CHANNELS.list),
-    installAddon: () => ipcRenderer.invoke(SIDELOAD_CHANNELS.install),
+    installAddon: (url) => ipcRenderer.invoke(SIDELOAD_CHANNELS.install, url),
+    openAddonsFolder: () => ipcRenderer.invoke(SIDELOAD_CHANNELS.folder),
+    openAddonGarden: () => ipcRenderer.invoke(SIDELOAD_CHANNELS.garden),
     removeAddon: (id) => ipcRenderer.invoke(SIDELOAD_CHANNELS.remove, id),
     listVersions: () => ipcRenderer.invoke(HISTORY_CHANNELS.list),
     previewVersion: (id) => ipcRenderer.invoke(HISTORY_CHANNELS.preview, id),

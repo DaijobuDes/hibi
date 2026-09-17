@@ -9,14 +9,14 @@ import {
   TextCursorInput,
 } from 'lucide-react'
 import { Component, type ReactNode } from 'react'
-import type { AddonManifest, AddonState } from '../../addons/api'
+import type { AddonState } from '../../addons/api'
 import type { AppInfo } from '../../shared/desktop'
 import type { Hotkeys } from '../../shared/hotkeys'
 import { ColorschemeSettings } from '../../ui/ColorschemeSettings'
 import { Button, Select, SettingRow, Slider, Toggle } from '../../ui/Controls'
 import { Sidebar, type SidebarProps } from '../../ui/Sidebar'
 import { SettingsDiscovery } from '../../ui/settings-index'
-import { addonRegistry } from './addon-registry'
+import { AddonMetadata, AddonSettings } from './AddonSettings'
 import { addons } from './addons'
 import { CodeSyntaxSettings } from './CodeSyntaxSettings'
 import { colorschemes } from './colorschemes'
@@ -31,36 +31,11 @@ export const settingsCategories = [
   { id: 'hibi', label: 'hibi', icon: File },
   { id: 'editor', label: 'editor', icon: FileText },
   { id: 'syntax', label: 'syntax', icon: TextCursorInput },
-  { id: 'code-syntax', label: 'code syntax', icon: Code },
+  { id: 'code-syntax', label: 'code highlighting', icon: Code },
   { id: 'appearance', label: 'appearance', icon: PanelTop },
   { id: 'hotkeys', label: 'hotkeys', icon: Keyboard },
   { id: 'addons', label: 'addons', icon: Puzzle },
 ] as const
-
-function AddonMetadata({ manifest }: { manifest: AddonManifest }) {
-  return (
-    <span className="addon-metadata">
-      <span>{manifest.kind ?? 'extension'}</span>
-      {manifest.version && <span>v{manifest.version}</span>}
-      {manifest.authors?.map((author) => (
-        <span
-          key={author.discordId ?? author.github ?? author.displayName}
-          data-tooltip={
-            author.discordId
-              ? `discord: ${author.discordId}`
-              : author.github
-                ? `github: ${author.github}`
-                : undefined
-          }
-          data-discord-id={author.discordId}
-        >
-          {author.displayName}
-          {author.role ? ` · ${author.role}` : ''}
-        </span>
-      ))}
-    </span>
-  )
-}
 
 class PluginSettingsBoundary extends Component<
   { children: ReactNode },
@@ -119,7 +94,7 @@ export function SettingsScreen({
   onHotkeys: (hotkeys: Hotkeys) => void
   addonStates: AddonState[]
   onAddonEnabled: (id: string, enabled: boolean) => Promise<void>
-  onInstallAddon: () => Promise<void>
+  onInstallAddon: (url?: string) => Promise<void>
   onRemoveAddon: (id: string) => Promise<void>
   resize: NonNullable<SidebarProps['resize']>
   cursorSettings: CursorSettings
@@ -363,45 +338,13 @@ export function SettingsScreen({
             aria-labelledby="category-addons"
             hidden={category !== 'addons'}
           >
-            <h1>addons</h1>
-            <p>
-              <Button onClick={() => void onInstallAddon()}>
-                install addon…
-              </Button>
-            </p>
-            <div className="settings-group">
-              {addons.map(({ manifest }) => (
-                <SettingRow
-                  key={manifest.id}
-                  id={`addon-${manifest.id}`}
-                  label={manifest.name}
-                  description={
-                    <>
-                      {manifest.description}
-                      <AddonMetadata manifest={manifest} />
-                    </>
-                  }
-                >
-                  <div className="addon-actions">
-                    {addonRegistry.isInstalled(manifest.id) && (
-                      <Button onClick={() => void onRemoveAddon(manifest.id)}>
-                        remove
-                      </Button>
-                    )}
-                    <Toggle
-                      id={`addon-${manifest.id}`}
-                      aria-describedby={`addon-${manifest.id}-description`}
-                      checked={addonStates.some(
-                        (state) => state.id === manifest.id && state.enabled,
-                      )}
-                      onChange={(event) =>
-                        void onAddonEnabled(manifest.id, event.target.checked)
-                      }
-                    />
-                  </div>
-                </SettingRow>
-              ))}
-            </div>
+            <AddonSettings
+              addons={addons}
+              states={addonStates}
+              setEnabled={onAddonEnabled}
+              install={onInstallAddon}
+              remove={onRemoveAddon}
+            />
           </section>
           {pluginPages.map(({ manifest, Settings }) => (
             <section

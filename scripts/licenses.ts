@@ -47,11 +47,11 @@ export async function collectLicenses(root = resolve('.')) {
     }
     const id = `${pkg.name}@${pkg.version}`
     if (entries.has(id)) return
-    const notices = (await readdir(folder))
+    const files = await readdir(folder)
+    const notices = files
       .filter((file) => /^(licen[cs]e|copying|notice)([.-]|$)/i.test(file))
       .sort()
-    if (!notices.length) throw new Error(`missing license notice: ${id}`)
-    const text = (
+    let text = (
       await Promise.all(
         notices.map(
           async (file) =>
@@ -59,6 +59,19 @@ export async function collectLicenses(root = resolve('.')) {
         ),
       )
     ).join('\n\n')
+    if (!text) {
+      const readme = files.find((file) =>
+        /^readme(?:\.md|\.markdown|\.txt)?$/i.test(file),
+      )
+      const source = readme ? await readFile(join(folder, readme), 'utf8') : ''
+      const section =
+        /^#{1,6}\s+licen[sc]e[^\n]*\n([\s\S]*?)(?=^#{1,6}\s|$(?![\s\S]))/im
+          .exec(source)?.[1]
+          ?.trim()
+      if (!section || section.length < 300 || !/copyright/i.test(section))
+        throw new Error(`missing license notice: ${id}`)
+      text = `${readme} — license section\n\n${section}`
+    }
     entries.set(id, {
       id,
       name: pkg.name,

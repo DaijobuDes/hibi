@@ -1,8 +1,5 @@
 import {
-  Component,
   type CSSProperties,
-  type ErrorInfo,
-  type ReactNode,
   StrictMode,
   useCallback,
   useEffect,
@@ -62,6 +59,7 @@ import {
 } from './flavors'
 import { LoadingScreen } from './LoadingScreen'
 import { projectMarkdown } from './markdown'
+import { RecoveryBoundary } from './RecoveryScreen'
 import { SettingsScreen, settingsCategories } from './SettingsScreen'
 import { StatusBar } from './StatusBar'
 import { Titlebar } from './Titlebar'
@@ -69,36 +67,6 @@ import { toolbar } from './toolbar'
 import { VersionHistory } from './VersionHistory'
 import { WorkspaceSidebar } from './WorkspaceSidebar'
 import { type WorkspaceRename, workspaceMenuItems } from './workspace-menu'
-
-class ErrorBoundary extends Component<
-  { children: ReactNode },
-  { failed: boolean }
-> {
-  state = { failed: false }
-
-  static getDerivedStateFromError() {
-    return { failed: true }
-  }
-
-  componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error('render failed:', error, info.componentStack)
-  }
-
-  render() {
-    if (this.state.failed) {
-      return (
-        <main className="welcome" role="alert">
-          <h1>something went wrong.</h1>
-          <p>reload hibi to try again.</p>
-          <button type="button" onClick={() => location.reload()}>
-            reload
-          </button>
-        </main>
-      )
-    }
-    return this.props.children
-  }
-}
 
 function App() {
   const [settingsCategory, setSettingsCategory] = useState('hibi')
@@ -119,9 +87,13 @@ function App() {
     if (!settingTarget) return
     const target = window.document.getElementById(settingTarget)
     const row = target?.closest('.setting-row') ?? target
-    row?.scrollIntoView({ block: 'center', behavior: 'smooth' })
-    target?.focus({ preventScroll: true })
-    setSettingTarget(null)
+    target?.dispatchEvent(new Event('hibi:reveal-setting', { bubbles: true }))
+    const frame = requestAnimationFrame(() => {
+      row?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      target?.focus({ preventScroll: true })
+      setSettingTarget(null)
+    })
+    return () => cancelAnimationFrame(frame)
   }, [settingTarget])
   const dialogs = useDialogs()
   const toasts = useToasts()
@@ -1321,12 +1293,12 @@ const root = document.getElementById('root')
 if (!root) throw new Error('missing root element')
 createRoot(root).render(
   <StrictMode>
-    <ErrorBoundary>
+    <RecoveryBoundary>
       <ToastProvider>
         <DialogProvider>
           <App />
         </DialogProvider>
       </ToastProvider>
-    </ErrorBoundary>
+    </RecoveryBoundary>
   </StrictMode>,
 )

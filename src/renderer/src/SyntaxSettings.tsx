@@ -1,5 +1,6 @@
 import { useState, useSyncExternalStore } from 'react'
-import { SettingRow, TextInput, Toggle } from '../../ui/Controls'
+import { SettingRow, Toggle } from '../../ui/Controls'
+import { SettingsFilter } from '../../ui/SettingsFilter'
 import { markdownSyntax } from './markdown-syntax'
 
 export function SyntaxSettings() {
@@ -16,27 +17,23 @@ export function SyntaxSettings() {
   return (
     <>
       <h1>syntax</h1>
-      <div className="settings-group">
-        <SettingRow
-          id="markdown-syntax-filter"
-          label="filter syntax"
-          description="disabled formatting appears as its original markdown. source text stays intact."
+      <SettingsFilter
+        id="markdown-syntax-filter"
+        label="filter syntax"
+        placeholder="filter syntax…"
+        value={query}
+        onChange={setQuery}
+        resetDisabled={features.every((feature) => feature.enabled)}
+        onReset={markdownSyntax.reset}
+      />
+      {[...new Set(features.map((feature) => feature.group))].map((group) => (
+        <div
+          key={group}
+          hidden={!matching.some((feature) => feature.group === group)}
         >
-          <TextInput
-            type="search"
-            className="settings-filter"
-            id="markdown-syntax-filter"
-            placeholder="filter syntax…"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-          />
-        </SettingRow>
-      </div>
-      {[...new Set(matching.map((feature) => feature.group))].map((group) => (
-        <div key={group}>
           <h2>{group}</h2>
           <div className="settings-group">
-            {matching
+            {features
               .filter((feature) => feature.group === group)
               .map((feature) => (
                 <SettingRow
@@ -44,6 +41,7 @@ export function SyntaxSettings() {
                   id={`syntax-${feature.id}`}
                   label={feature.label}
                   description={feature.description}
+                  hidden={!matching.includes(feature)}
                 >
                   <Toggle
                     id={`syntax-${feature.id}`}
