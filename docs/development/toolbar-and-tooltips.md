@@ -20,7 +20,7 @@ const action = context.toolbar.register({
 
 the renderer measures actual button widths and keeps overflow actions in an ellipsis menu, in their saved order. it adapts to sidebar width, fonts, and icons/text mode without horizontal scrolling. the toolbar uses one inset surface (12 px horizontally, 4 px vertically); individual buttons show backgrounds only on hover/active. overflow supports arrow keys, home/end, escape, and outside dismissal.
 
-appearance settings expose visibility, display mode, and **arrange toolbar actions**. drag rows or use their up/down buttons, then return to the editor; changes save immediately. the toolbar itself also accepts drag reordering. reset order restores the default arrangement without changing display mode or visibility.
+appearance settings expose visibility, display mode, and **arrange toolbar actions**. compact tiles wrap to fit the panel. drag tiles, or select one and use the shared earlier/later buttons; `alt+left/right` also moves a focused tile. the selected action and its position stay visible below the tiles. changes save immediately. the toolbar itself also accepts drag reordering. reset order restores the default arrangement without changing display mode or visibility.
 
 `hidden: true` hides a context-specific action while preserving its place in settings. the built-in formatting controls use the same registration API as addons, share their ordering and appearance, and follow the active editor pane. table structure actions appear when editing a rich-text table. unavailable actions are disabled. hiding the toolbar does not disable addons or their commands. the find bar sits under the visible toolbar and its small bottom margin, or directly under the top bar when no toolbar is shown.
 

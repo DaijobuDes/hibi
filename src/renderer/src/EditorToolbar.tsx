@@ -1,6 +1,6 @@
 import {
-  ArrowDown,
-  ArrowUp,
+  ArrowLeft,
+  ArrowRight,
   ChevronRight,
   Ellipsis,
   GripVertical,
@@ -298,11 +298,20 @@ function ActionContent({
 }
 
 export function ToolbarSettings() {
-  const reorder = useReorder('y')
+  const reorder = useReorder('x')
+  const [selected, setSelected] = useState<string | null>(null)
+  const help = useId()
   const { preferences, items } = useSyncExternalStore(
     toolbar.subscribe,
     toolbar.snapshot,
   )
+  const active = items.find((item) => item.id === selected) ?? items[0]
+  const position = active ? items.indexOf(active) : -1
+  function move(id: string, offset: number) {
+    const index = items.findIndex((item) => item.id === id)
+    const target = items[index + offset]
+    if (target) toolbar.move(id, target.id, offset > 0)
+  }
   return (
     <>
       <h2>toolbar</h2>
@@ -358,52 +367,91 @@ export function ToolbarSettings() {
           <ChevronRight size={14} aria-hidden />
           arrange toolbar actions
         </summary>
-        <p>
-          drag actions here or on the toolbar. use the arrows to move them with
-          a keyboard.
-        </p>
-        <ol aria-label="toolbar order">
-          {items.map((item, index) => {
-            const Icon = item.icon ?? Puzzle
-            return (
-              <li
-                key={item.id}
-                data-toolbar-id={item.id}
-                {...reorder.props(item.id)}
-              >
-                <GripVertical size={14} aria-hidden className="drag-handle" />
-                <Icon size={16} aria-hidden />
-                <span>{item.label}</span>
-                <IconButton
-                  aria-label={`move ${item.label} up`}
-                  disabled={index === 0}
-                  onClick={() => {
-                    const previous = items[index - 1]
-                    if (previous) toolbar.move(item.id, previous.id)
+        <div className="toolbar-order-panel">
+          <div className="toolbar-order-heading">
+            <p id={help}>
+              drag to reorder. select an action to move it with the arrows.
+            </p>
+            <Button
+              disabled={!preferences.order?.length}
+              onClick={() => toolbar.setPreferences({ order: [] })}
+            >
+              reset order
+            </Button>
+          </div>
+          <ol aria-label="toolbar order">
+            {items.map((item) => {
+              const Icon = item.icon ?? Puzzle
+              const drag = reorder.props(item.id)
+              return (
+                <li
+                  key={item.id}
+                  data-toolbar-id={item.id}
+                  {...drag}
+                  onDragStart={(event) => {
+                    setSelected(item.id)
+                    drag.onDragStart(event)
                   }}
                 >
-                  <ArrowUp size={14} aria-hidden />
+                  <button
+                    type="button"
+                    className="toolbar-reorder-tile"
+                    aria-pressed={active?.id === item.id}
+                    aria-describedby={help}
+                    aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight"
+                    onClick={() => setSelected(item.id)}
+                    onKeyDown={(event) => {
+                      if (
+                        event.altKey &&
+                        ['ArrowLeft', 'ArrowRight'].includes(event.key)
+                      ) {
+                        event.preventDefault()
+                        setSelected(item.id)
+                        move(item.id, event.key === 'ArrowLeft' ? -1 : 1)
+                        const button = event.currentTarget
+                        requestAnimationFrame(() => button.focus())
+                      }
+                    }}
+                  >
+                    <GripVertical
+                      size={14}
+                      aria-hidden
+                      className="drag-handle"
+                    />
+                    <Icon size={16} aria-hidden />
+                    <span>{item.label}</span>
+                  </button>
+                </li>
+              )
+            })}
+          </ol>
+          {active && (
+            <div className="toolbar-order-footer">
+              <p aria-live="polite">
+                {active.label}
+                <span>
+                  {position + 1} of {items.length}
+                </span>
+              </p>
+              <div>
+                <IconButton
+                  aria-label={`move ${active.label} earlier`}
+                  disabled={position === 0}
+                  onClick={() => move(active.id, -1)}
+                >
+                  <ArrowLeft size={16} aria-hidden />
                 </IconButton>
                 <IconButton
-                  aria-label={`move ${item.label} down`}
-                  disabled={index === items.length - 1}
-                  onClick={() => {
-                    const next = items[index + 1]
-                    if (next) toolbar.move(item.id, next.id, true)
-                  }}
+                  aria-label={`move ${active.label} later`}
+                  disabled={position === items.length - 1}
+                  onClick={() => move(active.id, 1)}
                 >
-                  <ArrowDown size={14} aria-hidden />
+                  <ArrowRight size={16} aria-hidden />
                 </IconButton>
-              </li>
-            )
-          })}
-        </ol>
-        <Button
-          disabled={!preferences.order?.length}
-          onClick={() => toolbar.setPreferences({ order: [] })}
-        >
-          reset order
-        </Button>
+              </div>
+            </div>
+          )}
+        </div>
       </details>
     </>
   )

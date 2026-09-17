@@ -410,8 +410,24 @@ test('markdown toolbar formats both panes, preserves undo, and persists drag ord
     'format.bold',
   )
   await page
-    .getByRole('button', { name: 'move bold down', exact: true })
+    .getByRole('button', { name: 'move bold later', exact: true })
     .click()
+  assert.equal(
+    await order.locator('li').first().getAttribute('data-toolbar-id'),
+    'format.italic',
+  )
+  const boldTile = row('bold').getByRole('button')
+  await boldTile.press('Alt+ArrowLeft')
+  await page.waitForFunction(
+    () =>
+      document.activeElement?.closest('li')?.dataset.toolbarId ===
+      'format.bold',
+  )
+  assert.equal(
+    await order.locator('li').first().getAttribute('data-toolbar-id'),
+    'format.bold',
+  )
+  await boldTile.press('Alt+ArrowRight')
   assert.equal(
     await order.locator('li').first().getAttribute('data-toolbar-id'),
     'format.italic',
