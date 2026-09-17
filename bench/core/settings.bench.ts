@@ -1,17 +1,17 @@
 import { bench, describe } from 'vitest'
-import { bundledColorschemes } from '../src/shared/color-palettes.ts'
+import { bundledColorschemes } from '../../src/shared/color-palettes.ts'
 import {
   defineColorscheme,
   themePreferences,
-} from '../src/shared/colorschemes.ts'
+} from '../../src/shared/colorschemes.ts'
 import {
   defaultHotkeys,
   restoreHotkeys,
   shortcutFromEvent,
   shortcutLabels,
   validateHotkeys,
-} from '../src/shared/hotkeys.ts'
-import { sentenceCase } from '../src/shared/ui-case.ts'
+} from '../../src/shared/hotkeys.ts'
+import { sentenceCase } from '../../src/shared/ui-case.ts'
 
 // Settings, themes and hotkeys are rebuilt whenever preferences or addons change.
 const palette = {

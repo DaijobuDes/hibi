@@ -3,9 +3,9 @@ import {
   addFrontmatter,
   parseFrontmatter,
   replaceFrontmatter,
-} from '../src/addons/frontmatter/markdown.ts'
-import { readFrontmatter } from '../src/shared/frontmatter.ts'
-import { note, noteWithFrontmatter } from './fixtures.ts'
+} from '../../src/addons/frontmatter/markdown.ts'
+import { readFrontmatter } from '../../src/shared/frontmatter.ts'
+import { note, noteWithFrontmatter } from '../fixtures.ts'
 
 // Frontmatter is split from the source on every document load, save and preview.
 const withBlock = noteWithFrontmatter(5)

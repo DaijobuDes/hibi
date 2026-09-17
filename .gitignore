@@ -1,5 +1,6 @@
 node_modules/
 .cache/
+.codspeed/
 src/useraddons/
 out/
 /release/

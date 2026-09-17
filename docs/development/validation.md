@@ -21,7 +21,9 @@ npm run docs        # refresh generated API references
 npm run docs:check  # reject stale references
 npm run export:docs # export docs to out/docs/index.html
 npm run check       # lint, API docs, typecheck, builds, native tests
-npm run bench       # markdown, workspace, and settings benchmarks
+npm run bench       # core and default-plugin CPU benchmarks
+npm run bench:desktop # built Electron startup and editor flows
+npm run bench:startup # detailed local launch report
 npm run package     # unpacked local application
 ```
 
@@ -59,9 +61,13 @@ public SDK and sidebar references are generated from their real TypeScript decla
 
 ## performance benchmarks
 
-`bench/` holds vitest benchmarks for pure logic only: the Markdown flavor pipeline (core lexing, alerts, math, typst, text extras), note graph and tag collection over generated workspaces, frontmatter splitting, colorscheme derivation, hotkey restoration, and UI sentence casing. Fixtures are generated from a seeded pseudo-random source, so every run measures identical work. Electron, DOM, and filesystem behavior stays in the native suites under `tests/`.
+`bench/core/` contains 18 Vitest benchmarks for core and default-enabled plugins: Markdown lexing/rendering, GitHub alerts, text extras, frontmatter, colorschemes, hotkeys, and UI casing. Seeded fixtures keep inputs repeatable. Optional math, Typst, graph, and tags benchmarks are excluded.
 
-`.github/workflows/benchmarks.yml` runs the same `npm run bench` command through CodSpeed on pull requests and pushes to `main`, using CPU simulation for hardware-independent results and OpenID Connect for authentication. Results and per-benchmark comparisons appear on the [CodSpeed dashboard](https://app.codspeed.io/schmayterling/hibi) and as a pull request report.
+`npm run bench:desktop` uses CodSpeed's Tinybench integration for six native flows: fresh/retained startup through input and recent-workspace readiness, first displayed keystroke, opening the large and code-heavy documents, and the first source-view transition. Build first with `npm run build`. The same fixtures and readiness/interaction helpers power `scripts/benchmark-startup.mjs`; see [performance measurement](performance.md) for scope and timing boundaries.
+
+`.github/workflows/benchmarks.yml` runs CPU simulation for the core suite and walltime for Electron on pull requests, pushes to `main`, and manual dispatch. Authentication uses OpenID Connect; no new secret is needed. Both jobs cache npm downloads, and the desktop job caches Electron. Manual `clean` dispatch bypasses those caches. Native benchmark rounds run serially using only default-enabled plugins in isolated profiles.
+
+Results appear on the [CodSpeed dashboard](https://app.codspeed.io/schmayterling/hibi) and in pull-request reports after a successful workflow run. Walltime runs on GitHub-hosted Ubuntu because CodSpeed's dedicated macro runners require an organization repository. These elapsed-time numbers include hosted-runner noise; compare repeated results on the same runner configuration, not absolute values from a local Mac. The existing three-platform correctness checks remain separate.
 
 ## automatic documentation publishing
 

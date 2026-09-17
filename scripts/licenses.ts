@@ -16,6 +16,8 @@ type Package = {
 const buildTools = new Set([
   '@biomejs/biome',
   '@codspeed/vitest-plugin',
+  '@codspeed/tinybench-plugin',
+  'tinybench',
   '@vitejs/plugin-react',
   'electron-builder',
   'electron-vite',

@@ -4,6 +4,11 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      clean:
+        description: Ignore dependency and Electron caches
+        type: boolean
+        default: false
 permissions:
   contents: read
   id-token: write
@@ -11,17 +16,43 @@ concurrency:
   group: benchmarks-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  codspeed:
+  core:
     timeout-minutes: 20
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: .nvmrc
-          cache: npm
+          cache: ${{ inputs.clean != true && 'npm' || '' }}
       - run: npm ci
       - uses: CodSpeedHQ/action@373d6868929f444bc08d901fd0eb0ad52a8875ea # v5.2.1
         with:
           mode: simulation
           run: npm run bench
+  desktop:
+    timeout-minutes: 20
+    runs-on: ubuntu-latest
+    env:
+      ELECTRON_CACHE: ${{ github.workspace }}/.cache/electron
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: ${{ inputs.clean != true && 'npm' || '' }}
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: inputs.clean != true
+        with:
+          path: .cache/electron
+          key: electron-bench-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json', '.nvmrc') }}
+      - run: npm ci
+      - run: npm run build
+      - uses: CodSpeedHQ/action@373d6868929f444bc08d901fd0eb0ad52a8875ea # v5.2.1
+        with:
+          mode: walltime
+          run: dbus-run-session -- xvfb-run --auto-servernum --server-args='-screen 0 1920x1080x24 -nolisten tcp' npm run bench:desktop

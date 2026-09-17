@@ -1,5 +1,3 @@
-import type { WorkspacePage } from '../src/shared/workspace.ts'
-
 /** Deterministic pseudo-random source so every run measures identical work. */
 function random(seed: number) {
   let state = seed >>> 0
@@ -31,7 +29,7 @@ function sentence(next: () => number, length: number) {
   ).join(' ')
 }
 
-/** A note using every syntax the editor and export pipeline have to handle. */
+/** A note using core Markdown and the default-enabled syntax plugins. */
 export function note(seed: number, paragraphs = 12) {
   const next = random(seed)
   const lines = [
@@ -64,15 +62,6 @@ export function note(seed: number, paragraphs = 12) {
       '```',
       '',
     )
-    lines.push(`Inline math $E_{${index}} = mc^2$ and a block:`, '')
-    lines.push('$$', `\\sum_{i=0}^{${index}} i^2`, '$$', '')
-    lines.push(
-      '~~~typst',
-      `#set text(size: ${8 + index}pt)`,
-      '= Heading',
-      '~~~',
-      '',
-    )
     lines.push(`-# ${sentence(next, 5)}`, '')
   }
   return lines.join('\n')
@@ -91,16 +80,4 @@ export function noteWithFrontmatter(seed: number, paragraphs = 12) {
     '',
     note(seed, paragraphs),
   ].join('\n')
-}
-
-/** A workspace shaped like a real vault: nested folders and cross links. */
-export function workspace(count: number, paragraphs = 4): WorkspacePage[] {
-  const folders = ['notes', 'guides', 'journal', 'archive']
-  return Array.from({ length: count }, (_, index) => {
-    const folder = folders[index % folders.length] as string
-    return {
-      path: `${folder}/note-${index}.md`,
-      markdown: noteWithFrontmatter(index, paragraphs),
-    }
-  })
 }
