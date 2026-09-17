@@ -202,7 +202,13 @@ export function SettingRow({
       return settingsIndex.register(row.current, id, displayLabel)
   }, [discover, id, displayLabel])
   return (
-    <div className="setting-row" ref={row} hidden={hidden}>
+    <div
+      className="setting-row"
+      data-setting-id={id}
+      tabIndex={-1}
+      ref={row}
+      hidden={hidden}
+    >
       <div className="setting-copy">
         <label htmlFor={id}>{displayLabel}</label>
         <p id={`${id}-description`}>

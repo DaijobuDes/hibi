@@ -1,11 +1,12 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { app } from 'electron'
 import type { LicenseInfo } from '../shared/about'
 import { getAddonLicenses } from './addons'
 
 let catalog: Promise<(LicenseInfo & { text: string })[]> | undefined
 function load() {
-  catalog ??= readFile(join(import.meta.dirname, '../licenses.json'), 'utf8')
+  catalog ??= readFile(join(app.getAppPath(), 'out/licenses.json'), 'utf8')
     .then((text) => JSON.parse(text) as (LicenseInfo & { text: string })[])
     .catch((error) => {
       catalog = undefined

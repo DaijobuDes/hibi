@@ -1,3 +1,4 @@
+import { fileAssociations } from '../../shared/file-associations'
 import type { AddonManifest } from '../api'
 import { authors } from '../authors'
 
@@ -9,6 +10,6 @@ export default {
   description:
     'Markdown documents with rich editing, source view, and HTML export.',
   defaultEnabled: true,
-  fileExtensions: ['md', 'markdown'],
+  fileExtensions: fileAssociations.markdown.ext,
   authors: [authors.may],
 } satisfies AddonManifest

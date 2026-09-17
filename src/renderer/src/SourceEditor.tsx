@@ -31,8 +31,9 @@ import {
 import { EditorView, keymap, lineNumbers, placeholder } from '@codemirror/view'
 import { tags } from '@lezer/highlight'
 import { marked } from 'marked'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { DocumentFormat, SourceExtension } from '../../addons/api'
+import { DocumentNotice } from '../../ui/DocumentNotice'
 import { codeHighlighter, codeLanguages } from './code-languages'
 import type { FindMove, FindStatus } from './FindBar'
 import {
@@ -126,6 +127,12 @@ export function SourceEditor({
   ])
   const host = useRef<HTMLDivElement>(null)
   const view = useRef<EditorView | null>(null)
+  const [installedExtensions, setInstalledExtensions] = useState<
+    readonly SourceExtension[] | null
+  >(null)
+  const [measured, setMeasured] = useState(false)
+  const [extensionError, setExtensionError] = useState('')
+  const inputReady = installedExtensions === sourceExtensions
   const change = useRef(onChange)
   const initialValue = useRef(value)
   const appliedRevision = useRef(externalRevision)
@@ -179,7 +186,10 @@ export function SourceEditor({
               return { dom }
             },
           }),
-          editable.current.of(EditorView.editable.of(true)),
+          editable.current.of([
+            EditorView.editable.of(false),
+            EditorState.readOnly.of(true),
+          ]),
           numbers.current.of([]),
           language.of(markdown()),
           history(),
@@ -301,7 +311,7 @@ export function SourceEditor({
       if (!disposed)
         editor.requestMeasure({
           read: () => null,
-          write: () => ready.current(),
+          write: () => setMeasured(true),
         })
     }
     void window.document.fonts.load('13px "Geist Mono"').then(measure, measure)
@@ -319,16 +329,29 @@ export function SourceEditor({
   useEffect(() => {
     let canceled = false
     const editor = view.current
+    setExtensionError('')
     void Promise.all(
-      sourceExtensions.map((extension) => extension.create()),
-    ).then((extensions) => {
-      if (!canceled && editor)
-        editor.dispatch({ effects: addons.current.reconfigure(extensions) })
-    })
+      sourceExtensions.map(async (extension) => extension.create()),
+    )
+      .then((extensions) => {
+        if (!canceled && editor) {
+          editor.dispatch({ effects: addons.current.reconfigure(extensions) })
+          setInstalledExtensions(sourceExtensions)
+        }
+      })
+      .catch((error: unknown) => {
+        if (!canceled) {
+          setExtensionError(String(error))
+          ready.current()
+        }
+      })
     return () => {
       canceled = true
     }
   }, [sourceExtensions])
+  useEffect(() => {
+    if (inputReady && measured) ready.current()
+  }, [inputReady, measured])
 
   useEffect(() => {
     // Only reconcile edits from the other pane; never replay our own stale props.
@@ -349,11 +372,11 @@ export function SourceEditor({
   useEffect(() => {
     view.current?.dispatch({
       effects: editable.current.reconfigure([
-        EditorView.editable.of(!disabled),
-        EditorState.readOnly.of(disabled),
+        EditorView.editable.of(!disabled && inputReady),
+        EditorState.readOnly.of(disabled || !inputReady),
       ]),
     })
-  }, [disabled])
+  }, [disabled, inputReady])
 
   useEffect(() => {
     view.current?.dispatch({
@@ -402,5 +425,15 @@ export function SourceEditor({
       (findMove.direction === 'next' ? findNext : findPrevious)(view.current)
   }, [findActive, findMove])
 
-  return <div className="source-editor" ref={host} />
+  return (
+    <>
+      {extensionError && (
+        <DocumentNotice
+          title="Editor extension unavailable"
+          message={extensionError}
+        />
+      )}
+      <div className="source-editor" ref={host} />
+    </>
+  )
 }

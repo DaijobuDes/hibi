@@ -37,6 +37,16 @@ test('sentence case is default; lowercase covers UI and menus while preserving c
     await rm(profile, { recursive: true, force: true })
   })
   let page = await launch()
+  await app.evaluate(({ Menu }) => {
+    globalThis.initialHibiMenu = Menu.getApplicationMenu()
+  })
+  await page.evaluate(() => window.hibi.setUiCase('sentence'))
+  assert.equal(
+    await app.evaluate(
+      ({ Menu }) => globalThis.initialHibiMenu === Menu.getApplicationMenu(),
+    ),
+    true,
+  )
   assert.equal(
     await page.locator('.startup-placeholder h2').innerText(),
     'Start typing',

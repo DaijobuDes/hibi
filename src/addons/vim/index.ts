@@ -1,12 +1,15 @@
+import { lazy } from 'react'
 import { defineAddon } from '../api'
 import manifest from './manifest'
-import { Settings, vimPreferences } from './Settings'
+import { vimPreferences } from './preferences'
 import css from './vim.css?inline'
 
 let stop: (() => void) | undefined
 export default defineAddon({
   manifest,
-  Settings,
+  Settings: lazy(() =>
+    import('./Settings').then(({ Settings }) => ({ default: Settings })),
+  ),
   start(context) {
     context.styles.register('editor', css)
     context.editor.registerSource({

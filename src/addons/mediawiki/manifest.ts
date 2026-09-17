@@ -1,3 +1,4 @@
+import { fileAssociations } from '../../shared/file-associations'
 import type { AddonManifest } from '../api'
 import { authors } from '../authors'
 export default {
@@ -6,7 +7,7 @@ export default {
   apiVersion: 1,
   kind: 'extension',
   description: 'MediaWiki source editing, preview, and export.',
-  fileExtensions: ['wiki', 'mediawiki'],
+  fileExtensions: fileAssociations.mediawiki.ext,
   defaultEnabled: false,
   authors: [authors.may],
 } satisfies AddonManifest

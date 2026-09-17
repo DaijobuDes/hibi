@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -18,6 +19,11 @@ import {
   type SourceExtension,
   type StatusItem,
 } from '../../addons/api'
+import {
+  documentExtension,
+  isMarkdownDocument,
+} from '../../shared/document-types'
+import { startupSpan } from '../../shared/startup'
 import { useDialogService } from '../../ui/DialogProvider'
 import { menus } from '../../ui/menu-store'
 import { useToastService } from '../../ui/Sonner'
@@ -66,7 +72,7 @@ type Environment = Omit<
   openSidebar: (id: string, input?: unknown) => void
 }
 
-export function useAddons(environment: Environment) {
+export function useAddons(environment: Environment, documentName?: string) {
   const catalog = useSyncExternalStore(
     addonRegistry.subscribe,
     addonRegistry.snapshot,
@@ -81,7 +87,42 @@ export function useAddons(environment: Environment) {
   }).current
   const [states, setStates] = useState<AddonState[]>([])
   const [loaded, setLoaded] = useState(false)
-  const [ready, setReady] = useState(false)
+  const [settled, setSettled] = useState<ReadonlyMap<string, boolean>>(
+    new Map(),
+  )
+  const [loadFailed, setLoadFailed] = useState(false)
+  const required = useMemo(
+    () =>
+      new Set(
+        catalog
+          .filter((addon) => {
+            if (addon.manifest.startup === 'background') return false
+            const extensions = addon.manifest.fileExtensions
+            return (
+              !extensions?.length ||
+              !documentName ||
+              extensions.includes(documentExtension(documentName)) ||
+              (!!addon.flavors?.length && isMarkdownDocument(documentName))
+            )
+          })
+          .map((addon) => addon.manifest.id),
+      ),
+    [catalog, documentName],
+  )
+  const enabledStates = states.filter((state) => state.enabled)
+  const ready =
+    loaded &&
+    !!documentName &&
+    enabledStates.every(
+      (state) => !required.has(state.id) || settled.has(state.id),
+    )
+  const allReady =
+    loaded && enabledStates.every((state) => settled.has(state.id))
+  const sourceOnly =
+    loadFailed ||
+    enabledStates.some(
+      (state) => required.has(state.id) && settled.get(state.id) === false,
+    )
   const [commands, setCommands] = useState<RegisteredCommand[]>([])
   const status = useRef(
     new Map<string, StatusItem & { addonId: string }>(),
@@ -147,11 +188,13 @@ export function useAddons(environment: Environment) {
       })
       .catch((error: unknown) => {
         latest.current.error(error)
-        setReady(true)
+        setLoadFailed(true)
+        setLoaded(true)
       })
   }, [])
   useEffect(() => {
-    if (!loaded) return
+    // File metadata must arrive before choosing which format engines block editing.
+    if (!loaded || !documentName) return
     for (const [id, runtime] of running) {
       if (
         !states.some((state) => state.id === id && state.enabled) ||
@@ -163,6 +206,8 @@ export function useAddons(environment: Environment) {
       const id = addon.manifest.id
       if (
         running.has(id) ||
+        settled.get(id) === false ||
+        (!required.has(id) && !ready) ||
         !states.some((state) => state.id === id && state.enabled)
       )
         continue
@@ -198,6 +243,12 @@ export function useAddons(environment: Environment) {
         if (disposed) return
         disposed = true
         running.delete(id)
+        if (mounted.current)
+          setSettled((current) => {
+            const next = new Map(current)
+            next.delete(id)
+            return next
+          })
         for (const [key, command] of registered)
           if (command.addonId === id) registered.delete(key)
         for (const [key, extension] of extensions)
@@ -233,471 +284,499 @@ export function useAddons(environment: Environment) {
         if (addon.manifest.apiVersion !== ADDON_API_VERSION)
           throw new Error(`incompatible addon: ${id}`)
         running.set(id, { addon, stop })
-        const starting = addon.start({
-          menus: menuScope.api,
-          colorschemes: {
-            register(scheme) {
-              if (disposed) return () => {}
-              if (!/^[a-z][a-z0-9-]*$/.test(scheme.id))
-                throw new Error('invalid addon colorscheme id')
-              const remove = colorschemes.register({
-                ...scheme,
-                id: `${id}.${scheme.id}`,
-              })
-              const cleanup = () => {
-                remove()
-                cleanups.delete(cleanup)
-              }
-              cleanups.add(cleanup)
-              return cleanup
+        const start = () =>
+          addon.start({
+            menus: menuScope.api,
+            colorschemes: {
+              register(scheme) {
+                if (disposed) return () => {}
+                if (!/^[a-z][a-z0-9-]*$/.test(scheme.id))
+                  throw new Error('invalid addon colorscheme id')
+                const remove = colorschemes.register({
+                  ...scheme,
+                  id: `${id}.${scheme.id}`,
+                })
+                const cleanup = () => {
+                  remove()
+                  cleanups.delete(cleanup)
+                }
+                cleanups.add(cleanup)
+                return cleanup
+              },
+              list: () => colorschemes.snapshot().schemes,
+              getPreferences: () => ({
+                ...colorschemes.snapshot().preferences,
+              }),
+              setPreferences: (preferences) => {
+                if (!disposed) colorschemes.set(preferences)
+              },
             },
-            list: () => colorschemes.snapshot().schemes,
-            getPreferences: () => ({ ...colorschemes.snapshot().preferences }),
-            setPreferences: (preferences) => {
-              if (!disposed) colorschemes.set(preferences)
+            dialogs: dialogScope.api,
+            sidebar: {
+              register(view) {
+                if (disposed) return { open() {}, dispose() {} }
+                const key = `${id}.${view.id}`
+                if (!/^[a-z][a-z0-9-]*$/.test(view.id) || views.has(key))
+                  throw new Error(`duplicate or invalid sidebar view: ${key}`)
+                const entry = { ...view, id: key }
+                views.set(key, entry)
+                setSidebarViews([...views.values()])
+                const remove = () => {
+                  if (views.get(key) !== entry) return
+                  views.delete(key)
+                  if (mounted.current) setSidebarViews([...views.values()])
+                  cleanups.delete(remove)
+                }
+                cleanups.add(remove)
+                return {
+                  open(input) {
+                    if (!disposed && views.get(key) === entry)
+                      latest.current.openSidebar(key, input)
+                  },
+                  dispose: remove,
+                }
+              },
             },
-          },
-          dialogs: dialogScope.api,
-          sidebar: {
-            register(view) {
-              if (disposed) return { open() {}, dispose() {} }
-              const key = `${id}.${view.id}`
-              if (!/^[a-z][a-z0-9-]*$/.test(view.id) || views.has(key))
-                throw new Error(`duplicate or invalid sidebar view: ${key}`)
-              const entry = { ...view, id: key }
-              views.set(key, entry)
-              setSidebarViews([...views.values()])
-              const remove = () => {
-                if (views.get(key) !== entry) return
-                views.delete(key)
-                if (mounted.current) setSidebarViews([...views.values()])
-                cleanups.delete(remove)
-              }
-              cleanups.add(remove)
-              return {
-                open(input) {
-                  if (!disposed && views.get(key) === entry)
-                    latest.current.openSidebar(key, input)
-                },
-                dispose: remove,
-              }
+            toasts: toastScope.api,
+            toolbar: toolbarScope.api,
+            tooltips: tooltipScope.api,
+            app,
+            styles: overrides.styles,
+            patches: overrides.patches,
+            statusBar: {
+              register(initial) {
+                if (disposed) return { update() {}, dispose() {} }
+                const key = `${id}.${initial.id}`
+                if (!/^[a-z][a-z0-9-]*$/.test(initial.id) || status.has(key))
+                  throw new Error(`duplicate or invalid status item: ${key}`)
+                let active = true
+                let item = initial
+                const publish = () => {
+                  status.set(key, {
+                    ...item,
+                    id: key,
+                    addonId: id,
+                    ...(item.onClick
+                      ? {
+                          onClick: async () => {
+                            if (!active || disposed) return
+                            try {
+                              await item.onClick?.()
+                            } catch (error) {
+                              latest.current.error(error)
+                            }
+                          },
+                        }
+                      : {}),
+                  })
+                  if (mounted.current) setStatusItems([...status.values()])
+                }
+                publish()
+                return {
+                  update(changes) {
+                    if (
+                      !active ||
+                      disposed ||
+                      Object.entries(changes).every(
+                        ([key, value]) =>
+                          item[key as keyof StatusItem] === value,
+                      )
+                    )
+                      return
+                    item = { ...item, ...changes }
+                    publish()
+                  },
+                  dispose() {
+                    if (!active || disposed) return
+                    active = false
+                    status.delete(key)
+                    if (mounted.current) setStatusItems([...status.values()])
+                  },
+                }
+              },
             },
-          },
-          toasts: toastScope.api,
-          toolbar: toolbarScope.api,
-          tooltips: tooltipScope.api,
-          app,
-          styles: overrides.styles,
-          patches: overrides.patches,
-          statusBar: {
-            register(initial) {
-              if (disposed) return { update() {}, dispose() {} }
-              const key = `${id}.${initial.id}`
-              if (!/^[a-z][a-z0-9-]*$/.test(initial.id) || status.has(key))
-                throw new Error(`duplicate or invalid status item: ${key}`)
-              let active = true
-              let item = initial
-              const publish = () => {
-                status.set(key, {
-                  ...item,
+            editor: {
+              registerDocumentSyntax(feature) {
+                if (disposed) return () => {}
+                const remove = markdownSyntax.register(id, {
+                  ...feature,
+                  scope: 'document',
+                })
+                cleanups.add(remove)
+                return () => {
+                  remove()
+                  cleanups.delete(remove)
+                }
+              },
+              registerSyntax(feature) {
+                if (disposed) return () => {}
+                const remove = markdownSyntax.register(id, feature)
+                cleanups.add(remove)
+                return () => {
+                  remove()
+                  cleanups.delete(remove)
+                }
+              },
+              isSyntaxEnabled: (localId) =>
+                markdownSyntax.enabled(`${id}.${localId}`),
+              onSyntaxChange: (listener) =>
+                observe(markdownSyntax.subscribe, listener),
+              onCodeHighlightingChange: (listener) =>
+                observe(codeLanguages.subscribe, listener),
+              renderCode: codeHtml,
+              getDocument: () => editorDocument.get(),
+              onDocumentChange(listener) {
+                if (disposed) return () => {}
+                const remove = editorDocument.subscribe((document) => {
+                  try {
+                    listener(document)
+                  } catch (error) {
+                    latest.current.error(error)
+                  }
+                })
+                cleanups.add(remove)
+                return () => {
+                  remove()
+                  cleanups.delete(remove)
+                }
+              },
+              registerDocumentFormat(format) {
+                if (disposed) return () => {}
+                const remove = documentFormats.register(
+                  id,
+                  format,
+                  addon.manifest.fileExtensions ?? [],
+                )
+                cleanups.add(remove)
+                return () => {
+                  remove()
+                  cleanups.delete(remove)
+                }
+              },
+              async renderDocument(source, name, documentId) {
+                const format = documentFormats.get(name)
+                if (format?.render) return format.render(source, documentId)
+                if (format?.editing !== 'markdown')
+                  throw new Error(
+                    `enable the extension for ${name} before exporting it.`,
+                  )
+                return renderMarkdownAsync(
+                  projectMarkdown(source, [...extensions.values()]).content,
+                  documentId,
+                )
+              },
+              registerCodeLanguage(language) {
+                if (disposed) return () => {}
+                const remove = codeLanguages.register(id, language)
+                const cleanup = () => {
+                  remove()
+                  cleanups.delete(cleanup)
+                }
+                cleanups.add(cleanup)
+                return cleanup
+              },
+              resolveCodeLanguage: codeLanguages.resolve,
+              registerFlavor(flavor) {
+                if (disposed) return () => {}
+                const remove = flavors.register(id, flavor)
+                const cleanup = () => {
+                  remove()
+                  cleanups.delete(cleanup)
+                }
+                cleanups.add(cleanup)
+                return cleanup
+              },
+              renderMarkdown(source, documentId) {
+                return renderMarkdown(
+                  projectMarkdown(source, [...extensions.values()]).content,
+                  documentId,
+                )
+              },
+              onInput(listener) {
+                if (disposed) return () => {}
+                const remove = onEditorInput((event) => {
+                  if (disposed) return
+                  try {
+                    listener(event)
+                  } catch (error) {
+                    latest.current.error(error)
+                  }
+                })
+                const cleanup = () => {
+                  remove()
+                  cleanups.delete(cleanup)
+                }
+                cleanups.add(cleanup)
+                return cleanup
+              },
+              onKeyEvent(listener) {
+                if (disposed) return () => {}
+                const remove = onEditorKeyEvent((event) => {
+                  if (disposed) return
+                  try {
+                    listener(event)
+                  } catch (error) {
+                    latest.current.error(error)
+                  }
+                })
+                const cleanup = () => {
+                  remove()
+                  cleanups.delete(cleanup)
+                }
+                cleanups.add(cleanup)
+                return cleanup
+              },
+              registerRich(extension) {
+                if (disposed) return () => {}
+                const key = `${id}.${extension.id}`
+                if (!/^[a-z][a-z0-9-]*$/.test(extension.id) || rich.has(key))
+                  throw new Error(`duplicate or invalid rich extension: ${key}`)
+                rich.set(key, {
                   id: key,
                   addonId: id,
-                  ...(item.onClick
+                  attach(editor) {
+                    if (disposed) return () => {}
+                    try {
+                      const detach = extension.attach(editor)
+                      return () => {
+                        try {
+                          detach()
+                        } catch (error) {
+                          latest.current.error(error)
+                        }
+                      }
+                    } catch (error) {
+                      latest.current.error(error)
+                      return () => {}
+                    }
+                  },
+                })
+                if (mounted.current) setRichExtensions([...rich.values()])
+                let active = true
+                return () => {
+                  if (!active || disposed) return
+                  active = false
+                  if (rich.delete(key) && mounted.current)
+                    setRichExtensions([...rich.values()])
+                }
+              },
+              runCommand: (command) =>
+                disposed ? Promise.resolve(false) : app.runCommand(command),
+              registerSource(extension) {
+                if (disposed) return () => {}
+                const key = `${id}.${extension.id}`
+                if (!/^[a-z][a-z0-9-]*$/.test(extension.id) || sources.has(key))
+                  throw new Error(
+                    `duplicate or invalid source extension: ${key}`,
+                  )
+                sources.set(key, {
+                  id: key,
+                  addonId: id,
+                  async create() {
+                    if (disposed) return []
+                    try {
+                      const result = await extension.create()
+                      return disposed ? [] : result
+                    } catch (error) {
+                      latest.current.error(error)
+                      return []
+                    }
+                  },
+                })
+                if (mounted.current) publishSources()
+                return () => {
+                  sources.delete(key)
+                  if (!disposed && mounted.current) publishSources()
+                }
+              },
+              updateMarkdown(transform, options) {
+                if (!disposed) latest.current.updateMarkdown(transform, options)
+              },
+              registerMarkdown(extension) {
+                if (disposed) return () => {}
+                const key = `${id}.${extension.id}`
+                if (
+                  !/^[a-z][a-z0-9-]*$/.test(extension.id) ||
+                  extensions.has(key)
+                )
+                  throw new Error(
+                    `duplicate or invalid markdown extension: ${key}`,
+                  )
+                extensions.set(key, {
+                  id: key,
+                  addonId: id,
+                  ...(extension.Editor ? { Editor: extension.Editor } : {}),
+                  parse(source) {
+                    if (disposed) return null
+                    try {
+                      return extension.parse(source)
+                    } catch (error) {
+                      queueMicrotask(() => latest.current.error(error))
+                      return {
+                        content: source,
+                        serialize: () => source,
+                        readOnly: true,
+                      }
+                    }
+                  },
+                })
+                if (mounted.current) publishExtensions()
+                return () => {
+                  extensions.delete(key)
+                  if (!disposed && mounted.current) publishExtensions()
+                }
+              },
+            },
+            commands: {
+              getSlashCommands() {
+                if (disposed) return []
+                const source = latest.current.getMarkdown()
+                return [...registered.values()].flatMap(({ id, slash }) =>
+                  slash && (!slash.when || slash.when(source))
+                    ? [{ ...slash, id }]
+                    : [],
+                )
+              },
+              register(command) {
+                if (disposed) return () => {}
+                const key = `${id}.${command.id}`
+                if (
+                  !/^[a-z][a-z0-9-]*$/.test(command.id) ||
+                  registered.has(key)
+                )
+                  throw new Error(`duplicate or invalid command: ${key}`)
+                let active = true
+                registered.set(key, {
+                  ...command,
+                  id: key,
+                  addonId: id,
+                  ...(command.slash
                     ? {
-                        onClick: async () => {
-                          if (!active || disposed) return
-                          try {
-                            await item.onClick?.()
-                          } catch (error) {
-                            latest.current.error(error)
-                          }
+                        slash: {
+                          ...command.slash,
+                          when(source) {
+                            if (!active || disposed) return false
+                            try {
+                              return command.slash?.when?.(source) ?? true
+                            } catch (error) {
+                              latest.current.error(error)
+                              return false
+                            }
+                          },
+                          transform(source) {
+                            if (!active || disposed) return null
+                            try {
+                              return command.slash?.transform(source) ?? null
+                            } catch (error) {
+                              latest.current.error(error)
+                              return null
+                            }
+                          },
                         },
                       }
                     : {}),
+                  run: async () => {
+                    if (!active || disposed) return
+                    try {
+                      await command.run()
+                    } catch (error) {
+                      latest.current.error(error)
+                    }
+                  },
                 })
-                if (mounted.current) setStatusItems([...status.values()])
-              }
-              publish()
-              return {
-                update(changes) {
-                  if (
-                    !active ||
-                    disposed ||
-                    Object.entries(changes).every(
-                      ([key, value]) => item[key as keyof StatusItem] === value,
-                    )
-                  )
-                    return
-                  item = { ...item, ...changes }
-                  publish()
-                },
-                dispose() {
+                if (mounted.current) setCommands([...registered.values()])
+                return () => {
                   if (!active || disposed) return
                   active = false
-                  status.delete(key)
-                  if (mounted.current) setStatusItems([...status.values()])
-                },
-              }
-            },
-          },
-          editor: {
-            registerDocumentSyntax(feature) {
-              if (disposed) return () => {}
-              const remove = markdownSyntax.register(id, {
-                ...feature,
-                scope: 'document',
-              })
-              cleanups.add(remove)
-              return () => {
-                remove()
-                cleanups.delete(remove)
-              }
-            },
-            registerSyntax(feature) {
-              if (disposed) return () => {}
-              const remove = markdownSyntax.register(id, feature)
-              cleanups.add(remove)
-              return () => {
-                remove()
-                cleanups.delete(remove)
-              }
-            },
-            isSyntaxEnabled: (localId) =>
-              markdownSyntax.enabled(`${id}.${localId}`),
-            onSyntaxChange: (listener) =>
-              observe(markdownSyntax.subscribe, listener),
-            onCodeHighlightingChange: (listener) =>
-              observe(codeLanguages.subscribe, listener),
-            renderCode: codeHtml,
-            getDocument: () => editorDocument.get(),
-            onDocumentChange(listener) {
-              if (disposed) return () => {}
-              const remove = editorDocument.subscribe((document) => {
-                try {
-                  listener(document)
-                } catch (error) {
-                  latest.current.error(error)
+                  registered.delete(key)
+                  if (!disposed && mounted.current)
+                    setCommands([...registered.values()])
                 }
-              })
-              cleanups.add(remove)
-              return () => {
-                remove()
-                cleanups.delete(remove)
-              }
+              },
             },
-            registerDocumentFormat(format) {
-              if (disposed) return () => {}
-              const remove = documentFormats.register(
-                id,
-                format,
-                addon.manifest.fileExtensions ?? [],
-              )
-              cleanups.add(remove)
-              return () => {
-                remove()
-                cleanups.delete(remove)
-              }
-            },
-            async renderDocument(source, name, documentId) {
-              const format = documentFormats.get(name)
-              if (format?.render) return format.render(source, documentId)
-              if (format?.editing !== 'markdown')
-                throw new Error(
-                  `enable the extension for ${name} before exporting it.`,
+            workspace: {
+              registerDecorations(provider) {
+                if (disposed) return () => {}
+                if (!/^[a-z][a-z0-9-]*$/.test(provider.id))
+                  throw new Error('invalid explorer provider id.')
+                const remove = explorerDecorations.register(
+                  `${id}.${provider.id}`,
+                  provider,
                 )
-              return renderMarkdownAsync(
-                projectMarkdown(source, [...extensions.values()]).content,
-                documentId,
-              )
-            },
-            registerCodeLanguage(language) {
-              if (disposed) return () => {}
-              const remove = codeLanguages.register(id, language)
-              const cleanup = () => {
-                remove()
-                cleanups.delete(cleanup)
-              }
-              cleanups.add(cleanup)
-              return cleanup
-            },
-            resolveCodeLanguage: codeLanguages.resolve,
-            registerFlavor(flavor) {
-              if (disposed) return () => {}
-              const remove = flavors.register(id, flavor)
-              const cleanup = () => {
-                remove()
-                cleanups.delete(cleanup)
-              }
-              cleanups.add(cleanup)
-              return cleanup
-            },
-            renderMarkdown(source, documentId) {
-              return renderMarkdown(
-                projectMarkdown(source, [...extensions.values()]).content,
-                documentId,
-              )
-            },
-            onInput(listener) {
-              if (disposed) return () => {}
-              const remove = onEditorInput((event) => {
-                if (disposed) return
-                try {
-                  listener(event)
-                } catch (error) {
-                  latest.current.error(error)
+                const cleanup = () => {
+                  remove()
+                  cleanups.delete(cleanup)
                 }
-              })
-              const cleanup = () => {
-                remove()
-                cleanups.delete(cleanup)
-              }
-              cleanups.add(cleanup)
-              return cleanup
+                cleanups.add(cleanup)
+                return cleanup
+              },
+              snapshot: () =>
+                disposed
+                  ? Promise.reject(new Error('addon is disabled.'))
+                  : latest.current.workspace.snapshot(),
+              index: () =>
+                disposed
+                  ? Promise.reject(new Error('addon is disabled.'))
+                  : latest.current.workspace.index(),
+              get: () => latest.current.workspace.get(),
+              open: () =>
+                disposed
+                  ? Promise.resolve(null)
+                  : latest.current.workspace.open(),
+              openFile: (path) =>
+                disposed
+                  ? Promise.resolve()
+                  : latest.current.workspace.openFile(path),
             },
-            onKeyEvent(listener) {
-              if (disposed) return () => {}
-              const remove = onEditorKeyEvent((event) => {
-                if (disposed) return
-                try {
-                  listener(event)
-                } catch (error) {
-                  latest.current.error(error)
-                }
-              })
-              const cleanup = () => {
-                remove()
-                cleanups.delete(cleanup)
-              }
-              cleanups.add(cleanup)
-              return cleanup
+            native: {
+              query: <T>(method: string, input?: unknown) =>
+                disposed
+                  ? Promise.reject(new Error('addon is disabled.'))
+                  : (window.hibi.queryAddon(id, method, input) as Promise<T>),
+              invoke: <T>(method: string, input?: unknown) =>
+                disposed
+                  ? Promise.reject(new Error('addon is disabled.'))
+                  : (latest.current.invoke(id, method, input) as Promise<T>),
             },
-            registerRich(extension) {
-              if (disposed) return () => {}
-              const key = `${id}.${extension.id}`
-              if (!/^[a-z][a-z0-9-]*$/.test(extension.id) || rich.has(key))
-                throw new Error(`duplicate or invalid rich extension: ${key}`)
-              rich.set(key, {
-                id: key,
-                addonId: id,
-                attach(editor) {
-                  if (disposed) return () => {}
-                  try {
-                    const detach = extension.attach(editor)
-                    return () => {
-                      try {
-                        detach()
-                      } catch (error) {
-                        latest.current.error(error)
-                      }
-                    }
-                  } catch (error) {
-                    latest.current.error(error)
-                    return () => {}
-                  }
-                },
-              })
-              if (mounted.current) setRichExtensions([...rich.values()])
-              let active = true
-              return () => {
-                if (!active || disposed) return
-                active = false
-                if (rich.delete(key) && mounted.current)
-                  setRichExtensions([...rich.values()])
-              }
+            notify: (message) => {
+              if (!disposed) toastScope.api.show({ message })
             },
-            runCommand: (command) =>
-              disposed ? Promise.resolve(false) : app.runCommand(command),
-            registerSource(extension) {
-              if (disposed) return () => {}
-              const key = `${id}.${extension.id}`
-              if (!/^[a-z][a-z0-9-]*$/.test(extension.id) || sources.has(key))
-                throw new Error(`duplicate or invalid source extension: ${key}`)
-              sources.set(key, {
-                id: key,
-                addonId: id,
-                async create() {
-                  if (disposed) return []
-                  try {
-                    const result = await extension.create()
-                    return disposed ? [] : result
-                  } catch (error) {
-                    latest.current.error(error)
-                    return []
-                  }
-                },
-              })
-              if (mounted.current) publishSources()
-              return () => {
-                sources.delete(key)
-                if (!disposed && mounted.current) publishSources()
-              }
-            },
-            updateMarkdown(transform, options) {
-              if (!disposed) latest.current.updateMarkdown(transform, options)
-            },
-            registerMarkdown(extension) {
-              if (disposed) return () => {}
-              const key = `${id}.${extension.id}`
-              if (
-                !/^[a-z][a-z0-9-]*$/.test(extension.id) ||
-                extensions.has(key)
-              )
-                throw new Error(
-                  `duplicate or invalid markdown extension: ${key}`,
-                )
-              extensions.set(key, {
-                id: key,
-                addonId: id,
-                ...(extension.Editor ? { Editor: extension.Editor } : {}),
-                parse(source) {
-                  if (disposed) return null
-                  try {
-                    return extension.parse(source)
-                  } catch (error) {
-                    queueMicrotask(() => latest.current.error(error))
-                    return {
-                      content: source,
-                      serialize: () => source,
-                      readOnly: true,
-                    }
-                  }
-                },
-              })
-              if (mounted.current) publishExtensions()
-              return () => {
-                extensions.delete(key)
-                if (!disposed && mounted.current) publishExtensions()
-              }
-            },
-          },
-          commands: {
-            getSlashCommands() {
-              if (disposed) return []
-              const source = latest.current.getMarkdown()
-              return [...registered.values()].flatMap(({ id, slash }) =>
-                slash && (!slash.when || slash.when(source))
-                  ? [{ ...slash, id }]
-                  : [],
-              )
-            },
-            register(command) {
-              if (disposed) return () => {}
-              const key = `${id}.${command.id}`
-              if (!/^[a-z][a-z0-9-]*$/.test(command.id) || registered.has(key))
-                throw new Error(`duplicate or invalid command: ${key}`)
-              let active = true
-              registered.set(key, {
-                ...command,
-                id: key,
-                addonId: id,
-                ...(command.slash
-                  ? {
-                      slash: {
-                        ...command.slash,
-                        when(source) {
-                          if (!active || disposed) return false
-                          try {
-                            return command.slash?.when?.(source) ?? true
-                          } catch (error) {
-                            latest.current.error(error)
-                            return false
-                          }
-                        },
-                        transform(source) {
-                          if (!active || disposed) return null
-                          try {
-                            return command.slash?.transform(source) ?? null
-                          } catch (error) {
-                            latest.current.error(error)
-                            return null
-                          }
-                        },
-                      },
-                    }
-                  : {}),
-                run: async () => {
-                  if (!active || disposed) return
-                  try {
-                    await command.run()
-                  } catch (error) {
-                    latest.current.error(error)
-                  }
-                },
-              })
-              if (mounted.current) setCommands([...registered.values()])
-              return () => {
-                if (!active || disposed) return
-                active = false
-                registered.delete(key)
-                if (!disposed && mounted.current)
-                  setCommands([...registered.values()])
-              }
-            },
-          },
-          workspace: {
-            registerDecorations(provider) {
-              if (disposed) return () => {}
-              if (!/^[a-z][a-z0-9-]*$/.test(provider.id))
-                throw new Error('invalid explorer provider id.')
-              const remove = explorerDecorations.register(
-                `${id}.${provider.id}`,
-                provider,
-              )
-              const cleanup = () => {
-                remove()
-                cleanups.delete(cleanup)
-              }
-              cleanups.add(cleanup)
-              return cleanup
-            },
-            snapshot: () =>
-              disposed
-                ? Promise.reject(new Error('addon is disabled.'))
-                : latest.current.workspace.snapshot(),
-            index: () =>
-              disposed
-                ? Promise.reject(new Error('addon is disabled.'))
-                : latest.current.workspace.index(),
-            get: () => latest.current.workspace.get(),
-            open: () =>
-              disposed
-                ? Promise.resolve(null)
-                : latest.current.workspace.open(),
-            openFile: (path) =>
-              disposed
-                ? Promise.resolve()
-                : latest.current.workspace.openFile(path),
-          },
-          native: {
-            query: <T>(method: string, input?: unknown) =>
-              disposed
-                ? Promise.reject(new Error('addon is disabled.'))
-                : (window.hibi.queryAddon(id, method, input) as Promise<T>),
-            invoke: <T>(method: string, input?: unknown) =>
-              disposed
-                ? Promise.reject(new Error('addon is disabled.'))
-                : (latest.current.invoke(id, method, input) as Promise<T>),
-          },
-          notify: (message) => {
-            if (!disposed) toastScope.api.show({ message })
-          },
-        })
-        if (starting)
-          void starting.catch((error: unknown) => {
+          })
+        const measuredStart = () =>
+          startupSpan(`addon:${id}`, async () => {
+            await start()
+          })
+        const starting = required.has(id)
+          ? measuredStart()
+          : new Promise<void>((resolve) =>
+              requestIdleCallback(() => resolve(), { timeout: 1000 }),
+            ).then(() => {
+              if (!disposed) return measuredStart()
+            })
+        void starting
+          .then(() => {
+            if (!disposed)
+              setSettled((current) => new Map(current).set(id, true))
+          })
+          .catch((error: unknown) => {
             if (disposed) return
             stop()
+            if (mounted.current)
+              setSettled((current) => new Map(current).set(id, false))
             latest.current.error(error)
           })
       } catch (error) {
         stop()
+        if (mounted.current)
+          setSettled((current) => new Map(current).set(id, false))
         latest.current.error(error)
       }
     }
     setCommands([...registered.values()])
-    setReady(true)
   }, [
     catalog,
     loaded,
+    documentName,
     states,
     registered,
     running,
@@ -711,9 +790,17 @@ export function useAddons(environment: Environment) {
     dialogService,
     toastService,
     views,
+    ready,
+    required,
+    settled,
   ])
   async function setEnabled(id: string, enabled: boolean) {
     try {
+      setSettled((current) => {
+        const next = new Map(current)
+        next.delete(id)
+        return next
+      })
       setStates(await window.hibi.setAddonEnabled(id, enabled))
     } catch (error) {
       latest.current.error(error)
@@ -748,6 +835,8 @@ export function useAddons(environment: Environment) {
   return {
     catalog,
     ready,
+    allReady,
+    sourceOnly,
     app,
     states,
     commands,

@@ -1,6 +1,8 @@
 import {
   type CSSProperties,
+  lazy,
   StrictMode,
+  Suspense,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -24,13 +26,16 @@ import {
   type Hotkeys,
 } from '../../shared/hotkeys'
 import { isMediaFile } from '../../shared/media'
+import { startupMark } from '../../shared/startup'
 import { DialogProvider, useDialogs } from '../../ui/DialogProvider'
 import { MenuHost } from '../../ui/MenuHost'
 import { ToastProvider, useToasts } from '../../ui/Sonner'
 import type { ToastHandle } from '../../ui/toasts'
 import './styles.css'
+import '../../ui/ui-case'
 import { documentExtension, isDocumentView } from '../../shared/document-types'
 import type {
+  RecentWorkspace,
   WorkspaceAction,
   WorkspaceActionResult,
   WorkspaceState,
@@ -41,7 +46,7 @@ import { AddonSidebar, builtInViews, viewShortcut } from './AddonSidebar'
 import { addonRegistry } from './addon-registry'
 import { addons, useAddons } from './addons'
 import { useAutosave } from './autosave'
-import { CommandPalette, type PaletteCommand } from './CommandPalette'
+import type { PaletteCommand } from './CommandPalette'
 import { colorschemes } from './colorschemes'
 import { documentFormats, editorDocument } from './document-formats'
 import { MarkdownEditor, type ViewMode } from './Editor'
@@ -64,15 +69,30 @@ import {
   OutlineSidebar,
 } from './OutlineSidebar'
 import { RecoveryBoundary } from './RecoveryScreen'
-import { SettingsScreen, settingsCategories } from './SettingsScreen'
 import { StartupPlaceholder } from './StartupPlaceholder'
 import { StatusBar } from './StatusBar'
+import { settingsCategories } from './settings-categories'
 import { Titlebar } from './Titlebar'
 import { toolbar } from './toolbar'
-import { VersionHistory } from './VersionHistory'
 import { WorkspaceSidebar } from './WorkspaceSidebar'
 import { type WorkspaceRename, workspaceMenuItems } from './workspace-menu'
 
+startupMark('renderer-entry')
+const SettingsScreen = lazy(() =>
+  import('./SettingsScreen').then((module) => ({
+    default: module.SettingsScreen,
+  })),
+)
+const CommandPalette = lazy(() =>
+  import('./CommandPalette').then((module) => ({
+    default: module.CommandPalette,
+  })),
+)
+const VersionHistory = lazy(() =>
+  import('./VersionHistory').then((module) => ({
+    default: module.VersionHistory,
+  })),
+)
 function App() {
   const [settingsCategory, setSettingsCategory] = useState('hibi')
   const [settingTarget, setSettingTarget] = useState<string | null>(null)
@@ -90,16 +110,47 @@ function App() {
   )
   useEffect(() => {
     if (!settingTarget) return
-    const target = window.document.getElementById(settingTarget)
-    const row = target?.closest('.setting-row') ?? target
-    target?.dispatchEvent(new Event('hibi:reveal-setting', { bubbles: true }))
-    const frame = requestAnimationFrame(() => {
-      row?.scrollIntoView({ block: 'center', behavior: 'smooth' })
-      target?.focus({ preventScroll: true })
-      setSettingTarget(null)
+    let frame = 0
+    const reveal = () => {
+      const panel = window.document.getElementById(
+        `settings-${settingsCategory}`,
+      )
+      panel?.dispatchEvent(new Event('hibi:reveal-setting', { bubbles: true }))
+      const row = panel?.querySelector<HTMLElement>(
+        `[data-setting-id="${CSS.escape(settingTarget)}"]`,
+      )
+      const target =
+        panel?.querySelector<HTMLElement>(`#${CSS.escape(settingTarget)}`) ??
+        row
+      if (!target?.getClientRects().length) return
+      observer.disconnect()
+      frame = requestAnimationFrame(() => {
+        ;(row ?? target).scrollIntoView({ block: 'center', behavior: 'smooth' })
+        const control =
+          target === row
+            ? (row.querySelector<HTMLElement>(
+                'input:not(:disabled), textarea:not(:disabled), select:not(:disabled), button:not(:disabled)',
+              ) ?? row)
+            : target
+        ;(control.matches(':disabled') ? (row ?? control) : control).focus({
+          preventScroll: true,
+        })
+        setSettingTarget(null)
+      })
+    }
+    const observer = new MutationObserver(reveal)
+    observer.observe(window.document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['hidden'],
     })
-    return () => cancelAnimationFrame(frame)
-  }, [settingTarget])
+    reveal()
+    return () => {
+      observer.disconnect()
+      cancelAnimationFrame(frame)
+    }
+  }, [settingTarget, settingsCategory])
   const dialogs = useDialogs()
   const toasts = useToasts()
   const errorNotice = useRef<ToastHandle | null>(null)
@@ -188,17 +239,28 @@ function App() {
     )
   }, [])
   const autosaveStatus = useAutosave(document, busy, acknowledgeSave)
-  const [selectedMode, setMode] = useState<ViewMode>('normal')
-  const availableViews = documentFormats.views(document?.name ?? 'untitled.md')
-  const mode: ViewMode = availableViews.includes(selectedMode)
-    ? selectedMode
-    : availableViews.includes('side-by-side')
-      ? 'side-by-side'
-      : 'markdown'
+  const [defaultView, setDefaultView] = useState<ViewMode>(() => {
+    const saved = localStorage.getItem('default-view')
+    return saved && isDocumentView(saved) ? saved : 'normal'
+  })
+  const [selectedMode, setMode] = useState<ViewMode>(defaultView)
+  useEffect(() => {
+    localStorage.setItem('default-view', defaultView)
+  }, [defaultView])
+  const [focusOutlines, setFocusOutlines] = useState(
+    () => localStorage.getItem('focus-outlines') === 'true',
+  )
+  useLayoutEffect(() => {
+    window.document.documentElement.dataset.focusOutlines =
+      String(focusOutlines)
+    localStorage.setItem('focus-outlines', String(focusOutlines))
+  }, [focusOutlines])
   const [info, setInfo] = useState<AppInfo | null>(null)
   const [failed, setFailed] = useState(false)
+  const editorStarted = useRef(false)
   const [typing, setTyping] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settingsLoaded, setSettingsLoaded] = useState(false)
   const settingsNavigation = useRef({
     current: { open: false, category: 'hibi' },
     back: [] as { open: boolean; category: string }[],
@@ -221,8 +283,14 @@ function App() {
     history.navigating = false
   }, [settingsOpen, settingsCategory])
   const [paletteOpen, setPaletteOpen] = useState(false)
+  useEffect(() => {
+    if (settingsOpen || paletteOpen) setSettingsLoaded(true)
+  }, [settingsOpen, paletteOpen])
   const [findOpen, setFindOpen] = useState(false)
   const [workspace, setWorkspace] = useState<WorkspaceState | null>(null)
+  const [recentWorkspaces, setRecentWorkspaces] = useState<
+    RecentWorkspace[] | null
+  >(null)
   const [welcomeDismissed, setWelcomeDismissed] = useState(
     () => sessionStorage.getItem('hibi:welcome-dismissed') === 'true',
   )
@@ -279,52 +347,65 @@ function App() {
   useEffect(() => {
     localStorage.setItem('cursor-settings', JSON.stringify(cursorSettings))
   }, [cursorSettings])
-  const addonHost = useAddons({
-    openSidebar: selectSidebarView,
-    getMarkdown: () => document?.markdown ?? '',
-    runAction: (command) => runAction(command),
-    runCommand: (command) => runCommand(command),
-    updateMarkdown(transform, options) {
-      if (busyRef.current || !document) throw new Error('the document is busy.')
-      const source = options
-        ? projectMarkdown(
-            document.markdown,
-            addonHost.markdownExtensions,
-          ).serialize(options.body)
-        : document.markdown
-      const markdown = transform(source)
-      if (markdown === null || markdown === document.markdown) return
-      updateMarkdown(markdown)
-      setResetEditor((value) => value + 1)
-    },
-    workspace: {
-      index: () => window.hibi.getWorkspaceIndex(),
-      snapshot: () => window.hibi.getWorkspaceSnapshot(),
-      get: () => window.hibi.getWorkspace(),
-      open: openFolder,
-      openFile: openFile,
-    },
-    invoke: async (id, method, input) => {
-      if (busyRef.current) throw new Error('another operation is in progress.')
-      busyRef.current = true
-      setBusy(true)
-      try {
-        const result = await window.hibi.invokeAddon(id, method, input)
-        const next = await window.hibi.getDocument()
-        if (next.revision !== document?.revision) {
-          acceptDocument(next)
-          savedText.current = next.savedMarkdown
+  const addonHost = useAddons(
+    {
+      openSidebar: selectSidebarView,
+      getMarkdown: () => document?.markdown ?? '',
+      runAction: (command) => runAction(command),
+      runCommand: (command) => runCommand(command),
+      updateMarkdown(transform, options) {
+        if (busyRef.current || !document)
+          throw new Error('the document is busy.')
+        const source = options
+          ? projectMarkdown(
+              document.markdown,
+              addonHost.markdownExtensions,
+            ).serialize(options.body)
+          : document.markdown
+        const markdown = transform(source)
+        if (markdown === null || markdown === document.markdown) return
+        updateMarkdown(markdown)
+        setResetEditor((value) => value + 1)
+      },
+      workspace: {
+        index: () => window.hibi.getWorkspaceIndex(),
+        snapshot: () => window.hibi.getWorkspaceSnapshot(),
+        get: () => window.hibi.getWorkspace(),
+        open: openFolder,
+        openFile: openFile,
+      },
+      invoke: async (id, method, input) => {
+        if (busyRef.current)
+          throw new Error('another operation is in progress.')
+        busyRef.current = true
+        setBusy(true)
+        try {
+          const result = await window.hibi.invokeAddon(id, method, input)
+          const next = await window.hibi.getDocument()
+          if (next.revision !== document?.revision) {
+            acceptDocument(next)
+            savedText.current = next.savedMarkdown
+          }
+          setWorkspace(await window.hibi.getWorkspace())
+          return result
+        } finally {
+          busyRef.current = false
+          setBusy(false)
         }
-        setWorkspace(await window.hibi.getWorkspace())
-        return result
-      } finally {
-        busyRef.current = false
-        setBusy(false)
-      }
+      },
+      error: (error) =>
+        setError(error instanceof Error ? error.message : 'addon failed.'),
     },
-    error: (error) =>
-      setError(error instanceof Error ? error.message : 'addon failed.'),
-  })
+    document?.name,
+  )
+  const availableViews = addonHost.sourceOnly
+    ? ['markdown' as const]
+    : documentFormats.views(document?.name ?? 'untitled.md')
+  const mode: ViewMode = availableViews.includes(selectedMode)
+    ? selectedMode
+    : availableViews.includes('side-by-side')
+      ? 'side-by-side'
+      : 'markdown'
   const sidebarViews = [
     ...builtInViews,
     ...addonHost.sidebarViews.map(viewShortcut),
@@ -334,14 +415,14 @@ function App() {
   )
   useEffect(() => {
     if (
-      addonHost.ready &&
+      addonHost.allReady &&
       !builtInViews.some((view) => view.id === sidebarView) &&
       !addonHost.sidebarViews.some((view) => view.id === sidebarView)
     ) {
       setSidebarView('workspace')
       localStorage.setItem('sidebar-view', 'workspace')
     }
-  }, [addonHost.ready, addonHost.sidebarViews, sidebarView])
+  }, [addonHost.allReady, addonHost.sidebarViews, sidebarView])
   useEffect(() => {
     localStorage.removeItem('sidebar-open')
   }, [])
@@ -439,6 +520,13 @@ function App() {
 
   useEffect(() => {
     let active = true
+    // Read the welcome list alongside document/addon state, before the editor mounts.
+    void window.hibi
+      .getRecentWorkspaces()
+      .catch(() => [])
+      .then((items) => {
+        if (active) setRecentWorkspaces(items)
+      })
     Promise.all([
       window.hibi.getAppInfo(),
       window.hibi.getDocument(),
@@ -459,6 +547,55 @@ function App() {
       active = false
     }
   }, [acceptDocument])
+
+  const documentLoaded = document !== null
+  useEffect(() => {
+    if (!documentLoaded) return
+    let stopped = false
+    let running = false
+    let requested = true
+    let timer: ReturnType<typeof setTimeout>
+    const drain = async () => {
+      if (stopped || running || !requested) return
+      if (busyRef.current || dialogs.isOpen()) {
+        timer = setTimeout(() => void drain(), 100)
+        return
+      }
+      requested = false
+      running = true
+      busyRef.current = true
+      setBusy(true)
+      try {
+        const result = await window.hibi.openExternalDocuments()
+        if (result.document) {
+          acceptDocument(result.document)
+          savedText.current = result.document.savedMarkdown
+          setSettingsOpen(false)
+          setWorkspace(await window.hibi.getWorkspace())
+        }
+        if (result.errors.length) setError(result.errors.join('\n'))
+      } catch (error) {
+        setError(
+          error instanceof Error ? error.message : 'Could not open file.',
+        )
+      } finally {
+        running = false
+        busyRef.current = false
+        setBusy(false)
+        void drain()
+      }
+    }
+    const unsubscribe = window.hibi.onExternalDocuments(() => {
+      requested = true
+      void drain()
+    })
+    void drain()
+    return () => {
+      stopped = true
+      clearTimeout(timer)
+      unsubscribe()
+    }
+  }, [documentLoaded, acceptDocument, dialogs, setError])
 
   const runCommand = useCallback(
     async (command: DocumentCommand) => {
@@ -790,7 +927,11 @@ function App() {
             size: 'wide',
             description:
               'Local snapshots on save. restoring changes the editor; save to replace the file.',
-            content: ({ close }) => <VersionHistory close={close} />,
+            content: ({ close }) => (
+              <Suspense fallback={<LoadingScreen />}>
+                <VersionHistory close={close} />
+              </Suspense>
+            ),
           })
           .result.then(async (id) => {
             if (!id || busyRef.current) return
@@ -924,7 +1065,13 @@ function App() {
     })
   }
 
-  if ((!document || !addonHost.ready) && !failed) return <LoadingScreen full />
+  if (document) startupMark('document-available')
+  if (!document && !failed) return <LoadingScreen full />
+  startupMark('shell')
+  if (addonHost.ready) {
+    editorStarted.current = true
+    startupMark('editing-capabilities')
+  }
 
   const paletteCommands: PaletteCommand[] = actions
     .filter(
@@ -1229,6 +1376,13 @@ function App() {
       onInputCapture={(event) => noteTyping(event.target)}
       onKeyDownCapture={(event) => {
         if (
+          event.key === 'Escape' &&
+          event.target instanceof HTMLInputElement &&
+          event.target.closest('search') &&
+          event.target.value
+        )
+          return
+        if (
           (event.target as HTMLElement).closest(
             'dialog[open], .hotkey-recorder[aria-pressed="true"]',
           )
@@ -1296,11 +1450,13 @@ function App() {
         onMode={(view) => addonHost.app.runAction(view)}
       />
       {paletteOpen && (
-        <CommandPalette
-          platform={info?.platform ?? 'darwin'}
-          commands={paletteCommands}
-          onClose={() => setPaletteOpen(false)}
-        />
+        <Suspense fallback={<LoadingScreen />}>
+          <CommandPalette
+            platform={info?.platform ?? 'darwin'}
+            commands={paletteCommands}
+            onClose={() => setPaletteOpen(false)}
+          />
+        </Suspense>
       )}
       <WorkspaceSidebar
         editing={workspaceRename}
@@ -1335,41 +1491,55 @@ function App() {
         resize={documentSidebarResize}
       />
       <MenuHost />
-      <SettingsScreen
-        onBack={toggleSettings}
-        onInstallAddon={addonHost.install}
-        onRemoveAddon={addonHost.remove}
-        selected={settingsCategory}
-        onCategory={setSettingsCategory}
-        showLineNumbers={showLineNumbers}
-        onShowLineNumbers={setShowLineNumbers}
-        spellCheck={spellCheck}
-        onSpellCheck={setSpellCheck}
-        cursorSettings={cursorSettings}
-        onCursorSettings={setCursorSettings}
-        resize={sidebarResize}
-        addonStates={addonHost.states}
-        onAddonEnabled={addonHost.setEnabled}
-        open={settingsOpen}
-        hotkeys={hotkeys}
-        onHotkeys={setHotkeys}
-        padding={padding}
-        onPadding={setPadding}
-        tabsEnabled={document?.tabsEnabled !== false}
-        tabsBusy={busy}
-        onTabsEnabled={(enabled) =>
-          void applyDocumentOperation(
-            () => window.hibi.setTabsEnabled(enabled),
-            false,
-          )
-        }
-        hideTitlebar={hideTitlebar}
-        onHideTitlebar={(value) => {
-          setHideTitlebar(value)
-          showTitlebar()
-        }}
-        info={info}
-      />
+      {(settingsLoaded || settingsOpen || paletteOpen) && (
+        <Suspense fallback={settingsOpen ? <LoadingScreen full /> : null}>
+          <SettingsScreen
+            discover={paletteOpen}
+            onBack={toggleSettings}
+            onInstallAddon={addonHost.install}
+            onRemoveAddon={addonHost.remove}
+            selected={settingsCategory}
+            onCategory={setSettingsCategory}
+            onSetting={openSetting}
+            showLineNumbers={showLineNumbers}
+            onShowLineNumbers={setShowLineNumbers}
+            spellCheck={spellCheck}
+            onSpellCheck={setSpellCheck}
+            focusOutlines={focusOutlines}
+            onFocusOutlines={setFocusOutlines}
+            defaultView={defaultView}
+            onDefaultView={(view) => {
+              setDefaultView(view)
+              setMode(view)
+              dismissWelcome()
+            }}
+            cursorSettings={cursorSettings}
+            onCursorSettings={setCursorSettings}
+            resize={sidebarResize}
+            addonStates={addonHost.states}
+            onAddonEnabled={addonHost.setEnabled}
+            open={settingsOpen}
+            hotkeys={hotkeys}
+            onHotkeys={setHotkeys}
+            padding={padding}
+            onPadding={setPadding}
+            tabsEnabled={document?.tabsEnabled !== false}
+            tabsBusy={busy}
+            onTabsEnabled={(enabled) =>
+              void applyDocumentOperation(
+                () => window.hibi.setTabsEnabled(enabled),
+                false,
+              )
+            }
+            hideTitlebar={hideTitlebar}
+            onHideTitlebar={(value) => {
+              setHideTitlebar(value)
+              showTitlebar()
+            }}
+            info={info}
+          />
+        </Suspense>
+      )}
       <div
         className="editor-surface"
         aria-hidden={settingsOpen}
@@ -1388,8 +1558,11 @@ function App() {
             document?.tabsEnabled ? `document-tab-${document.tabId}` : undefined
           }
           data-startup={showWelcome}
+          inert={!addonHost.ready}
+          aria-busy={!addonHost.ready}
         >
-          {document && (
+          {!editorStarted.current && <LoadingScreen />}
+          {document && editorStarted.current && (
             <MarkdownEditor
               onOutline={setOutline}
               onActiveOutline={setActiveOutline}
@@ -1400,7 +1573,7 @@ function App() {
               onAttach={attachMedia}
               onLink={openLink}
               flavors={chosenFlavors}
-              unsupportedFlavor={unsupportedFlavor}
+              unsupportedFlavor={unsupportedFlavor || addonHost.sourceOnly}
               sourceExtensions={addonHost.sourceExtensions}
               richExtensions={addonHost.richExtensions}
               documentRevision={document.revision}
@@ -1412,13 +1585,14 @@ function App() {
               value={document.markdown}
               onChange={updateMarkdown}
               mode={mode}
-              disabled={busy}
+              disabled={busy || !addonHost.ready}
               findOpen={findOpen && !settingsOpen}
               onCloseFind={() => setFindOpen(false)}
             />
           )}
-          {showWelcome && (
+          {showWelcome && addonHost.ready && (
             <StartupPlaceholder
+              recent={recentWorkspaces}
               mode={mode}
               busy={busy}
               onOpen={(id) => void openFolder(id)}

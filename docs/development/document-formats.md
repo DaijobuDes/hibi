@@ -2,6 +2,8 @@
 
 api version 1 remains compatible. formats are optional extension contributions. markdown is an always-available bundled format plugin; plain `.txt` is core and never parses markdown. workspace files never become addon modules.
 
+Bundled runtimes load lazily from their data-only manifests. Their `start()` promise must finish registering required editing behavior before resolving. See [startup performance](performance.md) for lightweight flavor discovery, settings boundaries, and background-only activation rules.
+
 ## file formats
 
 declare `fileExtensions: ['typ']` on an extension manifest before calling `context.editor.registerDocumentFormat({ id, name, extensions, language, Preview, render?, insertMedia? })`. extensions omit the dot and use lowercase letters/digits. `.txt` is reserved for core. only one enabled format can own an extension. `editing: 'markdown'` opts into the existing rich markdown pipeline; other formats preserve source and supply a read-only preview. `codeLanguage` links source highlighting to a registered language's setting.

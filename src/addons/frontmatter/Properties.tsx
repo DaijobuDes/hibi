@@ -14,7 +14,7 @@ import { isMap, isScalar, isSeq, parseDocument } from 'yaml'
 import type { MarkdownEditorProps } from '../api'
 import { Button, IconButton, Select, TextArea, TextInput, Toggle } from '../ui'
 import { replaceFrontmatter, splitFrontmatter } from './markdown'
-import { propertiesExpanded } from './Settings'
+import { propertiesExpanded } from './preferences'
 import './frontmatter.css'
 
 function NumberProperty({

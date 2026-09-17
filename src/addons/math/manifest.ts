@@ -1,3 +1,4 @@
+import { fileAssociations } from '../../shared/file-associations'
 import type { AddonManifest } from '../api'
 import { authors } from '../authors'
 export default {
@@ -9,6 +10,6 @@ export default {
   description:
     'LaTeX documents, native PDF compilation, and inline and block math with KaTeX.',
   defaultEnabled: false,
-  fileExtensions: ['tex'],
+  fileExtensions: fileAssociations.math.ext,
   authors: [authors.may],
 } satisfies AddonManifest

@@ -58,7 +58,7 @@ export function nativeFormat(manifest: AddonManifest): NativeAddon {
     try {
       if (run) await writeFile(entry, data.source, { flag: 'wx', mode: 0o600 })
       const worker = utilityProcess.fork(
-        join(import.meta.dirname, 'format-worker.js'),
+        join(app.getAppPath(), 'out/main/format-worker.js'),
         [],
         {
           serviceName: `hibi ${spec.name}`,

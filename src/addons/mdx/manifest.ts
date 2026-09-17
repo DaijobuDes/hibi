@@ -1,3 +1,4 @@
+import { fileAssociations } from '../../shared/file-associations'
 import type { AddonManifest } from '../api'
 import { authors } from '../authors'
 export default {
@@ -7,7 +8,7 @@ export default {
   kind: 'extension',
   description:
     'MDX source editing, preview, and export with an explicit native run action.',
-  fileExtensions: ['mdx'],
+  fileExtensions: fileAssociations.mdx.ext,
   defaultEnabled: false,
   authors: [authors.may],
 } satisfies AddonManifest

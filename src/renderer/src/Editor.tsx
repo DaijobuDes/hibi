@@ -153,7 +153,16 @@ export function MarkdownEditor({
   const scrollContent = useRef({ source: value, body: projection.content })
   scrollContent.current = { source: value, body: projection.content }
   useEffect(() => {
-    if (!markdownDocument && sourceReady && mode !== 'normal') {
+    if (
+      sourceReady &&
+      (mode === 'markdown' || (!markdownDocument && mode !== 'normal'))
+    ) {
+      if (
+        window.document.activeElement?.closest(
+          '.settings-screen, [role="dialog"], input, textarea, select',
+        )
+      )
+        return
       setFocusedPane('source')
       content.current?.querySelector<HTMLElement>('.cm-content')?.focus()
     }
@@ -185,7 +194,9 @@ export function MarkdownEditor({
     )
   }, [paneMode])
   useEffect(() => {
-    const idle = requestIdleCallback(() => setSourceMounted(true))
+    const idle = requestIdleCallback(() => {
+      void import('./SourceEditor').catch(() => {})
+    })
     return () => cancelIdleCallback(idle)
   }, [])
   useEffect(() => {
@@ -201,7 +212,7 @@ export function MarkdownEditor({
       ],
       content: projection.content,
       contentType: 'markdown',
-      autofocus: 'end',
+      autofocus: false,
       injectCSS: false,
       shouldRerenderOnTransaction: false,
       editorProps: {
@@ -234,6 +245,27 @@ export function MarkdownEditor({
     },
     [markdownExtensions, flavors, syntaxVersion],
   )
+  // biome-ignore lint/correctness/useExhaustiveDependencies: initial focus belongs to this editor instance, never subsequent mode or document updates.
+  useLayoutEffect(() => {
+    if (!editor || !markdownDocument || paneMode === 'markdown') return
+    const focus = () => {
+      if (editor.isDestroyed || !editor.view.dom.isConnected) return
+      const active = window.document.activeElement
+      if (active?.closest('.settings-screen, [role="dialog"], .source-pane'))
+        return
+      editor.view.dispatch(
+        editor.state.tr
+          .setSelection(TextSelection.atEnd(editor.state.doc))
+          .setMeta('addToHistory', false),
+      )
+      editor.view.focus()
+    }
+    editor.on('mount', focus)
+    focus()
+    return () => {
+      editor.off('mount', focus)
+    }
+  }, [editor])
   useEffect(() => {
     if (!editor || !markdownDocument) {
       onOutline([])

@@ -1,12 +1,14 @@
+import { lazy } from 'react'
 import { defineAddon } from '../api'
 import manifest from './manifest'
 import { addFrontmatter, parseFrontmatter } from './markdown'
 import { Properties } from './Properties'
-import { Settings } from './Settings'
 
 export default defineAddon({
   manifest,
-  Settings,
+  Settings: lazy(() =>
+    import('./Settings').then(({ Settings }) => ({ default: Settings })),
+  ),
   start(context) {
     context.editor.registerMarkdown({
       id: 'metadata',

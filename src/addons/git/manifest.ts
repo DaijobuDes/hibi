@@ -9,5 +9,6 @@ export default {
   description:
     'Explorer status markers, diffs, staging, commits, branches, pull, and push.',
   defaultEnabled: false,
+  startup: 'background',
   authors: [authors.may],
 } satisfies AddonManifest

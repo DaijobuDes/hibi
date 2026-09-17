@@ -64,6 +64,30 @@ test('plain text stays literal and disabled addons stay out of formats', {
   await page.getByRole('tab', { name: 'Formats', exact: true }).click()
   assert.equal(
     await page
+      .getByRole('button', {
+        name: 'Plain text default application',
+        exact: true,
+      })
+      .isDisabled(),
+    true,
+  )
+  assert.equal(
+    await page
+      .getByRole('button', {
+        name: 'Markdown default application',
+        exact: true,
+      })
+      .isDisabled(),
+    true,
+  )
+  assert.equal(
+    await page
+      .getByRole('button', { name: 'Typst default application', exact: true })
+      .count(),
+    0,
+  )
+  assert.equal(
+    await page
       .getByRole('button', { name: 'Typst settings', exact: true })
       .count(),
     0,

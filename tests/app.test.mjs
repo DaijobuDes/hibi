@@ -60,6 +60,8 @@ test('desktop launch, isolation, offline reload, and recovery', {
       node: 'undefined',
       process: 'undefined',
       api: [
+        'getFileAssociations',
+        'setFileAssociation',
         'navigateDocument',
         'openDocumentLink',
         'openRemoteDocument',
@@ -103,6 +105,8 @@ test('desktop launch, isolation, offline reload, and recovery', {
         'setTabsEnabled',
         'updateDocument',
         'openDocument',
+        'openExternalDocuments',
+        'onExternalDocuments',
         'newDocument',
         'saveDocument',
         'autosaveDocument',

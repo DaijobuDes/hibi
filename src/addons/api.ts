@@ -78,6 +78,8 @@ export type AddonManifest = {
   /** Existing API v1 addons default to extension. */
   kind?: 'theme' | 'extension'
   defaultEnabled?: boolean
+  /** Background-only UI/services can activate after editing is ready. Omit for schema/input addons. */
+  startup?: 'background'
   /** Plugin release version; optional for existing API v1 addons. */
   version?: string
   /** Additional source-file extensions, without dots. Files remain openable when disabled. */

@@ -37,18 +37,41 @@ import {
   workspaceRoot,
 } from './workspace'
 
-const bundledManifests = Object.values(
-  import.meta.glob<AddonManifest>(
-    ['../addons/*/manifest.ts', '../useraddons/*/manifest.ts'],
-    { eager: true, import: 'default' },
-  ),
+const manifestModules = import.meta.glob<AddonManifest>(
+  ['../addons/*/manifest.ts', '../useraddons/*/manifest.ts'],
+  { eager: true, import: 'default' },
 )
-const natives = Object.values(
-  import.meta.glob<NativeAddon>(
-    ['../addons/*/native.ts', '../useraddons/*/native.ts'],
-    { eager: true, import: 'default' },
-  ),
+const bundledManifests = Object.values(manifestModules)
+const nativeModules = import.meta.glob<NativeAddon>(
+  ['../addons/*/native.ts', '../useraddons/*/native.ts'],
+  { import: 'default' },
 )
+const nativeLoaders = new Map(
+  Object.entries(manifestModules).flatMap(([path, manifest]) => {
+    const load = nativeModules[path.replace('/manifest.ts', '/native.ts')]
+    return load ? [[manifest.id, load] as const] : []
+  }),
+)
+const natives = new Map<string, NativeAddon>()
+const pendingNatives = new Map<string, Promise<NativeAddon>>()
+const generations = new Map<string, number>()
+async function nativeAddon(id: string) {
+  if (natives.has(id)) return natives.get(id)
+  const load = nativeLoaders.get(id)
+  if (!load) return undefined
+  let pending = pendingNatives.get(id)
+  if (!pending) {
+    pending = load()
+      .then((addon) => {
+        if (addon.id !== id) throw new Error('Native addon identity mismatch.')
+        natives.set(id, addon)
+        return addon
+      })
+      .finally(() => pendingNatives.delete(id))
+    pendingNatives.set(id, pending)
+  }
+  return pending
+}
 let enabled: Record<string, boolean> = {}
 const manifests = () => [
   ...bundledManifests,
@@ -65,7 +88,21 @@ export function getAddonLicenses() {
 }
 
 export async function loadAddons(): Promise<void> {
-  await loadInstalledAddons(bundledManifests.map((manifest) => manifest.id))
+  const [, stored] = await Promise.all([
+    loadInstalledAddons(bundledManifests.map((manifest) => manifest.id)),
+    readFile(join(app.getPath('userData'), 'addons.json'), 'utf8')
+      .then((text): Record<string, unknown> => {
+        const value: unknown = JSON.parse(text)
+        if (!value || typeof value !== 'object' || Array.isArray(value))
+          throw new Error('invalid addon preferences')
+        return value as Record<string, unknown>
+      })
+      .catch((error: unknown): Record<string, unknown> => {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT')
+          console.error('could not load addon preferences:', error)
+        return {}
+      }),
+  ])
   const ids = new Set<string>()
   for (const manifest of manifests()) {
     if (
@@ -81,19 +118,11 @@ export async function loadAddons(): Promise<void> {
   setDocumentExtensions(
     manifests().flatMap((manifest) => manifest.fileExtensions ?? []),
   )
-  try {
-    const stored = JSON.parse(
-      await readFile(join(app.getPath('userData'), 'addons.json'), 'utf8'),
-    ) as Record<string, unknown>
-    enabled = Object.fromEntries(
-      manifests()
-        .filter(({ id }) => typeof stored[id] === 'boolean')
-        .map(({ id }) => [id, stored[id] as boolean]),
-    )
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT')
-      console.error('could not load addon preferences:', error)
-  }
+  enabled = Object.fromEntries(
+    manifests()
+      .filter(({ id }) => typeof stored[id] === 'boolean')
+      .map(({ id }) => [id, stored[id] as boolean]),
+  )
 }
 
 export function getAddonStates(): AddonState[] {
@@ -125,7 +154,8 @@ async function saveEnabled(id: string, value: boolean): Promise<AddonState[]> {
   await writeFile(`${path}.tmp`, JSON.stringify(next), { mode: 0o600 })
   await rename(`${path}.tmp`, path)
   enabled = next
-  if (!value) natives.find((addon) => addon.id === id)?.stop?.()
+  generations.set(id, (generations.get(id) ?? 0) + 1)
+  if (!value) natives.get(id)?.stop?.()
   return getAddonStates()
 }
 
@@ -176,7 +206,13 @@ export async function invokeAddon(
     !getAddonStates().some((addon) => addon.id === id && addon.enabled)
   )
     throw new Error('addon is not enabled.')
-  const addon = natives.find((addon) => addon.id === id)
+  const generation = generations.get(id)
+  const addon = await nativeAddon(id)
+  if (
+    generations.get(id) !== generation ||
+    !getAddonStates().some((state) => state.id === id && state.enabled)
+  )
+    throw new Error('addon is no longer enabled.')
   const handlers = query ? addon?.queries : addon?.methods
   if (!handlers || !Object.hasOwn(handlers, method))
     throw new Error('unknown addon method.')

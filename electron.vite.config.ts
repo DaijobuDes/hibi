@@ -2,6 +2,7 @@ import { resolve } from 'node:path'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'electron-vite'
 import { writeLicenses } from './scripts/licenses'
+import { startupBundle } from './scripts/startup-bundle'
 
 export default defineConfig({
   main: {
@@ -25,7 +26,7 @@ export default defineConfig({
     },
   },
   renderer: {
-    plugins: [react()],
+    plugins: [react(), startupBundle()],
     build: { target: 'chrome152', minify: 'esbuild' },
     server: { host: '127.0.0.1' },
   },

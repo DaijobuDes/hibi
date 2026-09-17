@@ -126,7 +126,7 @@ export async function compileTypst(
           throw new Error('could not isolate typst networking.')
         const proxy = `http://127.0.0.1:${address.port}`
         child = utilityProcess.fork(
-          join(import.meta.dirname, 'typst-worker.js'),
+          join(app.getAppPath(), 'out/main/typst-worker.js'),
           [],
           {
             serviceName: 'hibi typst',

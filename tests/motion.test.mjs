@@ -322,10 +322,17 @@ test('panes move horizontally and sidebar selection slides without fading settin
   })
   const page = await app.firstWindow()
   await page.getByRole('textbox', { name: /document editor/i }).waitFor()
+  await page
+    .getByRole('button', { name: /^side-by-side$/i, exact: true })
+    .click()
   await page.waitForFunction(
     () =>
       document.querySelector('.editor-panes').dataset.sourceReady === 'true',
   )
+  await page.getByRole('button', { name: /^normal$/i, exact: true }).click()
+  await page
+    .getByRole('textbox', { name: /markdown editor/i })
+    .waitFor({ state: 'hidden' })
   await page
     .getByRole('textbox', { name: /document editor/i })
     .fill(

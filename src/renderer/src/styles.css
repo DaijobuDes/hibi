@@ -101,6 +101,36 @@ button:disabled {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
+/* Scope the desktop preference to the document, including menus and dialogs. */
+:root[data-focus-outlines="false"]
+:focus-visible:not(
+  :where(
+    input,
+    textarea,
+    select,
+    [contenteditable]:not([contenteditable="false"]),
+    [role="textbox"],
+    [role="searchbox"],
+    [role="combobox"]
+  )
+) {
+  outline: none !important;
+}
+:root[data-focus-outlines="false"]
+  :where(
+    button,
+    a,
+    [role="tab"],
+    [role="treeitem"],
+    [role="menuitem"]
+  ):focus-visible:not(
+    [aria-selected="true"],
+    [aria-pressed="true"],
+    [aria-checked="true"]
+  ) {
+  background-color: var(--hover);
+  color: var(--ink);
+}
 ::selection {
   background: var(--selection);
   color: var(--selection-ink);
@@ -197,6 +227,7 @@ button:disabled {
   --sidebar-action-size: 28px;
   display: flex;
   align-items: center;
+  gap: var(--space-1);
   height: 100%;
   width: calc(var(--window-controls-width) + 36px);
   padding-left: var(--window-controls-width);
@@ -230,6 +261,9 @@ button:disabled {
   flex: 1;
   min-width: 0;
   height: 100%;
+  padding-left: var(--space-3);
+}
+.app[data-screen="settings"] .document-toolbar {
   padding-left: var(--space-4);
 }
 .titlebar .document-title {
@@ -460,6 +494,41 @@ button:disabled {
 }
 .settings-sidebar .sidebar-header button:hover {
   background: var(--hover);
+}
+.settings-search {
+  position: relative;
+  margin: var(--space-3) var(--space-2) 0;
+}
+.settings-search > svg {
+  position: absolute;
+  left: var(--space-2);
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  pointer-events: none;
+}
+.settings-search .ui-input {
+  width: 100%;
+  padding-inline: 30px;
+}
+.settings-search .icon-button {
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.settings-searching .sidebar-chevron {
+  display: none;
+}
+.settings-searching [aria-level="1"][aria-expanded] {
+  color: var(--muted);
+}
+.settings-searching [aria-level="2"] .sidebar-label {
+  margin-left: var(--space-2);
+}
+.settings-search-empty {
+  color: var(--muted);
+  padding: var(--space-3) var(--space-4);
 }
 /* Each page covers its own scrolled content beneath the titlebar. Keeping this
    in the page's layer shares its position and opacity with the sidebar. */
@@ -1457,9 +1526,6 @@ summary {
   }
   .settings-content {
     padding: 64px 24px 28px;
-  }
-  .titlebar {
-    gap: 6px;
   }
   .view-switch {
     gap: 0;

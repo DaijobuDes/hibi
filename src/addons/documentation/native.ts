@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { app } from 'electron'
 import type { NativeAddon } from '../api'
 import manifest from './manifest'
 
@@ -36,7 +37,7 @@ export default {
         snapshot.css = css
       }
       const template = await readFile(
-        join(import.meta.dirname, '../site/template.html'),
+        join(app.getAppPath(), 'out/site/template.html'),
         'utf8',
       )
       const data = JSON.stringify(snapshot)

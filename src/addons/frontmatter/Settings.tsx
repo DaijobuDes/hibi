@@ -1,9 +1,7 @@
 import { useState } from 'react'
 import { SettingRow, Toggle } from '../ui'
 
-export function propertiesExpanded() {
-  return localStorage.getItem('frontmatter:expanded') !== 'false'
-}
+import { propertiesExpanded } from './preferences'
 
 export function Settings() {
   const [expanded, setExpanded] = useState(propertiesExpanded)

@@ -1,4 +1,4 @@
-import { join, resolve } from 'node:path'
+import { basename, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { IpcMainInvokeEvent, MenuItemConstructorOptions } from 'electron'
 import {
@@ -7,6 +7,7 @@ import {
   dialog,
   ipcMain,
   Menu,
+  nativeImage,
   nativeTheme,
   net,
   protocol,
@@ -22,6 +23,7 @@ import {
   type AppInfo,
   DOCUMENT_CHANNELS,
 } from '../shared/desktop'
+import { ASSOCIATION_CHANNELS } from '../shared/file-associations'
 import { HISTORY_CHANNELS } from '../shared/history'
 import {
   type AppCommand,
@@ -32,6 +34,7 @@ import {
 } from '../shared/hotkeys'
 import { MEDIA_CHANNELS } from '../shared/media'
 import { SIDELOAD_CHANNELS } from '../shared/sideload'
+import { startupMark, startupSpan } from '../shared/startup'
 import { UI_CASE_CHANNEL } from '../shared/ui-case'
 import { WORKSPACE_CHANNELS } from '../shared/workspace'
 import {
@@ -52,6 +55,7 @@ import {
   getDocument,
   getDocumentPath,
   hasUnsavedDocuments,
+  loadDocument,
   loadDocumentPreferences,
   moveDocumentTab,
   navigateDocument,
@@ -64,6 +68,8 @@ import {
   setTabsEnabled,
   updateDocument,
 } from './document'
+import { isDocumentName } from './document-types'
+import { externalFileArguments } from './external-files'
 import { listVersions, previewVersion } from './history'
 import { hotkeys, loadHotkeys, saveHotkeys } from './hotkeys'
 import { readDocumentImage } from './images'
@@ -96,6 +102,7 @@ import {
 } from './workspace'
 import { workspaceAction } from './workspace-actions'
 
+startupMark('main-entry')
 app.setName('hibi')
 // Let held Vim motions repeat instead of opening macOS's accent picker.
 if (process.platform === 'darwin')
@@ -121,6 +128,7 @@ protocol.registerSchemesAsPrivileged([
       supportFetchAPI: true,
       stream: true,
       corsEnabled: true,
+      codeCache: true,
     },
   },
 ])
@@ -143,6 +151,24 @@ let mainWindow: BrowserWindow | null = null
 let fileOperation: Promise<unknown> | null = null
 let quitting = false
 let recordingHotkey = false
+const externalFiles: string[] = []
+function queueExternalFiles(paths: string[]) {
+  for (const path of paths) {
+    if (!externalFiles.includes(path)) externalFiles.push(path)
+  }
+  if (!mainWindow) createWindow()
+  mainWindow?.webContents.send(DOCUMENT_CHANNELS.externalPending)
+  if (!testing && mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.show()
+    mainWindow.focus()
+  }
+}
+// Finder can deliver these before app.whenReady(). Keep them until the renderer asks.
+app.on('open-file', (event, path) => {
+  event.preventDefault()
+  queueExternalFiles([path])
+})
 app.on('before-quit', () => {
   quitting = true
 })
@@ -229,7 +255,10 @@ async function serveAsset(request: Request): Promise<Response> {
   }
 }
 
+let windowSetupReady = false
 function createWindow(): void {
+  if (!windowSetupReady) return
+  startupMark('window-start')
   const window = new BrowserWindow({
     width: 1000,
     height: 720,
@@ -238,7 +267,7 @@ function createWindow(): void {
     show: false,
     focusable: !testing,
     title: 'Hibi',
-    icon: appIcon,
+    ...(process.platform === 'darwin' ? {} : { icon: appIcon }),
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
     ...(process.platform === 'darwin'
       ? { trafficLightPosition: { x: 12, y: 11 } }
@@ -254,6 +283,7 @@ function createWindow(): void {
       backgroundThrottling: !testing,
     },
   })
+  startupMark('window-created')
   mainWindow = window
   const stopRecording = () => {
     recordingHotkey = false
@@ -309,6 +339,7 @@ function createWindow(): void {
       })
   })
   window.once('ready-to-show', () => {
+    startupMark('window-painted')
     if (testing) return
     if (!app.isPackaged && app.commandLine.hasSwitch('user-data-dir'))
       window.showInactive()
@@ -474,7 +505,11 @@ function installMenu(): void {
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
-  app.on('second-instance', () => {
+  externalFiles.push(
+    ...externalFileArguments(process.argv, process.cwd(), !app.isPackaged),
+  )
+  app.on('second-instance', (_event, argv, cwd) => {
+    queueExternalFiles(externalFileArguments(argv, cwd, !app.isPackaged))
     if (testing) return
     if (!mainWindow) createWindow()
     if (mainWindow?.isMinimized()) mainWindow.restore()
@@ -491,12 +526,29 @@ if (!app.requestSingleInstanceLock()) {
   void app
     .whenReady()
     .then(async () => {
-      if (process.platform === 'darwin') app.dock?.setIcon(appIcon)
-      await loadHotkeys()
-      await loadAddons()
-      await loadAppearance()
-      await loadUiCase()
-      await loadDocumentPreferences()
+      startupMark('app-ready')
+      // Installed macOS apps already carry their full-resolution bundle icon.
+      // A dock-sized development icon avoids re-encoding 1024px images at launch.
+      if (process.platform === 'darwin' && !app.isPackaged)
+        app.dock?.setIcon(
+          nativeImage
+            .createFromPath(appIcon)
+            .resize({ width: 256, height: 256 }),
+        )
+      const preferences = Promise.all([
+        startupSpan('hotkeys', loadHotkeys),
+        startupSpan('addons', loadAddons),
+        startupSpan('ui-case', loadUiCase),
+        startupSpan('document-preferences', loadDocumentPreferences),
+      ])
+      // Handle rejection immediately while appearance and renderer loading overlap it.
+      void preferences.catch(() => {})
+      await startupSpan('appearance', loadAppearance)
+      const handle: typeof ipcMain.handle = (channel, listener) =>
+        ipcMain.handle(channel, async (...args) => {
+          await preferences
+          return listener(...args)
+        })
       protocol.handle('app', serveAsset)
       session.defaultSession.setPermissionCheckHandler(() => false)
       session.defaultSession.setPermissionRequestHandler(
@@ -525,7 +577,7 @@ if (!app.requestSingleInstanceLock()) {
         )
       }
 
-      ipcMain.handle(APP_INFO_CHANNEL, (event): AppInfo => {
+      handle(APP_INFO_CHANNEL, (event): AppInfo => {
         trustedWindow(event)
         return {
           version: app.getVersion(),
@@ -533,12 +585,21 @@ if (!app.requestSingleInstanceLock()) {
           platform: process.platform,
         }
       })
-      ipcMain.handle(UI_CASE_CHANNEL, async (event, value: unknown) => {
+      handle(ASSOCIATION_CHANNELS.get, async (event) => {
         trustedWindow(event)
+        return (await import('./file-associations')).getFileAssociations()
+      })
+      handle(ASSOCIATION_CHANNELS.set, async (event, format: unknown) => {
+        trustedWindow(event)
+        await (await import('./file-associations')).setFileAssociation(format)
+      })
+      handle(UI_CASE_CHANNEL, async (event, value: unknown) => {
+        trustedWindow(event)
+        if (value === getUiCase()) return
         await saveUiCase(value)
         installMenu()
       })
-      ipcMain.handle(APPEARANCE_CHANNEL, async (event, value: unknown) => {
+      handle(APPEARANCE_CHANNEL, async (event, value: unknown) => {
         const window = trustedWindow(event)
         const saved = saveAppearance(value)
         window.setBackgroundColor(appearanceColors().background)
@@ -546,110 +607,108 @@ if (!app.requestSingleInstanceLock()) {
           window.setTitleBarOverlay(titleBarColors())
         await saved
       })
-      ipcMain.handle(ABOUT_CHANNELS.licenses, (event) => {
+      handle(ABOUT_CHANNELS.licenses, (event) => {
         trustedWindow(event)
         return listLicenses()
       })
-      ipcMain.handle(ABOUT_CHANNELS.license, (event, id: unknown) => {
+      handle(ABOUT_CHANNELS.license, (event, id: unknown) => {
         trustedWindow(event)
         return readLicense(id)
       })
-      ipcMain.handle(ABOUT_CHANNELS.sponsor, (event) => {
+      handle(ABOUT_CHANNELS.sponsor, (event) => {
         trustedWindow(event)
         return shell.openExternal(SPONSOR_URL)
       })
-      ipcMain.handle(ADDON_CHANNELS.states, (event) => {
+      handle(ADDON_CHANNELS.states, (event) => {
         trustedWindow(event)
         return getAddonStates()
       })
-      ipcMain.handle(SIDELOAD_CHANNELS.list, (event) => {
+      handle(SIDELOAD_CHANNELS.list, (event) => {
         trustedWindow(event)
         return installedAddons()
       })
-      ipcMain.handle(SIDELOAD_CHANNELS.install, (event, url: unknown) =>
+      handle(SIDELOAD_CHANNELS.install, (event, url: unknown) =>
         runFileOperation(event, (window) => installAddon(window, url)),
       )
-      ipcMain.handle(SIDELOAD_CHANNELS.folder, (event) => {
+      handle(SIDELOAD_CHANNELS.folder, (event) => {
         trustedWindow(event)
         return openAddonsFolder()
       })
-      ipcMain.handle(SIDELOAD_CHANNELS.garden, (event) => {
+      handle(SIDELOAD_CHANNELS.garden, (event) => {
         trustedWindow(event)
         return shell.openExternal('https://hibi.garden/addons')
       })
-      ipcMain.handle(SIDELOAD_CHANNELS.remove, (event, id: unknown) =>
+      handle(SIDELOAD_CHANNELS.remove, (event, id: unknown) =>
         runFileOperation(event, () => removeAddon(id)),
       )
-      ipcMain.handle(
-        ADDON_CHANNELS.enable,
-        (event, id: unknown, enabled: unknown) =>
-          runFileOperation(event, () => enableAddon(id, enabled)),
+      handle(ADDON_CHANNELS.enable, (event, id: unknown, enabled: unknown) =>
+        runFileOperation(event, () => enableAddon(id, enabled)),
       )
-      ipcMain.handle(
+      handle(
         ADDON_CHANNELS.invoke,
         (event, id: unknown, method: unknown, input: unknown) =>
           runFileOperation(event, (window) =>
             invokeAddon(window, id, method, input),
           ),
       )
-      ipcMain.handle(
+      handle(
         ADDON_CHANNELS.query,
         (event, id: unknown, method: unknown, input: unknown) =>
           readAfterFileOperation(event, (window) =>
             invokeAddon(window, id, method, input, true),
           ),
       )
-      ipcMain.handle(HOTKEY_CHANNELS.get, (event) => {
+      handle(HOTKEY_CHANNELS.get, (event) => {
         trustedWindow(event)
         return hotkeys
       })
-      ipcMain.handle(HOTKEY_CHANNELS.save, async (event, value: unknown) => {
+      handle(HOTKEY_CHANNELS.save, async (event, value: unknown) => {
         trustedWindow(event)
         const next = await saveHotkeys(value)
         installMenu()
         return next
       })
-      ipcMain.handle(HOTKEY_CHANNELS.record, (event, value: unknown) => {
+      handle(HOTKEY_CHANNELS.record, (event, value: unknown) => {
         const window = trustedWindow(event)
         if (typeof value !== 'boolean')
           throw new Error('invalid recording state.')
         recordingHotkey = value
         window.webContents.setIgnoreMenuShortcuts(value)
       })
-      ipcMain.handle(DOCUMENT_CHANNELS.get, (event) => {
+      handle(DOCUMENT_CHANNELS.get, (event) => {
         trustedWindow(event)
         return getDocument()
       })
-      ipcMain.handle(DOCUMENT_CHANNELS.selectTab, (event, id: unknown) =>
+      handle(DOCUMENT_CHANNELS.selectTab, (event, id: unknown) =>
         runFileOperation(event, (window) => selectDocumentTab(window, id)),
       )
-      ipcMain.handle(DOCUMENT_CHANNELS.closeTab, (event, id: unknown) =>
+      handle(DOCUMENT_CHANNELS.closeTab, (event, id: unknown) =>
         runFileOperation(event, (window) => closeDocumentTab(window, id)),
       )
-      ipcMain.handle(
+      handle(
         DOCUMENT_CHANNELS.moveTab,
         (event, id: unknown, beforeId: unknown) =>
           runFileOperation(event, async () => moveDocumentTab(id, beforeId)),
       )
-      ipcMain.handle(DOCUMENT_CHANNELS.tabsEnabled, (event, enabled: unknown) =>
+      handle(DOCUMENT_CHANNELS.tabsEnabled, (event, enabled: unknown) =>
         runFileOperation(event, (window) => setTabsEnabled(window, enabled)),
       )
-      ipcMain.handle(HISTORY_CHANNELS.list, (event) => {
+      handle(HISTORY_CHANNELS.list, (event) => {
         trustedWindow(event)
         return listVersions(getDocumentPath())
       })
-      ipcMain.handle(HISTORY_CHANNELS.preview, (event, id: unknown) => {
+      handle(HISTORY_CHANNELS.preview, (event, id: unknown) => {
         trustedWindow(event)
         return previewVersion(getDocumentPath(), id)
       })
-      ipcMain.handle(HISTORY_CHANNELS.restore, (event, id: unknown) =>
+      handle(HISTORY_CHANNELS.restore, (event, id: unknown) =>
         runFileOperation(event, async (window) => {
           const content = await previewVersion(getDocumentPath(), id)
           if (!(await confirmDiscard(window))) return null
           return restoreDocument(window, content)
         }),
       )
-      ipcMain.handle(
+      handle(
         DOCUMENT_CHANNELS.image,
         async (event, source: unknown, revision: unknown) => {
           trustedWindow(event)
@@ -663,21 +722,21 @@ if (!app.requestSingleInstanceLock()) {
             : null
         },
       )
-      ipcMain.handle(WORKSPACE_CHANNELS.get, (event) => {
+      handle(WORKSPACE_CHANNELS.get, (event) => {
         trustedWindow(event)
         return getWorkspace()
       })
-      ipcMain.handle(
+      handle(
         MEDIA_CHANNELS.attach,
         (event, files: unknown, revision: unknown) =>
           runFileOperation(event, (window) =>
             attachMedia(window, files, revision),
           ),
       )
-      ipcMain.handle(MEDIA_CHANNELS.open, (event, path: unknown) =>
+      handle(MEDIA_CHANNELS.open, (event, path: unknown) =>
         runFileOperation(event, (window) => openDroppedFile(window, path)),
       )
-      ipcMain.handle(
+      handle(
         MEDIA_CHANNELS.read,
         (event, source: unknown, revision: unknown) => {
           trustedWindow(event)
@@ -686,30 +745,30 @@ if (!app.requestSingleInstanceLock()) {
           return readDocumentMedia(source, revision)
         },
       )
-      ipcMain.handle(WORKSPACE_CHANNELS.snapshot, (event) =>
+      handle(WORKSPACE_CHANNELS.snapshot, (event) =>
         readAfterFileOperation(event, snapshotWorkspace),
       )
-      ipcMain.handle(WORKSPACE_CHANNELS.index, (event) =>
+      handle(WORKSPACE_CHANNELS.index, (event) =>
         readAfterFileOperation(event, indexWorkspace),
       )
-      ipcMain.handle(WORKSPACE_CHANNELS.action, (event, input: unknown) =>
+      handle(WORKSPACE_CHANNELS.action, (event, input: unknown) =>
         runFileOperation(event, (window) => workspaceAction(window, input)),
       )
-      ipcMain.handle(WORKSPACE_CHANNELS.open, (event) =>
+      handle(WORKSPACE_CHANNELS.open, (event) =>
         runFileOperation(event, openWorkspace),
       )
-      ipcMain.handle(WORKSPACE_CHANNELS.recent, (event) => {
+      handle(WORKSPACE_CHANNELS.recent, (event) => {
         trustedWindow(event)
         return getRecentWorkspaces()
       })
-      ipcMain.handle(WORKSPACE_CHANNELS.openRecent, (event, id: unknown) =>
+      handle(WORKSPACE_CHANNELS.openRecent, (event, id: unknown) =>
         runFileOperation(event, () => openRecentWorkspace(id)),
       )
-      ipcMain.handle(WORKSPACE_CHANNELS.refresh, (event) => {
+      handle(WORKSPACE_CHANNELS.refresh, (event) => {
         trustedWindow(event)
         return refreshWorkspace()
       })
-      ipcMain.handle(WORKSPACE_CHANNELS.openFile, (event, path: unknown) =>
+      handle(WORKSPACE_CHANNELS.openFile, (event, path: unknown) =>
         runFileOperation(event, (window) => openWorkspaceFile(window, path)),
       )
       observeWorkspace(() =>
@@ -718,33 +777,55 @@ if (!app.requestSingleInstanceLock()) {
           getWorkspace(),
         ),
       )
-      ipcMain.handle(DOCUMENT_CHANNELS.update, (event, value: unknown) => {
+      handle(DOCUMENT_CHANNELS.update, (event, value: unknown) => {
         const window = trustedWindow(event)
         updateDocument(value)
         window.setDocumentEdited(hasUnsavedDocuments())
       })
-      ipcMain.handle(DOCUMENT_CHANNELS.open, (event) =>
+      handle(DOCUMENT_CHANNELS.open, (event) =>
         runFileOperation(event, openDocument),
       )
-      ipcMain.handle(DOCUMENT_CHANNELS.navigate, (event, direction: unknown) =>
+      handle(DOCUMENT_CHANNELS.external, (event) =>
+        readAfterFileOperation(event, () =>
+          runFileOperation(event, async (window) => {
+            let document = null
+            const errors: string[] = []
+            for (const path of externalFiles.splice(0)) {
+              try {
+                if (!isDocumentName(path))
+                  throw new Error('Unsupported document format.')
+                const opened = await loadDocument(window, path)
+                if (!opened) break
+                document = opened
+              } catch (error) {
+                errors.push(
+                  `${basename(path)}: ${error instanceof Error ? error.message : 'Could not open file.'}`,
+                )
+              }
+            }
+            return { document, errors }
+          }),
+        ),
+      )
+      handle(DOCUMENT_CHANNELS.navigate, (event, direction: unknown) =>
         runFileOperation(event, (window) =>
           navigateDocument(window, direction),
         ),
       )
-      ipcMain.handle(
+      handle(
         DOCUMENT_CHANNELS.link,
         (event, href: unknown, revision: unknown) =>
           runFileOperation(event, (window) =>
             openDocumentLink(window, href, revision),
           ),
       )
-      ipcMain.handle(DOCUMENT_CHANNELS.remote, (event, url: unknown) =>
+      handle(DOCUMENT_CHANNELS.remote, (event, url: unknown) =>
         runFileOperation(event, (window) => openRemoteDocument(window, url)),
       )
-      ipcMain.handle(DOCUMENT_CHANNELS.new, (event) =>
+      handle(DOCUMENT_CHANNELS.new, (event) =>
         runFileOperation(event, newDocument),
       )
-      ipcMain.handle(DOCUMENT_CHANNELS.save, (event, saveAs: unknown) => {
+      handle(DOCUMENT_CHANNELS.save, (event, saveAs: unknown) => {
         if (typeof saveAs !== 'boolean') throw new Error('invalid save request')
         return runFileOperation(event, (window) =>
           saveDocument(
@@ -754,23 +835,25 @@ if (!app.requestSingleInstanceLock()) {
           ),
         )
       })
-      ipcMain.handle(DOCUMENT_CHANNELS.autosave, (event, revision: unknown) => {
+      handle(DOCUMENT_CHANNELS.autosave, (event, revision: unknown) => {
         trustedWindow(event)
         if (fileOperation) return { status: 'skipped', document: null }
         return runFileOperation(event, (window) =>
           autosaveDocument(window, revision),
         )
       })
-      ipcMain.handle(DOCUMENT_CHANNELS.rename, (event, name: unknown) =>
+      handle(DOCUMENT_CHANNELS.rename, (event, name: unknown) =>
         runFileOperation(event, () => renameDocument(name)),
       )
-      installMenu()
       nativeTheme.on('updated', () => {
         mainWindow?.setBackgroundColor(appearanceColors().background)
         if (process.platform !== 'darwin')
           mainWindow?.setTitleBarOverlay(titleBarColors())
       })
+      windowSetupReady = true
       createWindow()
+      await preferences
+      installMenu()
     })
     .catch((error: unknown) => {
       console.error('startup failed:', error)

@@ -7,7 +7,7 @@ import {
   highlightCode,
 } from '../src/renderer/src/code-languages.ts'
 
-test('common fenced-code languages highlight without executing or changing code', () => {
+test('common fenced-code languages highlight without executing or changing code', async () => {
   const cases = {
     js: 'const answer = "<script>alert(1)</script>"; // café 💚',
     ts: 'const answer: number = 42;',
@@ -32,6 +32,7 @@ test('common fenced-code languages highlight without executing or changing code'
     ps1: 'Write-Output "hello"',
   }
   for (const [language, text] of Object.entries(cases)) {
+    await codeLanguages.ensure(language)
     const spans = highlightCode(text, language)
     assert.ok(spans.length > 0, language)
     assert.ok(
@@ -50,7 +51,8 @@ test('common fenced-code languages highlight without executing or changing code'
   )
 })
 
-test('language contributions override aliases and restore built-ins on cleanup', () => {
+test('language contributions override aliases and restore built-ins on cleanup', async () => {
+  await codeLanguages.ensure('js')
   const before = codeLanguages.resolve('js')
   const language = StreamLanguage.define({
     token(stream) {
@@ -75,7 +77,8 @@ test('language contributions override aliases and restore built-ins on cleanup',
   )
 })
 
-test('language switches cover aliases, retain plain code, and follow extension registration', () => {
+test('language switches cover aliases, retain plain code, and follow extension registration', async () => {
+  await codeLanguages.ensure('js')
   codeLanguages.setEnabled('javascript', false)
   assert.equal(codeLanguages.resolve('js'), null)
   assert.equal(codeHtml('const value = 1 < 2', 'js'), 'const value = 1 &lt; 2')

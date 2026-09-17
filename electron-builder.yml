@@ -1,4 +1,5 @@
 appId: com.ryanaque.hibi
+extends: ./scripts/file-associations.cjs
 productName: hibi
 directories:
   output: release

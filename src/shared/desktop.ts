@@ -3,6 +3,8 @@ export const DOCUMENT_CHANNELS = {
   get: 'document:get',
   update: 'document:update',
   open: 'document:open',
+  external: 'document:external',
+  externalPending: 'document:external-pending',
   new: 'document:new',
   save: 'document:save',
   autosave: 'document:autosave',
@@ -51,6 +53,10 @@ export type AppInfo = {
 }
 
 export type DesktopApi = {
+  getFileAssociations: () => Promise<
+    import('./file-associations').FileAssociationState
+  >
+  setFileAssociation: (format: string) => Promise<void>
   navigateDocument: (
     direction: 'back' | 'forward',
   ) => Promise<DocumentState | null>
@@ -117,6 +123,11 @@ export type DesktopApi = {
   setTabsEnabled: (enabled: boolean) => Promise<DocumentState>
   updateDocument: (markdown: string) => Promise<void>
   openDocument: () => Promise<DocumentState | null>
+  openExternalDocuments: () => Promise<{
+    document: DocumentState | null
+    errors: string[]
+  }>
+  onExternalDocuments: (callback: () => void) => () => void
   newDocument: () => Promise<DocumentState | null>
   saveDocument: (saveAs: boolean) => Promise<DocumentState | null>
   autosaveDocument: (revision: number) => Promise<AutosaveResult>

@@ -201,9 +201,13 @@ test('syntax settings preserve edits, update rich formatting, and discover addon
     edited,
   )
   // Keep the detected flavor present while exercising rich input rules.
-  await rich.press(
-    process.platform === 'darwin' ? 'Meta+ArrowDown' : 'Control+End',
-  )
+  // CDP does not reliably perform native macOS document-end shortcuts.
+  await rich.evaluate((element) => {
+    element.focus()
+    const selection = window.getSelection()
+    selection.selectAllChildren(element)
+    selection.collapseToEnd()
+  })
   await rich.press('Enter')
   await rich.press('Enter')
   await rich.pressSequentially('H~3~O')

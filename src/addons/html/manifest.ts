@@ -1,3 +1,4 @@
+import { fileAssociations } from '../../shared/file-associations'
 import type { AddonManifest } from '../api'
 import { authors } from '../authors'
 export default {
@@ -6,7 +7,7 @@ export default {
   apiVersion: 1,
   kind: 'extension',
   description: 'HTML source editing, preview, and export.',
-  fileExtensions: ['html', 'htm'],
+  fileExtensions: fileAssociations.html.ext,
   defaultEnabled: false,
   authors: [authors.may],
 } satisfies AddonManifest

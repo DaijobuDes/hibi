@@ -67,12 +67,14 @@ test('extension and core fields share themes, focus states, and narrow layouts',
     )
     await page.reload()
     await page.getByRole('textbox', { name: /document editor/i }).waitFor()
+    await choose('open syntax settings')
     const core = await fieldStyle(page.locator('#markdown-syntax-filter'))
     assert.equal(core.borderRadius, '6px')
     assert.equal(core.fontSize, '13px')
     if (previous)
       assert.notEqual(core.backgroundColor, previous.backgroundColor)
     previous = core
+    await page.getByRole('button', { name: /^back to app$/i }).click()
     for (const [command, title, label] of [
       ['open workspace graph', 'workspace graph', 'filter graph notes'],
       ['browse tags', 'tags', 'filter tags'],

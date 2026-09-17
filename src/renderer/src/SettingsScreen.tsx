@@ -1,28 +1,30 @@
-import {
-  ArrowLeft,
-  Code,
-  File,
-  FileText,
-  Keyboard,
-  PanelTop,
-  Puzzle,
-  TextCursorInput,
-} from 'lucide-react'
+import { ArrowLeft, CircleX, Puzzle, Search } from 'lucide-react'
 import {
   Component,
   type ReactNode,
+  Suspense,
   useLayoutEffect,
   useRef,
+  useState,
   useSyncExternalStore,
 } from 'react'
 import type { AddonState } from '../../addons/api'
 import type { AppInfo } from '../../shared/desktop'
-import type { Hotkeys } from '../../shared/hotkeys'
+import { type DocumentView, isDocumentView } from '../../shared/document-types'
+import { actions, type Hotkeys } from '../../shared/hotkeys'
 import { ColorschemeSettings } from '../../ui/ColorschemeSettings'
-import { Button, Select, SettingRow, Slider, Toggle } from '../../ui/Controls'
+import {
+  Button,
+  IconButton,
+  Select,
+  SettingRow,
+  Slider,
+  TextInput,
+  Toggle,
+} from '../../ui/Controls'
 import { DocumentNotice } from '../../ui/DocumentNotice'
-import { Sidebar, type SidebarProps } from '../../ui/Sidebar'
-import { SettingsDiscovery } from '../../ui/settings-index'
+import { Sidebar, type SidebarItem, type SidebarProps } from '../../ui/Sidebar'
+import { SettingsDiscovery, settingsIndex } from '../../ui/settings-index'
 import { uiCase } from '../../ui/ui-case'
 import { AddonMetadata, AddonSettings } from './AddonSettings'
 import { AutosaveSettings } from './AutosaveSettings'
@@ -36,17 +38,7 @@ import { HibiSettings } from './HibiSettings'
 import { HotkeySettings } from './HotkeySettings'
 import { NotificationSettings } from './NotificationSettings'
 import { SyntaxSettings } from './SyntaxSettings'
-
-export const settingsCategories = [
-  { id: 'hibi', label: 'Hibi', icon: File },
-  { id: 'editor', label: 'Editor', icon: FileText },
-  { id: 'formats', label: 'Formats', icon: FileText },
-  { id: 'syntax', label: 'Syntax', icon: TextCursorInput },
-  { id: 'code-syntax', label: 'Code highlighting', icon: Code },
-  { id: 'appearance', label: 'Appearance', icon: PanelTop },
-  { id: 'hotkeys', label: 'Hotkeys', icon: Keyboard },
-  { id: 'addons', label: 'Addons', icon: Puzzle },
-] as const
+import { settingsCategories } from './settings-categories'
 
 class PluginSettingsBoundary extends Component<
   { children: ReactNode },
@@ -73,8 +65,10 @@ class PluginSettingsBoundary extends Component<
 }
 
 export function SettingsScreen({
+  discover,
   selected,
   onCategory,
+  onSetting,
   onBack,
   open,
   padding,
@@ -95,12 +89,18 @@ export function SettingsScreen({
   onShowLineNumbers,
   spellCheck,
   onSpellCheck,
+  focusOutlines,
+  onFocusOutlines,
+  defaultView,
+  onDefaultView,
   tabsEnabled,
   tabsBusy,
   onTabsEnabled,
 }: {
+  discover: boolean
   selected: string
   onCategory: (category: string) => void
+  onSetting: (category: string, id: string) => void
   onBack: () => void
   open: boolean
   padding: number
@@ -121,16 +121,40 @@ export function SettingsScreen({
   onShowLineNumbers: (show: boolean) => void
   spellCheck: boolean
   onSpellCheck: (enabled: boolean) => void
+  focusOutlines: boolean
+  onFocusOutlines: (enabled: boolean) => void
+  defaultView: DocumentView
+  onDefaultView: (view: DocumentView) => void
   tabsEnabled: boolean
   tabsBusy: boolean
   onTabsEnabled: (enabled: boolean) => void
 }) {
   const screen = useRef<HTMLElement>(null)
+  const search = useRef<HTMLInputElement>(null)
+  const [query, setQuery] = useState('')
+  const [searchSelection, setSearchSelection] = useState<string | null>(null)
+  const indexed = useSyncExternalStore(
+    settingsIndex.subscribe,
+    settingsIndex.snapshot,
+  )
+  const searchable = [
+    ...indexed,
+    ...actions.map(({ id, label, category }) => ({
+      id: `hotkey-${id}`,
+      label,
+      category: 'hotkeys',
+      keywords: category,
+    })),
+  ]
+  const terms = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean)
+  const searching = terms.length > 0
   useLayoutEffect(() => {
-    if (open)
-      screen.current
-        ?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')
-        ?.focus({ preventScroll: true })
+    if (!open) return
+    const target =
+      screen.current?.querySelector<HTMLElement>(
+        '[role="tab"][aria-selected="true"]',
+      ) ?? search.current
+    target?.focus({ preventScroll: true })
   }, [open])
   const casing = useSyncExternalStore(uiCase.subscribe, uiCase.snapshot)
   const pluginPages = addons.filter(
@@ -140,7 +164,7 @@ export function SettingsScreen({
         (state) => state.id === addon.manifest.id && state.enabled,
       ),
   )
-  const items = [
+  const items: SidebarItem[] = [
     ...settingsCategories,
     ...pluginPages.map(({ manifest }, index) => ({
       id: `plugin-${manifest.id}`,
@@ -154,6 +178,33 @@ export function SettingsScreen({
     : selected.startsWith('plugin-')
       ? 'addons'
       : 'hibi'
+  const matches = (text: string) =>
+    terms.every((term) => text.toLocaleLowerCase().includes(term))
+  const results = searching
+    ? items.flatMap(({ section: _section, ...item }) => {
+        const children = searchable
+          .filter(
+            (setting) =>
+              setting.category === item.id &&
+              matches(`${item.label} ${setting.label} ${setting.keywords}`),
+          )
+          .map((setting) => ({
+            id: `setting:${setting.category}:${setting.id}`,
+            label: setting.label,
+          }))
+        return matches(item.label) || children.length
+          ? [{ ...item, ...(children.length ? { children } : {}) }]
+          : []
+      })
+    : []
+  const selectResult = (id: string) => {
+    setSearchSelection(id)
+    const setting = searchable.find(
+      (setting) => `setting:${setting.category}:${setting.id}` === id,
+    )
+    if (setting) onSetting(setting.category, setting.id)
+    else onCategory(id)
+  }
 
   return (
     <SettingsDiscovery value={true}>
@@ -166,21 +217,58 @@ export function SettingsScreen({
       >
         <Sidebar
           resize={resize}
-          className="settings-sidebar"
-          items={items}
-          selected={category}
-          onSelect={onCategory}
-          label="Settings categories"
-          mode="tabs"
+          className={`settings-sidebar${searching ? ' settings-searching' : ''}`}
+          items={searching ? results : items}
+          selected={searching ? (searchSelection ?? category) : category}
+          onSelect={searching ? selectResult : onCategory}
+          label={searching ? 'Settings search results' : 'Settings categories'}
+          mode={searching ? 'tree' : 'tabs'}
+          collapsible={false}
+          empty={<p className="settings-search-empty">No matching settings.</p>}
           idPrefix="category"
           panelPrefix="settings-"
           header={
-            <div className="sidebar-items">
-              <button type="button" onClick={onBack}>
-                <ArrowLeft size={16} aria-hidden />
-                <span className="sidebar-label">Back to app</span>
-              </button>
-            </div>
+            <>
+              <div className="sidebar-items">
+                <button type="button" onClick={onBack}>
+                  <ArrowLeft size={16} aria-hidden />
+                  <span className="sidebar-label">Back to app</span>
+                </button>
+              </div>
+              <search className="settings-search" aria-label="Settings">
+                <Search size={16} aria-hidden />
+                <TextInput
+                  ref={search}
+                  aria-label="Search settings"
+                  placeholder="Search settings…"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Escape' && query) {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      setQuery('')
+                    } else if (event.key === 'ArrowDown' && searching) {
+                      event.preventDefault()
+                      screen.current
+                        ?.querySelector<HTMLElement>('[role="treeitem"]')
+                        ?.focus()
+                    }
+                  }}
+                />
+                {query && (
+                  <IconButton
+                    aria-label="Clear settings search"
+                    onClick={() => {
+                      setQuery('')
+                      search.current?.focus()
+                    }}
+                  >
+                    <CircleX size={16} aria-hidden />
+                  </IconButton>
+                )}
+              </search>
+            </>
           }
           footer={
             info && (
@@ -196,14 +284,18 @@ export function SettingsScreen({
             id="settings-hibi"
             role="tabpanel"
             aria-labelledby="category-hibi"
+            aria-label="Hibi"
             hidden={category !== 'hibi'}
           >
-            {open && category === 'hibi' && <HibiSettings info={info} />}
+            {(discover || (open && (category === 'hibi' || searching))) && (
+              <HibiSettings info={info} />
+            )}
           </section>
           <section
             id="settings-editor"
             role="tabpanel"
             aria-labelledby="category-editor"
+            aria-label="Editor"
             hidden={category !== 'editor'}
           >
             <h1>Editor</h1>
@@ -243,6 +335,25 @@ export function SettingsScreen({
             <AutosaveSettings />
             <h2>Layout</h2>
             <div className="settings-group">
+              <SettingRow
+                id="default-view"
+                label="Default view"
+                description="Start in this view. Formats fall back to a supported view."
+              >
+                <Select
+                  id="default-view"
+                  aria-describedby="default-view-description"
+                  value={defaultView}
+                  onChange={(event) => {
+                    const view = event.target.value
+                    if (isDocumentView(view)) onDefaultView(view)
+                  }}
+                >
+                  <option value="normal">Normal</option>
+                  <option value="side-by-side">Side-by-side</option>
+                  <option value="markdown">Source only</option>
+                </Select>
+              </SettingRow>
               <SettingRow
                 id="editor-padding"
                 label="Content padding"
@@ -286,6 +397,7 @@ export function SettingsScreen({
             id="settings-syntax"
             role="tabpanel"
             aria-labelledby="category-syntax"
+            aria-label="Syntax"
             hidden={category !== 'syntax'}
           >
             <SyntaxSettings />
@@ -294,6 +406,7 @@ export function SettingsScreen({
             id="settings-code-syntax"
             role="tabpanel"
             aria-labelledby="category-code-syntax"
+            aria-label="Code highlighting"
             hidden={category !== 'code-syntax'}
           >
             <CodeSyntaxSettings />
@@ -302,6 +415,7 @@ export function SettingsScreen({
             id="settings-appearance"
             role="tabpanel"
             aria-labelledby="category-appearance"
+            aria-label="Appearance"
             hidden={category !== 'appearance'}
           >
             <h1>Appearance</h1>
@@ -318,6 +432,20 @@ export function SettingsScreen({
                   onChange={(event) =>
                     uiCase.set(event.target.checked ? 'lowercase' : 'sentence')
                   }
+                />
+              </SettingRow>
+            </div>
+            <h2>Focus</h2>
+            <div className="settings-group">
+              <SettingRow
+                id="focus-outlines"
+                label="Non-input focus outlines"
+                description="Show outlines on focused buttons, links, and navigation. Input fields keep their focus indicators."
+              >
+                <Toggle
+                  id="focus-outlines"
+                  checked={focusOutlines}
+                  onChange={(event) => onFocusOutlines(event.target.checked)}
                 />
               </SettingRow>
             </div>
@@ -407,6 +535,7 @@ export function SettingsScreen({
             id="settings-hotkeys"
             role="tabpanel"
             aria-labelledby="category-hotkeys"
+            aria-label="Hotkeys"
             hidden={category !== 'hotkeys'}
           >
             {category === 'hotkeys' && (
@@ -422,6 +551,7 @@ export function SettingsScreen({
             id="settings-addons"
             role="tabpanel"
             aria-labelledby="category-addons"
+            aria-label="Addons"
             hidden={category !== 'addons'}
           >
             <AddonSettings
@@ -436,9 +566,11 @@ export function SettingsScreen({
             id="settings-formats"
             role="tabpanel"
             aria-labelledby="category-formats"
+            aria-label="Formats"
             hidden={category !== 'formats'}
           >
             <FormatsSettings
+              active={open && category === 'formats'}
               addons={addons}
               states={addonStates}
               setEnabled={onAddonEnabled}
@@ -451,6 +583,7 @@ export function SettingsScreen({
               id={`settings-plugin-${manifest.id}`}
               role="tabpanel"
               aria-labelledby={`category-plugin-${manifest.id}`}
+              aria-label={manifest.name}
               hidden={category !== `plugin-${manifest.id}`}
             >
               <h1>{manifest.name}</h1>
@@ -504,11 +637,20 @@ export function SettingsScreen({
                   </div>
                 </>
               )}
-              {Settings && (
-                <PluginSettingsBoundary key={manifest.id}>
-                  <Settings />
-                </PluginSettingsBoundary>
-              )}
+              {Settings &&
+                (discover ||
+                  (open &&
+                    (searching || category === `plugin-${manifest.id}`))) && (
+                  <PluginSettingsBoundary key={manifest.id}>
+                    <Suspense
+                      fallback={
+                        <DocumentNotice title="Loading settings…" busy />
+                      }
+                    >
+                      <Settings />
+                    </Suspense>
+                  </PluginSettingsBoundary>
+                )}
             </section>
           ))}
         </div>
