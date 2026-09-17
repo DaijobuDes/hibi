@@ -65,7 +65,9 @@ export function Button({
   variant = 'default',
   title,
   ...props
-}: ComponentProps<'button'> & { variant?: 'default' | 'ghost' | 'row' }) {
+}: ComponentProps<'button'> & {
+  variant?: 'default' | 'primary' | 'ghost' | 'row'
+}) {
   return (
     <button
       type="button"

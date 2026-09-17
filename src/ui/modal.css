@@ -91,16 +91,6 @@
   gap: var(--space-2);
   margin-top: var(--space-5);
 }
-.ui-button.dialog-primary {
-  color: var(--background);
-  background: var(--ink);
-  border-color: var(--ink);
-}
-.ui-button.dialog-primary:hover {
-  color: var(--background);
-  background: var(--ink);
-  opacity: 0.85;
-}
 .dialog-form {
   display: grid;
   gap: var(--space-2);

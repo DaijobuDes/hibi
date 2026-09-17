@@ -133,6 +133,22 @@ button.ui-button[aria-pressed="true"] {
   background: var(--selection);
   color: var(--selection-ink);
 }
+button.ui-button[aria-pressed="true"]:is(:hover, :active):not(:disabled) {
+  background: var(--selection);
+  color: var(--selection-ink);
+}
+button.ui-button:is([data-variant="primary"], .dialog-primary) {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--background);
+}
+button.ui-button:is([data-variant="primary"], .dialog-primary):hover:not(
+  :disabled
+) {
+  background: var(--ink);
+  color: var(--background);
+  opacity: 0.9;
+}
 button.ui-button:disabled,
 .select-control select:disabled {
   opacity: 0.5;
