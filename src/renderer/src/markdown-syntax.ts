@@ -1,5 +1,8 @@
 import type { Token } from 'marked'
-import type { MarkdownSyntaxFeature } from '../../shared/markdown-syntax'
+import type {
+  DocumentSyntaxFeature,
+  MarkdownSyntaxFeature,
+} from '../../shared/markdown-syntax'
 
 const core: MarkdownSyntaxFeature[] = [
   ...Array.from(
@@ -144,8 +147,9 @@ const core: MarkdownSyntaxFeature[] = [
     matches: (token) => token.type === 'html' && !token.block,
   },
 ]
-type Entry = MarkdownSyntaxFeature & { owner: string; enabled: boolean }
-const registry = new Map<string, MarkdownSyntaxFeature & { owner: string }>(
+type Feature = MarkdownSyntaxFeature | DocumentSyntaxFeature
+type Entry = Feature & { owner: string; enabled: boolean }
+const registry = new Map<string, Feature & { owner: string }>(
   core.map((feature) => [
     `core.${feature.id}`,
     { ...feature, id: `core.${feature.id}`, owner: 'core' },
@@ -199,7 +203,7 @@ export const markdownSyntax = {
   disabledFeature(token: Token) {
     return disabledFeatures.find((feature) => {
       try {
-        return feature.matches(token)
+        return feature.scope !== 'document' && feature.matches?.(token)
       } catch (error) {
         console.error(`syntax matcher failed: ${feature.id}`, error)
         return false
@@ -222,7 +226,7 @@ export const markdownSyntax = {
     disabled.clear()
     savePreferences()
   },
-  register(owner: string, feature: MarkdownSyntaxFeature) {
+  register(owner: string, feature: Feature) {
     const id = `${owner}.${feature.id}`
     if (
       !/^[a-z][a-z0-9-]*$/.test(feature.id) ||
@@ -232,7 +236,7 @@ export const markdownSyntax = {
       typeof feature.group !== 'string' ||
       !feature.group ||
       !['block', 'inline'].includes(feature.level) ||
-      typeof feature.matches !== 'function' ||
+      (feature.scope !== 'document' && typeof feature.matches !== 'function') ||
       (feature.extensions !== undefined &&
         (!Array.isArray(feature.extensions) ||
           feature.extensions.some((name) => typeof name !== 'string')))

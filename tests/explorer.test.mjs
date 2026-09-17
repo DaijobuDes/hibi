@@ -44,11 +44,22 @@ test('workspace popovers, durable folders, ephemeral files, inline rename, dirty
   await rename.waitFor()
   const renameStyle = await rename.evaluate((input) => {
     const style = getComputedStyle(input)
-    return { border: style.borderTopWidth, background: style.backgroundColor }
+    return {
+      border: style.borderTopWidth,
+      fontSize: style.fontSize,
+      height: input.getBoundingClientRect().height,
+      outlineOffset: style.outlineOffset,
+      shadow: style.boxShadow,
+      icons: input.parentElement.querySelectorAll('svg').length,
+    }
   })
   assert.deepEqual(renameStyle, {
-    border: '0px',
-    background: 'rgba(0, 0, 0, 0)',
+    border: '1px',
+    fontSize: '13px',
+    height: 24,
+    outlineOffset: '-2px',
+    shadow: 'none',
+    icons: 2,
   })
   await access(join(root, 'untitled folder'))
   await rename.fill('guides')
@@ -66,10 +77,24 @@ test('workspace popovers, durable folders, ephemeral files, inline rename, dirty
   await more.click()
   await menu.getByRole('menuitem', { name: /^new file$/i, exact: true }).click()
   await rename.waitFor()
+  const textLeft = await rename.evaluate(
+    (input) =>
+      input.getBoundingClientRect().left +
+      parseFloat(getComputedStyle(input).paddingLeft) +
+      parseFloat(getComputedStyle(input).borderLeftWidth),
+  )
   await assert.rejects(access(join(root, 'guides', 'untitled.md')))
   await rename.fill('hello.md')
   await rename.press('Enter')
   await rename.waitFor({ state: 'hidden' })
+  const labelLeft = await page
+    .getByRole('treeitem', { name: /^hello\.md$/i, exact: true })
+    .locator('.sidebar-label')
+    .evaluate((label) => label.getBoundingClientRect().left)
+  assert.ok(
+    Math.abs(textLeft - labelLeft) < 1,
+    'rename text retains the filename indentation',
+  )
   const rich = page.getByRole('textbox', { name: /document editor/i })
   await page.waitForFunction(
     () =>

@@ -1,12 +1,7 @@
 import { useState } from 'react'
 import { SettingRow, Toggle } from '../ui'
 
-export function vimPreferences() {
-  return {
-    insert: localStorage.getItem('vim:insert') === 'true',
-    status: localStorage.getItem('vim:status') !== 'false',
-  }
-}
+import { vimPreferences } from './preferences'
 
 export function Settings() {
   const [preferences, setPreferences] = useState(vimPreferences)

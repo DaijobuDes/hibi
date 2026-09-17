@@ -5,6 +5,9 @@
   gap: var(--space-3);
   min-width: 0;
 }
+.typst-preview:not([data-block]) {
+  padding: var(--editor-padding);
+}
 .typst-preview .typst-progress {
   position: absolute;
   top: var(--space-2);

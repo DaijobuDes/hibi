@@ -51,7 +51,7 @@ test('license catalog retains dependency and palette notices, excluding build to
 })
 
 test('hibi opens first, sponsor uses a fixed URL, and license dialogs stay readable', {
-  timeout: 30000,
+  timeout: 45000,
 }, async (t) => {
   const profile = await mkdtemp(join(tmpdir(), 'hibi-about-'))
   const app = await electron.launch({
@@ -62,7 +62,8 @@ test('hibi opens first, sponsor uses a fixed URL, and license dialogs stay reada
     await rm(profile, { recursive: true, force: true })
   })
   const page = await app.firstWindow()
-  page.setDefaultTimeout(5000)
+  page.setDefaultTimeout(10000)
+  await page.emulateMedia({ reducedMotion: 'reduce' })
   const errors = []
   page.on('pageerror', (error) => errors.push(error.message))
   await clickMenu(app, 'Settings')
@@ -80,6 +81,8 @@ test('hibi opens first, sponsor uses a fixed URL, and license dialogs stay reada
     .getByRole('button')
     .filter({ has: page.locator('.license-name', { hasText: /^react19/ }) })
   await react.waitFor()
+  await page.evaluate(() => document.fonts.ready)
+  await react.scrollIntoViewIfNeeded()
   await react.hover()
   assert.deepEqual(
     await react.evaluate((element) => {

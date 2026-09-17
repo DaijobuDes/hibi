@@ -351,7 +351,14 @@ export function useFormattingToolbar(
     ) => {
       const { editor, mode, focusedPane, disabled, onAttach } = latest.current
       if (disabled) return
+      if (
+        !latest.current.markdownMode &&
+        !latest.current.format?.insertMedia &&
+        latest.current.format?.formatting !== 'markdown'
+      )
+        return
       const useSource =
+        !latest.current.markdownMode ||
         (pane ??
           (mode === 'markdown'
             ? 'source'
@@ -371,7 +378,13 @@ export function useFormattingToolbar(
         if (!attachments) return
         await new Promise(requestAnimationFrame)
         let inserted = false
-        if (useSource)
+        if (
+          useSource &&
+          latest.current.format?.formatting &&
+          latest.current.format.formatting !== 'markdown'
+        )
+          inserted = sourceSelection?.insertMedia(attachments) ?? false
+        else if (useSource)
           inserted =
             sourceSelection?.insertMarkdown(
               latest.current.format?.insertMedia?.(attachments) ??
@@ -433,6 +446,7 @@ export function useFormattingToolbar(
       console.error('formatting failed:', error),
     )
     const inSource = () =>
+      !latest.current.markdownMode ||
       latest.current.mode === 'markdown' ||
       (latest.current.mode === 'side-by-side' &&
         latest.current.focusedPane === 'source')
@@ -533,13 +547,7 @@ export function useFormattingToolbar(
           disabled: disabled || !state || state.disabled,
           hidden:
             (!latest.current.markdownMode &&
-              ![
-                'undo',
-                'redo',
-                'indent',
-                'outdent',
-                ...(latest.current.format?.insertMedia ? ['image'] : []),
-              ].includes(action.id)) ||
+              !source.current?.state(action.id).supported) ||
             (!!action.table && (useSource || !editor?.isActive('table'))),
         })
       })
@@ -567,12 +575,13 @@ export function useFormattingToolbar(
     if (previousMode.current === mode) return
     previousMode.current = mode
     if (
+      !markdownMode ||
       mode === 'markdown' ||
       (mode === 'side-by-side' && focusedPane === 'source')
     )
       source.current?.focus()
     // Tiptap's focus command defers to a frame and can override a newer click into source.
     else if (editor && !editor.isDestroyed) editor.view.focus()
-  }, [mode, focusedPane, editor])
+  }, [mode, focusedPane, editor, markdownMode])
   return { attachSource, attachFiles }
 }

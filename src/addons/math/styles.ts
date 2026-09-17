@@ -8,9 +8,9 @@ const byName = new Map(
   Object.entries(fonts).map(([path, data]) => [path.split('/').at(-1), data]),
 )
 export const mathStyles =
-  source.replace(/src:[^;]+;/g, (declaration) => {
+  source.replace(/src:[^;}]+/g, (declaration) => {
     const name = /url\(fonts\/([^()]+\.woff2)\)/.exec(declaration)?.[1]
     const data = name && byName.get(name)
-    return data ? `src:url(${data}) format("woff2");` : declaration
+    return data ? `src:url(${data}) format("woff2")` : declaration
   }) +
-  '\n.tiptap-mathematics-render{cursor:pointer}.tiptap-mathematics-render[data-type="block-math"]{overflow-x:auto;padding:8px 0}.katex-display{overflow-x:auto;overflow-y:hidden}.katex{color:inherit}'
+  '\n.tiptap-mathematics-render{cursor:pointer}.tiptap-mathematics-render[data-type="inline-math"]{display:inline-block}.tiptap-mathematics-render[data-type="block-math"]{overflow-x:auto;padding:8px 0}.katex-display{overflow-x:auto;overflow-y:hidden}.katex{color:inherit}'

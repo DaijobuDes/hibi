@@ -9,6 +9,7 @@ export const CONTENT_SECURITY_POLICY = [
   'media-src app://hibi data:',
   "font-src 'self' app://hibi data:",
   "connect-src 'self' app://hibi",
+  "worker-src 'self' app://hibi",
   "base-uri 'none'",
   "frame-src 'none'",
   "frame-ancestors 'none'",

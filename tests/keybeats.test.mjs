@@ -45,7 +45,24 @@ test('keybeats uses local audio, editor input, toolbar controls, and clean addon
     false,
   )
   await page.evaluate(() => {
-    window.audioTest = { starts: 0, decodes: 0, closed: 0 }
+    window.audioTest = { starts: 0, decodes: 0, closed: 0, contexts: 0 }
+    const NativeAudioContext = window.AudioContext
+    window.AudioContext = new Proxy(NativeAudioContext, {
+      construct(target, args) {
+        window.audioTest.contexts++
+        return Reflect.construct(target, args)
+      },
+    })
+    const enumerate = navigator.mediaDevices.enumerateDevices.bind(
+      navigator.mediaDevices,
+    )
+    navigator.mediaDevices.enumerateDevices = () =>
+      new Promise((resolve) => {
+        window.finishAudioPreparation = () => {
+          navigator.mediaDevices.enumerateDevices = enumerate
+          resolve([])
+        }
+      })
     const start = AudioBufferSourceNode.prototype.start
     const decode = AudioContext.prototype.decodeAudioData
     const close = AudioContext.prototype.close
@@ -67,6 +84,29 @@ test('keybeats uses local audio, editor input, toolbar controls, and clean addon
   await clickMenu(app, 'Settings')
   await page.getByRole('tab', { name: /^addons$/i, exact: true }).click()
   await page.locator('#addon-keybeats').click()
+  await page.waitForFunction(
+    () => typeof window.finishAudioPreparation === 'function',
+  )
+  await page.getByRole('button', { name: /^back to app$/i }).click()
+  await rich.click()
+  await page.keyboard.press('a')
+  assert.match(await rich.textContent(), /a/)
+  assert.equal(await page.evaluate(() => window.audioTest.contexts), 0)
+  await clickMenu(app, 'Settings')
+  await page.getByRole('tab', { name: /^addons$/i, exact: true }).click()
+  await page.locator('#addon-keybeats').click()
+  await page
+    .getByRole('tab', { name: /^keybeats$/i, exact: true })
+    .waitFor({ state: 'hidden' })
+  await page.evaluate(async () => {
+    window.finishAudioPreparation()
+    await new Promise((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve)),
+    )
+  })
+  assert.equal(await page.evaluate(() => window.audioTest.contexts), 0)
+  assert.equal(audioRequests.length, 0)
+  await page.locator('#addon-keybeats').click()
   await page.getByRole('tab', { name: /^keybeats$/i, exact: true }).click()
   await page.waitForFunction(() => window.audioTest.decodes >= 12)
   assert.ok(audioRequests.length >= 12 && audioRequests.length < 30)
@@ -79,6 +119,7 @@ test('keybeats uses local audio, editor input, toolbar controls, and clean addon
     await plugin.innerText(),
     /Yug Bhanushali.*original author.*Thomas Lai.*sounds.*may.*hibi port/s,
   )
+  await plugin.getByRole('combobox').waitFor()
   assert.equal(await plugin.locator('select option').count(), 13)
   assert.equal(
     await page.getByLabel(/^volume$/i, { exact: true }).inputValue(),

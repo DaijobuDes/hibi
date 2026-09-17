@@ -1,21 +1,48 @@
-.git-actions .select-control {
-  margin-right: auto;
-  max-width: 100%;
+.git-panel {
+  flex: 1;
+}
+.git-branch h3 {
+  margin: 0 0 var(--space-2);
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: 500;
+}
+.git-branch .select-control {
+  width: 100%;
+  min-width: 0;
+}
+.git-actions {
+  gap: var(--space-1);
+}
+.git-actions .icon-button {
+  width: auto;
+  gap: var(--space-1);
+  padding-inline: var(--space-2);
+}
+.git-section-label {
+  color: var(--muted);
+  font-size: var(--text-xs);
+  padding-block: var(--space-2);
+  padding-inline: var(--space-4);
 }
 .git-files {
   display: flex;
   flex-direction: column;
-  max-height: 220px;
-  overflow: auto;
+  margin-inline: calc(-1 * var(--space-3));
 }
 .git-file {
   display: flex;
   align-items: center;
   gap: var(--space-1);
   padding-block: var(--space-1);
+  padding-inline: var(--space-3);
 }
-.git-file + .git-file {
-  border-top: 1px solid var(--border);
+.git-file:hover,
+.git-file:has([aria-pressed="true"]) {
+  background: var(--hover);
+}
+.git-file > button:first-child:hover {
+  background: transparent;
 }
 .git-file > button:first-child {
   flex: 1;
@@ -23,6 +50,7 @@
   text-align: left;
   display: flex;
   gap: var(--space-2);
+  padding-inline: var(--space-1);
 }
 .git-file > button:first-child span {
   overflow: hidden;
@@ -45,12 +73,14 @@
 }
 .git-commit {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: var(--space-2);
 }
 .git-commit label {
   width: 100%;
 }
-.git-commit input {
-  flex: 1 1 160px;
+.git-commit textarea {
+  width: 100%;
+  min-width: 0;
+  resize: vertical;
 }

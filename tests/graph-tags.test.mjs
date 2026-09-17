@@ -30,6 +30,8 @@ test('graph resolves only existing local note links and deduplicates connections
   assert.equal(graph.nodes.length, 4)
   assert.equal(graph.edges.length, 2)
   assert.equal(graph.nodes.find((node) => node.id === 'a.md').degree, 2)
+  pages[3].markdown = '[a](a.md)'
+  assert.equal(noteGraph(pages).edges.length, 3)
   const paths = new Set(pages.map((page) => page.path))
   assert.equal(localTarget('folder/b.md', '/a.md', paths), 'a.md')
   for (const link of [
@@ -90,6 +92,12 @@ test('tags and graph plugins browse/open notes, honor drafts, and clean up when 
       (addon) => addon.id === 'graph' && addon.enabled,
     ),
   )
+  assert.equal(
+    await page
+      .locator('[data-status-id="graph.open"], [data-status-id="tags.tags"]')
+      .count(),
+    0,
+  )
   await app.evaluate(({ dialog }, root) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [root] })
     dialog.showMessageBox = async () => ({ response: 1 })
@@ -106,7 +114,8 @@ test('tags and graph plugins browse/open notes, honor drafts, and clean up when 
   await rich
     .locator('.hibi-tag[data-tag="work"]')
     .click({ modifiers: ['Shift'] })
-  let dialog = page.getByRole('dialog', { name: /^tags$/i, exact: true })
+  let dialog = page.getByRole('complementary', { name: /^tags$/i, exact: true })
+  assert.equal(await page.getByRole('dialog').count(), 0)
   const tagRow = dialog.getByRole('button', { name: /^#work 2$/i, exact: true })
   assert.equal(await tagRow.getAttribute('data-variant'), 'row')
   const tagLayout = await tagRow.evaluate((row) => ({
@@ -120,7 +129,12 @@ test('tags and graph plugins browse/open notes, honor drafts, and clean up when 
   }))
   assert.ok(Math.abs(tagLayout.row - tagLayout.group) < 1)
   assert.equal(tagLayout.countColor, tagLayout.color)
-  assert.ok(tagLayout.gap < 12, 'tag counts align at the row end')
+  assert.ok(tagLayout.gap <= 16, 'tag counts use the native row inset')
+  await dialog.getByRole('button', { name: /^#日本語 1$/i }).click()
+  await rich
+    .locator('.hibi-tag[data-tag="work"]')
+    .click({ modifiers: ['Shift'] })
+  await dialog.getByRole('region', { name: 'Notes tagged #work' }).waitFor()
   await dialog.getByRole('button', { name: /^b\.md$/i, exact: true }).click()
   await waitForAsync(
     page,
@@ -129,20 +143,24 @@ test('tags and graph plugins browse/open notes, honor drafts, and clean up when 
   await pressShortcut(app, `${mod}+Shift+]`)
   const source = page.getByRole('textbox', { name: /markdown editor/i })
   await source.locator('.hibi-tag[data-tag="personal"]').waitFor()
+  await source.fill('No tags in this note.')
+  await page
+    .locator('[data-status-id="tags.tags"]')
+    .waitFor({ state: 'hidden' })
   await source.fill('# beta\n\n#personal #newtag\n\n[back](a.md)')
   await page
     .locator('[data-status-id="tags.tags"]')
     .filter({ hasText: /tags · 2/i })
     .waitFor()
   await choose('browse tags')
-  dialog = page.getByRole('dialog', { name: /^tags$/i, exact: true })
+  dialog = page.getByRole('complementary', { name: /^tags$/i, exact: true })
   await dialog
     .getByRole('button', { name: /^#newtag 1$/i, exact: true })
     .click()
   await dialog.getByRole('button', { name: /^b\.md$/i, exact: true }).waitFor()
   await page.keyboard.press('Escape')
   await choose('open workspace graph')
-  let graph = page.getByRole('dialog', {
+  let graph = page.getByRole('complementary', {
     name: /^workspace graph$/i,
     exact: true,
   })
@@ -151,15 +169,82 @@ test('tags and graph plugins browse/open notes, honor drafts, and clean up when 
     .waitFor()
   assert.equal(await graph.locator('[data-node]').count(), 3)
   assert.equal(await graph.locator('line').count(), 1)
+  const canvas = await graph.locator('.graph-canvas').boundingBox()
+  assert.ok(Math.abs(canvas.width - canvas.height) < 1)
+  const assertCentered = async (view, path) => {
+    const circle = view.locator(`[data-node="${path}"] circle`)
+    await page.waitForFunction(
+      (circle) => {
+        const node = circle.getBoundingClientRect()
+        const canvas = circle.closest('svg').getBoundingClientRect()
+        return (
+          Math.abs(node.x + node.width / 2 - canvas.x - canvas.width / 2) < 1 &&
+          Math.abs(node.y + node.height / 2 - canvas.y - canvas.height / 2) < 1
+        )
+      },
+      await circle.elementHandle(),
+    )
+  }
+  const centerNode = async (view, path, keyboard = false) => {
+    const svg = view.getByRole('application', { name: 'Workspace graph' })
+    await svg.focus()
+    await svg.press('ArrowRight')
+    const scale = (
+      await svg.locator(':scope > g').getAttribute('transform')
+    ).match(/scale\(([^)]+)\)/)[1]
+    const node = view.locator(`[data-node="${path}"]`)
+    if (keyboard) await node.press('Enter')
+    else await node.locator('circle').click()
+    await assertCentered(view, path)
+    assert.equal(
+      (await svg.locator(':scope > g').getAttribute('transform')).match(
+        /scale\(([^)]+)\)/,
+      )[1],
+      scale,
+    )
+    await waitForAsync(
+      page,
+      async (path) => (await window.hibi.getDocument()).name === path,
+      path,
+    )
+  }
+  await graph.getByRole('button', { name: /^zoom in$/i }).click()
+  await centerNode(graph, 'b.md')
+  await centerNode(graph, 'b.md', true)
   await graph
-    .getByRole('button', { name: /^current note$/i, exact: true })
-    .click()
-  await page.waitForFunction(
-    () => document.querySelectorAll('[data-node]').length === 2,
+    .getByRole('region', { name: 'Connections' })
+    .getByRole('button', { name: 'a.md', exact: true })
+    .waitFor()
+  assert.equal(
+    await graph
+      .getByRole('button', {
+        name: /refresh graph|current note|open a folder/i,
+      })
+      .count(),
+    0,
   )
-  await graph
-    .getByRole('button', { name: /^current note$/i, exact: true })
-    .click()
+  await graph.getByRole('button', { name: /expand graph/i }).click()
+  const expanded = page.getByRole('dialog', { name: /workspace graph/i })
+  await expanded.locator('[data-node="a.md"]').waitFor()
+  await page.waitForFunction(() => {
+    const rect = document
+      .querySelector('dialog[data-size="wide"]')
+      .getBoundingClientRect()
+    return (
+      rect.x > 0 &&
+      rect.y > 0 &&
+      rect.width < innerWidth &&
+      rect.height < innerHeight
+    )
+  })
+  assert.equal(await graph.locator('.graph-canvas').count(), 0)
+  await centerNode(expanded, 'a.md')
+  assert.equal(await expanded.isVisible(), true)
+  await centerNode(expanded, 'b.md', true)
+  assert.equal(await expanded.isVisible(), true)
+  await page.keyboard.press('Escape')
+  await expanded.waitFor({ state: 'hidden' })
+  await graph.locator('.graph-canvas').waitFor()
   await graph
     .getByRole('searchbox', { name: /filter graph notes/i })
     .fill('orphan')
@@ -196,7 +281,8 @@ test('tags and graph plugins browse/open notes, honor drafts, and clean up when 
     .getByRole('button', { name: /^open a\.md$/i, exact: true })
     .focus()
   await page.keyboard.press('Enter')
-  await graph.waitFor({ state: 'hidden' })
+  await assertCentered(graph, 'a.md')
+  assert.equal(await graph.isVisible(), true)
   await page.waitForFunction(
     () => document.querySelector('.app').getAttribute('aria-busy') === 'false',
   )
@@ -218,7 +304,10 @@ test('tags and graph plugins browse/open notes, honor drafts, and clean up when 
     dialog.showMessageBox = async () => ({ response: 1 })
   })
   await choose('open workspace graph')
-  graph = page.getByRole('dialog', { name: /^workspace graph$/i, exact: true })
+  graph = page.getByRole('complementary', {
+    name: /^workspace graph$/i,
+    exact: true,
+  })
   await graph
     .getByRole('button', { name: /^open a\.md$/i, exact: true })
     .focus()

@@ -9,5 +9,6 @@ export default {
   description:
     'Explore connections between notes in an interactive workspace graph.',
   defaultEnabled: false,
+  startup: 'background',
   authors: [authors.may],
 } satisfies AddonManifest

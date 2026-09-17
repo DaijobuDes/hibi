@@ -1,4 +1,5 @@
 appId: com.ryanaque.hibi
+extends: ./scripts/file-associations.cjs
 productName: hibi
 directories:
   output: release
@@ -7,6 +8,9 @@ files:
   - package.json
   - LICENSE
 asar: true
+asarUnpack:
+  - node_modules/@esbuild/**/*
+  - node_modules/esbuild/**/*
 extraResources:
   - from: build
     to: icons

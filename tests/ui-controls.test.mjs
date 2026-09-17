@@ -67,18 +67,20 @@ test('extension and core fields share themes, focus states, and narrow layouts',
     )
     await page.reload()
     await page.getByRole('textbox', { name: /document editor/i }).waitFor()
+    await choose('open syntax settings')
     const core = await fieldStyle(page.locator('#markdown-syntax-filter'))
     assert.equal(core.borderRadius, '6px')
     assert.equal(core.fontSize, '13px')
     if (previous)
       assert.notEqual(core.backgroundColor, previous.backgroundColor)
     previous = core
+    await page.getByRole('button', { name: /^back to app$/i }).click()
     for (const [command, title, label] of [
       ['open workspace graph', 'workspace graph', 'filter graph notes'],
       ['browse tags', 'tags', 'filter tags'],
     ]) {
       await choose(command)
-      const dialog = page.getByRole('dialog', {
+      const dialog = page.getByRole('complementary', {
         name: uiName(title, true),
         exact: true,
       })
@@ -91,8 +93,12 @@ test('extension and core fields share themes, focus states, and narrow layouts',
         await field.evaluate((el) => getComputedStyle(el).outlineWidth),
         '2px',
       )
+      assert.equal(
+        await field.evaluate((el) => getComputedStyle(el).outlineOffset),
+        '-2px',
+      )
       // Installed extensions using plain native markup receive the same defaults.
-      await dialog.locator('.dialog-content').evaluate((container) => {
+      await dialog.locator('.sidebar-content').evaluate((container) => {
         const field = document.createElement('input')
         field.id = 'native-extension-input'
         field.setAttribute('aria-label', 'native extension field')
@@ -122,6 +128,16 @@ test('extension and core fields share themes, focus states, and narrow layouts',
         window.setSize(360, 640)
       })
       await page.waitForFunction(() => innerWidth === 360)
+      await page.evaluate(() =>
+        Promise.all(
+          document
+            .getAnimations()
+            .filter((animation) =>
+              Number.isFinite(animation.effect?.getComputedTiming().iterations),
+            )
+            .map((animation) => animation.finished.catch(() => {})),
+        ),
+      )
       assert.equal(
         await dialog.evaluate((el) => {
           const box = el.getBoundingClientRect()
@@ -138,7 +154,9 @@ test('extension and core fields share themes, focus states, and narrow layouts',
         }),
         true,
       )
-      await dialog.getByRole('button', { name: /close dialog/i }).click()
+      await page
+        .getByRole('button', { name: /toggle workspace sidebar/i })
+        .click()
       await dialog.waitFor({ state: 'hidden' })
       await app.evaluate(({ BrowserWindow }) =>
         BrowserWindow.getAllWindows()[0].setSize(1000, 720),

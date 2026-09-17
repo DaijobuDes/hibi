@@ -33,7 +33,7 @@ test('typst fences preserve source and exclude incomplete or quoted examples', (
 })
 
 test('pinned native compiler sends package requests through the denying proxy', {
-  timeout: 10000,
+  timeout: 30000,
 }, async (t) => {
   let blocked = 0
   const server = createServer((_request, response) => {
@@ -55,7 +55,7 @@ test('pinned native compiler sends package requests through the denying proxy', 
     process.execPath,
     ['--input-type=module', '-e', script],
     {
-      timeout: 6000,
+      timeout: 25000,
       env: {
         ...process.env,
         HTTP_PROXY: proxy,

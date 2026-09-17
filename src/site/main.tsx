@@ -266,7 +266,7 @@ function DocumentationSite() {
   const [sidebar, setSidebar] = useState(() => innerWidth > 700)
   const [mobile, setMobile] = useState(() => innerWidth <= 700)
   const [activeHeading, setActiveHeading] = useState('')
-  const sidebarResize = useSidebarResize(240)
+  const sidebarResize = useSidebarResize(256)
   const page = byPath.get(current.path)
   const { html, outline } = useMemo(
     () =>
@@ -467,7 +467,7 @@ function DocumentationSite() {
           onClick={() => setSidebar(false)}
         />
         <Sidebar
-          resize={sidebarResize}
+          resize={{ ...sidebarResize, onCollapse: () => setSidebar(false) }}
           open={sidebar}
           items={navigation}
           selected={current.path}

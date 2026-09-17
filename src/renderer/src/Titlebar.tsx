@@ -3,8 +3,6 @@ import {
   Code,
   Columns2,
   FileText,
-  FolderOpen,
-  ListTree,
   PanelLeft,
   Pin,
   PinOff,
@@ -15,14 +13,9 @@ import { isMarkdownDocument } from '../../shared/document-types'
 import { type Hotkeys, shortcutLabels } from '../../shared/hotkeys'
 import { IconButton } from '../../ui/Controls'
 import { useMenus } from '../../ui/MenuHost'
+import type { viewShortcut } from './AddonSidebar'
 import { DocumentTabs } from './DocumentTabs'
 import type { ViewMode } from './Editor'
-import type { SidebarView } from './OutlineSidebar'
-
-const sidebarViews = [
-  { id: 'workspace', label: 'Workspace', icon: FolderOpen },
-  { id: 'outline', label: 'In this page', icon: ListTree },
-] as const
 
 const icons = {
   normal: FileText,
@@ -39,42 +32,46 @@ export function Titlebar({
   document,
   settingsOpen,
   mode,
+  availableViews,
   onMode,
   hotkeys,
   platform,
   sidebarOpen,
   onSidebar,
   sidebarView,
+  sidebarViews,
   onSidebarView,
   onSelectTab,
   onCloseTab,
+  onMoveTab,
   busy,
 }: {
   document: DocumentState | null
   settingsOpen: boolean
   mode: ViewMode
+  availableViews: readonly ViewMode[]
   onMode: (mode: ViewMode) => void
   hotkeys: Hotkeys
   platform: string
   sidebarOpen: boolean
   onSidebar: () => void
-  sidebarView: SidebarView
-  onSidebarView: (view: SidebarView) => void
+  sidebarView: string
+  sidebarViews: ReturnType<typeof viewShortcut>[]
+  onSidebarView: (view: string) => void
   onSelectTab: (id: string) => void
   onCloseTab: (id: string) => void
+  onMoveTab: (id: string, beforeId: string | null) => void
   busy: boolean
 }) {
   const menus = useMenus(console.error)
-  const [pinned, setPinned] = useState<SidebarView[]>(() => {
+  const [pinned, setPinned] = useState<string[]>(() => {
     try {
       const saved: unknown = JSON.parse(
         localStorage.getItem('sidebar-pinned-views') ?? '[]',
       )
       return Array.isArray(saved)
         ? [...new Set(saved)]
-            .filter((id): id is SidebarView =>
-              sidebarViews.some((view) => view.id === id),
-            )
+            .filter((id): id is string => typeof id === 'string')
             .slice(0, 3)
         : []
     } catch {
@@ -107,11 +104,14 @@ export function Titlebar({
   ]
   const currentView =
     sidebarViews.find((view) => view.id === sidebarView) ?? sidebarViews[0]
-  const currentPinned = pinned.includes(sidebarView)
+  const availablePins = pinned.filter((id) =>
+    sidebarViews.some((view) => view.id === id),
+  )
+  const currentPinned = availablePins.includes(sidebarView)
   function togglePin() {
     const next = currentPinned
-      ? pinned.filter((id) => id !== sidebarView)
-      : [...pinned, sidebarView].slice(0, 3)
+      ? availablePins.filter((id) => id !== sidebarView)
+      : [...availablePins, sidebarView].slice(0, 3)
     localStorage.setItem('sidebar-pinned-views', JSON.stringify(next))
     setPinned(next)
   }
@@ -131,7 +131,7 @@ export function Titlebar({
                       aria-pressed={sidebarOpen && sidebarView === view.id}
                       onClick={() => onSidebarView(view.id)}
                     >
-                      <view.icon size={16} strokeWidth={1.5} />
+                      <view.icon size={16} />
                     </IconButton>
                   ))}
                 </div>
@@ -147,9 +147,9 @@ export function Titlebar({
                       items: [
                         {
                           id: 'pin-current-view',
-                          label: `${currentPinned ? 'Unpin' : 'Pin'} ${currentView.label}`,
+                          label: `${currentPinned ? 'Unpin' : 'Pin'} ${currentView?.label ?? 'Workspace'}`,
                           icon: currentPinned ? PinOff : Pin,
-                          disabled: !currentPinned && pinned.length >= 3,
+                          disabled: !currentPinned && availablePins.length >= 3,
                           onSelect: togglePin,
                         },
                         ...orderedViews.map((view, index) => ({
@@ -181,12 +181,26 @@ export function Titlebar({
         <div className="document-title">
           {settingsOpen ? (
             <span>Settings</span>
+          ) : document?.tabsEnabled === false ? (
+            <span className="single-document-title" title={document.name}>
+              <span>{document.name}</span>
+              {document.dirty && (
+                <span
+                  className="dirty-dot"
+                  role="status"
+                  aria-label="Unsaved changes"
+                >
+                  •
+                </span>
+              )}
+            </span>
           ) : document ? (
             <DocumentTabs
               document={document}
               busy={busy}
               onSelect={onSelectTab}
               onClose={onCloseTab}
+              onMove={onMoveTab}
             />
           ) : (
             <span>Hibi</span>
@@ -208,6 +222,7 @@ export function Titlebar({
                   aria-label={label}
                   title={`${label}${hotkeys[view] ? ` (${shortcutLabels(hotkeys[view], platform).join('')})` : ''}`}
                   aria-pressed={mode === view}
+                  disabled={!availableViews.includes(view)}
                   onClick={() => onMode(view)}
                 >
                   <Icon name={view} />

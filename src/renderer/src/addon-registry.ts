@@ -1,18 +1,86 @@
-import type { Addon } from '../../addons/api'
+import { type ComponentType, lazy } from 'react'
+import type { Addon, AddonManifest, MarkdownFlavor } from '../../addons/api'
 import type { SideloadFactory } from '../../addons/sdk'
 import type { InstalledAddon } from '../../shared/sideload'
 
-const bundledModules = import.meta.glob<Addon>(
-  ['../../addons/*/index.{ts,tsx}', '../../useraddons/*/index.{ts,tsx}'],
+const manifests = import.meta.glob<AddonManifest>(
+  ['../../addons/*/manifest.ts', '../../useraddons/*/manifest.ts'],
   { eager: true, import: 'default' },
 )
-const bundled = Object.values(bundledModules)
-const origins = new Map(
-  Object.entries(bundledModules).map(([path, addon]) => [
-    addon.manifest.id,
-    path.includes('/useraddons/') ? 'local' : 'built-in',
-  ]),
+const implementations = import.meta.glob<Addon>(
+  ['../../addons/*/index.{ts,tsx}', '../../useraddons/*/index.{ts,tsx}'],
+  { import: 'default' },
 )
+const settings = import.meta.glob<{ Settings: ComponentType }>([
+  '../../addons/*/Settings.tsx',
+  '../../useraddons/*/Settings.tsx',
+])
+const flavorInfo = import.meta.glob<readonly MarkdownFlavor[]>(
+  ['../../addons/*/flavor-info.ts', '../../useraddons/*/flavor-info.ts'],
+  { eager: true, import: 'default' },
+)
+const origins = new Map<string, string>()
+const bundled = Object.entries(manifests).map(([path, manifest]): Addon => {
+  const directory = path.slice(0, path.lastIndexOf('/'))
+  origins.set(manifest.id, path.includes('/useraddons/') ? 'local' : 'built-in')
+  const loader =
+    implementations[`${directory}/index.ts`] ??
+    implementations[`${directory}/index.tsx`]
+  let pending: Promise<Addon> | undefined
+  const load = () =>
+    (pending ??= (
+      loader
+        ? loader()
+        : Promise.reject(new Error(`Missing addon entry: ${manifest.id}`))
+    ).catch((error) => {
+      pending = undefined
+      throw error
+    }))
+  let generation = 0
+  let instance: Addon | undefined
+  const settingsLoader = settings[`${directory}/Settings.tsx`]
+  const descriptor: Addon = {
+    manifest,
+    ...(flavorInfo[`${directory}/flavor-info.ts`]
+      ? { flavors: flavorInfo[`${directory}/flavor-info.ts`] }
+      : {}),
+    ...(settingsLoader || manifest.fileExtensions?.length
+      ? {
+          Settings: lazy(async () => ({
+            default: settingsLoader
+              ? (await settingsLoader()).Settings
+              : ((await load()).Settings ?? (() => null)),
+          })),
+        }
+      : {}),
+    async start(context) {
+      const token = ++generation
+      const addon = await load()
+      if (token !== generation) return
+      if (addon.manifest.id !== manifest.id)
+        throw new Error('Addon identity mismatch.')
+      instance = addon
+      let changed = false
+      if (!descriptor.flavors && addon.flavors) {
+        descriptor.flavors = addon.flavors
+        changed = true
+      }
+      if (!descriptor.Settings && addon.Settings) {
+        descriptor.Settings = addon.Settings
+        changed = true
+      }
+      if (changed) publish()
+      await addon.start(context)
+    },
+    stop() {
+      generation++
+      const previous = instance
+      instance = undefined
+      previous?.stop?.()
+    },
+  }
+  return descriptor
+})
 export let addons = bundled
 const installed = new Map<
   string,

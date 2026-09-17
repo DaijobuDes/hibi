@@ -343,16 +343,16 @@ test('nested workspace editing, addon lifecycle, and offline static export', {
         }
         return samples
       })
-      assert.ok(samples.some(({ x }) => x > -239 && x < -1))
+      assert.ok(samples.some(({ x }) => x > -255 && x < -1))
       assert.ok(
         samples.every(
           ({ width, top, bottom, height }) =>
-            width === 240 && top === 0 && bottom === height,
+            width === 256 && top === 0 && bottom === height,
         ),
       )
       assert.ok(
         samples
-          .filter(({ x }) => x > -239 && x < -1)
+          .filter(({ x }) => x > -255 && x < -1)
           .every(({ visibility }) => visibility === 'visible'),
       )
       assert.ok(
@@ -375,11 +375,11 @@ test('nested workspace editing, addon lifecycle, and offline static export', {
         new Set(samples.map(({ contentWidth }) => contentWidth)).size,
         1,
       )
-      assert.ok(Math.abs(samples.at(-1).x - (opening ? 0 : -240)) < 1)
+      assert.ok(Math.abs(samples.at(-1).x - (opening ? 0 : -256)) < 1)
     }
   }
   await site.setViewportSize({ width: 1000, height: 760 })
-  await checkSidebarResize(site, 240, '.site-content', () => site.reload())
+  await checkSidebarResize(site, 256, '.site-content', () => site.reload())
   assert.equal(await site.evaluate(() => window.compromised), undefined)
   assert.equal(await site.locator('article img').getAttribute('src'), null)
   assert.equal(

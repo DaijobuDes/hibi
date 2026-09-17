@@ -7,15 +7,13 @@ export default defineAddon({
   manifest,
   start(context) {
     context.styles.register('graph', css)
-    const open = () => {
-      context.dialogs.open({
-        title: 'Workspace graph',
-        size: 'wide',
-        content: ({ close }) => (
-          <GraphPanel context={context} close={() => close(null)} />
-        ),
-      })
-    }
+    const view = context.sidebar.register({
+      id: 'workspace',
+      label: 'Workspace graph',
+      icon: Network,
+      Content: () => <GraphPanel context={context} />,
+    })
+    const open = () => view.open()
     context.commands.register({
       id: 'open',
       label: 'Open workspace graph',
@@ -26,12 +24,6 @@ export default defineAddon({
       id: 'open',
       label: 'Workspace graph',
       icon: Network,
-      onClick: open,
-    })
-    context.statusBar.register({
-      id: 'open',
-      label: 'Graph',
-      tooltip: 'Explore workspace connections',
       onClick: open,
     })
   },

@@ -9,5 +9,6 @@ export default {
   description:
     'Estimated words and characters per minute for this typing session.',
   defaultEnabled: false,
+  startup: 'background',
   authors: [authors.may],
 } satisfies AddonManifest

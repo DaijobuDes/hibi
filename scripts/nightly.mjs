@@ -40,8 +40,26 @@ export function nightly(cwd = '.', date = new Date()) {
   }
 }
 
-export function releaseNotes(release, repository) {
+export function releaseNotes(release, repository, checksums) {
   const url = `https://github.com/${repository}`
+  const assets = checksums
+    .trim()
+    .split('\n')
+    .map((line) => {
+      const match = /^([a-f0-9]{64}) [ *](.+)$/.exec(line)
+      if (!match) throw new Error('Invalid nightly checksum entry')
+      const name = match[2].replace(/^\.\//, '')
+      return {
+        name,
+        hash: match[1],
+        url: `${url}/releases/download/${encodeURIComponent(release.tag)}/${encodeURIComponent(name)}`,
+      }
+    })
+  const download = (label, suffix) => {
+    const asset = assets.find(({ name }) => name.endsWith(suffix))
+    if (!asset) throw new Error(`Missing nightly download: ${label}`)
+    return `[${label}](${asset.url})`
+  }
   const commits = release.commits
     .split('\n')
     .filter(Boolean)
@@ -51,21 +69,29 @@ export function releaseNotes(release, repository) {
       return `- ${title} ([${sha.slice(0, 7)}](${url}/commit/${sha}))`
     })
   return [
-    `# Hibi nightly ${release.version}`,
+    `this nightly was built from sha \`${release.sha.slice(0, 7)}\`.`,
     '',
-    `Built from [${release.sha.slice(0, 7)}](${url}/commit/${release.sha}).`,
+    '**:warning: always back up before using a nightly!**',
     '',
-    'Downloads: macOS Apple Silicon and Intel (DMG/ZIP), Windows x64 (installer), Linux x64 (AppImage).',
-    'These development builds are unsigned on Windows and ad-hoc signed on macOS, without notarization. They use the regular Hibi app identity and data profile; save and back up work before trying a nightly.',
-    'Verify downloads against SHA256SUMS.txt.',
+    [
+      download('windows', '-win-x64.exe'),
+      download('macOS (intel)', '-mac-x64.dmg'),
+      download('linux (appImage)', '.AppImage'),
+    ].join(' • '),
     '',
-    '## Changes',
+    '---',
+    '',
+    ...assets.flatMap((asset) => [
+      `SHA256 ([${asset.name}](${asset.url})): \`${asset.hash}\``,
+      '',
+    ]),
+    '## changes',
     '',
     ...commits,
     '',
     ...(release.previous
       ? [
-          `[Full comparison](${url}/compare/${encodeURIComponent(release.previous)}...${release.sha})`,
+          `[full comparison](${url}/compare/${encodeURIComponent(release.previous)}...${release.sha})`,
           '',
         ]
       : []),
@@ -84,7 +110,14 @@ if (
     appendFileSync(process.env.GITHUB_OUTPUT, `${values}\n`)
   } else if (process.argv[2] === 'notes') {
     release.version = process.argv[3] ?? release.version
-    process.stdout.write(releaseNotes(release, process.env.GITHUB_REPOSITORY))
+    release.tag = process.env.TAG ?? release.tag
+    const checksums = readFileSync(
+      resolve(process.argv[4] ?? 'installers/SHA256SUMS.txt'),
+      'utf8',
+    )
+    process.stdout.write(
+      releaseNotes(release, process.env.GITHUB_REPOSITORY, checksums),
+    )
   } else {
     throw new Error('Usage: node scripts/nightly.mjs prepare|notes')
   }

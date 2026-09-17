@@ -3,11 +3,15 @@ export const DOCUMENT_CHANNELS = {
   get: 'document:get',
   update: 'document:update',
   open: 'document:open',
+  external: 'document:external',
+  externalPending: 'document:external-pending',
   new: 'document:new',
   save: 'document:save',
   autosave: 'document:autosave',
   selectTab: 'document:select-tab',
   closeTab: 'document:close-tab',
+  moveTab: 'document:move-tab',
+  tabsEnabled: 'document:tabs-enabled',
   rename: 'document:rename',
   image: 'document:image',
   navigate: 'document:navigate',
@@ -21,6 +25,8 @@ export type DocumentState = {
   /** Stable window-local tab identity, including across save and rename. */
   tabId: string
   tabs: DocumentTab[]
+  /** False keeps only the active document open. */
+  tabsEnabled: boolean
   /** Opaque identity for per-file preferences. Contains no filesystem path. */
   id: string
   /** Workspace draft with a target name but no file on disk yet. */
@@ -47,6 +53,10 @@ export type AppInfo = {
 }
 
 export type DesktopApi = {
+  getFileAssociations: () => Promise<
+    import('./file-associations').FileAssociationState
+  >
+  setFileAssociation: (format: string) => Promise<void>
   navigateDocument: (
     direction: 'back' | 'forward',
   ) => Promise<DocumentState | null>
@@ -91,6 +101,7 @@ export type DesktopApi = {
   getRecentWorkspaces: () => Promise<import('./workspace').RecentWorkspace[]>
   openRecentWorkspace: (id: string) => Promise<WorkspaceState | null>
   getWorkspaceSnapshot: () => Promise<import('./workspace').WorkspaceSnapshot>
+  getWorkspaceIndex: () => Promise<import('./workspace').WorkspaceIndex | null>
   workspaceAction: (
     action: import('./workspace').WorkspaceAction,
   ) => Promise<import('./workspace').WorkspaceActionResult | null>
@@ -105,8 +116,18 @@ export type DesktopApi = {
   getDocument: () => Promise<DocumentState>
   selectDocumentTab: (id: string) => Promise<DocumentState>
   closeDocumentTab: (id: string) => Promise<DocumentState | null>
+  moveDocumentTab: (
+    id: string,
+    beforeId: string | null,
+  ) => Promise<DocumentState>
+  setTabsEnabled: (enabled: boolean) => Promise<DocumentState>
   updateDocument: (markdown: string) => Promise<void>
   openDocument: () => Promise<DocumentState | null>
+  openExternalDocuments: () => Promise<{
+    document: DocumentState | null
+    errors: string[]
+  }>
+  onExternalDocuments: (callback: () => void) => () => void
   newDocument: () => Promise<DocumentState | null>
   saveDocument: (saveAs: boolean) => Promise<DocumentState | null>
   autosaveDocument: (revision: number) => Promise<AutosaveResult>

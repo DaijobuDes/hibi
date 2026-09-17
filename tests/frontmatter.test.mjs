@@ -289,6 +289,16 @@ test('frontmatter fields preserve comments, types, nested YAML and body edits', 
         await new Promise(requestAnimationFrame)
         result.push(body.getBoundingClientRect().height)
       }
+      await Promise.all(
+        body
+          .getAnimations({ subtree: true })
+          .filter((animation) =>
+            Number.isFinite(animation.effect?.getComputedTiming().iterations),
+          )
+          .map((animation) => animation.finished.catch(() => {})),
+      )
+      await new Promise(requestAnimationFrame)
+      result.push(body.getBoundingClientRect().height)
       return result
     })
   assert.ok(heights.some((height) => height > 0 && height < heights[0]))
@@ -448,6 +458,7 @@ test('frontmatter addon, inline rename, and centered workspace entry preserve do
   const source = page.getByRole('textbox', { name: /markdown editor/i })
   await source.fill('---\ntitle: changed\n---\n\nsource body')
   await page.getByRole('button', { name: /^normal$/i, exact: true }).click()
+  await source.waitFor({ state: 'hidden' })
   await rich.fill('visual body')
   const edited = (await page.evaluate(() => window.hibi.getDocument())).markdown
   assert.equal(edited, '---\ntitle: changed\n---\n\nvisual body')

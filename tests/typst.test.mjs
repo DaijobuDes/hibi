@@ -23,6 +23,12 @@ test('typst documents and markdown blocks preview locally, export, and preserve 
   const notes = join(root, 'notes')
   await mkdir(notes)
   await writeFile(join(notes, 'values.typ'), '#let answer = 42')
+  // Unrelated workspace content must not consume the compiler's input budget.
+  await Promise.all(
+    Array.from({ length: 1001 }, (_, index) =>
+      writeFile(join(notes, `unrelated-${index}.json`), 'not a compiler input'),
+    ),
+  )
   const original =
     '#import "values.typ": answer\n= report\n\nanswer: #answer\n\n$ integral_0^1 x dif x = 1/2 $\n'
   await writeFile(join(notes, 'report.typ'), original)
@@ -74,6 +80,19 @@ test('typst documents and markdown blocks preview locally, export, and preserve 
   await pressShortcut(app, `${mod}+Shift+\\`)
   const source = page.getByRole('textbox', { name: /typst editor/i })
   await source.waitFor()
+  assert.equal(
+    await page
+      .getByRole('button', { name: /^normal$/i, exact: true })
+      .isDisabled(),
+    true,
+  )
+  assert.equal(
+    await page
+      .getByRole('button', { name: /^side-by-side$/i, exact: true })
+      .isEnabled(),
+    true,
+  )
+  await page.getByRole('button', { name: /^bold$/i, exact: true }).waitFor()
   await page.locator('.source-pane .hibi-token-keyword').first().waitFor()
   const updated = `${original}\nsecond paragraph.\n`
   await source.fill(updated)
@@ -87,7 +106,7 @@ test('typst documents and markdown blocks preview locally, export, and preserve 
       document.querySelector('.typst-preview')?.getAttribute('aria-busy') ===
       'false',
   )
-  assert.equal(await page.locator('.typst-diagnostics').count(), 0)
+  assert.equal(await page.locator('.typst-preview .document-notice').count(), 0)
   await pressShortcut(app, `${mod}+s`)
   await waitForAsync(page, async () => !(await window.hibi.getDocument()).dirty)
   assert.equal(await readFile(join(notes, 'report.typ'), 'utf8'), updated)
@@ -106,7 +125,8 @@ test('typst documents and markdown blocks preview locally, export, and preserve 
     dialog.showSaveDialog = async () => ({ canceled: false, filePath: path })
   }, pdf)
   await choose('export typst pdf')
-  await page.getByText(/exported pdf to/i).waitFor()
+  // PDF export can queue behind a preview; each native compile has a 10s limit.
+  await page.getByText(/exported pdf to/i).waitFor({ timeout: 25000 })
   assert.equal((await readFile(pdf)).subarray(0, 5).toString(), '%PDF-')
   await choose('insert typst block')
   const formatDialog = page.getByRole('dialog', {
@@ -191,7 +211,14 @@ test('typst documents and markdown blocks preview locally, export, and preserve 
   assert.ok((await query('restarted')).svg)
   // Empty/incomplete syntax reports diagnostics without modifying the buffer.
   await source.fill('#let =')
-  await page.locator('.typst-diagnostics').waitFor()
+  await page.locator('.typst-preview .document-notice').waitFor()
+  assert.equal(await page.locator('.rich-editor-host').isVisible(), false)
+  assert.equal(
+    await page
+      .locator('.rich-pane')
+      .evaluate((element) => element.scrollHeight <= element.clientHeight + 1),
+    true,
+  )
   assert.equal((await read()).markdown, '#let =')
   await source.fill(updated)
   await tree
@@ -265,8 +292,13 @@ test('typst documents and markdown blocks preview locally, export, and preserve 
   await tree
     .getByRole('treeitem', { name: /^report\.typ$/i, exact: true })
     .click()
-  await page.locator('.format-unavailable').waitFor()
   await source.waitFor()
+  assert.equal(
+    await page
+      .getByRole('button', { name: /^side-by-side$/i, exact: true })
+      .isDisabled(),
+    true,
+  )
   assert.equal(await source.getAttribute('contenteditable'), 'true')
   assert.deepEqual(errors, [])
 })

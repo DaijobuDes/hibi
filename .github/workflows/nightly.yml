@@ -3,6 +3,11 @@ on:
   schedule:
     - cron: '0 18 * * *'
   workflow_dispatch:
+    inputs:
+      clean:
+        description: Ignore caches and run a full build and all checks
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -29,7 +34,7 @@ jobs:
         run: node scripts/nightly.mjs prepare
   build:
     needs: prepare
-    if: needs.prepare.outputs.changed == 'true'
+    if: needs.prepare.outputs.changed == 'true' || inputs.clean == true
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -48,6 +53,9 @@ jobs:
             platform: macos-x64
             args: --mac --x64 -c.mac.identity=-
     runs-on: ${{ matrix.os }}
+    env:
+      ELECTRON_CACHE: ${{ github.workspace }}/.cache/electron
+      ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.cache/electron-builder
     defaults:
       run:
         shell: bash
@@ -55,17 +63,11 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ needs.prepare.outputs.sha }}
+          fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: ./.github/actions/ci
         with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci
-      - run: node --test tests/addon-download.test.mjs
-      - run: npm run check
-        if: runner.os != 'Linux'
-      - run: dbus-run-session -- xvfb-run --auto-servernum --server-args='-screen 0 1920x1080x24 -nolisten tcp' npm run check
-        if: runner.os == 'Linux'
+          clean: ${{ inputs.clean || false }}
       - name: Package installers
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
@@ -89,6 +91,7 @@ jobs:
             release/*.AppImage
   publish:
     needs: [prepare, build]
+    if: needs.prepare.outputs.changed == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -113,8 +116,8 @@ jobs:
           SHA: ${{ needs.prepare.outputs.sha }}
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
+          (cd installers && sha256sum ./*.exe ./*.dmg ./*.zip ./*.AppImage > SHA256SUMS.txt)
           node scripts/nightly.mjs notes "$VERSION" > release-notes.md
-          (cd installers && sha256sum ./* > SHA256SUMS.txt)
           if gh release view "$TAG" >/dev/null 2>&1; then
             test "$(gh release view "$TAG" --json isDraft --jq .isDraft)" = true
             test "$(gh release view "$TAG" --json targetCommitish --jq .targetCommitish)" = "$SHA"

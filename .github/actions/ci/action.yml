@@ -1,0 +1,52 @@
+name: cached desktop checks
+description: Reuse successful builds and select tests from the git diff.
+inputs:
+  clean:
+    description: Ignore caches and run every build and test.
+    default: 'false'
+  base:
+    description: Previous push or pull request base revision.
+    default: ''
+outputs:
+  build:
+    description: Whether this run rebuilt the application.
+    value: ${{ steps.check.outputs.build }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      with:
+        node-version-file: .nvmrc
+        cache: ${{ inputs.clean != 'true' && 'npm' || '' }}
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      if: inputs.clean != 'true'
+      with:
+        path: |
+          .cache/electron
+          .cache/electron-builder
+        key: electron-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json', '.nvmrc') }}
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      if: inputs.clean != 'true'
+      with:
+        path: |
+          .cache/ci
+          out
+        key: checks-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json', '.nvmrc', 'scripts/ci.mjs') }}-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+        restore-keys: |
+          checks-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json', '.nvmrc', 'scripts/ci.mjs') }}-${{ inputs.base }}-
+          checks-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json', '.nvmrc', 'scripts/ci.mjs') }}-
+    - run: npm ci
+      shell: bash
+    - run: node --test tests/addon-download.test.mjs
+      shell: bash
+    - id: check
+      shell: bash
+      env:
+        CI_BASE: ${{ inputs.base }}
+        CI_CLEAN: ${{ inputs.clean }}
+      run: |
+        if [ "$RUNNER_OS" = Linux ]; then
+          dbus-run-session -- xvfb-run --auto-servernum --server-args='-screen 0 1920x1080x24 -nolisten tcp' npm run check:ci
+        else
+          npm run check:ci
+        fi

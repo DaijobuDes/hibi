@@ -70,9 +70,18 @@ export async function collectLicenses(root = resolve('.')) {
         /^#{1,6}\s+licen[sc]e[^\n]*\n([\s\S]*?)(?=^#{1,6}\s|$(?![\s\S]))/im
           .exec(source)?.[1]
           ?.trim()
-      if (!section || section.length < 300 || !/copyright/i.test(section))
-        throw new Error(`missing license notice: ${id}`)
-      text = `${readme} — license section\n\n${section}`
+      if (section && section.length >= 300 && /copyright/i.test(section))
+        text = `${readme} — license section\n\n${section}`
+      else {
+        try {
+          text = await readFile(
+            join(root, 'docs/licenses', `${name.replaceAll('/', '-')}.md`),
+            'utf8',
+          )
+        } catch {
+          throw new Error(`missing license notice: ${id}`)
+        }
+      }
     }
     entries.set(id, {
       id,

@@ -1,44 +1,94 @@
-import { useEffect, useState } from 'react'
-import type { WorkspaceSnapshot, WorkspaceState } from '../shared/workspace'
+import { useEffect, useMemo, useState } from 'react'
+import { errorMessage } from '../shared/errors'
+import type { WorkspaceIndex } from '../shared/workspace'
 import type { AddonContext } from './api'
 
-/** Read-only panels share the host's bounded snapshot and draft-aware file access. */
+/** Active panels index text only; draft edits update in memory without disk reads. */
 export function useWorkspaceSnapshot(context: AddonContext) {
   const [revision, refresh] = useState(0)
+  const [document, setDocument] = useState(() => context.editor.getDocument())
   const [state, setState] = useState<{
-    workspace: WorkspaceState | null
-    snapshot: WorkspaceSnapshot | null
+    index: WorkspaceIndex | null
     loading: boolean
     error: string
-  }>({ workspace: null, snapshot: null, loading: true, error: '' })
-  useEffect(
-    () => window.hibi.onWorkspaceChanged(() => refresh((value) => value + 1)),
-    [],
-  )
+  }>({ index: null, loading: true, error: '' })
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>
+    const schedule = () => {
+      clearTimeout(timer)
+      timer = setTimeout(() => refresh((value) => value + 1), 150)
+    }
+    const remove = window.hibi.onWorkspaceChanged(schedule)
+    window.addEventListener('focus', schedule)
+    return () => {
+      clearTimeout(timer)
+      remove()
+      window.removeEventListener('focus', schedule)
+    }
+  }, [])
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>
+    let id = context.editor.getDocument()?.id
+    const remove = context.editor.onDocumentChange((document) => {
+      clearTimeout(timer)
+      timer = setTimeout(() => {
+        setDocument(document)
+        if (document.id !== id) {
+          id = document.id
+          refresh((value) => value + 1)
+        }
+      }, 150)
+    })
+    return () => {
+      clearTimeout(timer)
+      remove()
+    }
+  }, [context])
   // biome-ignore lint/correctness/useExhaustiveDependencies: revision explicitly refreshes workspace contents.
   useEffect(() => {
     let active = true
     setState((value) => ({ ...value, loading: true, error: '' }))
-    void (async () => {
-      try {
-        const workspace = await context.workspace.get()
-        const snapshot = workspace ? await context.workspace.snapshot() : null
-        if (active) setState({ workspace, snapshot, loading: false, error: '' })
-      } catch (error) {
+    void context.workspace
+      .index()
+      .then((index) => {
+        if (!active) return
+        setDocument(context.editor.getDocument())
+        setState({ index, loading: false, error: '' })
+      })
+      .catch((error: unknown) => {
         if (active)
           setState((value) => ({
             ...value,
             loading: false,
-            error:
-              error instanceof Error
-                ? error.message
-                : 'could not read workspace.',
+            error: errorMessage(error),
           }))
-      }
-    })()
+      })
     return () => {
       active = false
     }
   }, [context, revision])
-  return { ...state, refresh: () => refresh((value) => value + 1) }
+  const snapshot = useMemo(() => {
+    const index = state.index
+    if (!index) return null
+    return {
+      name: index.workspace.name,
+      pages: index.pages.map((page) =>
+        document &&
+        page.id === document.id &&
+        page.markdown !== document.markdown
+          ? { ...page, markdown: document.markdown }
+          : page,
+      ),
+    }
+  }, [state.index, document])
+  const activePath =
+    snapshot?.pages.find((page) => page.id === document?.id)?.path ?? null
+  return {
+    snapshot,
+    document,
+    workspace: state.index ? { ...state.index.workspace, activePath } : null,
+    loading: state.loading,
+    error: state.error,
+    refresh: () => refresh((value) => value + 1),
+  }
 }

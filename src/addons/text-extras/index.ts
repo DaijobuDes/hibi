@@ -1,15 +1,12 @@
 import { defineAddon, type MarkdownFlavor } from '../api'
+import { flavorInfo } from './flavor-info'
 import manifest from './manifest'
 import { Subscript, Subtext } from './nodes'
 import css from './styles.css?inline'
-import { detectTextExtras, textExtrasMarkdown } from './syntax'
+import { textExtrasMarkdown } from './syntax'
 
 const flavor: MarkdownFlavor = {
-  id: 'text-extras',
-  name: 'text extras',
-  kind: 'syntax',
-  description: '~subscript~ and -# small text.',
-  detect: detectTextExtras,
+  ...flavorInfo,
   richExtensions: [Subscript, Subtext],
   export: { extensions: [textExtrasMarkdown], css },
 }

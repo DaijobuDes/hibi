@@ -2,7 +2,7 @@
 
 enable **typst** in settings → addons. use **new typst document** from the command palette, or open a `.typ` file from the file menu, explorer, or a file drop.
 
-source mode edits typst; split view shows source alongside the typeset preview. normal view shows the preview. use **export typst pdf** in the toolbar or command palette to save a pdf. syntax errors leave the source editable.
+source mode edits typst; split view shows source alongside the typeset preview. the unsupported rich-editor view is disabled. use the pinned **export pdf** action above the preview, or **export typst pdf** in the command palette. syntax errors leave the source editable. formatting tools insert native Typst syntax and share the editor's undo history.
 
 markdown documents can contain rendered blocks:
 

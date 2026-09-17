@@ -7,6 +7,7 @@ import {
   type DesktopApi,
   DOCUMENT_CHANNELS,
 } from '../shared/desktop'
+import { ASSOCIATION_CHANNELS } from '../shared/file-associations'
 import { HISTORY_CHANNELS } from '../shared/history'
 import { type AppCommand, HOTKEY_CHANNELS } from '../shared/hotkeys'
 import { MEDIA_CHANNELS } from '../shared/media'
@@ -16,6 +17,9 @@ import { WORKSPACE_CHANNELS, type WorkspaceState } from '../shared/workspace'
 
 if (process.isMainFrame) {
   contextBridge.exposeInMainWorld('hibi', {
+    getFileAssociations: () => ipcRenderer.invoke(ASSOCIATION_CHANNELS.get),
+    setFileAssociation: (format) =>
+      ipcRenderer.invoke(ASSOCIATION_CHANNELS.set, format),
     navigateDocument: (direction) =>
       ipcRenderer.invoke(DOCUMENT_CHANNELS.navigate, direction),
     openDocumentLink: (href, revision) =>
@@ -74,6 +78,7 @@ if (process.isMainFrame) {
     openRecentWorkspace: (id) =>
       ipcRenderer.invoke(WORKSPACE_CHANNELS.openRecent, id),
     getWorkspaceSnapshot: () => ipcRenderer.invoke(WORKSPACE_CHANNELS.snapshot),
+    getWorkspaceIndex: () => ipcRenderer.invoke(WORKSPACE_CHANNELS.index),
     workspaceAction: (action) =>
       ipcRenderer.invoke(WORKSPACE_CHANNELS.action, action),
     openWorkspace: () => ipcRenderer.invoke(WORKSPACE_CHANNELS.open),
@@ -97,9 +102,20 @@ if (process.isMainFrame) {
       ipcRenderer.invoke(DOCUMENT_CHANNELS.selectTab, id),
     closeDocumentTab: (id) =>
       ipcRenderer.invoke(DOCUMENT_CHANNELS.closeTab, id),
+    moveDocumentTab: (id, beforeId) =>
+      ipcRenderer.invoke(DOCUMENT_CHANNELS.moveTab, id, beforeId),
+    setTabsEnabled: (enabled) =>
+      ipcRenderer.invoke(DOCUMENT_CHANNELS.tabsEnabled, enabled),
     updateDocument: (markdown) =>
       ipcRenderer.invoke(DOCUMENT_CHANNELS.update, markdown),
     openDocument: () => ipcRenderer.invoke(DOCUMENT_CHANNELS.open),
+    openExternalDocuments: () => ipcRenderer.invoke(DOCUMENT_CHANNELS.external),
+    onExternalDocuments: (callback) => {
+      const listener = () => callback()
+      ipcRenderer.on(DOCUMENT_CHANNELS.externalPending, listener)
+      return () =>
+        ipcRenderer.removeListener(DOCUMENT_CHANNELS.externalPending, listener)
+    },
     newDocument: () => ipcRenderer.invoke(DOCUMENT_CHANNELS.new),
     saveDocument: (saveAs) =>
       ipcRenderer.invoke(DOCUMENT_CHANNELS.save, saveAs),

@@ -1,6 +1,7 @@
 import { useState, useSyncExternalStore } from 'react'
 import { SettingRow, Toggle } from '../../ui/Controls'
 import { SettingsFilter } from '../../ui/SettingsFilter'
+import { addons } from './addons'
 import { codeLanguages } from './code-languages'
 
 export function CodeSyntaxSettings() {
@@ -34,7 +35,10 @@ export function CodeSyntaxSettings() {
             hidden={!matching.some((language) => language.owner === owner)}
           >
             <h2>
-              {owner === 'built-in' ? 'Languages' : owner.replaceAll('-', ' ')}
+              {owner === 'built-in'
+                ? 'Languages'
+                : (addons.find((addon) => addon.manifest.id === owner)?.manifest
+                    .name ?? owner.replaceAll('-', ' '))}
             </h2>
             <div className="settings-group">
               {languages
@@ -48,7 +52,7 @@ export function CodeSyntaxSettings() {
                     description={
                       language.aliases.length
                         ? `Also applies to ${language.aliases.join(', ')}.`
-                        : 'Highlight matching code blocks.'
+                        : 'Highlight matching code blocks and source documents.'
                     }
                   >
                     <Toggle

@@ -9,14 +9,21 @@ import type {
 } from '../shared/colorschemes'
 import type { DocumentCommand } from '../shared/desktop'
 import type { AppCommand } from '../shared/hotkeys'
-import type { MarkdownSyntaxFeature } from '../shared/markdown-syntax'
+import type {
+  DocumentSyntaxFeature,
+  MarkdownSyntaxFeature,
+} from '../shared/markdown-syntax'
 import type { CodeLanguage } from '../shared/syntax'
 
-export type { MarkdownSyntaxFeature } from '../shared/markdown-syntax'
+export type {
+  DocumentSyntaxFeature,
+  MarkdownSyntaxFeature,
+} from '../shared/markdown-syntax'
 export type { CodeLanguage } from '../shared/syntax'
 
 import type {
   ExplorerDecorationProvider,
+  WorkspaceIndex,
   WorkspaceSnapshot,
   WorkspaceState,
 } from '../shared/workspace'
@@ -71,6 +78,8 @@ export type AddonManifest = {
   /** Existing API v1 addons default to extension. */
   kind?: 'theme' | 'extension'
   defaultEnabled?: boolean
+  /** Background-only UI/services can activate after editing is ready. Omit for schema/input addons. */
+  startup?: 'background'
   /** Plugin release version; optional for existing API v1 addons. */
   version?: string
   /** Additional source-file extensions, without dots. Files remain openable when disabled. */
@@ -243,11 +252,39 @@ export type RenderedMarkdown = { html: string; css: string }
 export type DocumentPreviewProps = {
   value: string
   document: Readonly<import('../shared/desktop').DocumentState>
+  /** Host-owned pinned action row. Render shared PreviewActions into this target. */
+  toolbar?: HTMLElement | null
+}
+export type DocumentSelection = {
+  source: string
+  from: number
+  to: number
+  values?: { url: string; alt: string } | undefined
+}
+export type DocumentEdit = {
+  from: number
+  to: number
+  insert: string
+  /** Selection offsets within the inserted text; defaults to its end. */
+  selection?: { from: number; to: number }
+}
+export type DocumentFormatting = {
+  actions: readonly string[]
+  apply: (action: string, selection: DocumentSelection) => DocumentEdit | null
+  isActive?: (action: string, selection: DocumentSelection) => boolean
 }
 export type DocumentFormat = {
   id: string
   name: string
   extensions: readonly string[]
+  /** Opt into the host's lossless rich Markdown editor. Other formats use source and preview. */
+  editing?: 'markdown'
+  /** Registered code language id. Its highlighting preference also applies to source files. */
+  codeLanguage?: string
+  /** Supported editor views. Source ('markdown') is always required; normal means editable rich content. */
+  views?: readonly import('../shared/document-types').DocumentView[]
+  /** Map the shared toolbar and shortcuts to this format; Markdown variants can reuse its mapper. */
+  formatting?: 'markdown' | DocumentFormatting
   language: import('@codemirror/language').Language
   Preview: ComponentType<DocumentPreviewProps>
   insertMedia?: (
@@ -269,6 +306,24 @@ export type MarkdownEditorProps = {
   disabled: boolean
 }
 
+export type SidebarView = {
+  /** Local id; the host prefixes it with the addon id. */
+  id: string
+  label: string
+  icon?: import('../ui/toolbar').ToolbarItem['icon']
+  /** Mounted only while this view is visible. Keep durable drafts in addon state. */
+  Content: ComponentType<{ input: unknown }>
+}
+export type SidebarHandle = {
+  /** Reveal this view, optionally passing selection data to its content. */
+  open: (input?: unknown) => void
+  dispose: () => void
+}
+export type SidebarApi = {
+  /** Views appear in the titlebar picker and command palette; cleanup is automatic. */
+  register: (view: SidebarView) => SidebarHandle
+}
+
 export type AddonContext = {
   colorschemes: {
     register: (scheme: ColorschemeInput) => () => void
@@ -277,6 +332,7 @@ export type AddonContext = {
     setPreferences: (preferences: Partial<ThemePreferences>) => void
   }
   dialogs: DialogApi
+  sidebar: SidebarApi
   toasts: ToastApi
   menus: MenuApi
   toolbar: ToolbarApi
@@ -303,8 +359,19 @@ export type AddonContext = {
     ) => Promise<RenderedMarkdown>
     /** Register or override fenced-code highlighting; restored automatically on addon stop. */
     registerCodeLanguage: (language: CodeLanguage) => () => void
+    /** Resolve enabled highlighting, including contributions from other addons. */
+    resolveCodeLanguage: (
+      name: string,
+    ) => import('@codemirror/language').Language | null
+    /** Escaped code HTML using the app's enabled languages and shared token classes. */
+    renderCode: (source: string, language: string) => string
+    onCodeHighlightingChange: (listener: () => void) => () => void
     /** Contribute a renderer toggle; disabled tokens remain literal, editable Markdown. */
     registerSyntax: (feature: MarkdownSyntaxFeature) => () => void
+    /** Format-specific rendering control, without a Markdown token matcher. */
+    registerDocumentSyntax: (
+      feature: Omit<DocumentSyntaxFeature, 'scope'>,
+    ) => () => void
     /** Query this addon's local syntax id. */
     isSyntaxEnabled: (id: string) => boolean
     onSyntaxChange: (listener: () => void) => () => void
@@ -335,6 +402,8 @@ export type AddonContext = {
   workspace: {
     /** Explorer-only badges/colors. Removed with this addon's lifecycle. */
     registerDecorations: (provider: ExplorerDecorationProvider) => () => void
+    /** Read note text and workspace drafts without embedding media or blocking writes. */
+    index: () => Promise<WorkspaceIndex | null>
     snapshot: () => Promise<WorkspaceSnapshot>
     get: () => Promise<WorkspaceState | null>
     open: () => Promise<WorkspaceState | null>

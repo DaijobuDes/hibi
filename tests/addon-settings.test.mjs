@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { electron } from './electron.mjs'
 import { clickMenu, pressShortcut } from './keyboard.mjs'
+import { waitForAsync } from './poll.mjs'
 import { zipFiles } from './zip.mjs'
 
 test('compact filters reset preferences, group addons, and install reviewed url packages disabled', {
@@ -103,6 +104,7 @@ test('compact filters reset preferences, group addons, and install reviewed url 
     'https://hibi.garden/addons',
   ])
   await addons.getByRole('button', { name: /open plugins folder/i }).click()
+  await waitForAsync(app, () => Boolean(globalThis.openedAddonFolder))
   assert.equal(
     await app.evaluate(() => globalThis.openedAddonFolder),
     join(profile, 'installed-addons'),

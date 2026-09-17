@@ -1,4 +1,5 @@
 import notice from '../../../docs/licenses/typst-assets.md?raw'
+import { fileAssociations } from '../../shared/file-associations'
 import type { AddonManifest } from '../api'
 import { authors } from '../authors'
 
@@ -11,7 +12,7 @@ export default {
   description:
     'Typst documents, live previews, PDF export, and rendered Markdown blocks.',
   defaultEnabled: false,
-  fileExtensions: ['typ'],
+  fileExtensions: fileAssociations.typst.ext,
   authors: [
     authors.may,
     {

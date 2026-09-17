@@ -1,10 +1,20 @@
 # settings
 
+## search
+
+search below **back to app** to find settings by name or description. results group matching controls under their categories, including enabled plugins. choose a result to open its page and focus the control. the clear button or escape restores the category list; down arrow enters results for keyboard navigation. plugin settings load for discovery only when search or the command palette is open.
+
+returning to settings preserves the search and focuses its input.
+
 ## sidebar views
 
-view shortcuts sit beside the window controls while the sidebar is expanded. the sidebar toggle always keeps its sidebar icon and sits at the right edge of the expanded sidebar. shortcuts that fit appear before it; the views dropdown keeps every view available at narrower widths. collapsing the sidebar hides the shortcuts and dropdown, leaving only the toggle.
+view shortcuts sit beside the window controls while the sidebar is expanded. the sidebar toggle always keeps its sidebar icon and sits at the right edge of the expanded sidebar, separated from the views dropdown by a 4 px gap. shortcuts that fit appear before it; the views dropdown keeps every view available at narrower widths. collapsing the sidebar hides the shortcuts and dropdown, leaving only the toggle.
 
 the first dropdown item pins or unpins the current view. up to three pins are remembered and appear first in the shortcuts and dropdown. **In this page** nests headings by level and highlights the section containing the cursor in every editor mode.
+
+## keyboard focus
+
+**appearance → focus → non-input focus outlines** restores focus outlines on buttons, links, and navigation. It is off by default and persists on this device. Keyboard focus still has a background cue; inputs, selects, and editable text keep their existing focus indicators. The preference also covers addon UI, menus, and dialogs.
 
 ## interface text
 

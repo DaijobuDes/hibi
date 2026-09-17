@@ -38,6 +38,8 @@ export type SidebarProps = {
   panelPrefix?: string
   header?: ReactNode
   footer?: ReactNode
+  /** Custom view content in the shared sidebar frame instead of tree rows. */
+  content?: ReactNode
   empty?: ReactNode
   onMenu?: (id: string, anchor: HTMLElement) => void
   /** Move a tree item into a folder; null targets the tree root. */
@@ -55,6 +57,8 @@ export type SidebarProps = {
     maxWidth: number
     onChange: (width: number) => void
     onReset: () => void
+    /** Pointer drags 48px past the minimum collapse a dismissible sidebar. */
+    onCollapse?: () => void
   }
 }
 
@@ -75,9 +79,8 @@ function RenameInput({
   }, [id])
   return (
     <TextInput
-      variant="inline"
       ref={input}
-      className="inline-edit sidebar-rename"
+      className="sidebar-rename"
       aria-label="Rename item"
       value={editing.value}
       disabled={editing.disabled}
@@ -109,6 +112,7 @@ export function Sidebar({
   panelPrefix = '',
   header,
   footer,
+  content,
   empty,
   onMenu,
   onMove,
@@ -199,9 +203,13 @@ export function Sidebar({
     >
       <aside className="sidebar" aria-label={label}>
         {header && <div className="sidebar-header">{header}</div>}
+        {content !== undefined && (
+          <div className="sidebar-content">{content}</div>
+        )}
         {/* biome-ignore lint/a11y/noStaticElementInteractions: drag/drop supplements the keyboard-accessible move menu. */}
         <div
           className="sidebar-scroll"
+          hidden={content !== undefined}
           data-drop-target={dropTarget === ''}
           onDragOver={(event) => {
             if (!onMove || !draggedItem.current) return
@@ -288,7 +296,32 @@ export function Sidebar({
                     }}
                   >
                     {editing?.id === item.id ? (
-                      <RenameInput editing={editing} />
+                      <div
+                        className="sidebar-edit"
+                        style={{ paddingLeft: 16 + depth * 14 }}
+                      >
+                        {mode === 'tree' && (
+                          <ChevronRight
+                            className={`sidebar-chevron ${item.children && collapsible ? '' : 'leaf'}`}
+                            size={12}
+                            style={{
+                              rotate:
+                                item.children && expanded.has(item.id)
+                                  ? '90deg'
+                                  : '0deg',
+                            }}
+                            aria-hidden="true"
+                          />
+                        )}
+                        {Icon && (
+                          <Icon
+                            size={15}
+                            strokeWidth={1.5}
+                            aria-hidden="true"
+                          />
+                        )}
+                        <RenameInput editing={editing} />
+                      </div>
                     ) : (
                       <button
                         key={item.id}
@@ -481,7 +514,7 @@ export function Sidebar({
             onPointerDown={(event) => {
               if (event.button !== 0 || !event.isPrimary) return
               event.preventDefault()
-              event.currentTarget.focus()
+              event.currentTarget.focus({ preventScroll: true })
               event.currentTarget.setPointerCapture(event.pointerId)
               drag.current = {
                 x: event.clientX,
@@ -491,13 +524,19 @@ export function Sidebar({
               setDragging(true)
             }}
             onPointerMove={(event) => {
-              if (drag.current?.pointer === event.pointerId)
-                resize.onChange(
-                  drag.current.width + event.clientX - drag.current.x,
-                )
+              if (drag.current?.pointer !== event.pointerId) return
+              const width = drag.current.width + event.clientX - drag.current.x
+              if (resize.onCollapse && width <= MIN_SIDEBAR_WIDTH - 48) {
+                resize.onChange(drag.current.width)
+                event.currentTarget.releasePointerCapture(event.pointerId)
+                drag.current = null
+                setDragging(false)
+                resize.onCollapse()
+              } else resize.onChange(width)
             }}
             onPointerUp={(event) => {
-              event.currentTarget.releasePointerCapture(event.pointerId)
+              if (event.currentTarget.hasPointerCapture(event.pointerId))
+                event.currentTarget.releasePointerCapture(event.pointerId)
             }}
             onPointerCancel={() => {
               if (drag.current) resize.onChange(drag.current.width)

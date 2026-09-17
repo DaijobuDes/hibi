@@ -10,7 +10,7 @@ on startup, the untouched empty draft shows **start typing**, up to five recent 
 
 the tree shows `.md` and `.markdown` files, including nested folders. folder rows expand and collapse. arrow keys move focus; right/left expand or collapse folders; enter opens a file. the highlight slides to the current document and stays visible under the pointer.
 
-opening a folder leaves the current note intact. opening a file selects or creates its tab and preserves other drafts. saving a new note starts the save dialog in the selected workspace. the tree marks unsaved files across all open tabs, including pending files that have not been saved yet. create nested folders using the native save dialog or your file manager; the tree watches filesystem changes and also has a refresh button.
+opening a folder leaves the current note intact. opening a file selects or creates its tab and preserves other drafts. with **Use tabs** disabled, it replaces the current note after the save/discard/cancel check. saving a new note starts the save dialog in the selected workspace. the tree marks unsaved files across all open tabs, including pending files that have not been saved yet. create nested folders using the native save dialog or your file manager; the tree watches filesystem changes and also has a refresh button.
 
 dotfiles, dotfolders, `node_modules`, and symlinks are excluded. hibi checks canonical paths before reading workspace files. very large folder scans stop at 20,000 entries; choose a smaller documentation folder when that limit is reached.
 

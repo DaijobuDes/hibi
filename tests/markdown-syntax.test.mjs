@@ -159,6 +159,16 @@ test('syntax settings preserve edits, update rich formatting, and discover addon
     .locator('h1')
     .filter({ hasText: /^changed$/ })
     .waitFor()
+    .catch(async (cause) => {
+      const state = await page.evaluate(async () => ({
+        markdown: (await window.hibi.getDocument()).markdown,
+        disabled: localStorage.getItem('hibi:markdown-syntax-disabled'),
+        rich: document.querySelector('.tiptap')?.innerHTML,
+      }))
+      throw new Error(`syntax did not settle: ${JSON.stringify(state)}`, {
+        cause,
+      })
+    })
   assert.equal(
     await rich.locator('h1').innerText(),
     'changed',
@@ -191,9 +201,13 @@ test('syntax settings preserve edits, update rich formatting, and discover addon
     edited,
   )
   // Keep the detected flavor present while exercising rich input rules.
-  await rich.press(
-    process.platform === 'darwin' ? 'Meta+ArrowDown' : 'Control+End',
-  )
+  // CDP does not reliably perform native macOS document-end shortcuts.
+  await rich.evaluate((element) => {
+    element.focus()
+    const selection = window.getSelection()
+    selection.selectAllChildren(element)
+    selection.collapseToEnd()
+  })
   await rich.press('Enter')
   await rich.press('Enter')
   await rich.pressSequentially('H~3~O')

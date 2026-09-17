@@ -5,6 +5,59 @@ import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { electron } from './electron.mjs'
 
+test('startup placeholder is styled before javascript runs', {
+  timeout: 30000,
+}, async (t) => {
+  const profile = await mkdtemp(join(tmpdir(), 'hibi-boot-loading-'))
+  const app = await electron.launch({
+    args: [resolve('.'), `--user-data-dir=${profile}`],
+  })
+  t.after(async () => {
+    await app.close()
+    await rm(profile, { recursive: true, force: true })
+  })
+  await (await app.firstWindow())
+    .getByRole('textbox', { name: /document editor/i })
+    .waitFor()
+  const [page] = await Promise.all([
+    app.waitForEvent('window'),
+    app.evaluate(async ({ BrowserWindow }, path) => {
+      const window = new BrowserWindow({
+        show: false,
+        webPreferences: { javascript: false },
+      })
+      await window.loadFile(path)
+    }, resolve('out/renderer/index.html')),
+  ])
+  page.setDefaultTimeout(5000)
+  await page.emulateMedia({ colorScheme: 'dark' })
+  const state = await page.locator('.loading-screen').evaluate((element) => {
+    const rect = element.getBoundingClientRect()
+    const icon = element.querySelector('.loading-page').getBoundingClientRect()
+    return {
+      coversWindow:
+        rect.x === 0 &&
+        rect.y === 0 &&
+        rect.width === innerWidth &&
+        rect.height === innerHeight,
+      centered:
+        Math.abs(icon.x + icon.width / 2 - innerWidth / 2) < 1 &&
+        Math.abs(icon.y + icon.height / 2 - innerHeight / 2) < 1,
+      background: getComputedStyle(element).backgroundColor,
+    }
+  })
+  assert.equal(state.coversWindow, true)
+  assert.equal(state.centered, true)
+  assert.notEqual(state.background, 'rgba(0, 0, 0, 0)')
+  await page.emulateMedia({ colorScheme: 'light' })
+  assert.notEqual(
+    await page
+      .locator('.loading-screen')
+      .evaluate((element) => getComputedStyle(element).backgroundColor),
+    state.background,
+  )
+})
+
 test('loading page is centered, animates, and respects reduced motion', {
   timeout: 30000,
 }, async (t) => {

@@ -5,6 +5,7 @@ import type { Node } from '@tiptap/pm/model'
 import katex from 'katex'
 import { Sigma, SquareRadical } from 'lucide-react'
 import type { MarkedExtension } from 'marked'
+import { isMarkdownDocument } from '../../shared/document-types'
 import type { AddonContext } from '../api'
 import { mathStyles } from './styles'
 import { blockMath, inlineMath, mathFlavor, mathTokens } from './syntax'
@@ -16,10 +17,12 @@ const options = {
   maxSize: 20,
 }
 export function startMath(context: AddonContext) {
+  const supported = (name: string) =>
+    /\.(?:md|markdown|tex|rmd|qmd|org)$/i.test(name)
   context.editor.registerSyntax({
     id: 'inline',
     label: 'Inline math',
-    group: 'math',
+    group: 'LaTeX',
     description: '$expression$',
     level: 'inline',
     extensions: ['inlineMath'],
@@ -28,7 +31,7 @@ export function startMath(context: AddonContext) {
   context.editor.registerSyntax({
     id: 'block',
     label: 'Block math',
-    group: 'math',
+    group: 'LaTeX',
     description: '$$ expression $$',
     level: 'block',
     extensions: ['blockMath'],
@@ -92,9 +95,14 @@ export function startMath(context: AddonContext) {
     else editor.chain().focus().updateInlineMath({ pos, latex }).run()
   }
   async function insert(block: boolean) {
+    const document = context.editor.getDocument()
+    if (!document || !supported(document.name)) {
+      context.notify('Math insertion is not available for this format.')
+      return
+    }
     const editor = rich,
       view = source,
-      inSource = target === 'source'
+      inSource = target === 'source' || !isMarkdownDocument(document.name)
     const doc = editor?.state.doc,
       text = view?.state.doc
     const selection = inSource
@@ -217,11 +225,15 @@ export function startMath(context: AddonContext) {
       label: `Insert ${label}`,
       run: () => insert(block),
     })
-    context.toolbar.register({
+    const item = context.toolbar.register({
       id,
       label,
       icon: block ? Sigma : SquareRadical,
       onClick: () => insert(block),
+      hidden: true,
     })
+    context.editor.onDocumentChange((document) =>
+      item.update({ hidden: !supported(document.name) }),
+    )
   }
 }

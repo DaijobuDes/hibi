@@ -55,6 +55,33 @@ export async function checkSidebarResize(
   await reload()
   await handle.waitFor()
   assert.equal(Number(await handle.getAttribute('aria-valuenow')), maximum)
+  const settled = async () =>
+    page.waitForFunction(
+      (element) =>
+        Math.abs(
+          element.getBoundingClientRect().x +
+            3 -
+            Number(element.getAttribute('aria-valuenow')),
+        ) < 1,
+      await handle.elementHandle(),
+      { timeout: 5000 },
+    )
+  await settled()
   await handle.dblclick({ position: { x: 3, y: 120 } })
+  assert.equal(Number(await handle.getAttribute('aria-valuenow')), defaultWidth)
+  await settled()
+  const reset = await handle.boundingBox()
+  await page.mouse.move(reset.x + 3, y)
+  await page.mouse.down()
+  await page.mouse.move(reset.x + 3 + 120 - defaultWidth, y, { steps: 6 })
+  assert.equal(Number(await handle.getAttribute('aria-valuenow')), 152)
+  assert.equal(await handle.isVisible(), true)
+  await page.mouse.move(reset.x + 3 + 100 - defaultWidth, y, { steps: 3 })
+  await page.mouse.up()
+  await handle.waitFor({ state: 'hidden' })
+  await page
+    .getByRole('button', { name: /toggle (workspace sidebar|navigation)/i })
+    .click()
+  await handle.waitFor()
   assert.equal(Number(await handle.getAttribute('aria-valuenow')), defaultWidth)
 }

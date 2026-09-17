@@ -11,19 +11,13 @@ export default defineAddon({
   manifest,
   start(context) {
     context.styles.register('tags', css)
-    const browse = (tag?: string) => {
-      context.dialogs.open({
-        title: 'Tags',
-        size: 'wide',
-        content: ({ close }) => (
-          <TagsPanel
-            context={context}
-            initialTag={tag}
-            close={() => close(null)}
-          />
-        ),
-      })
-    }
+    const view = context.sidebar.register({
+      id: 'browser',
+      label: 'Tags',
+      icon: Tags,
+      Content: ({ input }) => <TagsPanel context={context} selection={input} />,
+    })
+    const browse = (tag?: string) => view.open({ tag })
     context.commands.register({
       id: 'browse',
       label: 'Browse tags',
@@ -38,7 +32,7 @@ export default defineAddon({
     })
     const status = context.statusBar.register({
       id: 'tags',
-      label: 'Tags',
+      label: '',
       tooltip: 'Browse workspace tags',
       onClick: () => browse(),
     })
@@ -47,10 +41,8 @@ export default defineAddon({
         ? noteTags(document.markdown)
         : []
       status.update({
-        label: tags.length ? `Tags · ${tags.length}` : 'Tags',
-        tooltip: tags.length
-          ? tags.map((tag) => `#${tag}`).join(' · ')
-          : 'Browse workspace tags',
+        label: tags.length ? `Tags · ${tags.length}` : '',
+        tooltip: tags.map((tag) => `#${tag}`).join(' · '),
       })
     })
     context.editor.registerRich(richTags(browse))

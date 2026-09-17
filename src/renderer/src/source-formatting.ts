@@ -9,6 +9,12 @@ import {
 } from '@codemirror/commands'
 import { EditorSelection, Transaction } from '@codemirror/state'
 import type { EditorView, KeyBinding } from '@codemirror/view'
+import type {
+  DocumentEdit,
+  DocumentFormat,
+  DocumentSelection,
+} from '../../addons/api'
+import type { MediaAttachment } from '../../shared/media'
 
 /** Same format actions as the toolbar; addon keymaps (including vim) run first. */
 const formatBindings: [string, string][] = [
@@ -27,9 +33,8 @@ const formatBindings: [string, string][] = [
     `heading-${i + 1}`,
   ]),
 ]
-export const formattingKeymap: KeyBinding[] = formatBindings.map(
-  ([key, id]) => ({ key, run: (view) => sourceFormatting(view).run(id) }),
-)
+export const formattingKeymap = (run: (id: string) => boolean): KeyBinding[] =>
+  formatBindings.map(([key, id]) => ({ key, run: () => run(id) }))
 
 export type InsertValues = { url: string; alt: string }
 export type SourceFormatting = ReturnType<typeof sourceFormatting>
@@ -54,8 +59,68 @@ const fenceLength = (text: string, minimum = 0) =>
   ) + 1
 
 /** One transaction per action: preserve selections and isolate the undo step. */
-export function sourceFormatting(view: EditorView) {
+function validEdit(
+  edit: DocumentEdit | null | undefined,
+  length: number,
+): edit is DocumentEdit {
+  if (
+    !edit ||
+    !Number.isInteger(edit.from) ||
+    !Number.isInteger(edit.to) ||
+    edit.from < 0 ||
+    edit.to < edit.from ||
+    edit.to > length ||
+    typeof edit.insert !== 'string'
+  )
+    return false
+  const start = edit.selection?.from ?? edit.insert.length,
+    end = edit.selection?.to ?? start
+  return (
+    Number.isInteger(start) &&
+    Number.isInteger(end) &&
+    start >= 0 &&
+    end >= start &&
+    end <= edit.insert.length
+  )
+}
+
+export function sourceFormatting(
+  view: EditorView,
+  format: DocumentFormat['formatting'] | null = 'markdown',
+  media = false,
+) {
   const editable = () => !view.state.readOnly
+  let lastDocument = view.state.doc,
+    text = lastDocument.toString()
+  const selection = (values?: InsertValues): DocumentSelection => {
+    if (lastDocument !== view.state.doc) {
+      lastDocument = view.state.doc
+      text = lastDocument.toString()
+    }
+    const range = view.state.selection.main
+    return { source: text, from: range.from, to: range.to, values }
+  }
+  const supported = (id: string) =>
+    ['undo', 'redo', 'indent', 'outdent'].includes(id) ||
+    (media && id === 'image') ||
+    format === 'markdown' ||
+    !!format?.actions.includes(id)
+  const applyEdit = (edit: DocumentEdit) => {
+    if (!validEdit(edit, view.state.doc.length)) return false
+    const start = edit.selection?.from ?? edit.insert.length,
+      end = edit.selection?.to ?? start
+    view.dispatch({
+      changes: { from: edit.from, to: edit.to, insert: edit.insert },
+      selection: EditorSelection.single(edit.from + start, edit.from + end),
+      annotations: [
+        Transaction.userEvent.of('input.format'),
+        isolateHistory.of('full'),
+      ],
+      scrollIntoView: true,
+    })
+    view.focus()
+    return true
+  }
   const marked = (id: string) => {
     const selection = view.state.selection.main
     const token = marks[id]
@@ -84,7 +149,7 @@ export function sourceFormatting(view: EditorView) {
     )
   }
   const run = (id: string, values?: InsertValues) => {
-    if (!editable()) return false
+    if (!editable() || !supported(id)) return false
     if (id === 'undo' || id === 'redo' || id === 'indent' || id === 'outdent') {
       const done = { undo, redo, indent: indentMore, outdent: indentLess }[id](
         view,
@@ -102,7 +167,22 @@ export function sourceFormatting(view: EditorView) {
       start = 0,
       end = selected.length
     const token = marks[id]
-    if (token) {
+    if (format !== 'markdown') {
+      const edit = format?.apply(id, selection(values))
+      if (!validEdit(edit, doc.length)) return false
+      from = edit.from
+      to = edit.to
+      insert = edit.insert
+      start = edit.selection?.from ?? insert.length
+      end = edit.selection?.to ?? start
+      if (
+        ![start, end].every(Number.isInteger) ||
+        start < 0 ||
+        end < start ||
+        end > insert.length
+      )
+        return false
+    } else if (token) {
       if (marked(id)) {
         from -= token.length
         to += token.length
@@ -213,17 +293,7 @@ export function sourceFormatting(view: EditorView) {
         end = id === 'code-block' ? start + selected.length : start
       } else return false
     }
-    view.dispatch({
-      changes: { from, to, insert },
-      selection: EditorSelection.single(from + start, from + end),
-      annotations: [
-        Transaction.userEvent.of('input.format'),
-        isolateHistory.of('full'),
-      ],
-      scrollIntoView: true,
-    })
-    view.focus()
-    return true
+    return applyEdit({ from, to, insert, selection: { from: start, to: end } })
   }
   return {
     focus: () => view.focus(),
@@ -244,8 +314,13 @@ export function sourceFormatting(view: EditorView) {
                 ? line.startsWith(prefixes[id])
                 : false
       return {
-        pressed: marked(id) || blockActive,
+        supported: supported(id),
+        pressed:
+          format === 'markdown'
+            ? marked(id) || blockActive
+            : (format?.isActive?.(id, selection()) ?? false),
         disabled:
+          !supported(id) ||
           !editable() ||
           (view.state.selection.ranges.length !== 1 &&
             !['undo', 'redo', 'indent', 'outdent'].includes(id)) ||
@@ -276,17 +351,41 @@ export function sourceFormatting(view: EditorView) {
           if (!view.dom.isConnected || view.state.doc !== doc || !editable())
             return false
           const { from, to } = selection.main
-          view.dispatch({
-            changes: { from, to, insert },
-            selection: { anchor: from + insert.length },
-            annotations: [
-              Transaction.userEvent.of('input.format'),
-              isolateHistory.of('full'),
-            ],
-            scrollIntoView: true,
+          return applyEdit({ from, to, insert })
+        },
+        insertMedia(items: readonly MediaAttachment[]) {
+          if (
+            !format ||
+            format === 'markdown' ||
+            !view.dom.isConnected ||
+            view.state.doc !== doc ||
+            !editable()
+          )
+            return false
+          let source = doc.toString(),
+            from = selection.main.from,
+            to = selection.main.to
+          for (const [index, values] of items.entries()) {
+            if (index) {
+              source = source.slice(0, from) + '\n\n' + source.slice(from)
+              from += 2
+              to = from
+            }
+            const edit = format.apply(
+              /\.(mp4|webm|ogv|mov)$/i.test(values.url) ? 'link' : 'image',
+              { source, from, to, values },
+            )
+            if (!validEdit(edit, source.length)) return false
+            source =
+              source.slice(0, edit.from) + edit.insert + source.slice(edit.to)
+            from = to = edit.from + (edit.selection?.to ?? edit.insert.length)
+          }
+          return applyEdit({
+            from: 0,
+            to: doc.length,
+            insert: source,
+            selection: { from, to },
           })
-          view.focus()
-          return true
         },
         run(id: string, values: InsertValues) {
           if (!view.dom.isConnected || view.state.doc !== doc) return false

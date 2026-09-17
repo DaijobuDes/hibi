@@ -27,7 +27,7 @@ the host debounces workspace changes and refreshes on window focus. each provide
 
 ## background native reads
 
-trusted built-in native addons may export optional `queries` alongside `methods`. `context.native.query(method, input?)` only calls explicitly exported queries from the same enabled addon. queries bypass the file-operation lock and must not mutate documents/repositories or show dialogs. mutations continue to use `native.invoke`. sideloaded renderer extensions cannot add native code.
+trusted built-in native addons may export optional `queries` alongside `methods`. `context.native.query(method, input?)` only calls explicitly exported queries from the same enabled addon. queries wait for an active file operation to finish, then read without claiming the mutation lock. they must not mutate documents/repositories or show dialogs. mutations continue to use `native.invoke`. sideloaded renderer extensions cannot add native code.
 
 capture `context.workspace.id()` before starting a query and return it with the result so callers can check folder identity after asynchronous work. queries may overlap saves or folder changes: do not assume the current workspace stays fixed for their entire duration.
 

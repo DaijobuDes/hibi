@@ -5,11 +5,9 @@ export function setDocumentExtensions(extensions: readonly string[]) {
   extra = [...new Set(extensions)]
 }
 export function documentExtensions() {
-  return [...markdownExtensions, ...extra]
+  return [...new Set(['txt', ...markdownExtensions, ...extra])]
 }
-export function isDocumentName(name: string, workspace = false) {
+export function isDocumentName(name: string, _workspace = false) {
   const extension = documentExtension(name)
-  return (
-    workspace ? ['md', 'markdown', ...extra] : documentExtensions()
-  ).includes(extension)
+  return documentExtensions().includes(extension)
 }

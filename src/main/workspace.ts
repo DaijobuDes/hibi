@@ -5,6 +5,7 @@ import { basename, isAbsolute, join, relative, sep } from 'node:path'
 import { type BrowserWindow, dialog } from 'electron'
 import type {
   WorkspaceEntry,
+  WorkspaceIndex,
   WorkspaceSnapshot,
   WorkspaceState,
 } from '../shared/workspace'
@@ -276,6 +277,50 @@ export async function snapshotWorkspace(): Promise<WorkspaceSnapshot> {
   if (!pages.length)
     throw new Error('this workspace has no markdown documents.')
   return { name: basename(selected), pages }
+}
+
+export async function indexWorkspace(): Promise<WorkspaceIndex | null> {
+  const selected = root
+  const workspace = getWorkspace()
+  if (!selected || !workspace) return null
+  const drafts = new Map(
+    getOpenDocuments().flatMap((draft) => {
+      const path = draft.file && relativePath(selected, draft.file)
+      return path && draft.dirty ? [[path, draft] as const] : []
+    }),
+  )
+  const pages: WorkspaceIndex['pages'] = []
+  let bytes = 0
+  async function collect(items: readonly WorkspaceEntry[]) {
+    for (const item of items) {
+      if (item.children) {
+        await collect(item.children)
+        continue
+      }
+      if (item.kind !== 'file') continue
+      try {
+        const draft = drafts.get(item.path)
+        const path =
+          draft?.file ?? (await resolveWorkspaceFile(selected!, item.path))
+        const markdown = draft?.markdown ?? (await readMarkdown(path))
+        bytes += Buffer.byteLength(markdown)
+        if (pages.length >= 2000 || bytes > 20 * 1024 * 1024)
+          throw new Error(
+            'note indexes support up to 2,000 documents and 20 mib of text.',
+          )
+        pages.push({
+          id: createHash('sha256').update(path).digest('hex'),
+          path: item.path,
+          markdown,
+        })
+      } catch (error) {
+        // A concurrent rename/delete can remove a cached entry; the watcher refreshes it.
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+      }
+    }
+  }
+  await collect(workspace.entries)
+  return root === selected ? { workspace, pages } : null
 }
 
 import { isMarkdownDocument } from '../shared/document-types'

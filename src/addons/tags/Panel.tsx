@@ -1,32 +1,47 @@
-import { useMemo, useState } from 'react'
+import { CircleAlert, FileText, Tags } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { isMarkdownDocument } from '../../shared/document-types'
+import type { WorkspacePage } from '../../shared/workspace'
 import type { AddonContext } from '../api'
-import { Button, ControlRow, Panel, TextInput } from '../ui'
+import { Button, ControlRow, Panel, PanelMessage, TextInput } from '../ui'
 import { useWorkspaceSnapshot } from '../workspace-snapshot'
 import { noteTags } from './syntax'
 
 export function TagsPanel({
   context,
-  initialTag,
-  close,
+  selection,
 }: {
   context: AddonContext
-  initialTag?: string | undefined
-  close: () => void
+  selection: unknown
 }) {
-  const { snapshot, workspace, loading, error, refresh } =
-    useWorkspaceSnapshot(context)
+  const { snapshot, workspace, loading, error } = useWorkspaceSnapshot(context)
   const [query, setQuery] = useState('')
-  const [selected, select] = useState(initialTag ?? '')
+  const [selected, select] = useState('')
+  const parsed = useRef(new WeakMap<WorkspacePage, string[]>()).current
+  useEffect(() => {
+    const tag =
+      selection && typeof selection === 'object' && 'tag' in selection
+        ? selection.tag
+        : undefined
+    if (typeof tag === 'string') {
+      select(tag)
+      setQuery('')
+    }
+  }, [selection])
   const index = useMemo(() => {
     const tags = new Map<string, string[]>()
     for (const page of snapshot?.pages ?? []) {
       if (!isMarkdownDocument(page.path)) continue
-      for (const tag of noteTags(page.markdown))
+      let pageTags = parsed.get(page)
+      if (!pageTags) {
+        pageTags = noteTags(page.markdown)
+        parsed.set(page, pageTags)
+      }
+      for (const tag of pageTags)
         tags.set(tag, [...(tags.get(tag) ?? []), page.path])
     }
     return [...tags].sort(([a], [b]) => a.localeCompare(b))
-  }, [snapshot])
+  }, [snapshot, parsed])
   const matches = index.filter(([tag]) =>
     tag.includes(query.trim().replace(/^#/, '').toLowerCase()),
   )
@@ -41,17 +56,30 @@ export function TagsPanel({
           value={query}
           onChange={(event) => setQuery(event.target.value)}
         />
-        <Button onClick={refresh} disabled={loading}>
-          Refresh
-        </Button>
       </ControlRow>
-      {error && <p role="alert">{error}</p>}
-      {loading ? (
-        <p role="status">Reading tags…</p>
+      {error ? (
+        <PanelMessage
+          icon={<CircleAlert size={24} />}
+          title="Tags unavailable"
+          role="alert"
+        >
+          {error}
+        </PanelMessage>
+      ) : loading && !snapshot ? (
+        <PanelMessage icon={<Tags size={24} />} title="Reading tags…" loading />
       ) : !workspace ? (
-        <Button onClick={() => void context.workspace.open().then(refresh)}>
-          Open a folder
-        </Button>
+        <PanelMessage icon={<Tags size={24} />} title="No workspace open">
+          Open a workspace to browse tags across your notes.
+        </PanelMessage>
+      ) : !matches.length ? (
+        <PanelMessage
+          icon={<Tags size={24} />}
+          title={index.length ? 'No matching tags' : 'No tags yet'}
+        >
+          {index.length
+            ? 'Try another filter.'
+            : 'Write #tag in a note to organize it here.'}
+        </PanelMessage>
       ) : (
         <div className="tags-browser">
           <section className="tags-list" aria-label="Workspace tags">
@@ -66,32 +94,33 @@ export function TagsPanel({
                 <span>{paths.length}</span>
               </Button>
             ))}
-            {!matches.length && (
-              <p>No tags found. write #tag in a note to add one.</p>
-            )}
           </section>
-          <section
-            className="tags-files"
-            aria-label={selected ? `Notes tagged #${selected}` : 'Tagged notes'}
-          >
-            <p>
-              {selected
-                ? `#${selected} · ${files.length} ${files.length === 1 ? 'note' : 'notes'}`
-                : 'Select a tag to see its notes.'}
-            </p>
-            {files.map((path) => (
-              <Button
-                variant="row"
-                key={path}
-                onClick={() => {
-                  close()
-                  void context.workspace.openFile(path)
-                }}
-              >
-                {path}
-              </Button>
-            ))}
-          </section>
+          {files.length > 0 && (
+            <section
+              className="tags-files"
+              aria-label={
+                selected ? `Notes tagged #${selected}` : 'Tagged notes'
+              }
+            >
+              <p>
+                {selected
+                  ? `#${selected} · ${files.length} ${files.length === 1 ? 'note' : 'notes'}`
+                  : 'Select a tag to see its notes.'}
+              </p>
+              {files.map((path) => (
+                <Button
+                  variant="row"
+                  key={path}
+                  onClick={() => {
+                    void context.workspace.openFile(path)
+                  }}
+                >
+                  <FileText size={14} aria-hidden="true" />
+                  <span title={path}>{path}</span>
+                </Button>
+              ))}
+            </section>
+          )}
         </div>
       )}
     </Panel>

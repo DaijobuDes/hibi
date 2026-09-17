@@ -19,8 +19,17 @@ test('sentence case is default; lowercase covers UI and menus while preserving c
       dialog.showMessageBox = async () => ({ response: 1 })
     })
     const page = await app.firstWindow()
+    // Give a cold native renderer its own startup deadline; interactions stay strict.
+    await page
+      .getByRole('textbox', { name: /document editor/i })
+      .waitFor({ timeout: 15000 })
+      .catch(async (error) => {
+        throw new Error(
+          `editor did not start: ${(await page.locator('body').innerText()).slice(0, 1200)}`,
+          { cause: error },
+        )
+      })
     page.setDefaultTimeout(6500)
-    await page.getByRole('textbox', { name: /document editor/i }).waitFor()
     return page
   }
   t.after(async () => {
@@ -28,6 +37,16 @@ test('sentence case is default; lowercase covers UI and menus while preserving c
     await rm(profile, { recursive: true, force: true })
   })
   let page = await launch()
+  await app.evaluate(({ Menu }) => {
+    globalThis.initialHibiMenu = Menu.getApplicationMenu()
+  })
+  await page.evaluate(() => window.hibi.setUiCase('sentence'))
+  assert.equal(
+    await app.evaluate(
+      ({ Menu }) => globalThis.initialHibiMenu === Menu.getApplicationMenu(),
+    ),
+    true,
+  )
   assert.equal(
     await page.locator('.startup-placeholder h2').innerText(),
     'Start typing',

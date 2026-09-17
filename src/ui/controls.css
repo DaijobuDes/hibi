@@ -48,7 +48,7 @@
 button.ui-button:focus-visible,
 button.icon-button:focus-visible {
   outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline-offset: -2px;
 }
 :is(input, textarea, select)[aria-invalid="true"] {
   border-color: var(--status-danger);
@@ -223,6 +223,32 @@ span.select-control > svg {
   gap: var(--space-2);
   min-width: 0;
 }
+.ui-panel .ui-panel-message {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 180px;
+  padding: var(--space-5) var(--space-2);
+  color: var(--muted);
+  text-align: center;
+  font-size: var(--text-sm);
+}
+.ui-panel-message-icon {
+  display: flex;
+  margin-bottom: var(--space-2);
+  opacity: 0.65;
+}
+.ui-panel-message strong {
+  color: var(--ink);
+  font-weight: 500;
+}
+.ui-panel-message p {
+  max-width: 32ch;
+  line-height: 1.5;
+}
 .ui-control-row > .ui-field {
   flex: 1 1 160px;
 }
@@ -246,4 +272,68 @@ span.select-control > svg {
   button.ui-button {
     transition: none;
   }
+}
+.ui-panel-message[data-loading="true"] .ui-panel-message-icon {
+  animation: panel-loading 1.8s ease-in-out infinite alternate;
+}
+@keyframes panel-loading {
+  from {
+    opacity: 0.25;
+  }
+  to {
+    opacity: 0.7;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ui-panel-message[data-loading="true"] .ui-panel-message-icon {
+    animation: none;
+  }
+}
+.document-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  margin: var(--space-3);
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  font: var(--text-sm) / 1.5 var(--font-ui);
+  overflow-wrap: anywhere;
+}
+.document-notice > svg {
+  flex: none;
+  margin-top: 2px;
+}
+.document-notice > div {
+  min-width: 0;
+}
+.document-notice p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+.document-notice .document-notice-title {
+  color: var(--ink);
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--muted) 45%, transparent) transparent;
+}
+.preview-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  padding: var(--space-2) var(--space-3);
+  background: var(--background);
+  border-bottom: 1px solid var(--border);
+}
+.preview-toolbar:empty {
+  display: none;
 }

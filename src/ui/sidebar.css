@@ -1,6 +1,6 @@
 .sidebar-slot {
   position: relative;
-  width: var(--sidebar-width, 196px);
+  width: var(--sidebar-width, 256px);
   flex-shrink: 0;
   min-height: 0;
   z-index: 1;
@@ -12,7 +12,7 @@
 .sidebar {
   display: flex;
   flex-direction: column;
-  width: var(--sidebar-width, 196px);
+  width: var(--sidebar-width, 256px);
   flex-shrink: 0;
   min-height: 0;
   height: 100%;
@@ -48,10 +48,27 @@
   display: flex;
   padding: var(--space-1);
 }
-.sidebar-scroll {
+.sidebar-scroll,
+.sidebar-content {
   flex: 1;
   overflow: auto;
   min-height: 0;
+}
+.sidebar-content {
+  display: flex;
+  flex-direction: column;
+  font-size: var(--text-ui);
+}
+.sidebar-content > .ui-panel {
+  display: flex;
+  flex-direction: column;
+  padding: 0 var(--space-3);
+  gap: var(--space-3);
+  min-width: 0;
+}
+.sidebar-content p {
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 .sidebar-items {
   position: relative;
@@ -105,14 +122,25 @@
   color: var(--accent);
   flex-shrink: 0;
 }
-.sidebar-rename {
-  width: calc(100% - 24px);
-  margin: 1px 12px;
-  height: 26px;
+.sidebar-edit {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 100%;
+  padding-right: 12px;
+}
+.sidebar-edit > svg {
+  flex-shrink: 0;
+}
+.sidebar-edit .sidebar-rename {
+  flex: 1;
+  width: 0;
+  margin: 0 0 0 -5px;
+  height: calc(var(--sidebar-row-height) - 4px);
+  min-height: 0;
   min-width: 0;
-  font: inherit;
-  font-size: var(--text-ui);
-  padding-inline: 0;
+  font: var(--text-ui) / 1.4 var(--font-ui);
+  padding: 0 4px;
 }
 @media (hover: none) {
   .sidebar-items .sidebar-more {

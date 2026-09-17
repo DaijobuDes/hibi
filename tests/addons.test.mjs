@@ -103,9 +103,12 @@ test('plugin pages, metadata, shared controls, and full source vim editing', {
   )
   await toggleAddon('frontmatter', false)
   assert.equal(
-    await page.locator('.settings-sidebar .sidebar-section').count(),
+    await page
+      .getByRole('tab', { name: /^frontmatter$/i, exact: true })
+      .count(),
     0,
   )
+  await page.getByRole('tab', { name: /^markdown$/i, exact: true }).waitFor()
   await toggleAddon('vim', true)
   assert.equal(
     await page.locator('style[data-addon-style="vim.editor"]').count(),
@@ -169,7 +172,7 @@ test('plugin pages, metadata, shared controls, and full source vim editing', {
     await page.waitForFunction(
       (open) =>
         document.querySelector('.app-statusbar').getBoundingClientRect()
-          .left === (open ? 196 : 0),
+          .left === (open ? 256 : 0),
       open,
     )
     assert.equal(
@@ -323,9 +326,10 @@ test('plugin pages, metadata, shared controls, and full source vim editing', {
     0,
   )
   assert.equal(
-    await page.locator('.settings-sidebar .sidebar-section').count(),
+    await page.getByRole('tab', { name: /^vim$/i, exact: true }).count(),
     0,
   )
+  await page.getByRole('tab', { name: /^markdown$/i, exact: true }).waitFor()
   await page.getByRole('button', { name: /^back to app$/i }).click()
   await page.waitForFunction(() => !document.querySelector('[data-vim-plugin]'))
   assert.equal(await page.locator('[data-status-id^="vim."]').count(), 0)

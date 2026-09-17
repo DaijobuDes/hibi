@@ -1,8 +1,20 @@
 # editing
 
+Settings → Editor → Writing → **Spell check** controls native spelling underlines in rich text, including the rendered pane in side-by-side view. It is on by default and persists on this device. Source/code editing keeps spell checking off. Changing the setting does not alter document text.
+
+## default view
+
+Settings → Editor → Layout → **Default view** chooses Normal, Side-by-side, or Source only for startup. Changing it also updates the current view without changing the document. Source only focuses the editor when it is ready, so you can type immediately after launch. Toolbar switches are temporary and do not overwrite the default; the current view carries across files until you switch again or restart Hibi.
+
+Formats keep their supported-view restrictions. If the selected view is unavailable, Hibi uses side-by-side when supported, otherwise source only. For example, plain text always uses source only. Opening a format that supports your selected view restores it. Normal remains the default for a new installation.
+
 ## file tabs
 
-the top bar shows open notes as compact pill tabs. new notes, file opens, local links, and remote imports retain other tabs and their unsaved drafts. clicking a filename selects its tab; it no longer starts renaming. use **rename document…** in the command palette or **rename** in the workspace menu.
+Opening a file smoothly reveals its entire tab, including the close button; new tabs at the end scroll the strip to the right edge. Closing tabs collapse their width and spacing smoothly, including when the strip overflows. Drag tabs to reorder them, or focus a tab and use Alt+Shift+Left/Right. Reordering keeps documents, drafts, and the active selection intact and survives renderer reloads during the current app session. Reduced motion makes scrolling and position changes immediate.
+
+Tabs fade in while sliding right and fade out while sliding left. Reduced motion disables these transitions. Settings → Editor → Documents → **Use tabs** turns the tab bar on or off. Turning it off keeps the active note and asks to save, discard, or cancel for other unsaved tabs. Single-file mode shows the same filename and unsaved indicator as the tab title, without a pill or close button. It replaces the current note when opening or creating another, with the same safeguards; canceling leaves it intact. The preference survives restarting Hibi. Re-enabling tabs restores normal multi-file behavior; closed tabs and their tab-based navigation history are not restored.
+
+the top bar shows open notes as compact pill tabs. tabs share the formatting toolbar's 12 px inset from the expanded sidebar, including in narrow windows. new notes, file opens, local links, and remote imports retain other tabs and their unsaved drafts. clicking a filename selects its tab; it no longer starts renaming. use **rename document…** in the command palette or **rename** in the workspace menu.
 
 each tab shows its own unsaved indicator and close button. cmd/ctrl+w closes the active tab; the command palette and hotkey settings expose the same action. arrow keys and home/end navigate focused tabs; overflowing tabs scroll horizontally. closing a dirty tab offers save, discard, or cancel, including for inactive tabs. closing the window checks every unsaved tab. switching back to clean files refreshes them from disk; dirty tabs retain their saved baseline for external-change checks. workspace moves update open paths, and deleting a folder checks and closes all affected tabs. tabs survive renderer reloads within the running app; restoring tabs after quitting is not yet supported.
 
@@ -66,6 +78,8 @@ appearance also controls the text cursor in both editors: line, outline block, f
 
 the optional [typst extension](../editing/typst.md) adds `.typ` documents with live preview and pdf export, plus rendered typst blocks in markdown.
 
+Other [document formats](../editing/formats.md) add native previews, format-aware toolbar tools, and explicit compiler actions. Enable their plugins from Addons; enabled formats appear in Formats settings. Markdown and plain text stay available, and unsupported views are disabled.
+
 see [media and navigation](../editing/media-and-navigation.md) for drag/drop, attachments, shift-click links, back/forward shortcuts, remote opening, and leaving empty formatted blocks.
 
 click the filename, enter a new name, and press enter. escape or clicking away cancels. names without an extension receive `.md`. renaming an unsaved document sets its suggested save name; existing files are renamed in the same folder without replacing another file. unsaved edits remain pending after a rename.
@@ -75,3 +89,6 @@ new, open, save, and save as use native dialogs. hibi checks for unsaved edits b
 source switching preserves original markdown. rich edits may normalize markdown syntax. the [frontmatter addon](frontmatter.md) preserves metadata while allowing visual body edits. raw html, reference definitions, and frontmatter without its enabled addon stay editable in source mode; their rich preview is read-only, without a banner. local images display without rewriting their Markdown references.
 
 documents are UTF-8 and limited to 2 mib. drafts are held in memory; renderer reloads recover them from the main process, but a full process or machine crash can lose unsaved edits.
+# Start screen
+
+Switching editor views dismisses the first-start welcome screen, just like typing or choosing Dismiss. Empty documents retain the regular typing placeholder.

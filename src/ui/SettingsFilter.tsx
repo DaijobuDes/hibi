@@ -17,8 +17,8 @@ export function SettingsFilter({
   placeholder: string
   value: string
   onChange: (value: string) => void
-  onReset: () => void
-  resetDisabled: boolean
+  onReset?: () => void
+  resetDisabled?: boolean
   disabled?: boolean
 }) {
   const row = useRef<HTMLDivElement>(null)
@@ -39,9 +39,11 @@ export function SettingsFilter({
         disabled={disabled}
         onChange={(event) => onChange(event.target.value)}
       />
-      <Button disabled={disabled || resetDisabled} onClick={onReset}>
-        Reset all
-      </Button>
+      {onReset && (
+        <Button disabled={disabled || resetDisabled} onClick={onReset}>
+          Reset all
+        </Button>
+      )}
     </div>
   )
 }

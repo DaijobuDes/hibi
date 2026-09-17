@@ -91,6 +91,19 @@ test('git addon stages, commits, switches, pulls and pushes only to a disposable
   await page.locator('#addon-git').click()
   await page.waitForFunction(() => document.querySelector('#addon-git').checked)
   await page.getByRole('button', { name: /^back to app$/i }).click()
+  assert.equal(
+    await page.locator('[data-status-id="git.repository"]').count(),
+    0,
+  )
+  const openGit = async () => {
+    const picker = page.getByRole('button', { name: /sidebar views/i })
+    if (!(await picker.isVisible()))
+      await page
+        .getByRole('button', { name: /toggle workspace sidebar/i })
+        .click()
+    await picker.click()
+    await page.getByRole('menuitem', { name: /^git$/i, exact: true }).click()
+  }
   const invoke = (method, input) =>
     page.evaluate(
       ({ method, input }) => window.hibi.invokeAddon('git', method, input),
@@ -109,11 +122,33 @@ test('git addon stages, commits, switches, pulls and pushes only to a disposable
   await invoke('unstage', 'note.md')
   assert.equal((await invoke('state')).files[0].worktree, 'M')
   await invoke('stage', 'note.md')
-  await page.getByRole('button', { name: /^git$/i, exact: true }).click()
-  const panel = page.getByRole('dialog', { name: /^git$/i, exact: true })
-  await panel.getByLabel(/commit staged changes/i).fill('local commit')
-  await panel.getByRole('button', { name: /^commit$/i, exact: true }).click()
-  await panel.getByText(/working tree clean\./i).waitFor()
+  await openGit()
+  const panel = page.getByRole('complementary', { name: /^git$/i, exact: true })
+  await panel.getByRole('button', { name: /^commit changes$/i }).click()
+  let commitDialog = page.getByRole('dialog', { name: /^commit changes$/i })
+  await commitDialog.getByLabel(/commit message/i).fill('local commit')
+  await page.keyboard.press('Escape')
+  await commitDialog.waitFor({ state: 'hidden' })
+  assert.equal(await page.getByRole('dialog').count(), 0)
+  await page.getByRole('button', { name: /toggle workspace sidebar/i }).click()
+  await panel.waitFor({ state: 'hidden' })
+  await openGit()
+  await panel.getByRole('button', { name: /^commit changes$/i }).click()
+  commitDialog = page.getByRole('dialog', { name: /^commit changes$/i })
+  assert.equal(
+    await commitDialog.getByLabel(/commit message/i).inputValue(),
+    'local commit',
+  )
+  await commitDialog
+    .getByRole('button', { name: /^commit$/i, exact: true })
+    .click()
+  await commitDialog.waitFor({ state: 'hidden' })
+  await panel.getByText(/^working tree clean$/i).waitFor()
+  assert.equal(await panel.getByRole('textbox').count(), 0)
+  assert.equal(
+    await panel.getByRole('heading', { name: /changes/i }).count(),
+    0,
+  )
   await panel.getByRole('button', { name: /^push/i }).click()
   await waitForAsync(
     page,
@@ -156,7 +191,10 @@ test('git addon stages, commits, switches, pulls and pushes only to a disposable
     (await page.evaluate(() => window.hibi.getDocument())).markdown,
     'remote change',
   )
-  await page.keyboard.press('Escape')
+  await page.getByRole('button', { name: /sidebar views/i }).click()
+  await page
+    .getByRole('menuitem', { name: /^workspace$/i, exact: true })
+    .click()
   await panel.waitFor({ state: 'hidden' })
   await page.evaluate(() => {
     window.gitBusyChanges = 0
@@ -311,4 +349,8 @@ test('git addon stages, commits, switches, pulls and pushes only to a disposable
     await page.evaluate(() => window.hibi.queryAddon('git', 'decorations')),
     null,
   )
+  await openGit()
+  await panel.getByText(/^no repository$/i).waitFor()
+  assert.equal(await panel.getByRole('alert').count(), 0)
+  assert.equal(await panel.getByText(/Error invoking remote method/).count(), 0)
 })

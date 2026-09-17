@@ -31,8 +31,9 @@ import {
 import { EditorView, keymap, lineNumbers, placeholder } from '@codemirror/view'
 import { tags } from '@lezer/highlight'
 import { marked } from 'marked'
-import { useEffect, useRef } from 'react'
-import type { SourceExtension } from '../../addons/api'
+import { useEffect, useRef, useState } from 'react'
+import type { DocumentFormat, SourceExtension } from '../../addons/api'
+import { DocumentNotice } from '../../ui/DocumentNotice'
 import { codeHighlighter, codeLanguages } from './code-languages'
 import type { FindMove, FindStatus } from './FindBar'
 import {
@@ -56,6 +57,9 @@ const highlighting = HighlightStyle.define([
 export function SourceEditor({
   markdownMode,
   sourceLanguage,
+  codeLanguage,
+  sourceFormat,
+  supportsMedia,
   label,
   active,
   onReady,
@@ -74,6 +78,9 @@ export function SourceEditor({
 }: {
   markdownMode: boolean
   sourceLanguage: Language | undefined
+  codeLanguage?: string | undefined
+  sourceFormat?: DocumentFormat['formatting']
+  supportsMedia: boolean
   label: string
   active: boolean
   onReady: () => void
@@ -90,15 +97,42 @@ export function SourceEditor({
   onFormatting: (formatting: SourceFormatting | null) => void
   onLink: (href: string) => void
 }) {
-  const parserOptions = useRef({ markdownMode, sourceLanguage, label })
-  parserOptions.current = { markdownMode, sourceLanguage, label }
+  const parserOptions = useRef({
+    markdownMode,
+    sourceLanguage,
+    codeLanguage,
+    label,
+    sourceFormat,
+    supportsMedia,
+  })
+  parserOptions.current = {
+    markdownMode,
+    sourceLanguage,
+    codeLanguage,
+    label,
+    sourceFormat,
+    supportsMedia,
+  }
   const configureParser = useRef(() => {})
   // biome-ignore lint/correctness/useExhaustiveDependencies: parser configuration reads these current values through parserOptions.
   useEffect(() => {
     configureParser.current()
-  }, [markdownMode, sourceLanguage, label])
+  }, [
+    markdownMode,
+    sourceLanguage,
+    codeLanguage,
+    label,
+    sourceFormat,
+    supportsMedia,
+  ])
   const host = useRef<HTMLDivElement>(null)
   const view = useRef<EditorView | null>(null)
+  const [installedExtensions, setInstalledExtensions] = useState<
+    readonly SourceExtension[] | null
+  >(null)
+  const [measured, setMeasured] = useState(false)
+  const [extensionError, setExtensionError] = useState('')
+  const inputReady = installedExtensions === sourceExtensions
   const change = useRef(onChange)
   const initialValue = useRef(value)
   const appliedRevision = useRef(externalRevision)
@@ -121,12 +155,19 @@ export function SourceEditor({
     if (!host.current) return
     const language = new Compartment()
     const markdown = () => {
-      const { markdownMode, sourceLanguage, label } = parserOptions.current
+      const { markdownMode, sourceLanguage, codeLanguage, label } =
+        parserOptions.current
       return [
         markdownMode
-          ? markdownLanguage({ codeLanguages: codeLanguages.resolve })
-          : (sourceLanguage ?? []),
-        markdownMode ? keymap.of(formattingKeymap) : [],
+          ? codeLanguage && !codeLanguages.resolve(codeLanguage)
+            ? []
+            : markdownLanguage({ codeLanguages: codeLanguages.resolve })
+          : codeLanguage
+            ? (codeLanguages.resolve(codeLanguage) ?? [])
+            : (sourceLanguage ?? []),
+        keymap.of(
+          formattingKeymap((id) => formatting.current?.run(id) ?? false),
+        ),
         EditorView.contentAttributes.of({
           'aria-label': markdownMode ? 'Markdown editor' : `${label} editor`,
         }),
@@ -145,7 +186,10 @@ export function SourceEditor({
               return { dom }
             },
           }),
-          editable.current.of(EditorView.editable.of(true)),
+          editable.current.of([
+            EditorView.editable.of(false),
+            EditorState.readOnly.of(true),
+          ]),
           numbers.current.of([]),
           language.of(markdown()),
           history(),
@@ -248,19 +292,26 @@ export function SourceEditor({
       }),
     })
     view.current = editor
-    configureParser.current = () =>
+    configureParser.current = () => {
       editor.dispatch({ effects: language.reconfigure(markdown()) })
+      formatting.current = sourceFormatting(
+        editor,
+        parserOptions.current.sourceFormat ??
+          (parserOptions.current.markdownMode ? 'markdown' : null),
+        parserOptions.current.supportsMedia,
+      )
+      reportFormatting.current(formatting.current)
+    }
     const unsubscribe = codeLanguages.subscribe(() =>
       editor.dispatch({ effects: language.reconfigure(markdown()) }),
     )
-    formatting.current = sourceFormatting(editor)
-    reportFormatting.current(formatting.current)
+    configureParser.current()
     let disposed = false
     const measure = () => {
       if (!disposed)
         editor.requestMeasure({
           read: () => null,
-          write: () => ready.current(),
+          write: () => setMeasured(true),
         })
     }
     void window.document.fonts.load('13px "Geist Mono"').then(measure, measure)
@@ -278,16 +329,29 @@ export function SourceEditor({
   useEffect(() => {
     let canceled = false
     const editor = view.current
+    setExtensionError('')
     void Promise.all(
-      sourceExtensions.map((extension) => extension.create()),
-    ).then((extensions) => {
-      if (!canceled && editor)
-        editor.dispatch({ effects: addons.current.reconfigure(extensions) })
-    })
+      sourceExtensions.map(async (extension) => extension.create()),
+    )
+      .then((extensions) => {
+        if (!canceled && editor) {
+          editor.dispatch({ effects: addons.current.reconfigure(extensions) })
+          setInstalledExtensions(sourceExtensions)
+        }
+      })
+      .catch((error: unknown) => {
+        if (!canceled) {
+          setExtensionError(String(error))
+          ready.current()
+        }
+      })
     return () => {
       canceled = true
     }
   }, [sourceExtensions])
+  useEffect(() => {
+    if (inputReady && measured) ready.current()
+  }, [inputReady, measured])
 
   useEffect(() => {
     // Only reconcile edits from the other pane; never replay our own stale props.
@@ -308,11 +372,11 @@ export function SourceEditor({
   useEffect(() => {
     view.current?.dispatch({
       effects: editable.current.reconfigure([
-        EditorView.editable.of(!disabled),
-        EditorState.readOnly.of(disabled),
+        EditorView.editable.of(!disabled && inputReady),
+        EditorState.readOnly.of(disabled || !inputReady),
       ]),
     })
-  }, [disabled])
+  }, [disabled, inputReady])
 
   useEffect(() => {
     view.current?.dispatch({
@@ -361,5 +425,15 @@ export function SourceEditor({
       (findMove.direction === 'next' ? findNext : findPrevious)(view.current)
   }, [findActive, findMove])
 
-  return <div className="source-editor" ref={host} />
+  return (
+    <>
+      {extensionError && (
+        <DocumentNotice
+          title="Editor extension unavailable"
+          message={extensionError}
+        />
+      )}
+      <div className="source-editor" ref={host} />
+    </>
+  )
 }

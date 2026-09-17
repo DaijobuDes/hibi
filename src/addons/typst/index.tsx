@@ -1,5 +1,5 @@
-import { FileDown } from 'lucide-react'
 import { isMarkdownDocument } from '../../shared/document-types'
+import { formatToolbar } from '../_shared/format-toolbar'
 import { type DocumentFormat, defineAddon } from '../api'
 import { typstNode } from './Block'
 import { typstLanguage } from './language'
@@ -47,11 +47,16 @@ export default defineAddon({
       name: 'typst',
       extensions: ['typ'],
       language: typstLanguage,
-      Preview: ({ value, document }) => (
+      codeLanguage: 'typst',
+      views: ['side-by-side', 'markdown'],
+      formatting: formatToolbar('typst'),
+      Preview: ({ value, document, toolbar }) => (
         <TypstPreview
           value={value}
           documentId={document.id}
           context={context}
+          toolbar={toolbar}
+          onExport={exportPdf}
         />
       ),
       render: async (source, id) => ({ html: await render(source, id), css }),
@@ -105,7 +110,7 @@ export default defineAddon({
           context.app.runAction('side-by-side')
       },
     })
-    const exportPdf = async () => {
+    async function exportPdf() {
       const document = context.editor.getDocument()
       if (!document?.name.toLowerCase().endsWith('.typ')) {
         await context.dialogs.alert({
@@ -126,16 +131,6 @@ export default defineAddon({
       label: 'Export Typst PDF',
       run: exportPdf,
     })
-    const pdf = context.toolbar.register({
-      id: 'pdf',
-      label: 'Export Typst PDF',
-      icon: FileDown,
-      onClick: exportPdf,
-      hidden: true,
-    })
-    context.editor.onDocumentChange((document) =>
-      pdf.update({ hidden: !document.name.toLowerCase().endsWith('.typ') }),
-    )
     context.commands.register({
       id: 'block',
       label: 'Insert Typst block',

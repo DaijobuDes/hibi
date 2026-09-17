@@ -11,3 +11,4 @@ export type GitState = {
   ahead: number
   behind: number
 }
+export type GitStatus = { state: GitState | null; notice: string }

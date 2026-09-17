@@ -1,18 +1,9 @@
-import { createHash } from 'node:crypto'
-import { constants } from 'node:fs'
-import {
-  lstat,
-  mkdir,
-  mkdtemp,
-  open,
-  readdir,
-  realpath,
-  rm,
-} from 'node:fs/promises'
+import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { createServer, type Server } from 'node:http'
 import { tmpdir } from 'node:os'
-import { dirname, isAbsolute, join, relative, sep } from 'node:path'
+import { join } from 'node:path'
 import { app, type UtilityProcess, utilityProcess } from 'electron'
+import { documentProject } from '../_shared/document-project'
 import type { NativeAddonContext } from '../api'
 import type { TypstResult } from './types'
 
@@ -40,18 +31,7 @@ let tail: Promise<unknown> = Promise.resolve()
 let cancel: (() => void) | undefined
 const allowed =
   /\.(typ|typc|txt|md|markdown|json|yaml|yml|toml|csv|bib|xml|png|jpe?g|gif|webp|svg|avif|pdf|ttf|otf|ttc|otc|wasm)$/i
-const ignored = new Set([
-  'node_modules',
-  'target',
-  'out',
-  'dist',
-  'build',
-  'release',
-])
-const within = (root: string, path: string) => {
-  const part = relative(root, path)
-  return part !== '..' && !part.startsWith(`..${sep}`) && !isAbsolute(part)
-}
+const dependencies = new Map<string, Set<string>>()
 
 function terminate(worker: UtilityProcess | null) {
   if (!worker) return
@@ -80,91 +60,15 @@ export function stopCompiler() {
 }
 app.on('before-quit', stopCompiler)
 
-async function project(
-  context: NativeAddonContext,
-  epoch: number,
-  id?: string,
-) {
-  const note = await context.document.path(id)
-  const workspace = context.workspace.directory()
-  const root = note
-    ? workspace && within(workspace, note)
-      ? workspace
-      : dirname(note)
-    : null
-  const entry = root && note ? relative(root, note) : 'untitled.typ'
-  const paths: {
-    path: string
-    name: string
-    size: number
-    modified: number
-    changed: number
-  }[] = []
-  let bytes = 0
-  let examined = 0
-  async function walk(directory: string) {
-    for (const item of await readdir(directory, { withFileTypes: true })) {
-      if (epoch !== generation) throw new Error('typst compilation canceled.')
-      if (++examined > 10000)
-        throw new Error('typst project is too large. open a smaller workspace.')
-      if (
-        item.name.startsWith('.') ||
-        ignored.has(item.name) ||
-        item.isSymbolicLink()
-      )
-        continue
-      const path = join(directory, item.name)
-      if ((await realpath(path)) !== path) continue
-      if (item.isDirectory()) await walk(path)
-      else if (item.isFile() && allowed.test(item.name)) {
-        const info = await lstat(path)
-        if (info.isSymbolicLink()) continue
-        bytes += info.size
-        if (paths.length >= 1000 || bytes > 64 * 1024 * 1024)
-          throw new Error(
-            'typst projects support up to 1,000 input files and 64 mib. open a smaller workspace.',
-          )
-        paths.push({
-          path,
-          name: relative(root!, path),
-          size: info.size,
-          modified: info.mtimeMs,
-          changed: info.ctimeMs,
-        })
-      }
-    }
-  }
-  if (root) await walk(root)
-  const key = createHash('sha256')
-    .update(JSON.stringify([root, paths]))
-    .digest('hex')
-  if (key === fingerprint) return { entry, key }
-  const files: [string, Uint8Array][] = []
-  for (const item of paths) {
-    const file = await open(
-      item.path,
-      constants.O_RDONLY |
-        (constants.O_NOFOLLOW ?? 0) |
-        (constants.O_NONBLOCK ?? 0),
-    )
-    try {
-      const info = await file.stat()
-      if (
-        !info.isFile() ||
-        info.size !== item.size ||
-        (await realpath(item.path)) !== item.path
-      )
-        throw new Error('typst input changed; try again.')
-      const data = Buffer.alloc(item.size + 1)
-      const { bytesRead } = await file.read(data, 0, data.length, 0)
-      if (bytesRead !== item.size)
-        throw new Error('typst input changed; try again.')
-      files.push([item.name, data.subarray(0, bytesRead)])
-    } finally {
-      await file.close()
-    }
-  }
-  return { entry, key, files }
+function project(context: NativeAddonContext, epoch: number, id?: string) {
+  return documentProject(context, {
+    id,
+    entry: 'untitled.typ',
+    allowed,
+    previousKey: fingerprint,
+    paths: [...(dependencies.get(id ?? context.document.get().id) ?? [])],
+    canceled: () => epoch !== generation,
+  })
 }
 
 export async function compileTypst(
@@ -222,7 +126,7 @@ export async function compileTypst(
           throw new Error('could not isolate typst networking.')
         const proxy = `http://127.0.0.1:${address.port}`
         child = utilityProcess.fork(
-          join(import.meta.dirname, 'typst-worker.js'),
+          join(app.getAppPath(), 'out/main/typst-worker.js'),
           [],
           {
             serviceName: 'hibi typst',
@@ -263,7 +167,13 @@ export async function compileTypst(
         })
         fingerprint = ''
       }
-      const snapshot = await project(context, epoch, value.documentId)
+      let snapshot = await project(context, epoch, value.documentId)
+      const dependencyKey = value.documentId ?? context.document.get().id
+      const requested = dependencies.get(dependencyKey) ?? new Set<string>()
+      if (dependencies.size >= 16 && !dependencies.has(dependencyKey))
+        dependencies.clear()
+      dependencies.set(dependencyKey, requested)
+      let passes = 0
       if (epoch !== generation || !child)
         throw new Error('typst compilation canceled.')
       const worker = child
@@ -281,7 +191,30 @@ export async function compileTypst(
             fingerprint = ''
             reject(new Error('typst compiler stopped. try again.'))
           }
-          const message = (result: TypstResult & { pdf?: Uint8Array }) => {
+          const message = async (
+            result: TypstResult & { pdf?: Uint8Array; missing?: string[] },
+          ) => {
+            const missing =
+              result.missing?.filter((path) => !requested.has(path)) ?? []
+            if (missing.length && passes++ < 64) {
+              try {
+                for (const path of missing) requested.add(path)
+                snapshot = await project(context, epoch, value.documentId)
+                if (epoch !== generation || child !== worker) return
+                worker.postMessage({
+                  sandbox: join(scratch, 'project'),
+                  entry: snapshot.entry,
+                  source: value.source,
+                  block: value.block ?? false,
+                  pdf: value.pdf ?? false,
+                  ...(snapshot.files ? { files: snapshot.files } : {}),
+                } satisfies CompileJob)
+              } catch (error) {
+                clean()
+                reject(error)
+              }
+              return
+            }
             clean()
             fingerprint = snapshot.key
             resolve(result)
@@ -302,7 +235,7 @@ export async function compileTypst(
             )
           }, 10000)
           worker.once('exit', exited)
-          worker.once('message', message)
+          worker.on('message', message)
           worker.postMessage({
             sandbox: join(scratch, 'project'),
             entry: snapshot.entry,

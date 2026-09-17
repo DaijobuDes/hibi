@@ -10,6 +10,7 @@ export default {
   apiVersion: 1,
   description: 'Mechanical keyboard sounds while editing your notes.',
   defaultEnabled: false,
+  startup: 'background',
   authors: [
     { ...authors.yug, role: 'original author' },
     { ...authors.thomas, role: 'sounds' },

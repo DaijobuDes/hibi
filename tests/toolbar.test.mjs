@@ -483,6 +483,8 @@ test('select all stays in the active pane after changing views or clicking line 
     await rm(profile, { recursive: true, force: true })
   })
   const page = await app.firstWindow()
+  page.setDefaultTimeout(7000)
+  await page.getByRole('textbox', { name: /document editor/i }).waitFor()
   await page.evaluate(() => localStorage.setItem('line-numbers', 'true'))
   await page.reload()
   const rich = page.getByRole('textbox', { name: /document editor/i })

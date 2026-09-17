@@ -24,7 +24,9 @@ if (confirmed) await context.dialogs.alert({ title: 'name selected', description
 
 ## custom content
 
-`open<T>({ title, description?, content, footer?, size?, closeOnOutsideClick? })` returns `{ result: Promise<T | null>, close(value?) }`. the `content({ close })` and optional `footer({ close })` render functions must be pure; render a component inside them when you need hooks. `size` is `normal` or `wide`; both fit the viewport. outside clicks dismiss by default and can be disabled for a form; escape and the close button remain available.
+Use `size: 'fullscreen'` when a view needs the entire app window. It retains the shared header, close button, focus trap, and Escape dismissal. Normal and wide dialogs retain their existing dimensions; the expanded graph uses a wide modal.
+
+`open<T>({ title, description?, content, footer?, size?, closeOnOutsideClick? })` returns `{ result: Promise<T | null>, close(value?) }`. the `content({ close })` and optional `footer({ close })` render functions must be pure; render a component inside them when you need hooks. `size` is `normal`, `wide`, or `fullscreen`; all fit the viewport. outside clicks dismiss by default and can be disabled for a form; escape and the close button remain available.
 
 headers and optional footers stay visible while the body scrolls. compact headers center the title and close button on one row, with owner and description text below. they use the shared ui text size and 8 px vertical / 16 px horizontal padding in both the app and exported sites, aligned with the body content. modals share settings surfaces, typography, corners, buttons, and field controls. use `dialog-form` for forms: shared setting rows stack labels above full-width inputs so fields do not squeeze labels out of narrow dialogs. group related fields with `settings-group`. the link insertion form uses these same primitives; image insertion opens the native file picker.
 

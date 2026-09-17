@@ -1,33 +1,21 @@
-import { useEffect, useState } from 'react'
 import type { RecentWorkspace } from '../../shared/workspace'
 import { Button } from '../../ui/Controls'
 import type { ViewMode } from './Editor'
 import './startup-placeholder.css'
 
 export function StartupPlaceholder({
+  recent,
   mode,
   busy,
   onOpen,
   onDismiss,
 }: {
+  recent: readonly RecentWorkspace[] | null
   mode: ViewMode
   busy: boolean
   onOpen: (id: string) => void
   onDismiss: () => void
 }) {
-  const [recent, setRecent] = useState<RecentWorkspace[]>([])
-  useEffect(() => {
-    let active = true
-    void window.hibi
-      .getRecentWorkspaces()
-      .then((items) => {
-        if (active) setRecent(items)
-      })
-      .catch(() => {})
-    return () => {
-      active = false
-    }
-  }, [])
   return (
     <section
       className="startup-placeholder"
@@ -36,7 +24,9 @@ export function StartupPlaceholder({
     >
       <h2>Start typing</h2>
       <h4>Recent workspaces</h4>
-      {recent.length ? (
+      {recent === null ? (
+        <p role="status">Loading recent workspaces…</p>
+      ) : recent.length ? (
         <ol>
           {recent.map(({ id, path }) => (
             <li key={id}>

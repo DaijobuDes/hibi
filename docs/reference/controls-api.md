@@ -62,6 +62,31 @@ export function Panel({ className = '', ...props }: ComponentProps<'div'>) {
   return <div {...props} className={`ui-panel ${className}`} />
 }
 
+/** A centered, quiet empty/error state for a panel. */
+export function PanelMessage({
+  icon,
+  title,
+  children,
+  role = 'status',
+  loading = false,
+}: {
+  icon: ReactNode
+  title: string
+  children?: ReactNode
+  role?: 'status' | 'alert'
+  loading?: boolean
+}) {
+  return (
+    <div className="ui-panel-message" role={role} data-loading={loading}>
+      <span className="ui-panel-message-icon" aria-hidden="true">
+        {icon}
+      </span>
+      <strong>{title}</strong>
+      {children && <p>{children}</p>}
+    </div>
+  )
+}
+
 export function ControlRow({
   className = '',
   ...props
@@ -177,7 +202,13 @@ export function SettingRow({
       return settingsIndex.register(row.current, id, displayLabel)
   }, [discover, id, displayLabel])
   return (
-    <div className="setting-row" ref={row} hidden={hidden}>
+    <div
+      className="setting-row"
+      data-setting-id={id}
+      tabIndex={-1}
+      ref={row}
+      hidden={hidden}
+    >
       <div className="setting-copy">
         <label htmlFor={id}>{displayLabel}</label>
         <p id={`${id}-description`}>

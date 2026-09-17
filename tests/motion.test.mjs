@@ -27,6 +27,11 @@ test('switching documents retains split/source layout without replaying view tra
   page.setDefaultTimeout(6000)
   const chooseFile = (file) =>
     app.evaluate(({ dialog }, file) => {
+      // Never leave an unexpected native prompt waiting for a human in CI.
+      dialog.showMessageBox = async () => {
+        globalThis.fileMotionPrompts = (globalThis.fileMotionPrompts ?? 0) + 1
+        return { response: 1 }
+      }
       dialog.showOpenDialog = async () => ({
         canceled: false,
         filePaths: [file],
@@ -105,6 +110,11 @@ test('switching documents retains split/source layout without replaying view tra
       basename(file),
     )
   }
+  assert.equal(
+    await app.evaluate(() => globalThis.fileMotionPrompts ?? 0),
+    0,
+    'switching unedited documents must not open a confirmation dialog',
+  )
 })
 
 test('split panes align corresponding carets in both directions without feedback or document changes', {
@@ -312,10 +322,17 @@ test('panes move horizontally and sidebar selection slides without fading settin
   })
   const page = await app.firstWindow()
   await page.getByRole('textbox', { name: /document editor/i }).waitFor()
+  await page
+    .getByRole('button', { name: /^side-by-side$/i, exact: true })
+    .click()
   await page.waitForFunction(
     () =>
       document.querySelector('.editor-panes').dataset.sourceReady === 'true',
   )
+  await page.getByRole('button', { name: /^normal$/i, exact: true }).click()
+  await page
+    .getByRole('textbox', { name: /markdown editor/i })
+    .waitFor({ state: 'hidden' })
   await page
     .getByRole('textbox', { name: /document editor/i })
     .fill(
@@ -374,6 +391,16 @@ test('panes move horizontally and sidebar selection slides without fading settin
         await new Promise(requestAnimationFrame)
         samples.push(sample())
       }
+      await Promise.all(
+        document
+          .getAnimations()
+          .filter((animation) =>
+            Number.isFinite(animation.effect?.getComputedTiming().iterations),
+          )
+          .map((animation) => animation.finished.catch(() => {})),
+      )
+      await new Promise(requestAnimationFrame)
+      samples.push(sample())
       return samples
     }, to)
   }
@@ -566,14 +593,7 @@ test('workspace sidebar slides at a fixed width and the titlebar follows its sta
       const samples = []
       let reversed = false
       const start = performance.now()
-      while (performance.now() - start < 320) {
-        await new Promise(requestAnimationFrame)
-        if (reverse && !reversed && performance.now() - start > 64) {
-          document
-            .querySelector('[aria-label="toggle workspace sidebar" i]')
-            .click()
-          reversed = true
-        }
+      const sample = () => {
         // Allow hit testing during dismissal to catch panes painting over the sidebar.
         const slot = sidebar.parentElement
         slot.inert = false
@@ -602,12 +622,32 @@ test('workspace sidebar slides at a fixed width and the titlebar follows its sta
             .backgroundColor,
         })
       }
+      while (performance.now() - start < 320) {
+        await new Promise(requestAnimationFrame)
+        if (reverse && !reversed && performance.now() - start > 64) {
+          document
+            .querySelector('[aria-label="toggle workspace sidebar" i]')
+            .click()
+          reversed = true
+        }
+        sample()
+      }
+      await Promise.all(
+        document
+          .getAnimations()
+          .filter((animation) =>
+            Number.isFinite(animation.effect?.getComputedTiming().iterations),
+          )
+          .map((animation) => animation.finished.catch(() => {})),
+      )
+      await new Promise(requestAnimationFrame)
+      sample()
       return samples
     }, reverse)
-    assert.ok(samples.some(({ x }) => x > -195 && x < -1))
+    assert.ok(samples.some(({ x }) => x > -255 && x < -1))
     assert.ok(
       samples
-        .filter(({ x }) => x > -195 && x < -1)
+        .filter(({ x }) => x > -255 && x < -1)
         .every(({ visibility, onTop }) => visibility === 'visible' && onTop),
     )
     assert.ok(
@@ -617,7 +657,7 @@ test('workspace sidebar slides at a fixed width and the titlebar follows its sta
           titlebarBackground === 'rgba(0, 0, 0, 0)',
       ),
     )
-    assert.deepEqual([...new Set(samples.map(({ width }) => width))], [196])
+    assert.deepEqual([...new Set(samples.map(({ width }) => width))], [256])
     assert.ok(
       samples.every(
         ({ top, bottom, viewportHeight }) =>
@@ -633,16 +673,16 @@ test('workspace sidebar slides at a fixed width and the titlebar follows its sta
         ({ x, width, contentX }) => Math.abs(contentX - x - width) < 1,
       ),
     )
-    assert.equal(samples.at(-1).x, opening ? 0 : -196)
+    assert.equal(samples.at(-1).x, opening ? 0 : -256)
     assert.equal(
       samples.at(-1).toolbarWidth,
-      opening ? 196 : process.platform === 'darwin' ? 116 : 44,
+      opening ? 256 : process.platform === 'darwin' ? 116 : 44,
     )
   }
   await clickMenu(app, 'Settings')
   assert.equal(
     await page.locator('.sidebar-toolbar').evaluate((el) => el.offsetWidth),
-    196,
+    256,
   )
   assert.equal(
     await page.getByRole('button', { name: /^new$/i, exact: true }).count(),
@@ -663,7 +703,7 @@ test('workspace sidebar slides at a fixed width and the titlebar follows its sta
   )
   await page.getByRole('button', { name: /toggle workspace sidebar/i }).click()
   await page.emulateMedia({ reducedMotion: 'no-preference' })
-  await checkSidebarResize(page, 196, '.editor-surface', async () => {
+  await checkSidebarResize(page, 256, '.editor-surface', async () => {
     await Promise.all([
       page.waitForEvent('domcontentloaded'),
       app.evaluate(({ BrowserWindow }) =>
@@ -677,7 +717,7 @@ test('workspace sidebar slides at a fixed width and the titlebar follows its sta
   await clickMenu(app, 'Settings')
   const resize = page.getByRole('separator', { name: /resize sidebar/i })
   await resize.press('ArrowRight')
-  assert.equal(Number(await resize.getAttribute('aria-valuenow')), 204)
+  assert.equal(Number(await resize.getAttribute('aria-valuenow')), 264)
   await page.getByRole('button', { name: /^back to app$/i }).click()
   assert.equal(
     Number(
@@ -686,6 +726,6 @@ test('workspace sidebar slides at a fixed width and the titlebar follows its sta
         .getByRole('separator', { name: /resize sidebar/i })
         .getAttribute('aria-valuenow'),
     ),
-    204,
+    264,
   )
 })

@@ -24,7 +24,6 @@ import {
   defineColorscheme,
 } from '../shared/colorschemes'
 import type { InstalledAddon } from '../shared/sideload'
-import { downloadAddon, unpackAddon } from './addon-download'
 import { downloadRepository, repositoryUrl } from './addon-repository'
 
 type Package = InstalledAddon & { entry: string; hash: string; files: string[] }
@@ -99,6 +98,9 @@ function manifest(value: unknown): {
     version: data.version,
     authors: data.authors,
     defaultEnabled: false,
+    ...(data.startup === 'background'
+      ? { startup: 'background' as const }
+      : {}),
     ...(data.fileExtensions !== undefined
       ? {
           fileExtensions: data.fileExtensions,
@@ -188,10 +190,12 @@ export async function loadInstalledAddons(builtinIds: readonly string[]) {
       continue
     try {
       const folder = join(root(), entry.name)
-      const data = await readManifest(folder)
-      const record = JSON.parse(
-        await readFile(join(folder, '.hibi-install.json'), 'utf8'),
-      )
+      const [data, record] = await Promise.all([
+        readManifest(folder),
+        readFile(join(folder, '.hibi-install.json'), 'utf8').then((text) =>
+          JSON.parse(text),
+        ),
+      ])
       if (
         data.manifest.id !== entry.name ||
         !/^[a-f\d]{64}$/.test(record.hash) ||
@@ -221,6 +225,7 @@ export async function installPackage(
   url?: unknown,
 ): Promise<boolean> {
   if (url !== undefined) {
+    const { downloadAddon, unpackAddon } = await import('./addon-download')
     const temporary = await mkdtemp(join(app.getPath('temp'), 'hibi-addon-'))
     try {
       let download = repositoryUrl(url)

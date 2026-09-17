@@ -26,7 +26,7 @@ import type {
   SourceExtension,
 } from '../../addons/api'
 import type { DocumentState } from '../../shared/desktop'
-import { isMarkdownDocument } from '../../shared/document-types'
+import type { DocumentView } from '../../shared/document-types'
 import { isMediaFile } from '../../shared/media'
 import { documentImage } from './DocumentImage'
 import { type CursorSettings, EditorCursor } from './EditorCursor'
@@ -49,7 +49,7 @@ const SourceEditor = lazy(() =>
   import('./SourceEditor').then((module) => ({ default: module.SourceEditor })),
 )
 
-export type ViewMode = 'normal' | 'side-by-side' | 'markdown'
+export type ViewMode = DocumentView
 
 export function MarkdownEditor({
   document: documentState,
@@ -66,6 +66,7 @@ export function MarkdownEditor({
   richExtensions,
   cursorSettings,
   showLineNumbers,
+  spellCheck,
   documentRevision,
   flavors,
   unsupportedFlavor,
@@ -89,6 +90,7 @@ export function MarkdownEditor({
   richExtensions: readonly RichExtension[]
   cursorSettings: CursorSettings
   showLineNumbers: boolean
+  spellCheck: boolean
   documentRevision: number
   flavors: readonly MarkdownFlavor[]
   unsupportedFlavor: boolean
@@ -100,7 +102,7 @@ export function MarkdownEditor({
   onActiveOutline: (id: string | null) => void
   outlineTarget: OutlineRequest | null
 }) {
-  const markdownDocument = isMarkdownDocument(documentState.name)
+  const markdownDocument = format?.editing === 'markdown'
   const syntaxVersion = useSyncExternalStore(
     markdownSyntax.subscribe,
     markdownSyntax.version,
@@ -145,10 +147,22 @@ export function MarkdownEditor({
   // normal view waits for source layout before beginning the pane transition.
   const paneMode = sourceReady || initialMode !== 'normal' ? mode : 'normal'
   const content = useRef<HTMLDivElement>(null)
+  const [previewToolbar, setPreviewToolbar] = useState<HTMLDivElement | null>(
+    null,
+  )
   const scrollContent = useRef({ source: value, body: projection.content })
   scrollContent.current = { source: value, body: projection.content }
   useEffect(() => {
-    if (!markdownDocument && sourceReady && mode !== 'normal') {
+    if (
+      sourceReady &&
+      (mode === 'markdown' || (!markdownDocument && mode !== 'normal'))
+    ) {
+      if (
+        window.document.activeElement?.closest(
+          '.settings-screen, [role="dialog"], input, textarea, select',
+        )
+      )
+        return
       setFocusedPane('source')
       content.current?.querySelector<HTMLElement>('.cm-content')?.focus()
     }
@@ -180,7 +194,9 @@ export function MarkdownEditor({
     )
   }, [paneMode])
   useEffect(() => {
-    const idle = requestIdleCallback(() => setSourceMounted(true))
+    const idle = requestIdleCallback(() => {
+      void import('./SourceEditor').catch(() => {})
+    })
     return () => cancelIdleCallback(idle)
   }, [])
   useEffect(() => {
@@ -196,7 +212,7 @@ export function MarkdownEditor({
       ],
       content: projection.content,
       contentType: 'markdown',
-      autofocus: 'end',
+      autofocus: false,
       injectCSS: false,
       shouldRerenderOnTransaction: false,
       editorProps: {
@@ -229,6 +245,27 @@ export function MarkdownEditor({
     },
     [markdownExtensions, flavors, syntaxVersion],
   )
+  // biome-ignore lint/correctness/useExhaustiveDependencies: initial focus belongs to this editor instance, never subsequent mode or document updates.
+  useLayoutEffect(() => {
+    if (!editor || !markdownDocument || paneMode === 'markdown') return
+    const focus = () => {
+      if (editor.isDestroyed || !editor.view.dom.isConnected) return
+      const active = window.document.activeElement
+      if (active?.closest('.settings-screen, [role="dialog"], .source-pane'))
+        return
+      editor.view.dispatch(
+        editor.state.tr
+          .setSelection(TextSelection.atEnd(editor.state.doc))
+          .setMeta('addToHistory', false),
+      )
+      editor.view.focus()
+    }
+    editor.on('mount', focus)
+    focus()
+    return () => {
+      editor.off('mount', focus)
+    }
+  }, [editor])
   useEffect(() => {
     if (!editor || !markdownDocument) {
       onOutline([])
@@ -386,6 +423,10 @@ export function MarkdownEditor({
   }, [editor, sourceOnly, disabled])
 
   useEffect(() => {
+    editor?.view.dom.setAttribute('spellcheck', String(spellCheck))
+  }, [editor, spellCheck])
+
+  useEffect(() => {
     if (!editor) return
     let detach: (() => void)[] = []
     const cleanup = () => {
@@ -492,9 +533,10 @@ export function MarkdownEditor({
         data-source-ready={sourceReady}
         onClickCapture={(event) => {
           const link = (event.target as HTMLElement).closest<HTMLAnchorElement>(
-            '.tiptap a[href]',
+            '.tiptap a[href], .format-content a[href]',
           )
-          if (!link || !event.shiftKey) return
+          if (!link || (!link.closest('.format-content') && !event.shiftKey))
+            return
           event.preventDefault()
           event.stopPropagation()
           onLink(link.getAttribute('href')!)
@@ -533,9 +575,21 @@ export function MarkdownEditor({
             aria-hidden={paneMode === 'markdown'}
             inert={paneMode === 'markdown'}
           >
+            {!markdownDocument && (
+              <div
+                className="preview-toolbar"
+                ref={setPreviewToolbar}
+                role="toolbar"
+                aria-label="Preview actions"
+              />
+            )}
             {!markdownDocument &&
               (format ? (
-                <format.Preview value={value} document={documentState} />
+                <format.Preview
+                  value={value}
+                  document={documentState}
+                  toolbar={previewToolbar}
+                />
               ) : (
                 <p className="format-unavailable">
                   Enable {formatName} for preview. source editing remains
@@ -556,7 +610,7 @@ export function MarkdownEditor({
                   />
                 ) : null,
               )}
-            <div hidden={!markdownDocument}>
+            <div className="rich-editor-host" hidden={!markdownDocument}>
               <EditorContent editor={editor} />
             </div>
           </section>
@@ -569,11 +623,16 @@ export function MarkdownEditor({
           >
             {sourceMounted && (
               <Suspense
-                fallback={<LoadingScreen label="Loading Markdown editor" />}
+                fallback={
+                  <LoadingScreen label={`Loading ${formatName} editor`} />
+                }
               >
                 <SourceEditor
                   markdownMode={markdownDocument}
                   sourceLanguage={format?.language}
+                  sourceFormat={format?.formatting}
+                  supportsMedia={!!format?.insertMedia}
+                  codeLanguage={format?.codeLanguage}
                   label={formatName}
                   onLink={onLink}
                   onFormatting={attachSourceFormatting}

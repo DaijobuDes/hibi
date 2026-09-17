@@ -6,6 +6,7 @@ export const WORKSPACE_CHANNELS = {
   changed: 'workspace:changed',
   action: 'workspace:action',
   snapshot: 'workspace:snapshot',
+  index: 'workspace:index',
   recent: 'workspace:recent',
   openRecent: 'workspace:open-recent',
 } as const
@@ -79,4 +80,10 @@ export type WorkspaceSnapshot = {
   name: string
   pages: WorkspacePage[]
   appearance?: import('./colorschemes').ThemePreferences
+}
+
+/** Lightweight note data for sidebar indexes; never embeds media. */
+export type WorkspaceIndex = {
+  workspace: WorkspaceState
+  pages: WorkspacePage[]
 }

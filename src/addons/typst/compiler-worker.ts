@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
-import { join } from 'node:path'
+import { join, relative } from 'node:path'
 import { NodeCompiler } from '@myriaddreamin/typst-ts-node-compiler'
+import { withinProject } from '../_shared/document-project'
 import type { CompileJob } from './compiler'
 
 let compiler: NodeCompiler | null = null
@@ -51,12 +52,21 @@ process.parentPort.on('message', ({ data }: { data: CompileJob }) => {
       ),
     )
     const result = compiler.compile({ mainFilePath: entry, resetRead: true })
+    const rawDiagnostics = result.takeDiagnostics()?.shortDiagnostics ?? []
+    const missing = rawDiagnostics.flatMap((error) => {
+      const path = /^file not found \(searched at (.*)\)$/.exec(
+        String(error.message),
+      )?.[1]
+      return path && withinProject(data.sandbox, path)
+        ? [relative(data.sandbox, path)]
+        : []
+    })
     const diagnostics =
-      result.takeDiagnostics()?.shortDiagnostics.map((error) => ({
+      rawDiagnostics.map((error) => ({
         message: String(error.message).replaceAll(data.sandbox, '.'),
         severity: error.severity === 1 ? 'error' : 'warning',
       })) ?? []
-    if (!result.result) process.parentPort.postMessage({ diagnostics })
+    if (!result.result) process.parentPort.postMessage({ diagnostics, missing })
     else {
       if (result.result.numOfPages > 200)
         throw new Error('typst preview supports up to 200 pages.')

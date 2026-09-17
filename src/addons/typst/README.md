@@ -4,7 +4,7 @@ optional bundled extension. enable **typst** in settings → addons.
 
 ## documents
 
-open a `.typ` file, or use **new typst document** in the command palette. source view edits typst with syntax highlighting, vim, line numbers, and undo; split view adds a live typeset preview. normal view shows the preview. previews wait 250 ms after typing, compile in a separate process, and report errors without changing the source. **export typst pdf** appears in the command palette and toolbar.
+open a `.typ` file, or use **new typst document** in the command palette. source view edits typst with syntax highlighting, formatting tools, vim, line numbers, and undo; split view adds a live typeset preview. the unsupported rich-editor view is disabled. previews wait 250 ms after typing, compile in a separate process, and report errors without changing the source. **export typst pdf** remains in the command palette; **export pdf** stays pinned above the preview.
 
 typst files participate in the workspace explorer, rename/move, saving, navigation, and local version history. saving or renaming without a new extension preserves `.typ`. disabling this extension leaves source editing available. markdown formatting shortcuts and slash commands do not modify typst source. dropping images into the source pane inserts `#image(...)` references to copied local assets.
 
@@ -26,7 +26,7 @@ documentation export includes compiled typst documents and blocks as embedded sv
 
 the app bundles `@myriaddreamin/typst-ts-node-compiler` 0.7.0; no separate typst executable is required. the compiler runs in an owned utility process. it receives a virtual project containing supported documents, fonts, data, and media from the selected workspace (or the current file's folder). hidden files, symlinks, dependency/build folders, and files outside that root are excluded. local imports resolve relative to the current note.
 
-project limits: 1,000 input files, 64 mib of input assets, and 10,000 directory entries. each compile has a 10-second timeout; output is capped at 200 pages, 20 mib of svg, and 64 mib of pdf. timed-out workers are terminated and recreated on the next request. the app remains interactive during preview compilation.
+project limits: 1,000 requested dependency files, 64 mib of input assets, and 64 rounds of dependency discovery. unrelated files are not scanned or counted. each compile has a 10-second timeout; output is capped at 200 pages, 20 mib of svg, and 64 mib of pdf. timed-out workers are terminated and recreated on the next request. the app remains interactive during preview compilation.
 
 automatic package downloads are blocked through a local denying proxy honored by the pinned compiler. this also prevents document-computed package names from becoming network requests. local imports work offline; cached packages can be placed under hibi's application-data `typst/packages` folder using typst's namespace/name/version layout. compiling never uploads your document.
 
@@ -40,3 +40,6 @@ automatic package downloads are blocked through a local denying proxy honored by
 settings → syntax can disable typst blocks inside markdown, preserving their fences as editable literal text. this does not disable `.typ` document previews or pdf export. settings → code highlighting independently controls typst source highlighting.
 
 the lightweight source highlighter uses codemirror; the typst compiler validates actual syntax. see [document format api](../../../docs/development/document-formats.md) for the reusable host APIs.
+## Input discovery
+
+The compiler loads local dependencies as it requests them. Unrelated workspace files do not count toward the 1,000-file / 64 MiB dependency limit. Inputs remain confined to the note's workspace, and symlinks cannot escape it. Missing inputs and compiler diagnostics appear in the shared preview notice.

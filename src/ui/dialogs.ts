@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 export type DialogOptions<T> = {
   title: string
   description?: string
-  size?: 'normal' | 'wide'
+  size?: 'normal' | 'wide' | 'fullscreen'
   closeOnOutsideClick?: boolean
   /** Use a component for content that needs React hooks. */
   content: (controls: { close: (value: T | null) => void }) => ReactNode

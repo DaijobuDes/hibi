@@ -1,5 +1,13 @@
 # shared ui and theme tokens
 
+Focus indicators sit inside each control's edge, using the accent color and a negative outline offset. Fields, buttons, toggles, links, and addon controls retain visible keyboard focus without a detached outer ring or layout shifts.
+
+Sidebar creation and rename fields retain the row's icons, nesting, and UI font size. A compact shared text field aligns its text with the filename and uses the same inset focus border as other controls.
+
+Loading and empty states use the same theme and spacing as their surrounding view. `PanelMessage` centers an icon, title, and optional description; `loading` adds a quiet pulse that stops with reduced motion. The startup placeholder stylesheet loads directly from the HTML, before JavaScript, with system light/dark fallbacks until the selected palette is ready.
+
+Hotkey controls wrap within narrow settings panels, including their key badges and reset/clear buttons, so a wider sidebar does not create horizontal overflow.
+
 When typing hides both the titlebar and formatting toolbar, their reserved height collapses too, so document padding matches the top and side window edges. A pinned formatting toolbar keeps its window-control inset. Focused titlebar controls retain their space.
 
 Find in note keeps the bars visible while open, so its buttons stay in place when editing the document beneath it.

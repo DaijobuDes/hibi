@@ -117,7 +117,7 @@ test('titlebar insets titles without leading actions and adapts outer button cor
         page: getComputedStyle(document.body).backgroundColor,
       }
     })
-    assert.equal(surface.left, open ? 196 : 0)
+    assert.equal(surface.left, open ? 256 : 0)
     assert.equal(surface.top, 0)
     assert.equal(surface.background, surface.page)
   }

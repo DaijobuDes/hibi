@@ -15,9 +15,13 @@ Four native build jobs run `npm run check` before packaging:
 
 Publication waits for every platform. Installers and `SHA256SUMS.txt` are attached to a GitHub prerelease; temporary Actions artifacts expire after one day. Failed uploads leave a draft for a workflow retry. Runs are serialized, and release tags are never force-moved. The built source commit is fixed before platform jobs start.
 
+Release notes start with the short source SHA, a backup warning using GitHub's `:warning:` emoji, and direct Windows, macOS Intel, and Linux AppImage links. Each download, including Apple Silicon and ZIP archives, has its own linked SHA256 entry from the generated checksum file. The changes section follows these download details.
+
 All packages retain `com.ryanaque.hibi` and the Hibi icons from `electron-builder.yml`. Nightlies use the regular installed app's data profile. Save and back up documents before installing them. Windows packages are unsigned; macOS packages use ad-hoc signing without notarization. Trusted distribution signing requires separately configured signing credentials.
 
 The workflow uses the repository's built-in token; only the publication job has `contents: write`. No additional secret is needed. To check changelog generation locally, run `node --test tests/nightly.test.mjs`; workflow syntax is checked with `actionlint`.
+
+Nightlies share the incremental checks/cache with regular CI. Select `clean` on a manual run to rebuild and run all tests without caches. A clean run can rebuild an unchanged revision for validation; it keeps an already published prerelease intact rather than replacing its assets.
 
 ## Website addon catalog
 

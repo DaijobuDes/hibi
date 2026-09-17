@@ -2,6 +2,16 @@
 
 Desktop checks run once per pull request and on pushes to `main`. Feature-branch pushes do not start a duplicate matrix.
 
+Packaging uses Bash on every runner so Windows preserves electron-builder's dotted configuration arguments.
+
+Actions uses the shared `.github/actions/ci` action for regular checks and nightlies. It caches npm downloads, Electron/builder downloads, compiled `out` files, TypeScript incremental state, and the revision/test list from successful runs. Cache keys separate OS, architecture, and dependencies; checkpoints also validate Node and runner-image versions. Failed jobs do not publish a passing checkpoint.
+
+`npm run check:ci` compares the previous push or PR base with the checkout, plus changes since the cached successful revision. Static local imports select dependent test files. App changes rerun all desktop tests; tests with filesystem or dynamic dependencies are selected conservatively. Unchanged builds are reused, and package validation is skipped when the app has not changed. Lint and generated-document checks always run. Ordinary `npm run check` still runs the complete local suite.
+
+Missing caches, unavailable history, config changes, or unknown inputs fall back to full checks. The `clean` checkbox under Actions → check/nightly → Run workflow ignores caches, removes generated build/typecheck state, and runs every test. `CI_CLEAN=true npm run check:ci` provides the same full-check override from a shell. The run summary records its base revision, rebuild decision, and test count.
+
+Local incremental runs also include uncommitted edits and untracked files. Dirty checkouts never write a successful revision checkpoint.
+
 use node 24 lts, or node 22.18 or newer. install dependencies with `npm ci`.
 
 ```sh

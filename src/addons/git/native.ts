@@ -150,6 +150,30 @@ async function changedPath(
 export default {
   id: manifest.id,
   queries: {
+    state: (_input, context) => state(context),
+    async status(_input, context) {
+      try {
+        return { state: await state(context), notice: '' }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        if (
+          /not a git repository|open a git repository folder first/i.test(
+            message,
+          )
+        )
+          return {
+            state: null,
+            notice:
+              'Open a Git repository folder to view branches and changes.',
+          }
+        if (/open the repository root folder/i.test(message))
+          return {
+            state: null,
+            notice: 'Open the repository root folder to use Git.',
+          }
+        throw error
+      }
+    },
     async decorations(_input, context) {
       const id = context.workspace.id()
       if (!id) return null

@@ -182,17 +182,23 @@ export function AddonSettings({
                         Remove
                       </Button>
                     )}
-                    <Toggle
-                      id={`addon-${manifest.id}`}
-                      aria-describedby={`addon-${manifest.id}-description`}
-                      disabled={busy}
-                      checked={active}
-                      onChange={(event) => {
-                        restoreFocus.current = event.target.id
-                        const next = event.target.checked
-                        void run(() => setEnabled(manifest.id, next))
-                      }}
-                    />
+                    {manifest.id === 'markdown' ? (
+                      <span className="setting-availability">
+                        Always available
+                      </span>
+                    ) : (
+                      <Toggle
+                        id={`addon-${manifest.id}`}
+                        aria-describedby={`addon-${manifest.id}-description`}
+                        disabled={busy}
+                        checked={active}
+                        onChange={(event) => {
+                          restoreFocus.current = event.target.id
+                          const next = event.target.checked
+                          void run(() => setEnabled(manifest.id, next))
+                        }}
+                      />
+                    )}
                   </div>
                 </SettingRow>
               ))}

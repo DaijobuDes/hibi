@@ -17,6 +17,9 @@ test('local history snapshots on save, previews, and restores without overwritin
     args: [resolve('.'), `--user-data-dir=${profile}`],
   })
   t.after(async () => {
+    await app.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => ({ response: 1 })
+    })
     await app.close()
     await rm(profile, { recursive: true, force: true })
   })
@@ -84,6 +87,14 @@ test('local history snapshots on save, previews, and restores without overwritin
     return doc.dirty && doc.markdown === 'original'
   })
   assert.equal(await readFile(file, 'utf8'), 'saved change')
+  await history.waitFor({ state: 'hidden' })
+  await page.waitForFunction(
+    () =>
+      document.querySelector('.app').getAttribute('aria-busy') === 'false' &&
+      document.querySelector('.tiptap')?.textContent === 'original' &&
+      document.querySelector('.tiptap')?.getAttribute('contenteditable') ===
+        'true',
+  )
   await rich.fill('unsaved buffer')
   await app.evaluate(({ dialog }) => {
     dialog.showMessageBox = async () => ({ response: 2 })

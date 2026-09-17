@@ -3,6 +3,11 @@ import { isMarkdownDocument } from '../../shared/document-types.ts'
 import { readFrontmatter } from '../../shared/frontmatter.ts'
 import type { WorkspacePage } from '../../shared/workspace'
 
+const links = new WeakMap<
+  WorkspacePage,
+  { markdown: string; hrefs: string[] }
+>()
+
 export function localTarget(
   from: string,
   href: string,
@@ -34,14 +39,22 @@ export function noteGraph(pages: readonly WorkspacePage[]) {
   const edges = new Map<string, { source: string; target: string }>()
   for (const page of pages) {
     if (!isMarkdownDocument(page.path)) continue
-    const source = readFrontmatter(page.markdown)?.content ?? page.markdown
-    parser.walkTokens(parser.lexer(source), (token) => {
-      if (token.type !== 'link') return
-      const target = localTarget(page.path, token.href, paths)
-      if (!target || target === page.path) return
+    let cached = links.get(page)
+    if (!cached || cached.markdown !== page.markdown) {
+      const hrefs: string[] = []
+      const source = readFrontmatter(page.markdown)?.content ?? page.markdown
+      parser.walkTokens(parser.lexer(source), (token) => {
+        if (token.type === 'link') hrefs.push(token.href)
+      })
+      cached = { markdown: page.markdown, hrefs }
+      links.set(page, cached)
+    }
+    for (const href of cached.hrefs) {
+      const target = localTarget(page.path, href, paths)
+      if (!target || target === page.path) continue
       const pair = [page.path, target].sort()
       edges.set(JSON.stringify(pair), { source: pair[0]!, target: pair[1]! })
-    })
+    }
   }
   const degree = new Map<string, number>()
   for (const edge of edges.values())
