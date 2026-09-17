@@ -8,7 +8,7 @@ on macOS, hibi uses key repeat instead of the press-and-hold accent picker so he
 
 ## file commands
 
-- `:w` saves through hibi's normal save flow; an untitled note opens the save dialog.
+- `:w` saves through hibi's normal save flow and returns focus to the source editor; an untitled note opens the save dialog.
 - `:e` opens the file picker; `:e relative/path.md` opens a file in the current workspace.
 - `:enew` creates a new note, checking unsaved edits first.
 - `:q` closes the window using hibi's unsaved-edit checks.
