@@ -15,6 +15,8 @@ normal and split view show an editable callout; source mode keeps the original m
 
 ## flavors
 
+settings → syntax offers separate switches for tables, tasks, strikethrough, and alerts. disabled features remain literal markdown in rich editing and exported documentation; re-enabling restores formatting.
+
 automatic mode accepts enabled dialect features and identifies github syntax when present. choose an explicit dialect from the flavor status pill or command palette. choosing plain markdown or disabling this extension keeps unsupported source intact; use source view to edit those constructs until their flavor is enabled again.
 
 author: may. uses mit-licensed tiptap and marked, credited in hibi's open source licenses.

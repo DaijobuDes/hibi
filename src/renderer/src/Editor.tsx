@@ -15,6 +15,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react'
 import type {
   DocumentFormat,
@@ -39,6 +40,7 @@ import {
   needsSourceEditing,
   projectMarkdown,
 } from './markdown'
+import { markdownSyntax } from './markdown-syntax'
 
 const SourceEditor = lazy(() =>
   import('./SourceEditor').then((module) => ({ default: module.SourceEditor })),
@@ -90,6 +92,10 @@ export function MarkdownEditor({
   onLink: (href: string) => void
 }) {
   const markdownDocument = isMarkdownDocument(documentState.name)
+  const syntaxVersion = useSyncExternalStore(
+    markdownSyntax.subscribe,
+    markdownSyntax.version,
+  )
   const projection = useMemo(
     () =>
       markdownDocument
@@ -175,7 +181,9 @@ export function MarkdownEditor({
     {
       extensions: [
         ...editorExtensions(flavors),
-        documentImage(documentRevision),
+        ...(markdownSyntax.enabled('core.images')
+          ? [documentImage(documentRevision)]
+          : []),
       ],
       content: projection.content,
       contentType: 'markdown',
@@ -210,7 +218,7 @@ export function MarkdownEditor({
         setRichRevision((revision) => revision + 1)
       },
     },
-    [markdownExtensions, flavors],
+    [markdownExtensions, flavors, syntaxVersion],
   )
   useEffect(() => {
     if (paneMode !== 'side-by-side' || !sourceReady || !editor) return

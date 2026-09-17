@@ -6,6 +6,10 @@
 
 **sponsor on github** opens [may's GitHub Sponsors page](https://github.com/sponsors/schmayterling) in your default browser. this action uses a fixed destination; workspace content and addons cannot supply arbitrary external URLs through it.
 
+## syntax and code syntax
+
+**syntax** toggles markdown features individually, including each heading level and extension-provided formats. **code syntax** toggles highlighting per language. both retain the original source. see [markdown syntax](../extensions/markdown-syntax.md) and [code languages](../extensions/code-languages.md).
+
 ## notifications
 
 appearance → notifications controls notification placement (top/bottom, left/middle/right) and automatic dismissal (3, 5, 8, or 10 seconds, or never). **show preview** tries the current settings. notifications slide upward and fade in, with a bottom progress line. hover or keyboard focus pauses the countdown; leaving resumes it. the dismiss button always closes immediately with a short exit fade.

@@ -13,6 +13,17 @@ export default defineAddon({
   manifest,
   flavors: [typstFlavor],
   start(context) {
+    context.editor.registerSyntax({
+      id: 'blocks',
+      label: 'typst blocks',
+      group: 'typst',
+      description: 'render fenced typst inside markdown.',
+      level: 'block',
+      extensions: ['typstBlock'],
+      matches: (token) =>
+        token.type === 'typstBlock' ||
+        (token.type === 'code' && /^typst(?:\s|$)/i.test(token.lang ?? '')),
+    })
     context.styles.register('preview', css)
     context.editor.registerCodeLanguage({
       id: 'typst',

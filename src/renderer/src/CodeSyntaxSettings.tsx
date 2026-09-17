@@ -24,6 +24,8 @@ export function CodeSyntaxSettings() {
           description="disabled languages remain readable as plain code."
         >
           <input
+            type="search"
+            className="settings-filter"
             id="code-syntax-filter"
             placeholder="filter languages…"
             value={query}

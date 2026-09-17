@@ -31,6 +31,7 @@ import { onEditorInput, onEditorKeyEvent } from './editor-events'
 import { explorerDecorations } from './explorer-decorations'
 import { flavors, renderMarkdown, renderMarkdownAsync } from './flavors'
 import { projectMarkdown } from './markdown'
+import { markdownSyntax } from './markdown-syntax'
 import { toolbar } from './toolbar'
 
 export { addons } from './addon-registry'
@@ -293,6 +294,32 @@ export function useAddons(environment: Environment) {
             },
           },
           editor: {
+            registerSyntax(feature) {
+              if (disposed) return () => {}
+              const remove = markdownSyntax.register(id, feature)
+              cleanups.add(remove)
+              return () => {
+                remove()
+                cleanups.delete(remove)
+              }
+            },
+            isSyntaxEnabled: (localId) =>
+              markdownSyntax.enabled(`${id}.${localId}`),
+            onSyntaxChange(listener) {
+              if (disposed) return () => {}
+              const remove = markdownSyntax.subscribe(() => {
+                try {
+                  listener()
+                } catch (error) {
+                  latest.current.error(error)
+                }
+              })
+              cleanups.add(remove)
+              return () => {
+                remove()
+                cleanups.delete(remove)
+              }
+            },
             getDocument: () => editorDocument.get(),
             onDocumentChange(listener) {
               if (disposed) return () => {}

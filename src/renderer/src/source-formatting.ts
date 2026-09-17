@@ -37,6 +37,7 @@ const marks: Record<string, string> = {
   bold: '**',
   italic: '*',
   strike: '~~',
+  subscript: '~',
   'inline-code': '`',
 }
 const prefixes: Record<string, string> = {
@@ -44,6 +45,7 @@ const prefixes: Record<string, string> = {
   'numbered-list': '1. ',
   checklist: '- [ ] ',
   quote: '> ',
+  subtext: '-# ',
 }
 const fenceLength = (text: string, minimum = 0) =>
   Array.from(text.matchAll(/`+/g)).reduce(
@@ -133,7 +135,8 @@ export function sourceFormatting(view: EditorView) {
       const prefix = id.startsWith('heading-')
         ? `${'#'.repeat(Number(id.slice(-1)))} `
         : (prefixes[id] ?? '')
-      const existing = /^( {0,3})(?:#{1,6} |[-+*] (?:\[[ xX]\] )?|\d+[.)] |> )/
+      const existing =
+        /^( {0,3})(?:#{1,6} |[-+*] (?:\[[ xX]\] )?|\d+[.)] |> |-# )/
       const remove =
         !!prefix &&
         lines.every((line) =>

@@ -1,7 +1,9 @@
 import { Marked } from 'marked'
 import type { MarkdownFlavor, RenderedMarkdown } from '../../addons/api'
+import literalStyles from '../../ui/markdown-literal.css?raw'
 import syntaxStyles from '../../ui/syntax.css?raw'
 import { codeHtml, escapeCode } from './code-languages'
+import { installSyntaxPreferences } from './syntax-parser'
 
 export async function renderMarkdownAsync(source: string, documentId?: string) {
   let rendered = renderMarkdown(source, documentId)
@@ -90,7 +92,9 @@ export function renderMarkdown(
   documentId?: string,
 ): RenderedMarkdown {
   const selected = selectedFlavors(loadFlavor(documentId), snapshot)
-  const parser = new Marked({ gfm: false, breaks: false })
+  const parser = installSyntaxPreferences(
+    new Marked({ gfm: false, breaks: false }),
+  )
   parser.use({
     renderer: {
       code({ text, lang }) {
@@ -108,6 +112,7 @@ export function renderMarkdown(
     html: parser.parse(source, { async: false }),
     css:
       syntaxStyles +
+      literalStyles +
       '\n' +
       selected
         .filter(

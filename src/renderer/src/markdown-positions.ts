@@ -1,5 +1,6 @@
 import type { Node as RichNode } from '@tiptap/pm/model'
 import { marked, type Token } from 'marked'
+import { preserveDisabled } from './syntax-parser.ts'
 
 /** Map visible token text, never link destinations, image alt text, or markup. */
 export function markdownPositions(source: string, document: RichNode) {
@@ -21,7 +22,7 @@ export function markdownPositions(source: string, document: RichNode) {
           token.raw,
           offset,
         )
-      } else if ('tokens' in token && token.tokens)
+      } else if ('tokens' in token && token.tokens?.length)
         visit(token.tokens, token.raw, offset)
       else if (
         'text' in token &&
@@ -38,7 +39,9 @@ export function markdownPositions(source: string, document: RichNode) {
       }
     }
   }
-  visit(marked.lexer(source), source, 0)
+  const tokens = marked.lexer(source)
+  marked.walkTokens(tokens, preserveDisabled)
+  visit(tokens, source, 0)
   const points: { source: number; rich: number }[] = []
   let cursor = 0
   document.descendants((node, pos) => {

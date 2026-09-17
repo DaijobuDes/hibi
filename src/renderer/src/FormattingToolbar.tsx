@@ -28,8 +28,10 @@ import {
   Redo2,
   Rows2,
   Strikethrough,
+  Subscript,
   Table,
   Trash2,
+  Type,
   Undo2,
   Unlink,
   WrapText,
@@ -89,6 +91,20 @@ const actions: Action[] = [
     icon: Code,
     rich: (c) => c.toggleCode(),
     active: 'code',
+  },
+  {
+    id: 'subscript',
+    label: 'subscript',
+    icon: Subscript,
+    rich: (c) => c.toggleMark('subscript'),
+    active: 'subscript',
+  },
+  {
+    id: 'subtext',
+    label: 'small text',
+    icon: Type,
+    rich: (c) => c.setNode('subtext'),
+    active: 'subtext',
   },
   {
     id: 'paragraph',
@@ -377,10 +393,17 @@ export function useFormattingToolbar(
             })
             .insertContentAt(
               position ?? { from: selection.from, to: selection.to },
-              attachments.map(({ url, alt }) => ({
-                type: 'image',
-                attrs: { src: url, alt },
-              })),
+              editor.schema.nodes.image
+                ? attachments.map(({ url, alt }) => ({
+                    type: 'image',
+                    attrs: { src: url, alt },
+                  }))
+                : {
+                    type: 'hibiLiteralBlock',
+                    content: [
+                      { type: 'text', text: attachmentMarkdown(attachments) },
+                    ],
+                  },
             )
             .run()
         }

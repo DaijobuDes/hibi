@@ -6,6 +6,7 @@ import {
   Keyboard,
   PanelTop,
   Puzzle,
+  TextCursorInput,
 } from 'lucide-react'
 import { Component, type ReactNode } from 'react'
 import type { AddonManifest, AddonState } from '../../addons/api'
@@ -24,10 +25,12 @@ import { ToolbarSettings } from './EditorToolbar'
 import { HibiSettings } from './HibiSettings'
 import { HotkeySettings } from './HotkeySettings'
 import { NotificationSettings } from './NotificationSettings'
+import { SyntaxSettings } from './SyntaxSettings'
 
 export const settingsCategories = [
   { id: 'hibi', label: 'hibi', icon: File },
   { id: 'editor', label: 'editor', icon: FileText },
+  { id: 'syntax', label: 'syntax', icon: TextCursorInput },
   { id: 'code-syntax', label: 'code syntax', icon: Code },
   { id: 'appearance', label: 'appearance', icon: PanelTop },
   { id: 'hotkeys', label: 'hotkeys', icon: Keyboard },
@@ -234,6 +237,14 @@ export function SettingsScreen({
                 />
               </SettingRow>
             </div>
+          </section>
+          <section
+            id="settings-syntax"
+            role="tabpanel"
+            aria-labelledby="category-syntax"
+            hidden={category !== 'syntax'}
+          >
+            <SyntaxSettings />
           </section>
           <section
             id="settings-code-syntax"

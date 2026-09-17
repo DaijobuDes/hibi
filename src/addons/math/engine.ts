@@ -16,6 +16,24 @@ const options = {
   maxSize: 20,
 }
 export function startMath(context: AddonContext) {
+  context.editor.registerSyntax({
+    id: 'inline',
+    label: 'inline math',
+    group: 'math',
+    description: '$expression$',
+    level: 'inline',
+    extensions: ['inlineMath'],
+    matches: (token) => token.type === 'inlineMath',
+  })
+  context.editor.registerSyntax({
+    id: 'block',
+    label: 'block math',
+    group: 'math',
+    description: '$$ expression $$',
+    level: 'block',
+    extensions: ['blockMath'],
+    matches: (token) => token.type === 'blockMath',
+  })
   let rich: Editor | null = null
   let source: EditorView | null = null
   let target: 'rich' | 'source' = 'rich'
@@ -82,7 +100,10 @@ export function startMath(context: AddonContext) {
     const selection = inSource
       ? view?.state.selection.main
       : editor?.state.selection
-    if (!selection || (!inSource && !editor?.schema.nodes.inlineMath)) {
+    if (
+      !selection ||
+      (!inSource && !editor?.schema.nodes[block ? 'blockMath' : 'inlineMath'])
+    ) {
       context.notify('enable math for this file from the flavor pill.')
       return
     }

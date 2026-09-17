@@ -44,6 +44,45 @@ export default defineAddon({
   manifest,
   flavors: [flavor],
   start(context) {
+    context.editor.registerSyntax({
+      id: 'tables',
+      label: 'tables',
+      group: 'github markdown',
+      level: 'block',
+      extensions: ['tableKit'],
+      matches: (token) => token.type === 'table',
+    })
+    context.editor.registerSyntax({
+      id: 'tasks',
+      label: 'task lists',
+      group: 'github markdown',
+      description: '- [ ] task',
+      level: 'block',
+      extensions: ['taskList', 'taskItem'],
+      matches: (token) =>
+        token.type === 'list' &&
+        token.items.some((item: { task?: boolean }) => item.task),
+    })
+    context.editor.registerSyntax({
+      id: 'strike',
+      label: 'strikethrough',
+      group: 'github markdown',
+      description: '~~text~~',
+      level: 'inline',
+      extensions: ['strike'],
+      matches: (token) => token.type === 'del',
+    })
+    context.editor.registerSyntax({
+      id: 'alerts',
+      label: 'alerts',
+      group: 'github markdown',
+      description: 'note, tip, important, warning, and caution.',
+      level: 'block',
+      extensions: ['githubAlert'],
+      matches: (token) =>
+        token.type === 'githubAlert' ||
+        (token.type === 'blockquote' && !!alertMarker(token.text)),
+    })
     context.styles.register('alerts', css)
     context.editor.registerFlavor(flavor)
   },

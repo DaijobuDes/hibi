@@ -14,8 +14,10 @@ import type {
 } from '../shared/colorschemes'
 import type { DocumentCommand } from '../shared/desktop'
 import type { AppCommand } from '../shared/hotkeys'
+import type { MarkdownSyntaxFeature } from '../shared/markdown-syntax'
 import type { CodeLanguage } from '../shared/syntax'
 
+export type { MarkdownSyntaxFeature } from '../shared/markdown-syntax'
 export type { CodeLanguage } from '../shared/syntax'
 
 import type {
@@ -304,6 +306,11 @@ export type AddonContext = {
     ) => Promise<RenderedMarkdown>
     /** Register or override fenced-code highlighting; restored automatically on addon stop. */
     registerCodeLanguage: (language: CodeLanguage) => () => void
+    /** Contribute a renderer toggle; disabled tokens remain literal, editable Markdown. */
+    registerSyntax: (feature: MarkdownSyntaxFeature) => () => void
+    /** Query this addon's local syntax id. */
+    isSyntaxEnabled: (id: string) => boolean
+    onSyntaxChange: (listener: () => void) => () => void
     /** Observe editor keydown/keyup without consuming input. Removed on addon stop. */
     onKeyEvent: (listener: (event: EditorKeyEvent) => void) => () => void
     /** Observe committed typing, including IME composition. Removed on addon stop. */

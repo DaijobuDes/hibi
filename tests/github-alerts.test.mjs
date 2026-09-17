@@ -122,6 +122,11 @@ test('github alerts edit in rich/split view, keep markers, and export with theme
   )
   await pressShortcut(app, `${mod}+s`)
   await waitForAsync(page, async () => !(await window.hibi.getDocument()).dirty)
+  await page.waitForFunction(() =>
+    document
+      .querySelector('.document-name')
+      ?.textContent?.includes('alerts.md'),
+  )
   assert.equal(await readFile(file, 'utf8'), edited)
   await pressShortcut(app, `${mod}+Shift+o`)
   await page.getByRole('button', { name: 'new workspace file' }).waitFor()

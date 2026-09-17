@@ -3,6 +3,12 @@ import { basename, dirname } from 'node:path'
 
 const references = [
   [
+    'docs/reference/markdown-syntax-api.md',
+    'markdown syntax api',
+    'src/shared/markdown-syntax.ts',
+    (source) => source,
+  ],
+  [
     'docs/reference/code-language-api.md',
     'code language api',
     'src/shared/syntax.ts',
