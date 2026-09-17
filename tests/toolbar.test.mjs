@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
@@ -328,30 +328,29 @@ test('markdown toolbar formats both panes, preserves undo, and persists drag ord
   assert.match(await read(), /^```\nfirst\nsecond\n```/)
   await source.fill('image here')
   await source.press('Control+a')
+  await writeFile(
+    join(profile, 'sample.gif'),
+    Buffer.from(
+      'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
+      'base64',
+    ),
+  )
+  await app.evaluate(({ dialog }, profile) => {
+    dialog.showOpenDialog = async () => ({
+      canceled: false,
+      filePaths: [`${profile}/sample.gif`],
+    })
+    dialog.showSaveDialog = async () => ({
+      canceled: false,
+      filePath: `${profile}/note.md`,
+    })
+  }, profile)
   await run('image')
-  const image = page.getByRole('dialog', { name: 'insert image', exact: true })
-  await image.waitFor()
-  assert.ok(
-    await image
-      .locator('.setting-copy')
-      .evaluateAll((labels) =>
-        labels.every((label) => label.getBoundingClientRect().width > 100),
-      ),
+  await waitForMarkdown('![sample](assets/sample.gif)')
+  assert.equal(
+    await page.getByRole('dialog', { name: 'insert image' }).count(),
+    0,
   )
-  assert.ok(
-    await image
-      .locator('.setting-row input')
-      .evaluateAll((inputs) =>
-        inputs.every((input) => input.getBoundingClientRect().width > 100),
-      ),
-  )
-  await image
-    .getByLabel('image path', { exact: true })
-    .fill('images/my image.png')
-  await image.getByLabel('description', { exact: true }).fill('sample')
-  await image.getByRole('button', { name: 'insert', exact: true }).click()
-  await image.waitFor({ state: 'hidden' })
-  await waitForMarkdown('![sample](images/my%20image.png)')
   await source.fill('split text')
   await page.getByRole('button', { name: 'side-by-side', exact: true }).click()
   await source.click()

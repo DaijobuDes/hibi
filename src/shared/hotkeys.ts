@@ -20,6 +20,8 @@ export const actions = [
   { id: 'history', label: 'version history', category: 'file', key: '' },
   { id: 'find', label: 'find in note', category: 'edit', key: 'f' },
   { id: 'settings', label: 'open settings', category: 'preferences', key: ',' },
+  { id: 'back', label: 'go back', category: 'view', key: '[' },
+  { id: 'forward', label: 'go forward', category: 'view', key: ']' },
   {
     id: 'install-addon',
     label: 'install theme or extension…',
@@ -71,6 +73,16 @@ export function restoreHotkeys(
       )
         next[id] = defaults[id]
     }
+  }
+  // New navigation defaults yield to an existing user binding.
+  const defaults = defaultHotkeys(platform)
+  for (const id of ['back', 'forward'] as const) {
+    const occupied = Object.entries(next).some(
+      ([other, value]) => other !== id && value === defaults[id],
+    )
+    if (next[id] === defaults[id] && occupied) next[id] = ''
+    else if (typeof stored[id] !== 'string' && !occupied)
+      next[id] = defaults[id]
   }
   return validateHotkeys(next, platform)
 }

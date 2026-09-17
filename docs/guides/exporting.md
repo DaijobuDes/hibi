@@ -26,6 +26,8 @@ upload that file to any static host, usually as `index.html`. it also opens dire
 
 ## included
 
+local image, gif, and video attachments are embedded for offline viewing. videos show standard playback controls. exports retain the 20 mib total limit for markdown and embedded media; see [attachments](../editing/media-and-navigation.md#attachments).
+
 - normal read-only markdown rendering; no editor or source-view controls.
 - the shared full-height nested sidebar, with a smooth slide from the left.
 - `cmd/ctrl+k` search with fuzzy matching, prefix matches, and keyword relevance. titles and paths receive extra weight. this is local text search, not an embedding model.

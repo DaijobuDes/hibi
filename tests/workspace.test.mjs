@@ -197,9 +197,17 @@ test('nested workspace editing, addon lifecycle, and offline static export', {
   await page
     .getByRole('button', { name: 'back to editor', exact: true })
     .click()
-  await page
-    .getByRole('button', { name: 'export documentation', exact: true })
-    .click()
+  assert.equal(
+    await page.locator('.workspace-sidebar .sidebar-footer').count(),
+    0,
+  )
+  await pressShortcut(
+    app,
+    process.platform === 'darwin' ? 'Meta+k' : 'Control+k',
+  )
+  const exportSearch = page.getByRole('combobox', { name: 'search commands' })
+  await exportSearch.fill('export documentation')
+  await exportSearch.press('Enter')
   await page
     .getByRole('status')
     .filter({ hasText: 'exported 2 pages' })

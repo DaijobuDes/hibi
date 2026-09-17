@@ -29,6 +29,7 @@ import {
   HOTKEY_CHANNELS,
   shortcutFromEvent,
 } from '../shared/hotkeys'
+import { MEDIA_CHANNELS } from '../shared/media'
 import { SIDELOAD_CHANNELS } from '../shared/sideload'
 import { WORKSPACE_CHANNELS } from '../shared/workspace'
 import {
@@ -45,6 +46,7 @@ import {
   discardChanges,
   getDocument,
   getDocumentPath,
+  navigateDocument,
   newDocument,
   openDocument,
   renameDocument,
@@ -56,6 +58,13 @@ import { listVersions, previewVersion } from './history'
 import { hotkeys, loadHotkeys, saveHotkeys } from './hotkeys'
 import { readDocumentImage } from './images'
 import { listLicenses, readLicense } from './licenses'
+import { openDocumentLink, openRemoteDocument } from './links'
+import {
+  attachMedia,
+  openDroppedFile,
+  readDocumentMedia,
+  serveDocumentMedia,
+} from './media'
 import {
   CONTENT_SECURITY_POLICY,
   isTrustedRendererUrl,
@@ -89,6 +98,7 @@ protocol.registerSchemesAsPrivileged([
       standard: true,
       secure: true,
       supportFetchAPI: true,
+      stream: true,
       corsEnabled: true,
     },
   },
@@ -153,6 +163,11 @@ async function serveAsset(request: Request): Promise<Response> {
   if (request.method !== 'GET') return new Response(null, { status: 405 })
   try {
     const parsed = new URL(request.url)
+    if (
+      parsed.hostname === 'hibi' &&
+      parsed.pathname.startsWith('/document-media/')
+    )
+      return await serveDocumentMedia(request)
     const isAddon = parsed.pathname.startsWith('/installed-addons/')
     const path = isAddon
       ? await installedAsset(request.url)
@@ -338,6 +353,11 @@ function installMenu(): void {
           click: command('open'),
         },
         {
+          label: 'open from remote…',
+          click: () =>
+            mainWindow?.webContents.send(DOCUMENT_CHANNELS.requestRemote),
+        },
+        {
           label: 'save',
           accelerator: accelerator(hotkeys.save),
           click: command('save'),
@@ -369,6 +389,16 @@ function installMenu(): void {
           label: 'settings',
           accelerator: accelerator(hotkeys.settings),
           click: command('settings'),
+        },
+        {
+          label: 'back',
+          accelerator: accelerator(hotkeys.back),
+          click: command('back'),
+        },
+        {
+          label: 'forward',
+          accelerator: accelerator(hotkeys.forward),
+          click: command('forward'),
         },
         { type: 'separator' },
         ...(!app.isPackaged
@@ -554,6 +584,25 @@ if (!app.requestSingleInstanceLock()) {
         trustedWindow(event)
         return getWorkspace()
       })
+      ipcMain.handle(
+        MEDIA_CHANNELS.attach,
+        (event, files: unknown, revision: unknown) =>
+          runFileOperation(event, (window) =>
+            attachMedia(window, files, revision),
+          ),
+      )
+      ipcMain.handle(MEDIA_CHANNELS.open, (event, path: unknown) =>
+        runFileOperation(event, (window) => openDroppedFile(window, path)),
+      )
+      ipcMain.handle(
+        MEDIA_CHANNELS.read,
+        (event, source: unknown, revision: unknown) => {
+          trustedWindow(event)
+          if (typeof source !== 'string' || typeof revision !== 'number')
+            return null
+          return readDocumentMedia(source, revision)
+        },
+      )
       ipcMain.handle(WORKSPACE_CHANNELS.snapshot, (event) =>
         runFileOperation(event, snapshotWorkspace),
       )
@@ -583,6 +632,21 @@ if (!app.requestSingleInstanceLock()) {
       })
       ipcMain.handle(DOCUMENT_CHANNELS.open, (event) =>
         runFileOperation(event, openDocument),
+      )
+      ipcMain.handle(DOCUMENT_CHANNELS.navigate, (event, direction: unknown) =>
+        runFileOperation(event, (window) =>
+          navigateDocument(window, direction),
+        ),
+      )
+      ipcMain.handle(
+        DOCUMENT_CHANNELS.link,
+        (event, href: unknown, revision: unknown) =>
+          runFileOperation(event, (window) =>
+            openDocumentLink(window, href, revision),
+          ),
+      )
+      ipcMain.handle(DOCUMENT_CHANNELS.remote, (event, url: unknown) =>
+        runFileOperation(event, (window) => openRemoteDocument(window, url)),
       )
       ipcMain.handle(DOCUMENT_CHANNELS.new, (event) =>
         runFileOperation(event, newDocument),

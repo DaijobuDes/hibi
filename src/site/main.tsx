@@ -204,6 +204,18 @@ function renderMarkdown(path: string, markdown: string, html?: string) {
   for (const input of fragment.querySelectorAll('input')) input.disabled = true
   for (const image of fragment.querySelectorAll('img')) {
     const embedded = byPath.get(path)?.images?.[image.getAttribute('src') ?? '']
+    if (
+      typeof embedded === 'string' &&
+      /^data:video\/(mp4|webm|ogg);base64,/i.test(embedded)
+    ) {
+      const video = document.createElement('video')
+      video.controls = true
+      video.preload = 'metadata'
+      video.setAttribute('aria-label', image.alt || 'video attachment')
+      video.src = embedded
+      image.replaceWith(video)
+      continue
+    }
     if (typeof embedded === 'string') image.setAttribute('src', embedded)
     if (
       !/^data:image\/(png|jpeg|gif|webp|avif|svg\+xml);base64,/i.test(

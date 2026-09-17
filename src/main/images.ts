@@ -6,7 +6,7 @@ import { marked } from 'marked'
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024
 
-function imageMime(data: Buffer): string | null {
+export function imageMime(data: Buffer): string | null {
   const start = data.subarray(0, 16).toString('hex')
   if (start.startsWith('89504e470d0a1a0a')) return 'image/png'
   if (start.startsWith('ffd8ff')) return 'image/jpeg'
@@ -43,6 +43,34 @@ export async function readDocumentImage(
   source: string,
   documentPath: string | null,
 ): Promise<string | null> {
+  const path = documentMediaPath(source, documentPath)
+  if (!path) return null
+  try {
+    const file = await open(
+      path,
+      constants.O_RDONLY | (constants.O_NONBLOCK ?? 0),
+    )
+    try {
+      const stat = await file.stat()
+      if (!stat.isFile() || stat.size > MAX_IMAGE_BYTES) return null
+      const bytes = Buffer.alloc(stat.size + 1)
+      const { bytesRead } = await file.read(bytes, 0, bytes.length, 0)
+      if (bytesRead !== stat.size) return null
+      const data = bytes.subarray(0, bytesRead)
+      const mime = imageMime(data)
+      return mime ? `data:${mime};base64,${data.toString('base64')}` : null
+    } finally {
+      await file.close()
+    }
+  } catch {
+    return null
+  }
+}
+
+export function documentMediaPath(
+  source: string,
+  documentPath: string | null,
+): string | null {
   if (!source || source.length > 8192 || source.includes('\0')) return null
   let path: string
   try {
@@ -62,22 +90,7 @@ export async function readDocumentImage(
         ? decoded
         : resolve(dirname(documentPath as string), decoded)
     }
-    const file = await open(
-      path,
-      constants.O_RDONLY | (constants.O_NONBLOCK ?? 0),
-    )
-    try {
-      const stat = await file.stat()
-      if (!stat.isFile() || stat.size > MAX_IMAGE_BYTES) return null
-      const bytes = Buffer.alloc(stat.size + 1)
-      const { bytesRead } = await file.read(bytes, 0, bytes.length, 0)
-      if (bytesRead !== stat.size) return null
-      const data = bytes.subarray(0, bytesRead)
-      const mime = imageMime(data)
-      return mime ? `data:${mime};base64,${data.toString('base64')}` : null
-    } finally {
-      await file.close()
-    }
+    return path
   } catch {
     return null
   }

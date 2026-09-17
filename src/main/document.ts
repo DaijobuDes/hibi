@@ -30,6 +30,47 @@ let pendingPath: string | null = null
 let revision = 0
 let untitledName = 'untitled.md'
 let draftId = randomUUID()
+let back: (string | null)[] = []
+let forward: (string | null)[] = []
+
+function rememberLocation() {
+  back.push(path)
+  if (back.length > 100) back.shift()
+  forward = []
+}
+
+export async function navigateDocument(
+  window: BrowserWindow,
+  direction: unknown,
+): Promise<DocumentState | null> {
+  if (direction !== 'back' && direction !== 'forward')
+    throw new Error('invalid navigation direction.')
+  const from = direction === 'back' ? back : forward
+  const to = direction === 'back' ? forward : back
+  if (!from.length || !(await confirmDiscard(window))) return null
+  const destination = from.at(-1)!
+  const previous = path
+  const result =
+    destination === null
+      ? clearDocument(window, false)
+      : await loadDocument(window, destination, markdown, false)
+  from.pop()
+  to.push(previous)
+  return result
+}
+
+export function importDocument(
+  window: BrowserWindow,
+  content: string,
+  name: string,
+) {
+  validateMarkdown(content)
+  clearDocument(window)
+  untitledName = name
+  markdown = content
+  window.setDocumentEdited(markdown !== saved)
+  return getDocument()
+}
 
 export function getDocumentPath(): string | null {
   return path ?? pendingPath
@@ -156,7 +197,11 @@ export async function newDocument(
   return clearDocument(window)
 }
 
-export function clearDocument(window: BrowserWindow): DocumentState {
+export function clearDocument(
+  window: BrowserWindow,
+  remember = true,
+): DocumentState {
+  if (remember) rememberLocation()
   markdown = saved = ''
   draftId = randomUUID()
   path = null
@@ -189,6 +234,8 @@ export function relocateDocument(from: string, to: string): void {
   }
   path = relocate(path)
   pendingPath = relocate(pendingPath)
+  back = back.map(relocate)
+  forward = forward.map(relocate)
 }
 
 export async function renameDocument(value: unknown): Promise<DocumentState> {
@@ -237,7 +284,7 @@ export async function renameDocument(value: unknown): Promise<DocumentState> {
   if (existing) {
     if (!existing.isSymbolicLink() && (await realpath(destination)) === path) {
       await rename(path, destination)
-      path = destination
+      relocateDocument(path, destination)
       return getDocument()
     }
     throw new Error('a file with that name already exists.')
@@ -259,7 +306,7 @@ export async function renameDocument(value: unknown): Promise<DocumentState> {
   } catch {
     throw new Error(`created ${name}, but could not remove the original file.`)
   }
-  path = destination
+  relocateDocument(path, destination)
   return getDocument()
 }
 
@@ -282,10 +329,13 @@ export async function loadDocument(
   window: BrowserWindow,
   chosen: string,
   current = markdown,
+  remember = true,
 ): Promise<DocumentState> {
+  chosen = await realpath(chosen)
   const content = await readMarkdown(chosen)
   if (markdown !== current)
     throw new Error('document changed while opening a file. please try again.')
+  if (remember && chosen !== path) rememberLocation()
   path = chosen
   pendingPath = null
   markdown = saved = content

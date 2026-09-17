@@ -6,6 +6,7 @@ export const CONTENT_SECURITY_POLICY = [
   // Editor engines insert stylesheets and layout attributes; scripts stay strict.
   "style-src 'self' app://hibi 'unsafe-inline'",
   "img-src 'self' app://hibi data:",
+  'media-src app://hibi data:',
   "font-src 'self' app://hibi data:",
   "connect-src 'self' app://hibi",
   "base-uri 'none'",

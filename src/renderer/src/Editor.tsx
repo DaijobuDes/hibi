@@ -22,6 +22,7 @@ import type {
   RichExtension,
   SourceExtension,
 } from '../../addons/api'
+import { isMediaFile } from '../../shared/media'
 import { documentImage } from './DocumentImage'
 import { type CursorSettings, EditorCursor } from './EditorCursor'
 import { emitEditorKeyEvent } from './editor-events'
@@ -57,6 +58,8 @@ export function MarkdownEditor({
   documentRevision,
   flavors,
   unsupportedFlavor,
+  onAttach,
+  onLink,
 }: {
   value: string
   onChange: (value: string) => void
@@ -72,6 +75,10 @@ export function MarkdownEditor({
   documentRevision: number
   flavors: readonly MarkdownFlavor[]
   unsupportedFlavor: boolean
+  onAttach: (
+    files: File[] | null,
+  ) => Promise<import('../../shared/media').MediaAttachment[] | null>
+  onLink: (href: string) => void
 }) {
   const projection = useMemo(
     () => projectMarkdown(value, markdownExtensions),
@@ -190,12 +197,14 @@ export function MarkdownEditor({
     },
     [markdownExtensions, flavors],
   )
-  const attachSourceFormatting = useFormattingToolbar(
-    editor,
-    paneMode,
-    focusedPane,
-    disabled || mode !== paneMode || (findTarget === 'rich' && sourceOnly),
-  )
+  const { attachSource: attachSourceFormatting, attachFiles } =
+    useFormattingToolbar(
+      editor,
+      paneMode,
+      focusedPane,
+      disabled || mode !== paneMode || (findTarget === 'rich' && sourceOnly),
+      onAttach,
+    )
 
   useEffect(() => {
     if (!editor) return
@@ -306,6 +315,25 @@ export function MarkdownEditor({
       <main
         className={`editor-panes mode-${paneMode}`}
         data-source-ready={sourceReady}
+        onClickCapture={(event) => {
+          const link = (event.target as HTMLElement).closest<HTMLAnchorElement>(
+            '.tiptap a[href]',
+          )
+          if (!link || !event.shiftKey) return
+          event.preventDefault()
+          event.stopPropagation()
+          onLink(link.getAttribute('href')!)
+        }}
+        onDropCapture={(event) => {
+          const files = Array.from(event.dataTransfer.files)
+          if (!files.length || !files.every(isMediaFile)) return
+          event.preventDefault()
+          event.stopPropagation()
+          const pane = (event.target as HTMLElement).closest('.source-pane')
+            ? 'source'
+            : 'rich'
+          void attachFiles(files, pane, { x: event.clientX, y: event.clientY })
+        }}
         onKeyDownCapture={(event) => emitEditorKeyEvent(event.nativeEvent)}
         onKeyUpCapture={(event) => emitEditorKeyEvent(event.nativeEvent)}
       >
@@ -357,6 +385,7 @@ export function MarkdownEditor({
                 fallback={<LoadingScreen label="loading markdown editor" />}
               >
                 <SourceEditor
+                  onLink={onLink}
                   onFormatting={attachSourceFormatting}
                   sourceExtensions={sourceExtensions}
                   showLineNumbers={showLineNumbers}

@@ -62,6 +62,7 @@ export function WorkspaceSidebar({
     explorerDecorations.snapshot,
   )
   const rootDecoration = decorations.get('')
+  const workspaceCommands = commands.filter((command) => command.workspace)
   useLayoutEffect(() => {
     explorerDecorations.setWorkspace(workspace)
   }, [workspace])
@@ -144,6 +145,13 @@ export function WorkspaceSidebar({
       selected={workspace?.activePath ?? null}
       onSelect={onFile}
       onMenu={openMenu}
+      onMove={(path, parent) => {
+        const destination = [parent, path.split('/').at(-1)]
+          .filter(Boolean)
+          .join('/')
+        if (path !== destination)
+          void onAction({ action: 'move', path, destination }).catch(onError)
+      }}
       editing={
         editing && {
           ...editing,
@@ -218,18 +226,17 @@ export function WorkspaceSidebar({
         )
       }
       footer={
-        workspace &&
-        commands
-          .filter((command) => command.workspace)
-          .map((command) => (
-            <button
-              key={command.id}
-              type="button"
-              onClick={() => void command.run()}
-            >
-              {command.label}
-            </button>
-          ))
+        workspace && workspaceCommands.length > 0
+          ? workspaceCommands.map((command) => (
+              <button
+                key={command.id}
+                type="button"
+                onClick={() => void command.run()}
+              >
+                {command.label}
+              </button>
+            ))
+          : null
       }
     />
   )

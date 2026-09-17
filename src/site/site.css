@@ -371,3 +371,6 @@
     transition: none;
   }
 }
+.site-content article video {
+  max-width: 100%;
+}

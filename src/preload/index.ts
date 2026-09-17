@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { ADDON_CHANNELS } from '../addons/api'
 import { ABOUT_CHANNELS } from '../shared/about'
 import { APPEARANCE_CHANNEL } from '../shared/colorschemes'
@@ -9,11 +9,37 @@ import {
 } from '../shared/desktop'
 import { HISTORY_CHANNELS } from '../shared/history'
 import { type AppCommand, HOTKEY_CHANNELS } from '../shared/hotkeys'
+import { MEDIA_CHANNELS } from '../shared/media'
 import { SIDELOAD_CHANNELS } from '../shared/sideload'
 import { WORKSPACE_CHANNELS, type WorkspaceState } from '../shared/workspace'
 
 if (process.isMainFrame) {
   contextBridge.exposeInMainWorld('hibi', {
+    navigateDocument: (direction) =>
+      ipcRenderer.invoke(DOCUMENT_CHANNELS.navigate, direction),
+    openDocumentLink: (href, revision) =>
+      ipcRenderer.invoke(DOCUMENT_CHANNELS.link, href, revision),
+    openRemoteDocument: (url) =>
+      ipcRenderer.invoke(DOCUMENT_CHANNELS.remote, url),
+    onOpenRemote: (callback) => {
+      const listener = () => callback()
+      ipcRenderer.on(DOCUMENT_CHANNELS.requestRemote, listener)
+      return () => {
+        ipcRenderer.removeListener(DOCUMENT_CHANNELS.requestRemote, listener)
+      }
+    },
+    attachMedia: (files, revision) =>
+      ipcRenderer.invoke(
+        MEDIA_CHANNELS.attach,
+        files === null
+          ? null
+          : files.map((file) => webUtils.getPathForFile(file)),
+        revision,
+      ),
+    readDocumentMedia: (source, revision) =>
+      ipcRenderer.invoke(MEDIA_CHANNELS.read, source, revision),
+    openDroppedFile: (file) =>
+      ipcRenderer.invoke(MEDIA_CHANNELS.open, webUtils.getPathForFile(file)),
     getInstalledAddons: () => ipcRenderer.invoke(SIDELOAD_CHANNELS.list),
     installAddon: () => ipcRenderer.invoke(SIDELOAD_CHANNELS.install),
     removeAddon: (id) => ipcRenderer.invoke(SIDELOAD_CHANNELS.remove, id),

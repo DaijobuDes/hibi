@@ -134,6 +134,12 @@ export async function openWorkspace(
   })
   const selected = result.filePaths[0]
   if (result.canceled || !selected) return null
+  return loadWorkspace(selected)
+}
+
+export async function loadWorkspace(
+  selected: string,
+): Promise<WorkspaceState | null> {
   const nextRoot = await realpath(selected)
   const nextEntries = await scanWorkspace(nextRoot)
   watcher?.close()
@@ -212,7 +218,7 @@ export async function snapshotWorkspace(): Promise<WorkspaceSnapshot> {
           )
         const images: Record<string, string> = Object.create(null)
         for (const source of imageSources(markdown)) {
-          const image = await readDocumentImage(source, path)
+          const image = await exportDocumentMedia(source, path)
           if (!image) continue
           bytes += Buffer.byteLength(image)
           if (bytes > 20 * 1024 * 1024)
@@ -236,4 +242,5 @@ export async function snapshotWorkspace(): Promise<WorkspaceSnapshot> {
   return { name: basename(selected), pages }
 }
 
-import { imageSources, readDocumentImage } from './images'
+import { imageSources } from './images'
+import { exportDocumentMedia } from './media'

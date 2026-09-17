@@ -27,6 +27,8 @@ export type SidebarProps = {
   footer?: ReactNode
   empty?: ReactNode
   onMenu?: (id: string, anchor: HTMLElement) => void
+  /** Move a tree item into a folder; null targets the tree root. */
+  onMove?: (id: string, parent: string | null) => void
   editing?: {
     id: string
     value: string

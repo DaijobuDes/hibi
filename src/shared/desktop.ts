@@ -7,6 +7,10 @@ export const DOCUMENT_CHANNELS = {
   save: 'document:save',
   rename: 'document:rename',
   image: 'document:image',
+  navigate: 'document:navigate',
+  link: 'document:link',
+  remote: 'document:remote',
+  requestRemote: 'document:request-remote',
 } as const
 
 export const MAX_DOCUMENT_BYTES = 2 * 1024 * 1024
@@ -30,6 +34,27 @@ export type AppInfo = {
 }
 
 export type DesktopApi = {
+  navigateDocument: (
+    direction: 'back' | 'forward',
+  ) => Promise<DocumentState | null>
+  openDocumentLink: (
+    href: string,
+    revision: number,
+  ) => Promise<DocumentState | null>
+  openRemoteDocument: (url: string) => Promise<DocumentState | null>
+  onOpenRemote: (callback: () => void) => () => void
+  attachMedia: (
+    files: File[] | null,
+    revision: number,
+  ) => Promise<import('./media').AttachmentResult | null>
+  readDocumentMedia: (
+    source: string,
+    revision: number,
+  ) => Promise<import('./media').DocumentMedia | null>
+  openDroppedFile: (file: File) => Promise<{
+    document: DocumentState | null
+    workspace?: WorkspaceState | null
+  } | null>
   getInstalledAddons: () => Promise<import('./sideload').InstalledAddon[]>
   installAddon: () => Promise<void>
   removeAddon: (id: string) => Promise<void>

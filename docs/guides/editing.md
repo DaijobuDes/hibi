@@ -58,6 +58,8 @@ appearance also controls the text cursor in both editors: line, outline block, f
 
 ## saving
 
+see [media and navigation](../editing/media-and-navigation.md) for drag/drop, attachments, shift-click links, back/forward shortcuts, remote opening, and leaving empty formatted blocks.
+
 click the filename, enter a new name, and press enter. escape or clicking away cancels. names without an extension receive `.md`. renaming an unsaved document sets its suggested save name; existing files are renamed in the same folder without replacing another file. unsaved edits remain pending after a rename.
 
 new, open, save, and save as use native dialogs. hibi checks for unsaved edits before replacing a document, and checks disk changes before overwriting the same file. saves write and sync a temporary file before renaming it over the destination.

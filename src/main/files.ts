@@ -1,14 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { constants } from 'node:fs'
-import {
-  copyFile,
-  link,
-  open,
-  readFile,
-  rename,
-  stat,
-  unlink,
-} from 'node:fs/promises'
+import { copyFile, link, open, rename, stat, unlink } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { MAX_DOCUMENT_BYTES } from '../shared/desktop'
 
@@ -24,14 +16,35 @@ export function validateMarkdown(value: unknown): asserts value is string {
 }
 
 export async function readMarkdown(path: string): Promise<string> {
-  if ((await stat(path)).size > MAX_DOCUMENT_BYTES)
-    throw new Error('this document is larger than 2 mib.')
-  const bytes = await readFile(path)
-  if (bytes.length > MAX_DOCUMENT_BYTES)
-    throw new Error('this document is larger than 2 mib.')
-  return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(
-    bytes,
+  const file = await open(
+    path,
+    constants.O_RDONLY | (constants.O_NONBLOCK ?? 0),
   )
+  try {
+    const info = await file.stat()
+    if (!info.isFile()) throw new Error('choose a regular markdown file.')
+    if (info.size > MAX_DOCUMENT_BYTES)
+      throw new Error('this document is larger than 2 mib.')
+    const bytes = Buffer.alloc(info.size + 1)
+    let bytesRead = 0
+    while (bytesRead < bytes.length) {
+      const chunk = await file.read(
+        bytes,
+        bytesRead,
+        bytes.length - bytesRead,
+        bytesRead,
+      )
+      if (!chunk.bytesRead) break
+      bytesRead += chunk.bytesRead
+    }
+    if (bytesRead !== info.size)
+      throw new Error('the file changed while opening; try again.')
+    return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(
+      bytes.subarray(0, bytesRead),
+    )
+  } finally {
+    await file.close()
+  }
 }
 
 export async function writeMarkdown(

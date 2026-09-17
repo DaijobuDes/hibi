@@ -11,6 +11,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react'
+import { flushSync } from 'react-dom'
 import { createRoot } from 'react-dom/client'
 import type {
   AppInfo,
@@ -24,6 +25,7 @@ import {
   defaultHotkeys,
   type Hotkeys,
 } from '../../shared/hotkeys'
+import { isMediaFile } from '../../shared/media'
 import { DialogProvider, useDialogs } from '../../ui/DialogProvider'
 import { MenuHost } from '../../ui/MenuHost'
 import { ToastProvider, useToasts } from '../../ui/Sonner'
@@ -183,6 +185,27 @@ function App() {
   const [failed, setFailed] = useState(false)
   const [typing, setTyping] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const settingsNavigation = useRef({
+    current: { open: false, category: 'hibi' },
+    back: [] as { open: boolean; category: string }[],
+    forward: [] as { open: boolean; category: string }[],
+    navigating: false,
+  })
+  useEffect(() => {
+    const history = settingsNavigation.current
+    if (
+      history.current.open === settingsOpen &&
+      history.current.category === settingsCategory
+    )
+      return
+    if (!history.navigating) {
+      history.back.push(history.current)
+      if (history.back.length > 100) history.back.shift()
+      history.forward = []
+    }
+    history.current = { open: settingsOpen, category: settingsCategory }
+    history.navigating = false
+  }, [settingsOpen, settingsCategory])
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [findOpen, setFindOpen] = useState(false)
   const [workspace, setWorkspace] = useState<WorkspaceState | null>(null)
@@ -473,6 +496,11 @@ function App() {
   useEffect(() =>
     window.hibi.onCommand((command) => addonHost.app.runAction(command)),
   )
+  useEffect(() =>
+    window.hibi.onOpenRemote(() => {
+      void openRemote()
+    }),
+  )
 
   useEffect(() => window.hibi.onNotice(setNotice), [setNotice])
 
@@ -531,6 +559,130 @@ function App() {
     }
   }
 
+  async function attachMedia(files: File[] | null) {
+    if (busyRef.current || !document) return null
+    busyRef.current = true
+    setBusy(true)
+    try {
+      const result = await window.hibi.attachMedia(files, document.revision)
+      if (!result) return null
+      acceptDocument(result.document)
+      savedText.current = result.document.savedMarkdown
+      setWorkspace(await window.hibi.getWorkspace())
+      return result.attachments
+    } finally {
+      busyRef.current = false
+      // Restore editor editability before the caller inserts its captured selection.
+      flushSync(() => setBusy(false))
+    }
+  }
+
+  async function openDroppedFile(file: File) {
+    if (busyRef.current || dialogs.isOpen()) return
+    busyRef.current = true
+    setBusy(true)
+    try {
+      const result = await window.hibi.openDroppedFile(file)
+      if (result?.document) {
+        acceptDocument(result.document)
+        savedText.current = result.document.savedMarkdown
+        setWorkspace(await window.hibi.getWorkspace())
+        if ('workspace' in result) setSidebarOpen(true)
+        setSettingsOpen(false)
+      }
+    } catch (error) {
+      setError(
+        error instanceof Error ? error.message : 'could not open dropped file.',
+      )
+    } finally {
+      busyRef.current = false
+      setBusy(false)
+    }
+  }
+
+  async function applyDocumentOperation(
+    operation: () => Promise<DocumentState | null>,
+  ) {
+    if (busyRef.current || dialogs.isOpen()) return
+    busyRef.current = true
+    setBusy(true)
+    try {
+      const next = await operation()
+      if (!next) return
+      acceptDocument(next)
+      savedText.current = next.savedMarkdown
+      setWorkspace(await window.hibi.getWorkspace())
+      setSettingsOpen(false)
+      settingsNavigation.current.forward = []
+    } catch (error) {
+      setError(
+        error instanceof Error ? error.message : 'could not open document.',
+      )
+    } finally {
+      busyRef.current = false
+      setBusy(false)
+    }
+  }
+
+  async function openRemote() {
+    if (busyRef.current || dialogs.isOpen()) return
+    const url = await dialogs.prompt({
+      title: 'open from remote',
+      label: 'markdown url',
+      placeholder: 'https://example.com/readme.md',
+      description:
+        'open raw markdown as an editable draft, then save it locally.',
+      confirmLabel: 'open',
+    })
+    if (url)
+      await applyDocumentOperation(() => window.hibi.openRemoteDocument(url))
+  }
+
+  function openLink(href: string) {
+    if (href.startsWith('#')) {
+      let anchor: string
+      try {
+        anchor = decodeURIComponent(href.slice(1))
+      } catch {
+        return
+      }
+      const heading = Array.from(
+        window.document.querySelectorAll<HTMLElement>(
+          '.tiptap :is(h1,h2,h3,h4,h5,h6)',
+        ),
+      ).find(
+        (element) =>
+          (element.textContent ?? '')
+            .trim()
+            .toLowerCase()
+            .replace(/[^\p{L}\p{N}\s_-]/gu, '')
+            .replace(/\s+/g, '-') === anchor,
+      )
+      heading?.scrollIntoView({ block: 'start' })
+      return
+    }
+    if (document)
+      void applyDocumentOperation(() =>
+        window.hibi.openDocumentLink(href, document.revision),
+      )
+  }
+
+  function navigate(direction: 'back' | 'forward') {
+    const history = settingsNavigation.current
+    const from = direction === 'back' ? history.back : history.forward
+    const to = direction === 'back' ? history.forward : history.back
+    if ((settingsOpen || direction === 'forward') && from.length) {
+      const destination = from.pop()!
+      to.push(history.current)
+      history.navigating = true
+      setSettingsCategory(destination.category)
+      setSettingsOpen(destination.open)
+      showTitlebar()
+    } else if (settingsOpen && direction === 'back') toggleSettings()
+    else
+      void applyDocumentOperation(() => window.hibi.navigateDocument(direction))
+  }
+
   function runAction(command: AppCommand) {
     if (dialogs.isOpen()) return
     if (command === 'palette') {
@@ -539,6 +691,10 @@ function App() {
     }
     setPaletteOpen(false)
     switch (command) {
+      case 'back':
+      case 'forward':
+        navigate(command)
+        break
       case 'history':
         void dialogs
           .open<string>({
@@ -915,6 +1071,7 @@ function App() {
     })
 
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: OS file drops supplement the keyboard-accessible file menu.
     <div
       className="app"
       aria-busy={busy}
@@ -923,6 +1080,29 @@ function App() {
       data-screen={settingsOpen ? 'settings' : 'editor'}
       data-typing={typing && hideTitlebar}
       data-sidebar={sidebarOpen}
+      onDragOver={(event) => {
+        if (event.dataTransfer.types.includes('Files')) {
+          event.preventDefault()
+          event.dataTransfer.dropEffect = 'copy'
+        }
+      }}
+      onDropCapture={(event) => {
+        const files = Array.from(event.dataTransfer.files)
+        if (!files.length) return
+        if (
+          !settingsOpen &&
+          (event.target as HTMLElement).closest('.editor-panes') &&
+          files.every(isMediaFile)
+        )
+          return
+        event.preventDefault()
+        event.stopPropagation()
+        if (files.length !== 1)
+          setError(
+            'drop one markdown file or folder to open it; drop media onto the editor to attach several files.',
+          )
+        else void openDroppedFile(files[0]!)
+      }}
       onInputCapture={(event) => noteTyping(event.target)}
       onKeyDownCapture={(event) => {
         if (
@@ -941,7 +1121,12 @@ function App() {
           setFindOpen(false)
           return
         }
-        if (event.key === 'Escape' && settingsOpen && !paletteOpen) {
+        if (
+          event.key === 'Escape' &&
+          settingsOpen &&
+          !paletteOpen &&
+          !dialogs.isOpen()
+        ) {
           event.preventDefault()
           toggleSettings()
           return
@@ -1032,6 +1217,8 @@ function App() {
         <div className="editor-page">
           {document && (
             <MarkdownEditor
+              onAttach={attachMedia}
+              onLink={openLink}
               flavors={chosenFlavors}
               unsupportedFlavor={unsupportedFlavor}
               sourceExtensions={addonHost.sourceExtensions}

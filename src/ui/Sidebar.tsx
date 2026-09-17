@@ -37,6 +37,8 @@ export type SidebarProps = {
   footer?: ReactNode
   empty?: ReactNode
   onMenu?: (id: string, anchor: HTMLElement) => void
+  /** Move a tree item into a folder; null targets the tree root. */
+  onMove?: (id: string, parent: string | null) => void
   editing?: {
     id: string
     value: string
@@ -104,6 +106,7 @@ export function Sidebar({
   footer,
   empty,
   onMenu,
+  onMove,
   editing,
   resize,
 }: SidebarProps) {
@@ -111,6 +114,8 @@ export function Sidebar({
     null,
   )
   const [dragging, setDragging] = useState(false)
+  const draggedItem = useRef<string | null>(null)
+  const [dropTarget, setDropTarget] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [focused, setFocused] = useState<string | null>(null)
   const buttons = useRef(new Map<string, HTMLButtonElement>())
@@ -189,7 +194,31 @@ export function Sidebar({
     >
       <aside className="sidebar" aria-label={label}>
         {header && <div className="sidebar-header">{header}</div>}
-        <div className="sidebar-scroll">
+        {/* biome-ignore lint/a11y/noStaticElementInteractions: drag/drop supplements the keyboard-accessible move menu. */}
+        <div
+          className="sidebar-scroll"
+          data-drop-target={dropTarget === ''}
+          onDragOver={(event) => {
+            if (!onMove || !draggedItem.current) return
+            event.preventDefault()
+            event.dataTransfer.dropEffect = 'move'
+            setDropTarget('')
+          }}
+          onDragLeave={(event) => {
+            if (
+              !event.currentTarget.contains(event.relatedTarget as Node | null)
+            )
+              setDropTarget(null)
+          }}
+          onDrop={(event) => {
+            if (!onMove || !draggedItem.current) return
+            event.preventDefault()
+            event.stopPropagation()
+            onMove(draggedItem.current, null)
+            draggedItem.current = null
+            setDropTarget(null)
+          }}
+        >
           <div
             className="sidebar-items"
             role={mode === 'tabs' ? 'tablist' : 'tree'}
@@ -214,9 +243,44 @@ export function Sidebar({
                       {item.section}
                     </div>
                   )}
+                  {/* biome-ignore lint/a11y/noStaticElementInteractions: tree buttons and the move menu provide keyboard equivalents. */}
                   <div
                     className="sidebar-row"
                     data-editing={editing?.id === item.id}
+                    data-drop-target={dropTarget === item.id}
+                    onDragOver={(event) => {
+                      const source = draggedItem.current
+                      if (!onMove || !source) return
+                      event.stopPropagation()
+                      const target = item.children ? item.id : parent
+                      if (
+                        source === target ||
+                        target?.startsWith(`${source}/`)
+                      ) {
+                        setDropTarget(null)
+                        return
+                      }
+                      event.preventDefault()
+                      event.dataTransfer.dropEffect = 'move'
+                      setDropTarget(target ?? '')
+                    }}
+                    onDrop={(event) => {
+                      const source = draggedItem.current
+                      if (!onMove || !source) return
+                      event.preventDefault()
+                      event.stopPropagation()
+                      const target = item.children ? item.id : parent
+                      if (
+                        source !== target &&
+                        !target?.startsWith(`${source}/`)
+                      ) {
+                        onMove(source, target)
+                        if (target)
+                          setExpanded((old) => new Set([...old, target]))
+                      }
+                      draggedItem.current = null
+                      setDropTarget(null)
+                    }}
                   >
                     {editing?.id === item.id ? (
                       <RenameInput editing={editing} />
@@ -229,6 +293,20 @@ export function Sidebar({
                         }}
                         id={`${idPrefix}-${item.id}`}
                         type="button"
+                        draggable={mode === 'tree' && !!onMove}
+                        onDragStart={(event) => {
+                          if (!onMove) return
+                          draggedItem.current = item.id
+                          event.dataTransfer.setData(
+                            'application/x-hibi-sidebar',
+                            item.id,
+                          )
+                          event.dataTransfer.effectAllowed = 'move'
+                        }}
+                        onDragEnd={() => {
+                          draggedItem.current = null
+                          setDropTarget(null)
+                        }}
                         role={mode === 'tabs' ? 'tab' : 'treeitem'}
                         aria-selected={selected === item.id}
                         aria-expanded={

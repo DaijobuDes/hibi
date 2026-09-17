@@ -41,8 +41,10 @@ import {
   useRef,
   useState,
 } from 'react'
+import { attachmentMarkdown, type MediaAttachment } from '../../shared/media'
 import { Button, SettingRow } from '../../ui/Controls'
 import { useDialogs } from '../../ui/DialogProvider'
+import { useToasts } from '../../ui/Sonner'
 import type { ViewMode } from './Editor'
 import type { InsertValues, SourceFormatting } from './source-formatting'
 import { toolbar } from './toolbar'
@@ -242,11 +244,9 @@ const actions: Action[] = [
 ]
 
 function InsertForm({
-  image,
   initial,
   close,
 }: {
-  image: boolean
   initial: InsertValues
   close: (value: InsertValues | null) => void
 }) {
@@ -266,12 +266,8 @@ function InsertForm({
       <div className="settings-group">
         <SettingRow
           id="insert-url"
-          label={image ? 'image path' : 'link destination'}
-          description={
-            image
-              ? 'absolute path, or a path relative to this note.'
-              : 'web address, file path, or heading anchor.'
-          }
+          label="link destination"
+          description="web address, file path, or heading anchor."
         >
           <input
             id="insert-url"
@@ -283,21 +279,6 @@ function InsertForm({
             }
           />
         </SettingRow>
-        {image && (
-          <SettingRow
-            id="insert-alt"
-            label="description"
-            description="describe the image for screen readers."
-          >
-            <input
-              id="insert-alt"
-              value={value.alt}
-              onChange={(event) =>
-                setValue({ ...value, alt: event.target.value })
-              }
-            />
-          </SettingRow>
-        )}
       </div>
       <div className="dialog-actions">
         <Button onClick={() => close(null)}>cancel</Button>
@@ -318,11 +299,89 @@ export function useFormattingToolbar(
   mode: ViewMode,
   focusedPane: 'rich' | 'source',
   disabled: boolean,
+  onAttach: (files: File[] | null) => Promise<MediaAttachment[] | null>,
 ) {
   const dialogs = useDialogs()
+  const toasts = useToasts()
   const source = useRef<SourceFormatting | null>(null)
-  const latest = useRef({ editor, mode, focusedPane, disabled, dialogs })
-  latest.current = { editor, mode, focusedPane, disabled, dialogs }
+  const latest = useRef({
+    editor,
+    mode,
+    focusedPane,
+    disabled,
+    dialogs,
+    onAttach,
+  })
+  latest.current = { editor, mode, focusedPane, disabled, dialogs, onAttach }
+  const attachFiles = useCallback(
+    async (
+      files: File[] | null,
+      pane?: 'rich' | 'source',
+      coords?: { x: number; y: number },
+    ) => {
+      const { editor, mode, focusedPane, disabled, onAttach } = latest.current
+      if (disabled) return
+      const useSource =
+        (pane ??
+          (mode === 'markdown'
+            ? 'source'
+            : mode === 'normal'
+              ? 'rich'
+              : focusedPane)) === 'source'
+      if (!useSource && !editor?.isEditable) return
+      const sourceSelection = useSource ? source.current?.capture(coords) : null
+      const document = editor?.state.doc
+      const selection = editor?.state.selection
+      const position =
+        !useSource && coords
+          ? editor?.view.posAtCoords({ left: coords.x, top: coords.y })?.pos
+          : null
+      try {
+        const attachments = await onAttach(files)
+        if (!attachments) return
+        await new Promise(requestAnimationFrame)
+        let inserted = false
+        if (useSource)
+          inserted =
+            sourceSelection?.insertMarkdown(attachmentMarkdown(attachments)) ??
+            false
+        else if (
+          editor &&
+          !editor.isDestroyed &&
+          editor.isEditable &&
+          editor.state.doc === document &&
+          selection
+        ) {
+          inserted = editor
+            .chain()
+            .focus()
+            .command(({ tr }) => {
+              if (position == null) tr.setSelection(selection)
+              return true
+            })
+            .insertContentAt(
+              position ?? { from: selection.from, to: selection.to },
+              attachments.map(({ url, alt }) => ({
+                type: 'image',
+                attrs: { src: url, alt },
+              })),
+            )
+            .run()
+        }
+        if (!inserted)
+          throw new Error(
+            'the note changed before insertion. copied files remain in assets; drop them again to insert.',
+          )
+      } catch (error) {
+        toasts.show({
+          message:
+            error instanceof Error ? error.message : 'could not attach media.',
+          variant: 'error',
+        })
+      }
+    },
+    [toasts],
+  )
   const refresh = useRef(() => {})
   const attachSource = useCallback((value: SourceFormatting | null) => {
     const initial = !source.current
@@ -342,15 +401,16 @@ export function useFormattingToolbar(
       const { editor, dialogs, disabled } = latest.current
       if (disabled) return
       const useSource = inSource()
-      if (action.id === 'link' || action.id === 'image') {
+      if (action.id === 'image') {
+        await attachFiles(null)
+      } else if (action.id === 'link') {
         const sourceSelection = useSource ? source.current?.capture() : null
         const document = editor?.state.doc
         const selection = editor?.state.selection
         const result = await dialogs.open<InsertValues>({
-          title: action.id === 'image' ? 'insert image' : 'insert link',
+          title: 'insert link',
           content: ({ close }) => (
             <InsertForm
-              image={action.id === 'image'}
               initial={{
                 url:
                   !useSource && action.id === 'link'
@@ -386,9 +446,7 @@ export function useFormattingToolbar(
             tr.setSelection(selection)
             return true
           })
-        if (action.id === 'image')
-          chain.setImage({ src: result.url, alt: result.alt }).run()
-        else if (selection.empty && !editor.isActive('link'))
+        if (selection.empty && !editor.isActive('link'))
           chain
             .insertContent({
               type: 'text',
@@ -443,7 +501,7 @@ export function useFormattingToolbar(
       refresh.current = () => {}
       scope.dispose()
     }
-  }, [])
+  }, [attachFiles])
   useLayoutEffect(() => {
     const update = () => refresh.current()
     editor?.on('transaction', update)
@@ -467,5 +525,5 @@ export function useFormattingToolbar(
       source.current?.focus()
     else editor?.commands.focus()
   }, [mode, focusedPane, editor])
-  return attachSource
+  return { attachSource, attachFiles }
 }

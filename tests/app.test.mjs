@@ -57,6 +57,13 @@ test('desktop launch, isolation, offline reload, and recovery', {
       node: 'undefined',
       process: 'undefined',
       api: [
+        'navigateDocument',
+        'openDocumentLink',
+        'openRemoteDocument',
+        'onOpenRemote',
+        'attachMedia',
+        'readDocumentMedia',
+        'openDroppedFile',
         'getInstalledAddons',
         'installAddon',
         'removeAddon',

@@ -70,8 +70,30 @@ test('empty formatted blocks remain editable and rich editing survives vim and v
   await pressShortcut(app, `${mod}+Shift+[`)
   await source.waitFor({ state: 'hidden' })
   for (const command of ['code', 'quote', 'h1']) {
+    await app.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => ({ response: 1 })
+    })
+    const revision = (await page.evaluate(() => window.hibi.getDocument()))
+      .revision
+    await pressShortcut(app, `${mod}+n`)
+    await waitForAsync(
+      page,
+      async (revision) => (await window.hibi.getDocument()).revision > revision,
+      revision,
+    )
+    await rich.waitFor()
+    await page.waitForFunction(
+      () =>
+        document.querySelector('.tiptap')?.textContent === '' &&
+        document.querySelector('.tiptap')?.getAttribute('contenteditable') ===
+          'true',
+    )
     await rich.fill(`/${command}`)
+    await page.getByRole('listbox', { name: 'slash commands' }).waitFor()
     await rich.press('Enter')
+    await rich
+      .locator({ code: 'pre', quote: 'blockquote', h1: 'h1' }[command])
+      .waitFor()
     await rich.press(`${mod}+Enter`)
     await page.keyboard.type('outside')
     assert.equal(await rich.getAttribute('contenteditable'), 'true')

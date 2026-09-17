@@ -260,11 +260,31 @@ export function sourceFormatting(view: EditorView) {
                 : false),
       }
     },
-    capture() {
+    capture(coords?: { x: number; y: number }) {
       const doc = view.state.doc,
-        selection = view.state.selection
+        position = coords ? view.posAtCoords(coords) : null,
+        selection =
+          position == null
+            ? view.state.selection
+            : EditorSelection.single(position)
       return {
         text: view.state.sliceDoc(selection.main.from, selection.main.to),
+        insertMarkdown(insert: string) {
+          if (!view.dom.isConnected || view.state.doc !== doc || !editable())
+            return false
+          const { from, to } = selection.main
+          view.dispatch({
+            changes: { from, to, insert },
+            selection: { anchor: from + insert.length },
+            annotations: [
+              Transaction.userEvent.of('input.format'),
+              isolateHistory.of('full'),
+            ],
+            scrollIntoView: true,
+          })
+          view.focus()
+          return true
+        },
         run(id: string, values: InsertValues) {
           if (!view.dom.isConnected || view.state.doc !== doc) return false
           view.dispatch({ selection })

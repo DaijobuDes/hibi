@@ -17,6 +17,16 @@ test('hotkey validation rejects conflicts and preserves standard editing keys', 
   const defaults = defaultHotkeys('darwin')
   assert.equal(defaults.normal, 'meta+shift+[')
   assert.equal(defaults.markdown, 'meta+shift+]')
+  assert.equal(defaults.back, 'meta+[')
+  assert.equal(defaults.forward, 'meta+]')
+  assert.equal(
+    restoreHotkeys({ normal: 'meta+[', _version: 2 }, 'darwin').back,
+    '',
+  )
+  assert.equal(
+    restoreHotkeys({ normal: 'meta+[' }, 'darwin').back,
+    defaults.back,
+  )
   assert.equal(
     restoreHotkeys(
       { ...defaults, normal: 'meta+[', markdown: 'meta+]' },

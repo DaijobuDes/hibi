@@ -5,7 +5,11 @@ import {
   selectAll,
 } from '@codemirror/commands'
 import { markdown as markdownLanguage } from '@codemirror/lang-markdown'
-import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
+import {
+  HighlightStyle,
+  syntaxHighlighting,
+  syntaxTree,
+} from '@codemirror/language'
 import {
   closeSearchPanel,
   findNext,
@@ -24,6 +28,7 @@ import {
 } from '@codemirror/state'
 import { EditorView, keymap, lineNumbers, placeholder } from '@codemirror/view'
 import { tags } from '@lezer/highlight'
+import { marked } from 'marked'
 import { useEffect, useRef } from 'react'
 import type { SourceExtension } from '../../addons/api'
 import { codeHighlighter, codeLanguages } from './code-languages'
@@ -60,6 +65,7 @@ export function SourceEditor({
   showLineNumbers,
   sourceExtensions,
   onFormatting,
+  onLink,
 }: {
   active: boolean
   onReady: () => void
@@ -74,6 +80,7 @@ export function SourceEditor({
   showLineNumbers: boolean
   sourceExtensions: readonly SourceExtension[]
   onFormatting: (formatting: SourceFormatting | null) => void
+  onLink: (href: string) => void
 }) {
   const host = useRef<HTMLDivElement>(null)
   const view = useRef<EditorView | null>(null)
@@ -88,6 +95,8 @@ export function SourceEditor({
   const ready = useRef(onReady)
   const formatting = useRef<SourceFormatting | null>(null)
   const reportFormatting = useRef(onFormatting)
+  const openLink = useRef(onLink)
+  openLink.current = onLink
   reportFormatting.current = onFormatting
   ready.current = onReady
   find.current = { active: findActive, report: onFindStatus }
@@ -115,6 +124,31 @@ export function SourceEditor({
           numbers.current.of([]),
           language.of(markdown()),
           history(),
+          EditorView.domEventHandlers({
+            click(event, view) {
+              if (!event.shiftKey) return false
+              const position = view.posAtCoords({
+                x: event.clientX,
+                y: event.clientY,
+              })
+              if (position == null) return false
+              let node = syntaxTree(view.state).resolveInner(position, -1)
+              while (node.parent && !['Link', 'Autolink'].includes(node.name))
+                node = node.parent
+              if (!['Link', 'Autolink'].includes(node.name)) return false
+              let href = ''
+              marked.walkTokens(
+                marked.lexer(view.state.sliceDoc(node.from, node.to)),
+                (token) => {
+                  if (token.type === 'link') href = token.href
+                },
+              )
+              if (!href) return false
+              event.preventDefault()
+              openLink.current(href)
+              return true
+            },
+          }),
           keymap.of([
             { key: 'Ctrl-a', run: selectAll },
             ...formattingKeymap,
