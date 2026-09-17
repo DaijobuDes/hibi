@@ -6,8 +6,8 @@ import {
 } from '@tiptap/react'
 import { FileDown, Pencil } from 'lucide-react'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import { Button, IconButton } from '../../ui/Controls'
 import type { AddonContext } from '../api'
+import { Button, IconButton, TextArea } from '../ui'
 import { TypstPreview } from './Preview'
 import { typstBlock } from './syntax'
 
@@ -32,7 +32,8 @@ function TypstForm({
       }}
     >
       <label htmlFor="typst-source">typst source</label>
-      <textarea
+      <TextArea
+        monospace
         id="typst-source"
         ref={input}
         value={value}

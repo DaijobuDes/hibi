@@ -76,23 +76,8 @@
 .frontmatter-toggle[aria-expanded="false"] svg {
   transform: rotate(-90deg);
 }
-.frontmatter :is(input:not([type="checkbox"]), textarea) {
-  min-width: 0;
-  max-width: 100%;
-  padding: var(--space-1) var(--space-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-control);
-  background: var(--surface);
-  color: var(--ink);
-  font: inherit;
-}
-.frontmatter textarea {
-  width: 100%;
+.frontmatter-field textarea {
   resize: none;
-  line-height: 1.5;
-}
-.frontmatter input {
-  width: 100%;
 }
 .frontmatter .setting-toggle {
   width: 32px;
@@ -111,20 +96,6 @@
   margin-top: var(--space-1);
   padding-left: var(--space-1);
   color: var(--muted);
-}
-.frontmatter-field :is(input:not([type="checkbox"]), textarea) {
-  border-color: transparent;
-  background: transparent;
-  transition:
-    background var(--motion-fast),
-    border-color var(--motion-fast);
-}
-.frontmatter-field :is(input:not([type="checkbox"]), textarea):hover {
-  background: var(--surface);
-}
-.frontmatter-field :is(input:not([type="checkbox"]), textarea):focus {
-  background: var(--surface);
-  border-color: var(--border);
 }
 .frontmatter-field input[type="number"] {
   appearance: textfield;
@@ -161,10 +132,6 @@
 .frontmatter-raw {
   padding: var(--space-2) 0;
 }
-.frontmatter-raw textarea {
-  font-family: var(--font-mono);
-  resize: vertical;
-}
 @container (max-width: 260px) {
   .frontmatter-field {
     grid-template-columns: minmax(0, 1fr) var(--control-height);
@@ -188,6 +155,9 @@
 .frontmatter-invalid {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+.frontmatter-error {
+  color: var(--status-danger);
 }
 @media (prefers-reduced-motion: reduce) {
   .frontmatter-disclosure,

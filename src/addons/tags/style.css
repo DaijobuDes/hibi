@@ -3,15 +3,6 @@
   background: color-mix(in srgb, var(--accent) 8%, transparent);
   border-radius: var(--radius-control);
 }
-.tags-controls {
-  display: flex;
-  gap: var(--space-2);
-  margin-bottom: var(--space-3);
-}
-.tags-controls input {
-  flex: 1;
-  min-width: 0;
-}
 .tags-browser {
   display: grid;
   grid-template-columns: minmax(120px, 1fr) minmax(0, 2fr);
@@ -25,15 +16,9 @@
   gap: var(--space-1);
   min-width: 0;
 }
-.tags-list button,
-.tags-files button {
-  width: 100%;
-  justify-content: space-between;
-  text-align: left;
-  overflow-wrap: anywhere;
-}
-.tags-list button[aria-pressed="true"] {
-  background: var(--selection);
+.tags-list .ui-button > span:first-child {
+  flex: 1;
+  min-width: 0;
 }
 .tags-list button span:last-child,
 .tags-files p {
@@ -43,7 +28,7 @@
   border-left: 1px solid var(--border);
   padding-left: var(--space-3);
 }
-@media (max-width: 540px) {
+@container settings (max-width: 420px) {
   .tags-browser {
     grid-template-columns: 1fr;
   }

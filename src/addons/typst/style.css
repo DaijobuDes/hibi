@@ -43,7 +43,9 @@
   display: grid;
   gap: var(--space-1);
   padding: var(--space-3);
-  border-left: 2px solid var(--status-warning);
+  border: 1px solid var(--status-warning);
+  border-radius: var(--radius-control);
+  background: var(--surface);
   white-space: pre-wrap;
 }
 .typst-diagnostics p {
@@ -69,16 +71,6 @@
 .typst-block-heading > div {
   display: flex;
   gap: var(--space-1);
-}
-.dialog-form #typst-source {
-  width: 100%;
-  padding: var(--space-3);
-  color: var(--ink);
-  background: var(--background);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-control);
-  font: var(--text-ui) / 1.5 var(--font-mono);
-  resize: vertical;
 }
 .typst-block .typst-preview {
   padding: var(--space-3);

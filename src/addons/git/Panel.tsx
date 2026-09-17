@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { AddonContext } from '../api'
-import { Button, Select } from '../ui'
+import { Button, ControlRow, Panel, Select, TextInput } from '../ui'
 import type { GitFile, GitState } from './types'
 import './git.css'
 
@@ -45,8 +45,8 @@ export function GitPanel({ context }: { context: AddonContext }) {
     }
   }
   return (
-    <div className="git-panel">
-      <div className="git-actions">
+    <Panel className="git-panel">
+      <ControlRow className="git-actions">
         <Select
           aria-label="git branch"
           disabled={busy || !state}
@@ -71,16 +71,17 @@ export function GitPanel({ context }: { context: AddonContext }) {
         <Button disabled={busy || !state} onClick={() => void run('push')}>
           push{state?.ahead ? ` (${state.ahead})` : ''}
         </Button>
-      </div>
+      </ControlRow>
       {busy && <p role="status">working…</p>}
       {error && <p role="alert">{error}</p>}
       {state && (
         <>
           {!state.files.length && <p>working tree clean.</p>}
-          <div className="git-files">
+          <section className="git-files" aria-label="changed files">
             {state.files.map((file) => (
               <div className="git-file" key={file.path}>
-                <button
+                <Button
+                  variant="row"
                   type="button"
                   disabled={busy}
                   aria-pressed={diff?.path === file.path}
@@ -91,7 +92,7 @@ export function GitPanel({ context }: { context: AddonContext }) {
                     {file.worktree}
                   </code>
                   <span>{file.path}</span>
-                </button>
+                </Button>
                 <Button
                   disabled={
                     busy || (file.worktree === ' ' && file.index !== '?')
@@ -108,7 +109,7 @@ export function GitPanel({ context }: { context: AddonContext }) {
                 </Button>
               </div>
             ))}
-          </div>
+          </section>
           {diff && (
             <section aria-label={`diff for ${diff.path}`}>
               <pre className="git-diff">{diff.text}</pre>
@@ -122,7 +123,7 @@ export function GitPanel({ context }: { context: AddonContext }) {
             }}
           >
             <label htmlFor="git-message">commit staged changes</label>
-            <input
+            <TextInput
               id="git-message"
               placeholder="commit message"
               value={message}
@@ -143,6 +144,6 @@ export function GitPanel({ context }: { context: AddonContext }) {
           </form>
         </>
       )}
-    </div>
+    </Panel>
   )
 }

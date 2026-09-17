@@ -12,7 +12,7 @@ import {
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { isMap, isScalar, isSeq, parseDocument } from 'yaml'
 import type { MarkdownEditorProps } from '../api'
-import { Button, IconButton, Select, Toggle } from '../ui'
+import { Button, IconButton, Select, TextArea, TextInput, Toggle } from '../ui'
 import { replaceFrontmatter, splitFrontmatter } from './markdown'
 import { propertiesExpanded } from './Settings'
 import './frontmatter.css'
@@ -34,7 +34,8 @@ function NumberProperty({
       input.current.value = String(value)
   }, [value])
   return (
-    <input
+    <TextInput
+      variant="subtle"
       id={id}
       ref={input}
       type="number"
@@ -107,7 +108,8 @@ export function Properties({ value, onChange, disabled }: MarkdownEditorProps) {
   return (
     <section className="frontmatter" aria-label="frontmatter properties">
       <div className="frontmatter-heading">
-        <button
+        <Button
+          variant="ghost"
           type="button"
           className="frontmatter-toggle"
           aria-expanded={open}
@@ -117,8 +119,9 @@ export function Properties({ value, onChange, disabled }: MarkdownEditorProps) {
           <ChevronDown aria-hidden="true" />
           <span>properties</span>
           <span className="frontmatter-count">{items.length}</span>
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="ghost"
           type="button"
           className="frontmatter-yaml-toggle"
           onClick={() => {
@@ -131,7 +134,7 @@ export function Properties({ value, onChange, disabled }: MarkdownEditorProps) {
         >
           <Code size={14} aria-hidden="true" />
           {raw ? 'fields' : 'yaml'}
-        </button>
+        </Button>
       </div>
       <div
         className="frontmatter-disclosure"
@@ -165,7 +168,8 @@ export function Properties({ value, onChange, disabled }: MarkdownEditorProps) {
                 setError('')
               }}
             >
-              <textarea
+              <TextArea
+                monospace
                 aria-label="frontmatter yaml"
                 value={draft}
                 onChange={(event) => setDraft(event.target.value)}
@@ -228,7 +232,8 @@ export function Properties({ value, onChange, disabled }: MarkdownEditorProps) {
                           }}
                         />
                       ) : typeof scalar === 'string' ? (
-                        <textarea
+                        <TextArea
+                          variant="subtle"
                           id={inputId}
                           value={scalar}
                           placeholder="empty"
@@ -250,7 +255,8 @@ export function Properties({ value, onChange, disabled }: MarkdownEditorProps) {
                           onChange={(value) => save(key, value)}
                         />
                       ) : (
-                        <button
+                        <Button
+                          variant="row"
                           id={inputId}
                           type="button"
                           className="frontmatter-complex"
@@ -289,7 +295,7 @@ export function Properties({ value, onChange, disabled }: MarkdownEditorProps) {
                           ) : (
                             'edit yaml'
                           )}
-                        </button>
+                        </Button>
                       )}
                       <IconButton
                         className="frontmatter-remove"
@@ -339,7 +345,7 @@ export function Properties({ value, onChange, disabled }: MarkdownEditorProps) {
                     setAdding(false)
                   }}
                 >
-                  <input
+                  <TextInput
                     ref={addInput}
                     aria-label="new property name"
                     placeholder="add property"
@@ -368,7 +374,8 @@ export function Properties({ value, onChange, disabled }: MarkdownEditorProps) {
                   </IconButton>
                 </form>
               ) : (
-                <button
+                <Button
+                  variant="ghost"
                   type="button"
                   className="frontmatter-add-trigger"
                   disabled={disabled}
@@ -376,7 +383,7 @@ export function Properties({ value, onChange, disabled }: MarkdownEditorProps) {
                 >
                   <Plus aria-hidden="true" />
                   add property
-                </button>
+                </Button>
               )}
             </>
           ) : (
@@ -385,9 +392,9 @@ export function Properties({ value, onChange, disabled }: MarkdownEditorProps) {
                 {doc.errors[0]?.message ??
                   'these properties need the yaml editor.'}
               </p>
-              <button type="button" onClick={editYaml}>
+              <Button type="button" onClick={editYaml}>
                 edit yaml
-              </button>
+              </Button>
             </div>
           )}
           {error && (

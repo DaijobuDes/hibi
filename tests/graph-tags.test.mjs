@@ -101,6 +101,17 @@ test('tags and graph plugins browse/open notes, honor drafts, and clean up when 
     .locator('.hibi-tag[data-tag="work"]')
     .click({ modifiers: ['Shift'] })
   let dialog = page.getByRole('dialog', { name: 'tags', exact: true })
+  const tagRow = dialog.getByRole('button', { name: '#work 2', exact: true })
+  assert.equal(await tagRow.getAttribute('data-variant'), 'row')
+  const tagLayout = await tagRow.evaluate((row) => ({
+    row: row.getBoundingClientRect().width,
+    group: row.parentElement.getBoundingClientRect().width,
+    gap:
+      row.getBoundingClientRect().right -
+      row.lastElementChild.getBoundingClientRect().right,
+  }))
+  assert.ok(Math.abs(tagLayout.row - tagLayout.group) < 1)
+  assert.ok(tagLayout.gap < 12, 'tag counts align at the row end')
   await dialog.getByRole('button', { name: 'b.md', exact: true }).click()
   await waitForAsync(
     page,
@@ -130,12 +141,12 @@ test('tags and graph plugins browse/open notes, honor drafts, and clean up when 
   )
   await graph.getByRole('button', { name: 'current note', exact: true }).click()
   await graph
-    .getByRole('textbox', { name: 'filter graph notes' })
+    .getByRole('searchbox', { name: 'filter graph notes' })
     .fill('orphan')
   await page.waitForFunction(
     () => document.querySelectorAll('[data-node]').length === 1,
   )
-  await graph.getByRole('textbox', { name: 'filter graph notes' }).fill('')
+  await graph.getByRole('searchbox', { name: 'filter graph notes' }).fill('')
   await page.waitForFunction(
     () => document.querySelectorAll('[data-node]').length === 3,
   )

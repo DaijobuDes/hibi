@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { isMarkdownDocument } from '../../shared/document-types'
-import { Button } from '../../ui/Controls'
 import type { AddonContext } from '../api'
+import { Button, ControlRow, Panel, TextInput } from '../ui'
 import { useWorkspaceSnapshot } from '../workspace-snapshot'
 import { noteTags } from './syntax'
 
@@ -32,9 +32,10 @@ export function TagsPanel({
   )
   const files = index.find(([tag]) => tag === selected)?.[1] ?? []
   return (
-    <div className="tags-panel">
-      <div className="tags-controls">
-        <input
+    <Panel className="tags-panel">
+      <ControlRow className="tags-controls">
+        <TextInput
+          type="search"
           aria-label="filter tags"
           placeholder="filter tags…"
           value={query}
@@ -43,7 +44,7 @@ export function TagsPanel({
         <Button onClick={refresh} disabled={loading}>
           refresh
         </Button>
-      </div>
+      </ControlRow>
       {error && <p role="alert">{error}</p>}
       {loading ? (
         <p role="status">reading tags…</p>
@@ -56,6 +57,7 @@ export function TagsPanel({
           <section className="tags-list" aria-label="workspace tags">
             {matches.map(([tag, paths]) => (
               <Button
+                variant="row"
                 key={tag}
                 aria-pressed={selected === tag}
                 onClick={() => select(tag)}
@@ -79,6 +81,7 @@ export function TagsPanel({
             </p>
             {files.map((path) => (
               <Button
+                variant="row"
                 key={path}
                 onClick={() => {
                   close()
@@ -91,6 +94,6 @@ export function TagsPanel({
           </section>
         </div>
       )}
-    </div>
+    </Panel>
   )
 }

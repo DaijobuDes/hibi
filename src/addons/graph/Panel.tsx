@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
-import { Button } from '../../ui/Controls'
 import type { AddonContext } from '../api'
+import { Button, ControlRow, Panel, TextInput } from '../ui'
 import { useWorkspaceSnapshot } from '../workspace-snapshot'
 import { GraphCanvas } from './Canvas'
 import { noteGraph } from './model'
@@ -48,9 +48,10 @@ export function GraphPanel({
     void context.workspace.openFile(path)
   }
   return (
-    <div className="graph-panel">
-      <div className="graph-controls">
-        <input
+    <Panel className="graph-panel">
+      <ControlRow className="graph-controls">
+        <TextInput
+          type="search"
           aria-label="filter graph notes"
           placeholder="filter notes…"
           value={query}
@@ -66,7 +67,7 @@ export function GraphPanel({
         <Button onClick={refresh} disabled={loading}>
           refresh
         </Button>
-      </div>
+      </ControlRow>
       {error && <p role="alert">{error}</p>}
       {loading ? (
         <p role="status">reading workspace…</p>
@@ -95,6 +96,6 @@ export function GraphPanel({
           </p>
         </>
       )}
-    </div>
+    </Panel>
   )
 }
