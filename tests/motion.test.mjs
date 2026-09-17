@@ -101,7 +101,7 @@ test('switching documents retains split/source layout without replaying view tra
   }
 })
 
-test('split panes link scrolling in both directions without feedback or document changes', {
+test('split panes align corresponding carets in both directions without feedback or document changes', {
   timeout: 30000,
 }, async (t) => {
   const profile = await mkdtemp(join(tmpdir(), 'hibi-linked-scroll-'))
@@ -117,6 +117,9 @@ test('split panes link scrolling in both directions without feedback or document
   })
   const page = await app.firstWindow()
   page.setDefaultTimeout(6000)
+  await page.evaluate(() => {
+    document.hasFocus = () => true
+  })
   await page.getByRole('textbox', { name: 'document editor' }).waitFor()
   await page.getByRole('button', { name: 'side-by-side', exact: true }).click()
   const source = page.getByRole('textbox', { name: 'markdown editor' })
@@ -147,35 +150,46 @@ test('split panes link scrolling in both directions without feedback or document
         .map((animation) => animation.finished.catch(() => {})),
     ),
   )
-  for (const [selector, ratio] of [
-    ['.rich-pane', 0.63],
-    ['.cm-scroller', 0.22],
-    ['.rich-pane', 1],
-    ['.cm-scroller', 0],
-  ]) {
-    await page.locator(selector).evaluate((element, ratio) => {
-      element.scrollTop = (element.scrollHeight - element.clientHeight) * ratio
-    }, ratio)
-    await page.waitForFunction(() => {
-      const fraction = (selector) => {
-        const element = document.querySelector(selector)
-        return element.scrollTop / (element.scrollHeight - element.clientHeight)
-      }
-      return Math.abs(fraction('.rich-pane') - fraction('.cm-scroller')) < 0.003
-    })
-    const samples = await page.evaluate(async () => {
-      const samples = []
-      for (let index = 0; index < 8; index++) {
-        await new Promise(requestAnimationFrame)
-        samples.push(document.querySelector('.rich-pane').scrollTop)
-      }
-      return samples
-    })
-    assert.ok(
-      Math.max(...samples) - Math.min(...samples) < 2,
-      `${selector} at ${ratio}: ${samples.join(', ')}`,
+  await source.press(
+    process.platform === 'darwin' ? 'Meta+ArrowUp' : 'Control+Home',
+  )
+  for (let line = 0; line < 80; line++) await source.press('ArrowDown')
+  const aligned = async (caret, mirror) =>
+    page.waitForFunction(
+      ([caret, mirror]) => {
+        const first = document.querySelector(caret)?.getBoundingClientRect()
+        const second = document.querySelector(mirror)?.getBoundingClientRect()
+        return (
+          first?.height &&
+          second?.height &&
+          Math.abs(
+            first.top + first.height / 2 - second.top - second.height / 2,
+          ) < 3
+        )
+      },
+      [caret, mirror],
     )
-  }
+  await aligned('.source-pane .editor-cursor', '.rich-pane .mirror-cursor')
+  assert.equal(
+    await source.evaluate((element) => element === document.activeElement),
+    true,
+  )
+  const rich = page.getByRole('textbox', { name: 'document editor' })
+  await rich.locator('h2').nth(45).click()
+  await aligned('.rich-pane .editor-cursor', '.source-pane .mirror-cursor')
+  assert.equal(
+    await rich.evaluate((element) => element === document.activeElement),
+    true,
+  )
+  const samples = await page.evaluate(async () => {
+    const samples = []
+    for (let index = 0; index < 8; index++) {
+      await new Promise(requestAnimationFrame)
+      samples.push(document.querySelector('.cm-scroller').scrollTop)
+    }
+    return samples
+  })
+  assert.ok(Math.max(...samples) - Math.min(...samples) < 2, samples.join(', '))
   assert.equal(
     (await page.evaluate(() => window.hibi.getDocument())).markdown,
     markdown,

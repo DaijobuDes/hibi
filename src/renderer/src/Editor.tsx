@@ -130,23 +130,14 @@ export function MarkdownEditor({
   // normal view waits for source layout before beginning the pane transition.
   const paneMode = sourceReady || initialMode !== 'normal' ? mode : 'normal'
   const content = useRef<HTMLDivElement>(null)
+  const scrollContent = useRef({ source: value, body: projection.content })
+  scrollContent.current = { source: value, body: projection.content }
   useEffect(() => {
     if (!markdownDocument && sourceReady && mode !== 'normal') {
       setFocusedPane('source')
       content.current?.querySelector<HTMLElement>('.cm-content')?.focus()
     }
   }, [markdownDocument, sourceReady, mode])
-  useEffect(() => {
-    if (paneMode !== 'side-by-side' || !sourceReady) return
-    const rich = content.current?.querySelector<HTMLElement>('.rich-pane')
-    const source = content.current?.querySelector<HTMLElement>('.cm-scroller')
-    if (!rich || !source) return
-    return linkScroll(
-      rich,
-      source,
-      source.contains(window.document.activeElement) ? source : rich,
-    )
-  }, [paneMode, sourceReady])
   const previousMode = useRef(paneMode)
   useLayoutEffect(() => {
     if (previousMode.current === paneMode) return
@@ -221,6 +212,20 @@ export function MarkdownEditor({
     },
     [markdownExtensions, flavors],
   )
+  useEffect(() => {
+    if (paneMode !== 'side-by-side' || !sourceReady || !editor) return
+    const rich = content.current?.querySelector<HTMLElement>('.rich-pane')
+    const source = content.current?.querySelector<HTMLElement>('.cm-scroller')
+    if (!rich || !source) return
+    return linkScroll(
+      rich,
+      source,
+      source.contains(window.document.activeElement) ? source : rich,
+      markdownDocument
+        ? { editor, content: () => scrollContent.current }
+        : undefined,
+    )
+  }, [paneMode, sourceReady, editor, markdownDocument])
   const { attachSource: attachSourceFormatting, attachFiles } =
     useFormattingToolbar(
       editor,

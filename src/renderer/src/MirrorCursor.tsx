@@ -58,7 +58,7 @@ export function MirrorCursor({
         return
       }
       const { source, body } = latest.current
-      const bodyOffset = source.indexOf(body)
+      const bodyOffset = source.lastIndexOf(body)
       if (
         bodyOffset < 0 ||
         (sourceFocus && sourceView.state.selection.main.head < bodyOffset)
@@ -119,6 +119,7 @@ export function MirrorCursor({
       'focusin',
       'focusout',
       'compositionend',
+      'hibi:source-caret',
     ])
       document.addEventListener(event, schedule)
     document.addEventListener('scroll', schedule, true)
@@ -134,6 +135,7 @@ export function MirrorCursor({
         'focusin',
         'focusout',
         'compositionend',
+        'hibi:source-caret',
       ])
         document.removeEventListener(event, schedule)
       document.removeEventListener('scroll', schedule, true)

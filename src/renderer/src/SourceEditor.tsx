@@ -24,6 +24,7 @@ import {
 import {
   Annotation,
   Compartment,
+  EditorSelection,
   EditorState,
   Transaction,
 } from '@codemirror/state'
@@ -149,6 +150,20 @@ export function SourceEditor({
           language.of(markdown()),
           history(),
           EditorView.domEventHandlers({
+            blur(_event, view) {
+              const selection = view.state.selection
+              if (selection.ranges.some((range) => range.empty && range.assoc))
+                view.dispatch({
+                  // Clear wrapped-line affinity so background measurements cannot
+                  // restore the native selection and steal focus from the rich pane.
+                  selection: EditorSelection.create(
+                    selection.ranges.map((range) =>
+                      range.empty ? EditorSelection.cursor(range.head) : range,
+                    ),
+                    selection.mainIndex,
+                  ),
+                })
+            },
             click(event, view) {
               if (!event.shiftKey || !parserOptions.current.markdownMode)
                 return false
@@ -187,6 +202,10 @@ export function SourceEditor({
             spellcheck: 'false',
           }),
           EditorView.updateListener.of((update) => {
+            if (update.docChanged || update.selectionSet || update.focusChanged)
+              update.view.contentDOM.dispatchEvent(
+                new Event('hibi:source-caret', { bubbles: true }),
+              )
             if (
               update.docChanged ||
               update.selectionSet ||
