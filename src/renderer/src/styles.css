@@ -336,6 +336,15 @@ button:disabled {
   opacity: 0;
   pointer-events: none;
 }
+.settings-sidebar .sidebar-header {
+  display: block;
+  padding: 0 0 var(--space-2);
+  margin-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border);
+}
+.settings-sidebar .sidebar-header button:hover {
+  background: var(--hover);
+}
 /* Each page covers its own scrolled content beneath the titlebar. Keeping this
    in the page's layer shares its position and opacity with the sidebar. */
 .editor-surface::before,

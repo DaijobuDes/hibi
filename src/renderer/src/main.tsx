@@ -1228,6 +1228,7 @@ function App() {
       />
       <MenuHost />
       <SettingsScreen
+        onBack={toggleSettings}
         onInstallAddon={addonHost.install}
         onRemoveAddon={addonHost.remove}
         selected={settingsCategory}

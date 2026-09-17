@@ -1,4 +1,11 @@
-import { File, FileText, Keyboard, PanelTop, Puzzle } from 'lucide-react'
+import {
+  ArrowLeft,
+  File,
+  FileText,
+  Keyboard,
+  PanelTop,
+  Puzzle,
+} from 'lucide-react'
 import { Component, type ReactNode } from 'react'
 import type { AddonManifest, AddonState } from '../../addons/api'
 import type { AppInfo } from '../../shared/desktop'
@@ -74,6 +81,7 @@ class PluginSettingsBoundary extends Component<
 export function SettingsScreen({
   selected,
   onCategory,
+  onBack,
   open,
   padding,
   onPadding,
@@ -94,6 +102,7 @@ export function SettingsScreen({
 }: {
   selected: string
   onCategory: (category: string) => void
+  onBack: () => void
   open: boolean
   padding: number
   onPadding: (padding: number) => void
@@ -150,6 +159,14 @@ export function SettingsScreen({
           mode="tabs"
           idPrefix="category"
           panelPrefix="settings-"
+          header={
+            <div className="sidebar-items">
+              <button type="button" onClick={onBack}>
+                <ArrowLeft size={16} aria-hidden />
+                <span className="sidebar-label">back to app</span>
+              </button>
+            </div>
+          }
           footer={
             info && (
               <div className="settings-versions">

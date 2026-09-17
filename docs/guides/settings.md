@@ -2,6 +2,8 @@
 
 **hibi** is the first settings page and the initial selection. it shows the page icon, app name, version, and creator credit using hibi's shared panels and controls. app and Electron versions also remain in the sidebar footer.
 
+**back to app** sits above the settings categories in its own unlabeled sidebar section. it returns to the current document and restores editor focus, like the top-bar back button.
+
 **sponsor on github** opens [may's GitHub Sponsors page](https://github.com/sponsors/schmayterling) in your default browser. this action uses a fixed destination; workspace content and addons cannot supply arbitrary external URLs through it.
 
 ## notifications

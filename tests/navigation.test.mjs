@@ -146,6 +146,26 @@ test('shift-click links, note/settings history, and file-menu remote imports', {
   await page.waitForFunction(
     () => document.querySelector('.app').dataset.screen === 'editor',
   )
+  const beforeSettings = (await page.evaluate(() => window.hibi.getDocument()))
+    .markdown
+  await page
+    .getByRole('button', { name: 'editor settings', exact: true })
+    .click()
+  const back = page.getByRole('button', { name: 'back to app', exact: true })
+  const categoryTab = page.getByRole('tab', { name: 'hibi', exact: true })
+  const backBounds = await back.boundingBox()
+  const tabBounds = await categoryTab.boundingBox()
+  assert.equal(backBounds.x, tabBounds.x)
+  assert.equal(backBounds.width, tabBounds.width)
+  assert.ok(backBounds.y + backBounds.height < tabBounds.y)
+  await back.click()
+  await page.waitForFunction(
+    () => document.querySelector('.app').dataset.screen === 'editor',
+  )
+  assert.equal(
+    (await page.evaluate(() => window.hibi.getDocument())).markdown,
+    beforeSettings,
+  )
   async function remote(address) {
     await app.evaluate(({ Menu }) =>
       Menu.getApplicationMenu()
