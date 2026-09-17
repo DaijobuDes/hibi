@@ -7,6 +7,7 @@ npm start           # app and static exporter template watch mode
 npm run preview     # last production build
 npm run docs        # refresh generated API references
 npm run docs:check  # reject stale references
+npm run export:docs # export docs to out/docs/index.html
 npm run check       # lint, API docs, typecheck, builds, native tests
 npm run package     # unpacked local application
 ```
@@ -32,3 +33,13 @@ colorscheme checks cover all bundled token roles, text contrast, retained upstre
 hibi settings checks compare installed license text with the generated catalog, verify the first tab and responsive license dialogs, reject arbitrary license paths, and intercept the sponsor action to verify its fixed URL without opening a browser.
 
 public SDK and sidebar references are generated from their real TypeScript declarations. update prose guides whenever behavior changes. release builds must pass `npm run check`; platform signing and notarization are separate distribution steps.
+
+## automatic documentation publishing
+
+pushes to `main` that change `docs/**` run `.github/workflows/docs-sync.yml`. it checks generated API references, builds the same self-contained site template used by the app, and exports the documentation folder to `out/docs/index.html`. nested Markdown pages and local images inside `docs/` are included; symlinked pages and images outside that folder are excluded or rejected.
+
+the workflow checks out `hibigarden/docs` on `main`, replaces only `index.html`, and pushes a normal commit named `docs: sync to main (<source short commit id>)`. unchanged HTML creates no commit. destination workflows, license, readme, and domain settings stay intact. runs are serialized; a concurrent destination update rejects the push instead of being overwritten.
+
+authentication uses the source repository's `DOCS_SYNC_TOKEN` Actions secret. create a fine-grained personal access token with `hibigarden` as resource owner, access only to `hibigarden/docs`, and repository **Contents: read and write** permission, then save it in `schmayterling/hibi` under Settings → Secrets and variables → Actions. renew the secret before the token expires; if the organization requires approval, approve it before running the workflow. the destination disables deploy keys, so the workflow does not use SSH credentials.
+
+both checkout actions clean up their credentials after the job; source checkout credentials are not persisted. the destination's existing Pages workflow publishes the resulting commit. never paste the token into source files or logs.
