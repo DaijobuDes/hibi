@@ -1,5 +1,6 @@
 @import "../../ui/tokens.css";
 @import "../../ui/inline-edit.css";
+@import "../../ui/syntax.css";
 @font-face {
   font-family: "Geist";
   src: url("../../../node_modules/geist/dist/fonts/geist-sans/Geist-Variable.woff2")
@@ -859,7 +860,12 @@ button:disabled {
   text-decoration-thickness: 1px;
   text-underline-offset: 3px;
 }
-.tiptap img {
+.tiptap img,
+.tiptap video {
+  max-width: 100%;
+}
+.document-media {
+  display: inline-block;
   max-width: 100%;
 }
 .tiptap hr {

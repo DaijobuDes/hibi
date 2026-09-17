@@ -36,10 +36,11 @@ test('sideloads reviewed packages disabled, discovers their settings/themes/comm
   await writeFile(join(extension, 'README.md'), '# fixture addon')
   await writeFile(
     join(extension, 'index.js'),
-    `export default ({ React, ui }) => ({
+    `export default ({ React, ui, codeMirror }) => ({
     start(context) {
       window.fixtureStarts = (window.fixtureStarts || 0) + 1;
       context.statusBar.register({id:'status',label:'fixture active'});
+      context.editor.registerCodeLanguage({id:'fixture-code',language:codeMirror.language.StreamLanguage.define({token(stream) { stream.skipToEnd(); return 'keyword'; }})});
       context.styles.register('fixture', ':root { --fixture-enabled: yes; }');
       context.commands.register({id:'append',label:'fixture: append',run:()=>context.editor.updateMarkdown(text=>text+'\\nfixture')});
     },
@@ -159,6 +160,52 @@ test('sideloads reviewed packages disabled, discovers their settings/themes/comm
     (await page.evaluate(() => window.hibi.getDocument())).markdown,
     /^keep this draft/,
   )
+  await pressShortcut(app, `${mod}+Shift+]`)
+  const source = page.getByRole('textbox', { name: 'markdown editor' })
+  const code = 'keep this draft\n\n```fixture-code\nhello addon\n```'
+  await source.fill(code)
+  await page
+    .locator('.source-pane .hibi-token-keyword')
+    .filter({ hasText: /^hello addon$/ })
+    .waitFor()
+  await page
+    .locator('.rich-pane .hibi-token-keyword')
+    .waitFor({ state: 'attached' })
+  await page.evaluate(() => {
+    window.syntaxSource = document.querySelector('.cm-content')
+    window.syntaxRich = document.querySelector('.tiptap')
+  })
+  await choose('disable fixture addon')
+  await page.waitForFunction(
+    () =>
+      ![...document.querySelectorAll('.hibi-token-keyword')].some(
+        (node) => node.textContent === 'hello addon',
+      ),
+  )
+  assert.equal(
+    await page.evaluate(
+      () =>
+        window.syntaxSource === document.querySelector('.cm-content') &&
+        window.syntaxRich === document.querySelector('.tiptap'),
+    ),
+    true,
+  )
+  assert.equal(
+    (await page.evaluate(() => window.hibi.getDocument())).markdown,
+    code,
+  )
+  await source.press(`${mod}+z`)
+  await waitForAsync(
+    page,
+    async () =>
+      !(await window.hibi.getDocument()).markdown.includes('fixture-code'),
+  )
+  await source.press(`${mod}+Shift+z`)
+  await choose('enable fixture addon')
+  await page
+    .locator('.source-pane .hibi-token-keyword')
+    .filter({ hasText: /^hello addon$/ })
+    .waitFor()
   await app.evaluate((_electron, path) => {
     globalThis.packageSource = path
   }, theme)

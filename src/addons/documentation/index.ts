@@ -7,7 +7,6 @@ export default defineAddon({
     context.commands.register({
       id: 'export',
       label: 'export documentation',
-      workspace: true,
       async run() {
         const workspace =
           (await context.workspace.get()) ?? (await context.workspace.open())

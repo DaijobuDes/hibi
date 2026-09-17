@@ -8,13 +8,19 @@ import { electron } from './electron.mjs'
 import { pressShortcut } from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
 
-test('typing speed expires samples at the rolling minute boundary', () => {
+test('typing speed estimates a session rate and resets after a five-second pause', () => {
   const speed = typingSpeed()
   speed.add(5, 0)
   speed.add(15, 1000)
-  assert.deepEqual(speed.read(59999), { cpm: 20, wpm: 4 })
-  assert.deepEqual(speed.read(60000), { cpm: 15, wpm: 3 })
-  assert.deepEqual(speed.read(61000), { cpm: 0, wpm: 0 })
+  assert.deepEqual(speed.read(1000), { cpm: 1200, wpm: 240 })
+  assert.deepEqual(speed.read(5999), { cpm: 1200, wpm: 240 })
+  assert.deepEqual(speed.read(6000), { cpm: 0, wpm: 0 })
+  speed.add(5, 7000)
+  assert.deepEqual(speed.read(7000), { cpm: 300, wpm: 60 })
+  speed.add(5, 9000)
+  assert.deepEqual(speed.read(9000), { cpm: 300, wpm: 60 })
+  speed.add(1, 15000)
+  assert.deepEqual(speed.read(15000), { cpm: 60, wpm: 12 })
 })
 
 test('typing pills, source formatting shortcuts, and sidebar shortcut', {
@@ -42,8 +48,18 @@ test('typing pills, source formatting shortcuts, and sidebar shortcut', {
   await page
     .getByRole('textbox', { name: 'document editor' })
     .pressSequentially('hello')
-  await page.getByText('5 cpm', { exact: true }).waitFor()
-  await page.getByText('1 wpm', { exact: true }).waitFor()
+  const cpm = page.locator('[data-status-id="typing-speed.cpm"]')
+  const wpm = page.locator('[data-status-id="typing-speed.wpm"]')
+  await page.waitForFunction(
+    () =>
+      Number(
+        document
+          .querySelector('[data-status-id="typing-speed.cpm"]')
+          ?.textContent?.match(/\d+/)?.[0],
+      ) > 5,
+  )
+  const initialCpm = await cpm.innerText()
+  assert.match(await wpm.innerText(), /^≈\d+ wpm$/)
   await pressShortcut(app, `${mod}+Shift+]`)
   const source = page.getByRole('textbox', { name: 'markdown editor' })
   await source.press(`${mod}+a`)
@@ -52,7 +68,7 @@ test('typing pills, source formatting shortcuts, and sidebar shortcut', {
     page,
     async () => (await window.hibi.getDocument()).markdown === '**hello**',
   )
-  await page.getByText('5 cpm', { exact: true }).waitFor()
+  assert.equal(await cpm.innerText(), initialCpm)
   await pressShortcut(app, `${mod}+Shift+\\`)
   await source.focus()
   await pressShortcut(app, `${mod}+i`)
@@ -62,7 +78,8 @@ test('typing pills, source formatting shortcuts, and sidebar shortcut', {
   )
   await source.press('ArrowRight')
   await source.pressSequentially('!')
-  await page.getByText('6 cpm', { exact: true }).waitFor()
+  const afterTyping = await cpm.innerText()
+  assert.match(afterTyping, /^≈[1-9]\d* cpm$/)
   const before = await page.locator('.app').getAttribute('data-sidebar')
   await pressShortcut(app, `${mod}+/`)
   await page.waitForFunction(
@@ -71,12 +88,12 @@ test('typing pills, source formatting shortcuts, and sidebar shortcut', {
   )
   await pressShortcut(app, `${mod}+k`)
   await page.getByRole('combobox').fill('typing')
-  await page.getByText('6 cpm', { exact: true }).waitFor()
+  assert.equal(await cpm.innerText(), afterTyping)
   await page.keyboard.press('Escape')
   await page
     .getByRole('dialog', { name: 'command palette' })
     .waitFor({ state: 'hidden' })
   await page.getByRole('button', { name: 'editor settings' }).click()
   await page.locator('#addon-typing-speed').click()
-  assert.equal(await page.getByText('6 cpm', { exact: true }).count(), 0)
+  assert.equal(await cpm.count(), 0)
 })

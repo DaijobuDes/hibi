@@ -1,5 +1,7 @@
 import { Marked } from 'marked'
 import type { MarkdownFlavor, RenderedMarkdown } from '../../addons/api'
+import syntaxStyles from '../../ui/syntax.css?raw'
+import { codeHtml, escapeCode } from './code-languages'
 
 export type FlavorChoice = { dialect: string; syntax: 'auto' | string[] }
 export const automaticFlavor: FlavorChoice = { dialect: 'auto', syntax: 'auto' }
@@ -77,6 +79,14 @@ export function renderMarkdown(
 ): RenderedMarkdown {
   const selected = selectedFlavors(loadFlavor(documentId), snapshot)
   const parser = new Marked({ gfm: false, breaks: false })
+  parser.use({
+    renderer: {
+      code({ text, lang }) {
+        const language = lang?.trim().split(/\s+/)[0] ?? ''
+        return `<pre><code${language ? ` class="language-${escapeCode(language)}"` : ''}>${codeHtml(text, language)}\n</code></pre>\n`
+      },
+    },
+  })
   for (const flavor of selected) {
     if (flavor.markedOptions) parser.setOptions(flavor.markedOptions)
     for (const extension of flavor.export?.extensions ?? [])
@@ -84,11 +94,15 @@ export function renderMarkdown(
   }
   return {
     html: parser.parse(source, { async: false }),
-    css: selected
-      .filter(
-        (flavor) => flavor.kind === 'dialect' || flavorMatches(flavor, source),
-      )
-      .map((flavor) => flavor.export?.css ?? '')
-      .join('\n'),
+    css:
+      syntaxStyles +
+      '\n' +
+      selected
+        .filter(
+          (flavor) =>
+            flavor.kind === 'dialect' || flavorMatches(flavor, source),
+        )
+        .map((flavor) => flavor.export?.css ?? '')
+        .join('\n'),
   }
 }

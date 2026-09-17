@@ -30,6 +30,14 @@ generated from `src/ui/tokens.css`. update the source, then run `npm run docs`. 
     --syntax-quote: var(--muted);
     --syntax-strong: var(--ink);
     --syntax-emphasis: var(--ink);
+    --syntax-keyword: var(--syntax-heading);
+    --syntax-string: var(--syntax-code);
+    --syntax-number: var(--syntax-link);
+    --syntax-comment: var(--syntax-meta);
+    --syntax-type: var(--syntax-link);
+    --syntax-function: var(--syntax-heading);
+    --syntax-variable: var(--ink);
+    --syntax-operator: var(--ink);
     --status-success: #236032;
     --status-warning: #704600;
     --status-danger: #aa2233;

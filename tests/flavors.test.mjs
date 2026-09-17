@@ -72,8 +72,16 @@ test('flavors auto-detect, persist overrides, render/edit math, and export it of
   await pressShortcut(app, `${mod}+Shift+]`)
   const source = page.getByRole('textbox', { name: 'markdown editor' })
   const initial =
-    '# math\n\ninline $x^2$\n\n$$\n\\frac{1}{2}\n$$\n\n`$literal$`'
+    '# math\n\ninline $x^2$\n\n$$\n\\frac{1}{2}\n$$\n\n`$literal$`\n\n```javascript\nconst answer = 42\n```'
   await source.fill(initial)
+  await page
+    .locator('.source-pane .hibi-token-keyword')
+    .filter({ hasText: 'const' })
+    .waitFor()
+  await page
+    .locator('.rich-pane .hibi-token-keyword')
+    .filter({ hasText: 'const' })
+    .waitFor({ state: 'attached' })
   await page
     .locator('[data-status-id="flavor"]')
     .filter({ hasText: 'math' })
@@ -140,6 +148,11 @@ test('flavors auto-detect, persist overrides, render/edit math, and export it of
   })
   await site.locator('.katex').first().waitFor()
   assert.equal(await site.locator('.katex').count(), 2)
+  assert.equal(
+    await site.locator('pre .hibi-token-keyword').innerText(),
+    'const',
+  )
+  assert.equal(await site.locator('pre .hibi-token-number').innerText(), '42')
   assert.deepEqual(external, [])
   await site.close()
   await page.locator('[data-status-id="flavor"]').click()

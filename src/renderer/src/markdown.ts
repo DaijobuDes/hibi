@@ -10,6 +10,8 @@ import type {
   MarkdownProjection,
 } from '../../addons/api'
 import { readFrontmatter } from '../../shared/frontmatter'
+import { BlockExit } from './BlockExit'
+import { CodeHighlight } from './CodeHighlight'
 
 export function projectMarkdown(
   source: string,
@@ -54,6 +56,8 @@ export function editorExtensions(flavors: readonly MarkdownFlavor[]) {
       link: { openOnClick: false },
     }),
     Markdown.configure({ marked: parser, markedOptions: options }),
+    CodeHighlight,
+    BlockExit,
     ...flavors.flatMap((flavor) => flavor.richExtensions ?? []),
     Placeholder.configure({ placeholder: 'start typing' }),
   ]
@@ -65,7 +69,11 @@ export function needsSourceEditing(source: string): boolean {
     return true
   let unsupported = false
   marked.walkTokens(marked.lexer(source), (token) => {
-    if (token.type === 'html' || token.type === 'def') unsupported = true
+    if (
+      token.type === 'def' ||
+      (token.type === 'html' && !/^<br\s*\/?>$/i.test(token.raw.trim()))
+    )
+      unsupported = true
   })
   return unsupported
 }

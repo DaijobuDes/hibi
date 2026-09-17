@@ -26,6 +26,7 @@ import { EditorView, keymap, lineNumbers, placeholder } from '@codemirror/view'
 import { tags } from '@lezer/highlight'
 import { useEffect, useRef } from 'react'
 import type { SourceExtension } from '../../addons/api'
+import { codeHighlighter, codeLanguages } from './code-languages'
 import type { FindMove, FindStatus } from './FindBar'
 import {
   formattingKeymap,
@@ -94,6 +95,9 @@ export function SourceEditor({
 
   useEffect(() => {
     if (!host.current) return
+    const language = new Compartment()
+    const markdown = () =>
+      markdownLanguage({ codeLanguages: codeLanguages.resolve })
     const editor = new EditorView({
       parent: host.current,
       state: EditorState.create({
@@ -109,7 +113,7 @@ export function SourceEditor({
           }),
           editable.current.of(EditorView.editable.of(true)),
           numbers.current.of([]),
-          markdownLanguage(),
+          language.of(markdown()),
           history(),
           keymap.of([
             { key: 'Ctrl-a', run: selectAll },
@@ -118,6 +122,7 @@ export function SourceEditor({
             ...historyKeymap,
           ]),
           syntaxHighlighting(highlighting),
+          syntaxHighlighting(codeHighlighter),
           EditorView.lineWrapping,
           placeholder('start typing'),
           EditorView.contentAttributes.of({
@@ -167,6 +172,9 @@ export function SourceEditor({
       }),
     })
     view.current = editor
+    const unsubscribe = codeLanguages.subscribe(() =>
+      editor.dispatch({ effects: language.reconfigure(markdown()) }),
+    )
     formatting.current = sourceFormatting(editor)
     reportFormatting.current(formatting.current)
     let disposed = false
@@ -179,6 +187,7 @@ export function SourceEditor({
     }
     void window.document.fonts.load('13px "Geist Mono"').then(measure, measure)
     return () => {
+      unsubscribe()
       disposed = true
       formatting.current = null
       reportFormatting.current(null)

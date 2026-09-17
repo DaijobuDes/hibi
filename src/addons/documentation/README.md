@@ -6,7 +6,9 @@ exports include top-bar breadcrumbs, previous/next links below a divider, and an
 
 the first hibi addon turns a folder of markdown into one deployable HTML document.
 
-enable **documentation** under settings → addons. open a workspace, then choose **export documentation** from the sidebar or command palette. a native save dialog selects the destination. the exported site provides nested navigation, normal read-only rendering, and local fuzzy/keyword search on `cmd/ctrl+k`.
+enable **documentation** under settings → addons. open a workspace, then choose **export documentation** from the command palette. a native save dialog selects the destination. the exported site provides nested navigation, normal read-only rendering, and local fuzzy/keyword search on `cmd/ctrl+k`.
+
+labelled code fences use hibi's shared syntax highlighter, including languages registered by enabled extensions. highlighted html and themed token styles are embedded; the exported site does not need parser code or a network connection.
 
 `index.ts` registers the export command through the renderer SDK. `native.ts` snapshots the selected workspace, embeds escaped data into the generated site template, and uses the host’s native save operation. `manifest.ts` declares API compatibility and defaults.
 

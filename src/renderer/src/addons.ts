@@ -23,6 +23,7 @@ import { useToastService } from '../../ui/Sonner'
 import { createTooltipScope } from '../../ui/tooltip-store'
 import { createAddonOverrides } from './addon-overrides'
 import { addonRegistry } from './addon-registry'
+import { codeLanguages } from './code-languages'
 import { colorschemes } from './colorschemes'
 import { onEditorInput, onEditorKeyEvent } from './editor-events'
 import { explorerDecorations } from './explorer-decorations'
@@ -290,6 +291,16 @@ export function useAddons(environment: Environment) {
             },
           },
           editor: {
+            registerCodeLanguage(language) {
+              if (disposed) return () => {}
+              const remove = codeLanguages.register(id, language)
+              const cleanup = () => {
+                remove()
+                cleanups.delete(cleanup)
+              }
+              cleanups.add(cleanup)
+              return cleanup
+            },
             registerFlavor(flavor) {
               if (disposed) return () => {}
               const remove = flavors.register(id, flavor)

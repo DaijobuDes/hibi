@@ -9,6 +9,10 @@ import type {
 } from '../shared/colorschemes'
 import type { DocumentCommand } from '../shared/desktop'
 import type { AppCommand } from '../shared/hotkeys'
+import type { CodeLanguage } from '../shared/syntax'
+
+export type { CodeLanguage } from '../shared/syntax'
+
 import type {
   ExplorerDecorationProvider,
   WorkspaceSnapshot,
@@ -250,6 +254,8 @@ export type AddonContext = {
   patches: PatchApi
   statusBar: { register: (item: StatusItem) => StatusHandle }
   editor: {
+    /** Register or override fenced-code highlighting; restored automatically on addon stop. */
+    registerCodeLanguage: (language: CodeLanguage) => () => void
     /** Observe editor keydown/keyup without consuming input. Removed on addon stop. */
     onKeyEvent: (listener: (event: EditorKeyEvent) => void) => () => void
     /** Observe committed typing, including IME composition. Removed on addon stop. */

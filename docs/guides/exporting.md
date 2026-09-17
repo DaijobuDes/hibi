@@ -19,7 +19,7 @@ phone navigation rows and header controls use 44px touch targets. the shared sid
 1. keep documentation in markdown files inside a folder. nested folders are supported.
 2. open that folder as a workspace.
 3. enable **documentation** in settings → addons.
-4. choose **export documentation** below the file tree or in the command palette.
+4. choose **export documentation** in the command palette.
 5. save the generated `.html` file.
 
 upload that file to any static host, usually as `index.html`. it also opens directly from disk. no server, account, build step, search service, or network request is needed to read it.

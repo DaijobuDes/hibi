@@ -36,7 +36,6 @@ export default defineAddon({
       id: 'status',
       label: 'git: status, diffs, and commits',
       keywords: 'repository stage unstage',
-      workspace: true,
       run: open,
     })
     context.commands.register({
