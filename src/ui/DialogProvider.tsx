@@ -260,20 +260,20 @@ function DialogFrame({
       onDismiss={() => close()}
     >
       <header className="dialog-heading">
-        <div>
+        <div className="dialog-title-row">
           <h2>{request.options.title}</h2>
-          {request.owner !== 'hibi' && (
-            <p className="dialog-owner">{request.owner}</p>
-          )}
-          {request.options.description && (
-            <p id={description} className="dialog-description">
-              {request.options.description}
-            </p>
-          )}
+          <IconButton aria-label="close dialog" onClick={() => close()}>
+            <X size={16} aria-hidden="true" />
+          </IconButton>
         </div>
-        <IconButton aria-label="close dialog" onClick={() => close()}>
-          <X size={16} aria-hidden="true" />
-        </IconButton>
+        {request.owner !== 'hibi' && (
+          <p className="dialog-owner">{request.owner}</p>
+        )}
+        {request.options.description && (
+          <p id={description} className="dialog-description">
+            {request.options.description}
+          </p>
+        )}
       </header>
       <div className="dialog-content">
         <ContentBoundary close={() => close()}>
