@@ -104,6 +104,8 @@ test('tags and graph plugins browse/open notes, honor drafts, and clean up when 
   const tagRow = dialog.getByRole('button', { name: '#work 2', exact: true })
   assert.equal(await tagRow.getAttribute('data-variant'), 'row')
   const tagLayout = await tagRow.evaluate((row) => ({
+    color: getComputedStyle(row).color,
+    countColor: getComputedStyle(row.lastElementChild).color,
     row: row.getBoundingClientRect().width,
     group: row.parentElement.getBoundingClientRect().width,
     gap:
@@ -111,6 +113,7 @@ test('tags and graph plugins browse/open notes, honor drafts, and clean up when 
       row.lastElementChild.getBoundingClientRect().right,
   }))
   assert.ok(Math.abs(tagLayout.row - tagLayout.group) < 1)
+  assert.equal(tagLayout.countColor, tagLayout.color)
   assert.ok(tagLayout.gap < 12, 'tag counts align at the row end')
   await dialog.getByRole('button', { name: 'b.md', exact: true }).click()
   await waitForAsync(

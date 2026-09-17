@@ -68,15 +68,20 @@ button.icon-button:focus-visible {
   background: var(--field-background);
   border-color: var(--field-border);
 }
-.ui-field[data-variant="inline"] {
+.ui-field[data-variant="inline"],
+input.inline-edit {
+  appearance: none;
   min-height: 0;
   padding: 0;
   border: 0;
   border-radius: 0;
   background: transparent;
   font: inherit;
+  outline: none;
+  box-shadow: none;
 }
-.ui-field[data-variant="inline"]:focus-visible {
+.ui-field[data-variant="inline"]:focus-visible,
+input.inline-edit:focus-visible {
   outline: none;
   box-shadow: inset 0 -1px var(--accent);
 }
@@ -124,6 +129,7 @@ button.ui-button:is([data-variant="ghost"], [data-variant="row"]):hover:not(
   background: var(--hover);
 }
 button.ui-button[aria-pressed="true"] {
+  --muted: var(--selection-ink);
   background: var(--selection);
   color: var(--selection-ink);
 }

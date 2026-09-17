@@ -42,7 +42,7 @@ use `TextInput` and `TextArea` from `src/addons/ui.ts` (or `sdk.ui` in sideloade
 
 `--field-background`, `--field-border`, and `--field-placeholder` inherit semantic theme colors. `--control-padding-x`, `--control-padding-y`, `--control-height`, and `--radius-control` keep fields and actions aligned. focus, invalid, disabled, placeholder, hover, and reduced-motion states are shared. inline rename keeps its borderless appearance and underline focus cue; find-in-note uses its enclosing search field's focus ring.
 
-`Panel` supplies the compact spacing and typography used by git, graph, and tags. `ControlRow` wraps filter inputs and actions at narrow widths. `Button` supports `variant="ghost"` for quiet inline actions and `variant="row"` for full-width selectable results; rows share hover and selected colors. keep data visualizations and rendered documents in their own layout styles.
+`Panel` supplies the compact spacing and typography used by git, graph, and tags. `ControlRow` wraps filter inputs and actions at narrow widths. `Button` supports `variant="ghost"` for quiet inline actions and `variant="row"` for full-width selectable results; rows share hover and selected colors. selected actions also use the selection foreground for muted counts and icons, keeping those details readable across themes. keep data visualizations and rendered documents in their own layout styles.
 
 - `Sidebar`: settings categories, workspace tree, and exported navigation share row height, selection motion, focus behavior, and resize controls.
 - `SettingRow`: padding, cursor, line-number, window, and addon settings share label/description layout and spacing.

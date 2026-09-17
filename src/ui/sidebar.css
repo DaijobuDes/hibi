@@ -1,5 +1,3 @@
-@import "./inline-edit.css";
-
 .sidebar-slot {
   position: relative;
   width: var(--sidebar-width, 196px);
