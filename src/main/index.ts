@@ -65,6 +65,7 @@ import {
   readDocumentMedia,
   serveDocumentMedia,
 } from './media'
+import { getRecentWorkspaces } from './recent-workspaces'
 import {
   CONTENT_SECURITY_POLICY,
   isTrustedRendererUrl,
@@ -74,6 +75,7 @@ import { installedAddons, installedAsset, openAddonsFolder } from './sideload'
 import {
   getWorkspace,
   observeWorkspace,
+  openRecentWorkspace,
   openWorkspace,
   openWorkspaceFile,
   refreshWorkspace,
@@ -619,6 +621,13 @@ if (!app.requestSingleInstanceLock()) {
       )
       ipcMain.handle(WORKSPACE_CHANNELS.open, (event) =>
         runFileOperation(event, openWorkspace),
+      )
+      ipcMain.handle(WORKSPACE_CHANNELS.recent, (event) => {
+        trustedWindow(event)
+        return getRecentWorkspaces()
+      })
+      ipcMain.handle(WORKSPACE_CHANNELS.openRecent, (event, id: unknown) =>
+        runFileOperation(event, () => openRecentWorkspace(id)),
       )
       ipcMain.handle(WORKSPACE_CHANNELS.refresh, (event) => {
         trustedWindow(event)

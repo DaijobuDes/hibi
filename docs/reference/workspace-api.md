@@ -11,7 +11,15 @@ export const WORKSPACE_CHANNELS = {
   changed: 'workspace:changed',
   action: 'workspace:action',
   snapshot: 'workspace:snapshot',
+  recent: 'workspace:recent',
+  openRecent: 'workspace:open-recent',
 } as const
+
+export type RecentWorkspace = {
+  /** Host-issued identity for reopening a previously chosen directory. */
+  id: string
+  path: string
+}
 
 export type WorkspaceEntry = {
   path: string

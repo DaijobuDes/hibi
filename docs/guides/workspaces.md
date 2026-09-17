@@ -4,6 +4,8 @@ use **open a folder…** in the left sidebar, the folder button, or **open works
 
 before a folder is open, the sidebar centers a folder icon above **open a folder**. opening a workspace replaces this entry with the file tree and folder controls.
 
+on startup, the untouched empty draft shows **start typing**, up to five recent workspace paths, and **dismiss this**. select a path to reopen that folder. the list is local to this app profile, newest first, and updates when a folder opens from the picker or a drop. typing or dismissing removes the welcome content for the rest of the window session. new notes and opened empty files show only the regular **start typing** placeholder. welcome content never becomes part of the document or its saved markdown.
+
 the tree shows `.md` and `.markdown` files, including nested folders. folder rows expand and collapse. arrow keys move focus; right/left expand or collapse folders; enter opens a file. the highlight slides to the current document and stays visible under the pointer.
 
 opening a folder leaves the current note intact. opening a file checks unsaved changes first. saving a new note starts the save dialog in the selected workspace. create nested folders using the native save dialog or your file manager; the tree watches filesystem changes and also has a refresh button.

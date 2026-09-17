@@ -61,6 +61,7 @@ import { LoadingScreen } from './LoadingScreen'
 import { projectMarkdown } from './markdown'
 import { RecoveryBoundary } from './RecoveryScreen'
 import { SettingsScreen, settingsCategories } from './SettingsScreen'
+import { StartupPlaceholder } from './StartupPlaceholder'
 import { StatusBar } from './StatusBar'
 import { Titlebar } from './Titlebar'
 import { toolbar } from './toolbar'
@@ -207,6 +208,19 @@ function App() {
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [findOpen, setFindOpen] = useState(false)
   const [workspace, setWorkspace] = useState<WorkspaceState | null>(null)
+  const [welcomeDismissed, setWelcomeDismissed] = useState(
+    () => sessionStorage.getItem('hibi:welcome-dismissed') === 'true',
+  )
+  const showWelcome =
+    !welcomeDismissed &&
+    document?.revision === 0 &&
+    !document.markdown &&
+    !document.dirty &&
+    !workspace
+  function dismissWelcome() {
+    setWelcomeDismissed(true)
+    sessionStorage.setItem('hibi:welcome-dismissed', 'true')
+  }
   const [workspaceRename, setWorkspaceRename] = useState<WorkspaceRename>(null)
   const [sidebarOpen, setSidebarOpen] = useState(
     () => localStorage.getItem('sidebar-open') !== 'false',
@@ -418,13 +432,15 @@ function App() {
     [dialogs, acceptDocument, setError],
   )
 
-  async function openFolder(): Promise<WorkspaceState | null> {
+  async function openFolder(recentId?: string): Promise<WorkspaceState | null> {
     if (busyRef.current) return null
     busyRef.current = true
     setBusy(true)
     setError('')
     try {
-      const next = await window.hibi.openWorkspace()
+      const next = await (recentId
+        ? window.hibi.openRecentWorkspace(recentId)
+        : window.hibi.openWorkspace())
       if (next) {
         setWorkspace(next)
         setWorkspaceRename(null)
@@ -504,6 +520,7 @@ function App() {
   useEffect(() => window.hibi.onNotice(setNotice), [setNotice])
 
   function updateMarkdown(markdown: string) {
+    if (!welcomeDismissed) dismissWelcome()
     if (new TextEncoder().encode(markdown).length > MAX_DOCUMENT_BYTES) {
       setError('documents must stay under 2 mib. this edit was not applied.')
       setResetEditor((value) => value + 1)
@@ -1230,7 +1247,7 @@ function App() {
         inert={settingsOpen}
       >
         <EditorToolbar mode={mode} typing={typing} />
-        <div className="editor-page">
+        <div className="editor-page" data-startup={showWelcome}>
           {document && (
             <MarkdownEditor
               document={document}
@@ -1253,6 +1270,21 @@ function App() {
               disabled={busy}
               findOpen={findOpen && !settingsOpen}
               onCloseFind={() => setFindOpen(false)}
+            />
+          )}
+          {showWelcome && (
+            <StartupPlaceholder
+              mode={mode}
+              busy={busy}
+              onOpen={(id) => void openFolder(id)}
+              onDismiss={() => {
+                dismissWelcome()
+                window.document
+                  .querySelector<HTMLElement>(
+                    mode === 'normal' ? '.tiptap' : '.cm-content',
+                  )
+                  ?.focus()
+              }}
             />
           )}
           {!settingsOpen && (

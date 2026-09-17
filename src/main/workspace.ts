@@ -15,6 +15,7 @@ import {
   loadDocument,
 } from './document'
 import { readMarkdown } from './files'
+import { getRecentWorkspaces, rememberWorkspace } from './recent-workspaces'
 
 let root: string | null = null
 let entries: WorkspaceEntry[] = []
@@ -163,8 +164,17 @@ export async function loadWorkspace(
   } catch (error) {
     console.error('workspace watcher unavailable:', error)
   }
+  await rememberWorkspace(nextRoot).catch((error: unknown) =>
+    console.error('could not remember workspace:', error),
+  )
   onChanged()
   return getWorkspace()
+}
+
+export async function openRecentWorkspace(id: unknown) {
+  const recent = (await getRecentWorkspaces()).find((item) => item.id === id)
+  if (!recent) throw new Error('workspace is no longer in your recent list.')
+  return loadWorkspace(recent.path)
 }
 
 export async function resolveWorkspaceFile(
