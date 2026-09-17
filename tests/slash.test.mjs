@@ -136,7 +136,7 @@ test('slash commands work in both editors, preserve undo, and coexist with vim',
   }
   await source.fill('/not-a-command')
   await menu.waitFor()
-  assert.match(await menu.innerText(), /no commands found/)
+  assert.match(await menu.innerText(), /No commands found/)
   await source.press('Escape')
 
   await app.evaluate(({ BrowserWindow }) =>

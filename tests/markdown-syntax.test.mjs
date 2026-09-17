@@ -156,8 +156,19 @@ test('syntax settings preserve edits, update rich formatting, and discover addon
   await page
     .getByRole('button', { name: /^back to app$/i, exact: true })
     .click()
-  await rich.locator('h1').waitFor()
-  assert.equal(await rich.locator('h1').innerText(), 'changed')
+  // Schema changes recreate the editor asynchronously; wait for the edited content.
+  await rich
+    .locator('h1')
+    .filter({ hasText: /^changed$/ })
+    .waitFor()
+  assert.equal(
+    await rich.locator('h1').innerText(),
+    'changed',
+    JSON.stringify({
+      main: (await page.evaluate(() => window.hibi.getDocument())).markdown,
+      source: await source.innerText(),
+    }),
+  )
   assert.equal(await rich.locator('sub').innerText(), '2')
   assert.equal(
     (await page.evaluate(() => window.hibi.getDocument())).markdown,

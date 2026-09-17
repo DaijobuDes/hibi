@@ -70,7 +70,7 @@ button {
     color var(--motion-fast) ease-out,
     background-color var(--motion-fast) ease-out;
 }
-button:hover:not(:disabled),
+button:hover:where(:not(:disabled)),
 summary:hover {
   color: var(--ink);
   background: var(--hover);
