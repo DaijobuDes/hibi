@@ -163,6 +163,7 @@ export async function loadWorkspace(
   } catch (error) {
     console.error('workspace watcher unavailable:', error)
   }
+  onChanged()
   return getWorkspace()
 }
 
@@ -220,7 +221,7 @@ export async function snapshotWorkspace(): Promise<WorkspaceSnapshot> {
         for (const source of isMarkdownDocument(item.path)
           ? imageSources(markdown)
           : []) {
-          const image = await exportDocumentMedia(source, path)
+          const image = await exportDocumentMedia(source, path, selected)
           if (!image) continue
           bytes += Buffer.byteLength(image)
           if (bytes > 20 * 1024 * 1024)

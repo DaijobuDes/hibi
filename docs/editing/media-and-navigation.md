@@ -12,6 +12,8 @@ the image toolbar action opens the native file picker. it accepts images, animat
 
 attachments are copied into an `assets` folder beside the note. original files remain untouched. duplicate names receive a numeric suffix. markdown stores relative `![description](assets/file)` references, so moving the note together with its assets keeps them portable. edit the description in source mode to improve its accessible label.
 
+website-style paths such as `![screenshot](/uploads/screenshot.png)` also work: hibi first checks for a real absolute file, then the open workspace's `uploads` and `public/uploads` folders (or those folders beside the note if no workspace is open). this applies to editor previews and documentation export. opening a workspace refreshes missing media automatically. the markdown path stays unchanged. `file://` URLs remain explicit filesystem paths.
+
 supported images: png, jpeg, gif, webp, avif, and svg, up to 8 mib each. supported video containers: mp4, mov, webm, and ogg/theora, up to 512 mib each; playback depends on the codecs supported by electron. normal and split views show video controls and support seeking through a local stream. unknown or missing media shows its description. no remote media downloads happen automatically.
 
 documentation export embeds media for offline use within its existing 20 mib total limit. large videos should be linked or hosted separately. the `tests/fixtures/clip.webm` sample is a generated one-second blue frame, with no third-party content.

@@ -21,8 +21,12 @@ import {
   saveDocument,
 } from './document'
 import { isDocumentName } from './document-types'
-import { documentMediaPath, imageMime, readDocumentImage } from './images'
-import { loadWorkspace } from './workspace'
+import {
+  imageMime,
+  readDocumentImage,
+  resolveDocumentMediaPath,
+} from './images'
+import { loadWorkspace, workspaceRoot } from './workspace'
 
 const extensions = [
   'png',
@@ -209,13 +213,13 @@ export async function readDocumentMedia(
   revision: number,
 ): Promise<DocumentMedia | null> {
   const note = getDocumentPath()
-  const path = documentMediaPath(source, note)
+  const path = await resolveDocumentMediaPath(source, note, workspaceRoot())
   if (!path || revision !== getDocument().revision) return null
   try {
     const { file, mime } = await openMedia(path)
     await file.close()
     if (mime.startsWith('image/')) {
-      const url = await readDocumentImage(source, note)
+      const url = await readDocumentImage(source, note, workspaceRoot())
       return url &&
         note === getDocumentPath() &&
         revision === getDocument().revision
@@ -299,8 +303,9 @@ export async function serveDocumentMedia(request: Request): Promise<Response> {
 export async function exportDocumentMedia(
   source: string,
   note: string,
+  workspacePath: string | null = null,
 ): Promise<string | null> {
-  const path = documentMediaPath(source, note)
+  const path = await resolveDocumentMediaPath(source, note, workspacePath)
   if (!path) return null
   try {
     const { file, stat, mime } = await openMedia(path)

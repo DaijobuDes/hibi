@@ -25,7 +25,6 @@ export function documentImage(revision: number) {
         const render = async () => {
           const id = ++request
           const { src, alt, title } = current.attrs
-          media.removeAttribute('src')
           const result =
             /^data:image\/(png|jpeg|gif|webp|avif|svg\+xml);base64,/i.test(src)
               ? { url: src, kind: 'image' }
@@ -33,22 +32,32 @@ export function documentImage(revision: number) {
                   .readDocumentMedia(src, revision)
                   .catch(() => null)
           if (id !== request) return
-          media = document.createElement(
-            result?.kind === 'video' ? 'video' : 'img',
-          )
+          if (
+            (result?.kind === 'video') !==
+            media instanceof HTMLVideoElement
+          ) {
+            if (media instanceof HTMLVideoElement) media.pause()
+            media = document.createElement(
+              result?.kind === 'video' ? 'video' : 'img',
+            )
+            container.replaceChildren(media)
+          }
           media.title = title ?? ''
           if (media instanceof HTMLVideoElement) {
             media.controls = true
             media.preload = 'metadata'
             media.setAttribute('aria-label', alt || 'video attachment')
           } else media.alt = alt ?? ''
-          container.replaceChildren(media)
-          if (result) media.src = result.url
-          else
+          if (result) {
+            if (media.getAttribute('src') !== result.url) media.src = result.url
+          } else {
+            media.removeAttribute('src')
             media.title =
               'media unavailable — check its path; save the note before using a relative path'
+          }
         }
         void render()
+        const unsubscribe = window.hibi.onWorkspaceChanged(() => void render())
         return {
           dom: container,
           stopEvent: (event) =>
@@ -64,6 +73,7 @@ export function documentImage(revision: number) {
           ignoreMutation: () => true,
           destroy() {
             request += 1
+            unsubscribe()
             if (media instanceof HTMLVideoElement) media.pause()
           },
         }

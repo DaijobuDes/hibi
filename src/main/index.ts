@@ -573,7 +573,7 @@ if (!app.requestSingleInstanceLock()) {
           if (typeof source !== 'string' || revision !== getDocument().revision)
             return null
           const path = getDocumentPath()
-          const image = await readDocumentImage(source, path)
+          const image = await readDocumentImage(source, path, workspaceRoot())
           return revision === getDocument().revision &&
             path === getDocumentPath()
             ? image

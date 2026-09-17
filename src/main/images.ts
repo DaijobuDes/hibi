@@ -1,6 +1,6 @@
 import { constants } from 'node:fs'
-import { open } from 'node:fs/promises'
-import { dirname, isAbsolute, resolve } from 'node:path'
+import { open, stat } from 'node:fs/promises'
+import { dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { marked } from 'marked'
 
@@ -42,8 +42,13 @@ export function imageSources(markdown: string): Set<string> {
 export async function readDocumentImage(
   source: string,
   documentPath: string | null,
+  workspacePath: string | null = null,
 ): Promise<string | null> {
-  const path = documentMediaPath(source, documentPath)
+  const path = await resolveDocumentMediaPath(
+    source,
+    documentPath,
+    workspacePath,
+  )
   if (!path) return null
   try {
     const file = await open(
@@ -67,6 +72,51 @@ export async function readDocumentImage(
   }
 }
 
+/** Existing absolute files win; website paths resolve from the workspace or its public assets. */
+export async function resolveDocumentMediaPath(
+  source: string,
+  documentPath: string | null,
+  workspacePath: string | null = null,
+) {
+  const path = documentMediaPath(source, documentPath)
+  if (!path) return null
+  if (
+    await stat(path).then(
+      (info) => info.isFile(),
+      () => false,
+    )
+  )
+    return path
+  const base = workspacePath ?? (documentPath ? dirname(documentPath) : null)
+  if (!base || !source.startsWith('/') || source.startsWith('//')) return null
+  let decoded = source
+  try {
+    decoded = decodeURIComponent(source)
+  } catch {
+    /* Literal percent in filename. */
+  }
+  if (
+    decoded.includes('\0') ||
+    decoded.includes('\\') ||
+    decoded.startsWith('//')
+  )
+    return null
+  for (const root of [base, resolve(base, 'public')]) {
+    const candidate = resolve(root, `.${decoded}`)
+    const part = relative(root, candidate)
+    if (part === '..' || part.startsWith(`..${sep}`) || isAbsolute(part))
+      continue
+    if (
+      await stat(candidate).then(
+        (info) => info.isFile(),
+        () => false,
+      )
+    )
+      return candidate
+  }
+  return null
+}
+
 export function documentMediaPath(
   source: string,
   documentPath: string | null,
@@ -85,6 +135,12 @@ export function documentMediaPath(
       } catch {
         /* Literal percent in a filename. */
       }
+      if (
+        decoded.includes('\0') ||
+        decoded.startsWith('//') ||
+        decoded.startsWith('\\\\')
+      )
+        return null
       if (!isAbsolute(decoded) && !documentPath) return null
       path = isAbsolute(decoded)
         ? decoded
