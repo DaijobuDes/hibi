@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Addon, AddonManifest, AddonState } from '../../addons/api'
 import { addonPackageUrl } from '../../shared/addon-package'
 import { Button, ControlRow, SettingRow, Toggle } from '../../ui/Controls'
@@ -62,6 +62,13 @@ export function AddonSettings({
 }) {
   const [query, setQuery] = useState('')
   const [busy, setBusy] = useState(false)
+  const restoreFocus = useRef<string | null>(null)
+  useEffect(() => {
+    if (!busy && restoreFocus.current) {
+      document.getElementById(restoreFocus.current)?.focus()
+      restoreFocus.current = null
+    }
+  })
   const dialogs = useDialogs()
   const toasts = useToasts()
   const enabled = (id: string) =>
@@ -180,6 +187,7 @@ export function AddonSettings({
                       disabled={busy}
                       checked={active}
                       onChange={(event) => {
+                        restoreFocus.current = event.target.id
                         const next = event.target.checked
                         void run(() => setEnabled(manifest.id, next))
                       }}

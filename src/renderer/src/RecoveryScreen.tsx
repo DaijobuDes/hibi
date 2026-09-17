@@ -12,6 +12,7 @@ import {
   type ErrorInfo,
   type ReactNode,
   useEffect,
+  useRef,
   useState,
 } from 'react'
 import type { DocumentState } from '../../shared/desktop'
@@ -29,6 +30,10 @@ export function RecoveryScreen({
   const [status, setStatus] = useState('')
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState(false)
+  const heading = useRef<HTMLHeadingElement>(null)
+  useEffect(() => {
+    if (!onBack) heading.current?.focus()
+  }, [onBack])
   const details = error.stack || `${error.name}: ${error.message}`
   useEffect(() => {
     let active = true
@@ -83,7 +88,9 @@ export function RecoveryScreen({
             strokeWidth={1.25}
             aria-hidden
           />
-          <h1 id="recovery-title">let’s get you back to writing.</h1>
+          <h1 id="recovery-title" ref={heading} tabIndex={-1}>
+            let’s get you back to writing.
+          </h1>
           <p>
             {onBack
               ? 'this is a preview of hibi’s recovery screen. your editor is still open underneath.'

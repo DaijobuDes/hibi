@@ -23,6 +23,7 @@ test('cursor appearance, movement, selection hiding, and persistence in both edi
   const page = await app.firstWindow()
   const rich = page.getByRole('textbox', { name: 'document editor' })
   await rich.waitFor()
+  await page.getByRole('button', { name: 'dismiss this' }).click()
   // Exercise caret rendering without taking focus from the user's active window.
   await page.evaluate(() => {
     document.hasFocus = () => true

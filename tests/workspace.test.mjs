@@ -164,7 +164,7 @@ test('nested workspace editing, addon lifecycle, and offline static export', {
   })
   await enabled.click()
   await page.waitForFunction(
-    () => !document.querySelector('#settings-addons input').checked,
+    () => !document.querySelector('#addon-documentation').checked,
   )
   await page.waitForFunction(() =>
     window.hibi
@@ -179,7 +179,7 @@ test('nested workspace editing, addon lifecycle, and offline static export', {
   )
   await enabled.click()
   await page.waitForFunction(
-    () => document.querySelector('#settings-addons input').checked,
+    () => document.querySelector('#addon-documentation').checked,
   )
   await page.waitForFunction(() =>
     window.hibi

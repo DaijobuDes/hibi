@@ -91,6 +91,7 @@ test('compact filters reset preferences, group addons, and install reviewed url 
   await addons
     .locator('.addon-state-group[data-enabled="true"] #addon-vim')
     .waitFor()
+  await page.waitForFunction(() => document.activeElement?.id === 'addon-vim')
   await addons.getByRole('button', { name: 'reset all', exact: true }).click()
   await addons
     .locator('.addon-state-group[data-enabled="false"] #addon-vim')
