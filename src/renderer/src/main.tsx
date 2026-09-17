@@ -1389,7 +1389,9 @@ function App() {
                 },
                 ...addonHost.statusItems.filter(
                   (item) =>
-                    item.label && (item.when !== 'source' || mode !== 'normal'),
+                    item.label &&
+                    (item.when !== 'source' || mode !== 'normal') &&
+                    (item.when !== 'normal' || mode === 'normal'),
                 ),
               ]}
             />

@@ -111,7 +111,7 @@ export type StatusItem = {
   label: string
   tooltip?: string
   /** Omit to show in every editor view. Empty labels hide the pill. */
-  when?: 'source'
+  when?: 'normal' | 'source'
   onClick?: () => void | Promise<void>
 }
 

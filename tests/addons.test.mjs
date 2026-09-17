@@ -291,6 +291,22 @@ test('plugin pages, metadata, shared controls, and full source vim editing', {
   await page.getByRole('checkbox', { name: /show vim status/i }).check()
   await page.getByRole('button', { name: /back to editor/i }).click()
   assert.equal(await lastCommand.innerText(), ':w')
+  await page.getByRole('button', { name: /^normal$/i, exact: true }).click()
+  const unavailable = page.locator('[data-status-id="vim.unavailable"]')
+  await unavailable.waitFor()
+  assert.equal(await unavailable.innerText(), 'Vim · off')
+  assert.match(
+    await unavailable.getAttribute('data-tooltip'),
+    /switch to Markdown or side-by-side view/i,
+  )
+  await page
+    .getByRole('button', { name: /^side-by-side$/i, exact: true })
+    .click()
+  await unavailable.waitFor({ state: 'hidden' })
+  await page
+    .getByRole('status')
+    .filter({ hasText: /vim · normal/i })
+    .waitFor()
   await page.getByRole('button', { name: /editor settings/i }).click()
   await page.getByRole('tab', { name: /^addons$/i, exact: true }).click()
   await toggleAddon('vim', false)

@@ -22,7 +22,7 @@ export function Settings() {
           [
             'status',
             'show vim status',
-            'show the current mode and pending or last command.',
+            'show availability, the current mode, and pending or last commands.',
           ],
         ] as const
       ).map(([key, label, description]) => (
