@@ -1,5 +1,9 @@
 # development and validation
 
+## tooling compatibility
+
+keep vite on 7 and `@vitejs/plugin-react` on 5 while stable `electron-vite` 5 and `@codspeed/vitest-plugin` 5 require vite 7 or earlier. update these together once their stable peer ranges support vite 8. node type definitions can update independently; the runtime remains pinned by `.nvmrc`.
+
 Desktop checks run once per pull request and on pushes to `main`. Feature-branch pushes do not start a duplicate matrix.
 
 Packaging uses Bash on every runner so Windows preserves electron-builder's dotted configuration arguments.
