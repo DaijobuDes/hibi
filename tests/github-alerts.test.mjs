@@ -1,0 +1,174 @@
+import assert from 'node:assert/strict'
+import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
+import test from 'node:test'
+import { Marked } from 'marked'
+import {
+  alertMarkdown,
+  alertToken,
+  alertTypes,
+} from '../src/addons/github-markdown/alerts.ts'
+import { electron } from './electron.mjs'
+import { pressShortcut } from './keyboard.mjs'
+import { waitForAsync } from './poll.mjs'
+
+test('github alerts use quote boundaries and leave other markdown alone', () => {
+  const parser = new Marked(alertMarkdown)
+  for (const type of alertTypes) {
+    const source = `> [!${type.toUpperCase()}]\n> **hello**\ncontinued\n>\n> - first\n> - second\n\nafter`
+    const token = alertToken(source)
+    assert.equal(token.alertType, type)
+    assert.ok(!token.raw.includes('after'))
+    const html = parser.parse(source)
+    assert.match(html, new RegExp(`data-alert="${type}"`))
+    assert.match(html, /<strong>hello<\/strong>\ncontinued/)
+    assert.match(html, /<ul>/)
+    assert.match(html, /<\/blockquote>\n<p>after<\/p>/)
+    assert.ok(!html.includes('[!'))
+  }
+  for (const source of [
+    '> ordinary quote',
+    '> [!UNKNOWN]\n> hello',
+    '> [!WARNING] same line',
+    '> [!WARNING',
+    '```md\n> [!WARNING]\n> hello\n```',
+  ])
+    assert.ok(!parser.parse(source).includes('data-alert='))
+  assert.match(parser.parse('> [!NOTE]'), /data-alert="note"/)
+})
+
+test('github alerts edit in rich/split view, keep markers, and export with theme colors', {
+  timeout: 45000,
+}, async (t) => {
+  const temp = await mkdtemp(join(tmpdir(), 'hibi-alerts-'))
+  const root = join(temp, 'notes')
+  await mkdir(root)
+  const file = join(root, 'alerts.md'),
+    output = join(temp, 'doc.html')
+  const app = await electron.launch({
+    args: [resolve('.'), `--user-data-dir=${join(temp, 'profile')}`],
+  })
+  t.after(async () => {
+    await app.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => ({ response: 1 })
+    })
+    await app.close()
+    await rm(temp, { recursive: true, force: true })
+  })
+  const page = await app.firstWindow()
+  page.setDefaultTimeout(6500)
+  const errors = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
+  const read = () =>
+    page.evaluate(async () => (await window.hibi.getDocument()).markdown)
+  const rich = page.getByRole('textbox', { name: 'document editor' })
+  await rich.waitFor()
+  await rich.pressSequentially('> [!WARNING]')
+  await rich.press('Enter')
+  await rich.locator('[data-alert="warning"]').waitFor()
+  await rich.pressSequentially('typed body')
+  assert.match(await read(), /> \[!WARNING\]\n> typed body/)
+  await pressShortcut(app, `${mod}+Shift+]`)
+  const source = page.getByRole('textbox', { name: 'markdown editor' })
+  const initial = alertTypes
+    .map(
+      (type) =>
+        `> [!${type.toUpperCase()}]\n> **hello ${type}**\n>\n> - first\n> - second`,
+    )
+    .join('\n\n')
+  await source.fill(initial)
+  await pressShortcut(app, `${mod}+Shift+\\`)
+  await page.waitForFunction(
+    () => document.querySelectorAll('.tiptap .github-alert').length === 5,
+  )
+  assert.equal(await read(), initial)
+  await page
+    .locator('[data-status-id="flavor"]')
+    .filter({ hasText: 'github markdown' })
+    .waitFor()
+  const warning = rich.locator('[data-alert="warning"]')
+  assert.equal(await warning.locator('strong').innerText(), 'hello warning')
+  assert.equal(await warning.locator('li').count(), 2)
+  assert.equal(
+    await warning.evaluate(
+      (element) => getComputedStyle(element).borderLeftWidth,
+    ),
+    '3px',
+  )
+  await warning.locator('.github-alert-body > p').fill('edited warning')
+  await waitForAsync(page, async () =>
+    (await window.hibi.getDocument()).markdown.includes('edited warning'),
+  )
+  const edited = await read()
+  for (const type of alertTypes)
+    assert.ok(edited.includes(`[!${type.toUpperCase()}]`))
+  await app.evaluate(
+    ({ dialog }, { root, file, output }) => {
+      dialog.showOpenDialog = async () => ({
+        canceled: false,
+        filePaths: [root],
+      })
+      dialog.showSaveDialog = async (_window, options) => ({
+        canceled: false,
+        filePath: options.filters[0].extensions.includes('html')
+          ? output
+          : file,
+      })
+      dialog.showMessageBox = async () => ({ response: 1 })
+    },
+    { root, file, output },
+  )
+  await pressShortcut(app, `${mod}+s`)
+  await waitForAsync(page, async () => !(await window.hibi.getDocument()).dirty)
+  assert.equal(await readFile(file, 'utf8'), edited)
+  await pressShortcut(app, `${mod}+Shift+o`)
+  await page.getByRole('button', { name: 'new workspace file' }).waitFor()
+  await pressShortcut(app, `${mod}+k`)
+  await page
+    .getByRole('combobox', { name: 'search commands' })
+    .fill('export documentation')
+  await page.getByRole('option').first().click()
+  await page.getByText(/exported 1 pages/).waitFor()
+  const next = app.waitForEvent('window')
+  await app.evaluate(({ BrowserWindow }, output) => {
+    const window = new BrowserWindow({
+      show: false,
+      focusable: false,
+      webPreferences: {
+        sandbox: true,
+        contextIsolation: true,
+        nodeIntegration: false,
+        backgroundThrottling: false,
+      },
+    })
+    void window.loadFile(output)
+  }, output)
+  const site = await next
+  await site.locator('[data-alert="warning"]').waitFor()
+  assert.equal(await site.locator('.github-alert').count(), 5)
+  assert.equal(
+    await site
+      .locator('[data-alert="warning"]')
+      .evaluate((element) => getComputedStyle(element).borderLeftWidth),
+    '3px',
+  )
+  assert.match(
+    await site.locator('[data-alert="warning"]').innerText(),
+    /edited warning/,
+  )
+  await site.close()
+  await page
+    .getByRole('button', { name: 'editor settings', exact: true })
+    .click()
+  await page.getByRole('tab', { name: 'addons', exact: true }).click()
+    await page.locator('#addon-github-markdown').click()
+  await page.getByRole('button', { name: 'back to app', exact: true }).click()
+  await page.waitForFunction(
+    () => !document.querySelector('.tiptap .github-alert'),
+  )
+  assert.equal(await read(), edited)
+  assert.match(await rich.innerText(), /\[!WARNING\]/)
+  assert.deepEqual(errors, [])
+})

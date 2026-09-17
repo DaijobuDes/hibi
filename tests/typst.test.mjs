@@ -203,6 +203,11 @@ test('typst documents and markdown blocks preview locally, export, and preserve 
   await source.fill(updated)
   await tree.getByRole('treeitem', { name: 'blocks.md', exact: true }).click()
   await page.getByAltText('typst block preview', { exact: true }).waitFor()
+  assert.equal(await page.locator('.tiptap h1').innerText(), 'markdown')
+  assert.match(
+    await page.locator('.tiptap').innerText(),
+    /keep this paragraph\./,
+  )
   assert.equal((await read()).markdown, markdown)
   await page
     .getByRole('button', { name: 'edit typst block', exact: true })

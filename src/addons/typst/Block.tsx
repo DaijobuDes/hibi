@@ -134,6 +134,8 @@ export function typstNode(context: AddonContext) {
     markdownTokenizer: {
       name: 'typstBlock',
       level: 'block',
+      start: (source) =>
+        source.search(/^ {0,3}(?:`{3,}|~{3,})typst[ \t]*\r?$/im),
       tokenize: typstBlock,
     },
     parseMarkdown: (token, helpers) =>

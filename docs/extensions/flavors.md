@@ -4,6 +4,8 @@ addons are `theme` or `extension`. dialects and extra syntax are extension contr
 
 automatic mode recognizes enabled features. detection is a hint: ordinary markdown does not identify its dialect. click the status pill or search **markdown flavor** in the palette to override a file. choices persist per file and follow save-as and rename within hibi.
 
+the bundled github markdown dialect includes alerts (`> [!NOTE]`, `TIP`, `IMPORTANT`, `WARNING`, and `CAUTION`) in addition to tables, task lists, strikethrough, and automatic links. alerts render in normal/split view and documentation exports, and retain their markers when edited.
+
 automatic mode keeps enabled parsers ready, so typing new syntax does not rebuild the editor or reset undo. explicit flavor changes and enabling/disabling schema extensions rebuild the rich editor while preserving source; this resets that pane's undo history. unsupported detected syntax remains editable in source mode and makes the rich pane read-only.
 
 declare lightweight descriptors in `Addon.flavors` so bundled syntax remains detectable when disabled. register full contributions during `start`, including optional `richExtensions`, `markedOptions`, and `export` parsers/styles. shutdown disposes contributions. async `start` is supported; registrations after shutdown are ignored.
