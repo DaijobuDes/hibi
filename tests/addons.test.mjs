@@ -15,6 +15,13 @@ test('plugin pages, metadata, shared controls, and full source vim editing', {
   const app = await electron.launch({
     args: [resolve('.'), `--user-data-dir=${join(folder, 'profile')}`],
   })
+  if (process.platform === 'darwin')
+    assert.equal(
+      await app.evaluate(({ systemPreferences }) =>
+        systemPreferences.getUserDefault('ApplePressAndHoldEnabled', 'boolean'),
+      ),
+      false,
+    )
   t.after(async () => {
     await app.evaluate(({ dialog }) => {
       dialog.showMessageBox = async () => ({ response: 1 })

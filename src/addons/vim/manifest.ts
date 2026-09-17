@@ -5,7 +5,7 @@ export default {
   id: 'vim',
   name: 'vim',
   version: '0.2.0',
-  authors: [authors.may],
+  authors: [authors.may, authors.angelo],
   description: 'vim editing in markdown and split source panes.',
   apiVersion: 1,
   defaultEnabled: false,

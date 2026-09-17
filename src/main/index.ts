@@ -12,6 +12,7 @@ import {
   protocol,
   session,
   shell,
+  systemPreferences,
 } from 'electron'
 import { ADDON_CHANNELS } from '../addons/api'
 import { ABOUT_CHANNELS, SPONSOR_URL } from '../shared/about'
@@ -85,6 +86,9 @@ import {
 import { workspaceAction } from './workspace-actions'
 
 app.setName('hibi')
+// Let held Vim motions repeat instead of opening macOS's accent picker.
+if (process.platform === 'darwin')
+  systemPreferences.setUserDefault('ApplePressAndHoldEnabled', 'boolean', false)
 const appIcon = app.isPackaged
   ? join(process.resourcesPath, 'icon.png')
   : join(app.getAppPath(), 'build/icon.png')

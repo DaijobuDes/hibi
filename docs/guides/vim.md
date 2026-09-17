@@ -4,6 +4,8 @@ enable **vim** under settings → addons. it adds vim editing to markdown-only m
 
 the plugin uses the [CodeMirror vim engine](https://github.com/replit/codemirror-vim), loaded only when enabled. normal, insert, replace, visual, linewise visual, and blockwise visual modes include motions, counts, text objects, operators, registers, marks, macros, dot-repeat, undo/redo, search, and ex substitutions. standard examples include `ciw`, `d3w`, `"ayy`, `qa…q`, `@a`, `/word`, and `:%s/old/new/g`.
 
+on macOS, hibi uses key repeat instead of the press-and-hold accent picker so held vim motions keep moving. this setting is scoped to hibi and does not change other apps; enter accented characters with the standard option-key combinations.
+
 ## file commands
 
 - `:w` saves through hibi's normal save flow; an untitled note opens the save dialog.
