@@ -163,7 +163,7 @@ test('github alerts edit in rich/split view, keep markers, and export with theme
     .getByRole('button', { name: 'editor settings', exact: true })
     .click()
   await page.getByRole('tab', { name: 'addons', exact: true }).click()
-    await page.locator('#addon-github-markdown').click()
+  await page.locator('#addon-github-markdown').click()
   await page.getByRole('button', { name: 'back to app', exact: true }).click()
   await page.waitForFunction(
     () => !document.querySelector('.tiptap .github-alert'),

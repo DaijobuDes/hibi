@@ -1,0 +1,71 @@
+.graph-controls {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.graph-controls input {
+  flex: 1;
+  min-width: 120px;
+}
+.graph-controls button[aria-pressed="true"] {
+  background: var(--selection);
+}
+.graph-summary,
+.graph-help {
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+.graph-canvas {
+  position: relative;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  overflow: hidden;
+}
+.graph-canvas > svg {
+  display: block;
+  width: 100%;
+  height: min(55vh, 460px);
+  min-height: 260px;
+  touch-action: none;
+  cursor: grab;
+}
+.graph-canvas > svg:active {
+  cursor: grabbing;
+}
+.graph-canvas line {
+  stroke: var(--border);
+  stroke-width: 1.5;
+}
+.graph-canvas [data-node] {
+  cursor: pointer;
+  outline: none;
+}
+.graph-canvas circle {
+  fill: var(--muted);
+  stroke: var(--background);
+  stroke-width: 2;
+}
+.graph-canvas text {
+  fill: var(--muted);
+  font: var(--text-xs) var(--font-ui);
+  user-select: none;
+}
+.graph-canvas
+  [data-node]:is(:hover, :focus-visible, [data-active="true"])
+  circle {
+  fill: var(--accent);
+  stroke: var(--ink);
+}
+.graph-canvas
+  [data-node]:is(:hover, :focus-visible, [data-active="true"])
+  text {
+  fill: var(--ink);
+}
+.graph-zoom {
+  position: absolute;
+  right: var(--space-2);
+  bottom: var(--space-2);
+  display: flex;
+  gap: var(--space-1);
+}
