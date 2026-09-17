@@ -11,6 +11,7 @@ import { HISTORY_CHANNELS } from '../shared/history'
 import { type AppCommand, HOTKEY_CHANNELS } from '../shared/hotkeys'
 import { MEDIA_CHANNELS } from '../shared/media'
 import { SIDELOAD_CHANNELS } from '../shared/sideload'
+import { UI_CASE_CHANNEL } from '../shared/ui-case'
 import { WORKSPACE_CHANNELS, type WorkspaceState } from '../shared/workspace'
 
 if (process.isMainFrame) {
@@ -90,7 +91,12 @@ if (process.isMainFrame) {
       }
     },
     getAppInfo: () => ipcRenderer.invoke(APP_INFO_CHANNEL),
+    setUiCase: (value) => ipcRenderer.invoke(UI_CASE_CHANNEL, value),
     getDocument: () => ipcRenderer.invoke(DOCUMENT_CHANNELS.get),
+    selectDocumentTab: (id) =>
+      ipcRenderer.invoke(DOCUMENT_CHANNELS.selectTab, id),
+    closeDocumentTab: (id) =>
+      ipcRenderer.invoke(DOCUMENT_CHANNELS.closeTab, id),
     updateDocument: (markdown) =>
       ipcRenderer.invoke(DOCUMENT_CHANNELS.update, markdown),
     openDocument: () => ipcRenderer.invoke(DOCUMENT_CHANNELS.open),

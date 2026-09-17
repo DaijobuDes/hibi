@@ -46,7 +46,7 @@ export function documentImage(revision: number) {
           if (media instanceof HTMLVideoElement) {
             media.controls = true
             media.preload = 'metadata'
-            media.setAttribute('aria-label', alt || 'video attachment')
+            media.setAttribute('aria-label', alt || 'Video attachment')
           } else media.alt = alt ?? ''
           if (result) {
             if (media.getAttribute('src') !== result.url) media.src = result.url

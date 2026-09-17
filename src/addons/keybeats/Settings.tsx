@@ -14,8 +14,8 @@ export function Settings() {
     <div className="settings-group">
       <SettingRow
         id="keybeats-profile"
-        label="keyboard"
-        description="choose a mechanical keyboard sound profile."
+        label="Keyboard"
+        description="Choose a mechanical keyboard sound profile."
       >
         <Select
           id="keybeats-profile"
@@ -31,8 +31,8 @@ export function Settings() {
       </SettingRow>
       <SettingRow
         id="keybeats-volume"
-        label="volume"
-        description="sound level while typing in normal and source panes."
+        label="Volume"
+        description="Sound level while typing in normal and source panes."
       >
         <div className="setting-controls">
           <div className="padding-control">
@@ -53,8 +53,8 @@ export function Settings() {
       </SettingRow>
       <SettingRow
         id="keybeats-muted"
-        label="mute"
-        description="temporarily silence keyboard sounds."
+        label="Mute"
+        description="Temporarily silence keyboard sounds."
       >
         <Toggle
           id="keybeats-muted"

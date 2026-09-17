@@ -2,6 +2,8 @@
 
 editor CSS is registered through `context.styles` and removed when this addon stops.
 
+the pending/last-command status pill uses `verbatim: true`, preserving meaningful uppercase keystrokes even when the interface is set to lowercase.
+
 version 0.2.0 · may (`1262793452236570667`). disabled by default.
 
 adds the CodeMirror vim engine to source panes through `context.editor.registerSource`. the engine is imported on demand and includes mode-aware cursors, visual selections, motions, operators, registers, macros, search, and ex commands. the normal wysiwyg view keeps its existing input behavior.

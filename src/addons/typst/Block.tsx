@@ -31,7 +31,7 @@ function TypstForm({
         close(value)
       }}
     >
-      <label htmlFor="typst-source">typst source</label>
+      <label htmlFor="typst-source">Typst source</label>
       <TextArea
         monospace
         id="typst-source"
@@ -42,8 +42,8 @@ function TypstForm({
         spellCheck={false}
       />
       <div className="dialog-actions">
-        <Button onClick={() => close(null)}>cancel</Button>
-        <Button type="submit">apply</Button>
+        <Button onClick={() => close(null)}>Cancel</Button>
+        <Button type="submit">Apply</Button>
       </div>
     </form>
   )
@@ -58,7 +58,7 @@ export function typstNode(context: AddonContext) {
     )?.id
     async function edit() {
       const value = await context.dialogs.open<string>({
-        title: 'edit typst block',
+        title: 'Edit Typst block',
         size: 'wide',
         content: ({ close }) => <TypstForm source={source} close={close} />,
       }).result
@@ -81,7 +81,7 @@ export function typstNode(context: AddonContext) {
       } catch (error) {
         context.toasts.show({
           message:
-            error instanceof Error ? error.message : 'could not export typst.',
+            error instanceof Error ? error.message : 'Could not export Typst.',
           variant: 'error',
         })
       }
@@ -89,16 +89,16 @@ export function typstNode(context: AddonContext) {
     return (
       <NodeViewWrapper className="typst-block" contentEditable={false}>
         <div className="typst-block-heading">
-          <span>typst</span>
+          <span>Typst</span>
           <div>
             <IconButton
-              aria-label="edit typst block"
+              aria-label="Edit Typst block"
               onClick={() => void edit()}
             >
               <Pencil size={16} />
             </IconButton>
             <IconButton
-              aria-label="export typst block pdf"
+              aria-label="Export Typst block PDF"
               onClick={() => void pdf()}
             >
               <FileDown size={16} />

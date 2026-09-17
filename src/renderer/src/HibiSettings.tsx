@@ -26,8 +26,8 @@ function LicenseText({ id }: { id: string }) {
     }
   }, [id])
   if (failed)
-    return <p role="alert">this license could not load. close and try again.</p>
-  if (text === null) return <p role="status">loading license…</p>
+    return <p role="alert">This license could not load. close and try again.</p>
+  if (text === null) return <p role="status">Loading license…</p>
   return <pre className="license-text">{text}</pre>
 }
 
@@ -57,9 +57,9 @@ export function HibiSettings({ info }: { info: AppInfo | null }) {
       await window.hibi.openSponsor()
     } catch {
       void dialogs.alert({
-        title: 'could not open your browser',
-        description: 'try again, or visit github.com/sponsors/schmayterling.',
-        confirmLabel: 'close',
+        title: 'Could not open your browser',
+        description: 'Try again, or visit GitHub.com/sponsors/schmayterling.',
+        confirmLabel: 'Close',
       })
     } finally {
       setSponsoring(false)
@@ -67,61 +67,61 @@ export function HibiSettings({ info }: { info: AppInfo | null }) {
   }
   return (
     <>
-      <h1>hibi</h1>
+      <h1>Hibi</h1>
       <div className="settings-group hibi-about">
         <div className="hibi-identity">
           <span className="hibi-mark" aria-hidden="true">
             <File size={28} strokeWidth={1.25} />
           </span>
           <div>
-            <div className="hibi-name">hibi</div>
-            <p>version {info?.version ?? '…'}</p>
+            <div className="hibi-name">Hibi</div>
+            <p>Version {info?.version ?? '…'}</p>
           </div>
           <span className="hibi-description">
-            a quiet place to write markdown.
+            A quiet place to write Markdown.
           </span>
         </div>
         <p className="hibi-credit">
-          made with <Heart size={12} aria-label="love" /> by may{' '}
+          Made with <Heart size={12} aria-label="Love" /> by may{' '}
           <span aria-hidden="true">·</span> © {new Date().getFullYear()}
         </p>
         <SettingRow
           id="sponsor-project"
-          label="support hibi"
-          description="help keep the project growing."
+          label="Support Hibi"
+          description="Help keep the project growing."
         >
           <Button
             id="sponsor-project"
-            aria-label="sponsor on github"
+            aria-label="Sponsor on GitHub"
             aria-describedby="sponsor-project-description"
             className="sponsor-button"
             disabled={sponsoring}
             onClick={() => void sponsor()}
           >
-            sponsor on github <ArrowUpRight aria-hidden="true" />
+            Sponsor on GitHub <ArrowUpRight aria-hidden="true" />
           </Button>
         </SettingRow>
       </div>
-      <h2>diagnostics</h2>
+      <h2>Diagnostics</h2>
       <div className="settings-group">
         <SettingRow
           id="recovery-preview"
-          label="explode screen"
-          description="preview the recovery screen without interrupting your document."
+          label="Explode screen"
+          description="Preview the recovery screen without interrupting your document."
         >
           <Button
             id="recovery-preview"
-            aria-label="preview explode screen"
+            aria-label="Preview explode screen"
             onClick={() => setPreview(true)}
           >
-            preview explode screen
+            Preview explode screen
           </Button>
         </SettingRow>
       </div>
       {preview && (
         <Modal
           className="recovery-preview"
-          aria-label="recovery preview"
+          aria-label="Recovery preview"
           onDismiss={() => setPreview(false)}
         >
           <RecoveryScreen
@@ -130,17 +130,17 @@ export function HibiSettings({ info }: { info: AppInfo | null }) {
           />
         </Modal>
       )}
-      <h2 id="open-source-licenses">open source licenses</h2>
+      <h2 id="open-source-licenses">Open source licenses</h2>
       <section
         className="settings-group license-list"
         aria-labelledby="open-source-licenses"
       >
         {failed ? (
           <p role="alert">
-            licenses could not load. reopen this page to try again.
+            Licenses could not load. reopen this page to try again.
           </p>
         ) : licenses === null ? (
-          <p role="status">loading licenses…</p>
+          <p role="status">Loading licenses…</p>
         ) : (
           licenses.map((license) => (
             <button

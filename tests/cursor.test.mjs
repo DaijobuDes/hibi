@@ -21,9 +21,9 @@ test('cursor appearance, movement, selection hiding, and persistence in both edi
     await rm(profile, { recursive: true, force: true })
   })
   const page = await app.firstWindow()
-  const rich = page.getByRole('textbox', { name: 'document editor' })
+  const rich = page.getByRole('textbox', { name: /document editor/i })
   await rich.waitFor()
-  await page.getByRole('button', { name: 'dismiss this' }).click()
+  await page.getByRole('button', { name: /dismiss this/i }).click()
   // Exercise caret rendering without taking focus from the user's active window.
   await page.evaluate(() => {
     document.hasFocus = () => true
@@ -56,14 +56,16 @@ test('cursor appearance, movement, selection hiding, and persistence in both edi
   const cursor = page.locator('.editor-cursor')
   await cursor.waitFor()
   assert.equal(await cursor.getAttribute('data-style'), 'bar')
-  await page.getByRole('button', { name: 'editor settings' }).click()
-  await page.getByRole('tab', { name: 'appearance', exact: true }).click()
-  await page.getByLabel('cursor style', { exact: true }).selectOption('outline')
-  await page.getByLabel('cursor blink', { exact: true }).selectOption('fast')
+  await page.getByRole('button', { name: /editor settings/i }).click()
+  await page.getByRole('tab', { name: /^appearance$/i, exact: true }).click()
   await page
-    .getByLabel('cursor animation', { exact: true })
+    .getByLabel(/^cursor style$/i, { exact: true })
+    .selectOption('outline')
+  await page.getByLabel(/^cursor blink$/i, { exact: true }).selectOption('fast')
+  await page
+    .getByLabel(/^cursor animation$/i, { exact: true })
     .selectOption('smooth')
-  await page.getByRole('button', { name: 'back to editor' }).click()
+  await page.getByRole('button', { name: /back to editor/i }).click()
   await cursor.waitFor()
   await page.evaluate(
     () =>
@@ -118,18 +120,22 @@ test('cursor appearance, movement, selection hiding, and persistence in both edi
         ) < 1,
     ),
   )
-  await page.getByRole('button', { name: 'normal', exact: true }).click()
+  await page.getByRole('button', { name: /^normal$/i, exact: true }).click()
   for (const [shape, speed] of [
     ['block', 'slow'],
     ['underline', 'normal'],
   ]) {
-    await page.getByRole('button', { name: 'editor settings' }).click()
-    await page.getByLabel('cursor style', { exact: true }).selectOption(shape)
-    await page.getByLabel('cursor blink', { exact: true }).selectOption(speed)
+    await page.getByRole('button', { name: /editor settings/i }).click()
     await page
-      .getByLabel('cursor animation', { exact: true })
+      .getByLabel(/^cursor style$/i, { exact: true })
+      .selectOption(shape)
+    await page
+      .getByLabel(/^cursor blink$/i, { exact: true })
+      .selectOption(speed)
+    await page
+      .getByLabel(/^cursor animation$/i, { exact: true })
       .selectOption('blink')
-    await page.getByRole('button', { name: 'back to editor' }).click()
+    await page.getByRole('button', { name: /back to editor/i }).click()
     await cursor.waitFor()
     assert.equal(await cursor.getAttribute('data-style'), shape)
     assert.equal(
@@ -140,8 +146,10 @@ test('cursor appearance, movement, selection hiding, and persistence in both edi
     )
     assert.equal(await cursor.getAttribute('data-move'), 'false')
   }
-  await page.getByRole('button', { name: 'markdown only', exact: true }).click()
-  const source = page.getByRole('textbox', { name: 'markdown editor' })
+  await page
+    .getByRole('button', { name: /^markdown only$/i, exact: true })
+    .click()
+  const source = page.getByRole('textbox', { name: /markdown editor/i })
   await source.fill('')
   await source.focus()
   await page.waitForFunction(() =>
@@ -191,18 +199,18 @@ test('cursor appearance, movement, selection hiding, and persistence in both edi
     ),
   ])
   await rich.waitFor()
-  await page.getByRole('button', { name: 'editor settings' }).click()
-  await page.getByRole('tab', { name: 'appearance', exact: true }).click()
+  await page.getByRole('button', { name: /editor settings/i }).click()
+  await page.getByRole('tab', { name: /^appearance$/i, exact: true }).click()
   assert.equal(
-    await page.getByLabel('cursor style', { exact: true }).inputValue(),
+    await page.getByLabel(/^cursor style$/i, { exact: true }).inputValue(),
     'underline',
   )
   assert.equal(
-    await page.getByLabel('cursor blink', { exact: true }).inputValue(),
+    await page.getByLabel(/^cursor blink$/i, { exact: true }).inputValue(),
     'normal',
   )
   assert.equal(
-    await page.getByLabel('cursor animation', { exact: true }).inputValue(),
+    await page.getByLabel(/^cursor animation$/i, { exact: true }).inputValue(),
     'blink',
   )
 })

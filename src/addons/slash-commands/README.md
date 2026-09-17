@@ -1,6 +1,6 @@
 # slash commands
 
-enabled by default. type `/` at the start of a paragraph in normal view, or a line in a markdown pane. type a command name or keyword to filter; use arrow keys and enter or tab to select, or click an item. escape and outside clicks close the menu without deleting your text.
+enabled by default. type `/` at the start of a paragraph in normal view, or a line in a markdown pane. type a command name or keyword to filter; matching ignores letter case. use arrow keys and enter or tab to select, or click an item. escape and outside clicks close the menu without deleting your text.
 
 commands: text, headings 1–3, bullet list, numbered list, checklist, quote, code block, divider, and table. source commands insert markdown at the cursor; rich commands use the editor's block commands. each block conversion can be undone.
 

@@ -31,7 +31,7 @@ export const typstFlavor: MarkdownFlavor = {
   id: 'blocks',
   name: 'typst blocks',
   kind: 'syntax',
-  description: 'render fenced typst blocks locally.',
+  description: 'Render fenced Typst blocks locally.',
   readOnlyWhenDisabled: false,
   detect(source) {
     let found = false

@@ -22,7 +22,7 @@ export function startKeybeats(context: AddonContext) {
   let disposed = false
   const action = context.toolbar.register({
     id: 'mute',
-    label: 'mute keyboard sounds',
+    label: 'Mute keyboard sounds',
     icon: Volume2,
     onClick: () => setPreferences({ muted: !getPreferences().muted }),
   })
@@ -80,8 +80,8 @@ export function startKeybeats(context: AddonContext) {
     if (preferences.muted) silence()
     action.update({
       label: preferences.muted
-        ? 'unmute keyboard sounds'
-        : 'mute keyboard sounds',
+        ? 'Unmute keyboard sounds'
+        : 'Mute keyboard sounds',
       icon: preferences.muted ? VolumeX : Volume2,
       pressed: preferences.muted,
     })

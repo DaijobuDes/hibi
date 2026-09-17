@@ -2,7 +2,6 @@ import { basename } from 'node:path'
 import { type BrowserWindow, shell } from 'electron'
 import { MAX_DOCUMENT_BYTES } from '../shared/desktop'
 import {
-  confirmDiscard,
   getDocument,
   getDocumentPath,
   importDocument,
@@ -47,7 +46,6 @@ export async function openDocumentLink(
   if (!path || !isDocumentName(path))
     throw new Error('only web, email, and markdown links can be opened.')
   if (path === getDocumentPath()) return getDocument()
-  if (!(await confirmDiscard(window))) return null
   return loadDocument(window, path)
 }
 
@@ -105,7 +103,6 @@ export async function openRemoteDocument(
     current.markdown !== getDocument().markdown
   )
     throw new Error('the note changed while downloading; try again.')
-  if (!(await confirmDiscard(window))) return null
   let name =
     basename(decodeURIComponent(url.pathname))
       .replace(/[<>:"/\\|?*\p{Cc}]/gu, '-')

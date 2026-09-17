@@ -62,60 +62,60 @@ type Action = {
   table?: boolean
 }
 const actions: Action[] = [
-  { id: 'undo', label: 'undo', icon: Undo2, rich: (c) => c.undo() },
-  { id: 'redo', label: 'redo', icon: Redo2, rich: (c) => c.redo() },
+  { id: 'undo', label: 'Undo', icon: Undo2, rich: (c) => c.undo() },
+  { id: 'redo', label: 'Redo', icon: Redo2, rich: (c) => c.redo() },
   {
     id: 'bold',
-    label: 'bold',
+    label: 'Bold',
     icon: Bold,
     rich: (c) => c.toggleBold(),
     active: 'bold',
   },
   {
     id: 'italic',
-    label: 'italic',
+    label: 'Italic',
     icon: Italic,
     rich: (c) => c.toggleItalic(),
     active: 'italic',
   },
   {
     id: 'strike',
-    label: 'strikethrough',
+    label: 'Strikethrough',
     icon: Strikethrough,
     rich: (c) => c.toggleStrike(),
     active: 'strike',
   },
   {
     id: 'inline-code',
-    label: 'inline code',
+    label: 'Inline code',
     icon: Code,
     rich: (c) => c.toggleCode(),
     active: 'code',
   },
   {
     id: 'subscript',
-    label: 'subscript',
+    label: 'Subscript',
     icon: Subscript,
     rich: (c) => c.toggleMark('subscript'),
     active: 'subscript',
   },
   {
     id: 'subtext',
-    label: 'small text',
+    label: 'Small text',
     icon: Type,
     rich: (c) => c.setNode('subtext'),
     active: 'subtext',
   },
   {
     id: 'paragraph',
-    label: 'paragraph',
+    label: 'Paragraph',
     icon: Pilcrow,
     rich: (c) => c.setParagraph(),
     active: 'paragraph',
   },
   ...([1, 2, 3, 4, 5, 6] as const).map((level) => ({
     id: `heading-${level}`,
-    label: `heading ${level}`,
+    label: `Heading ${level}`,
     icon:
       [Heading1, Heading2, Heading3, Heading4, Heading5, Heading6][level - 1] ??
       Heading1,
@@ -125,135 +125,135 @@ const actions: Action[] = [
   })),
   {
     id: 'bullet-list',
-    label: 'bullet list',
+    label: 'Bullet list',
     icon: List,
     rich: (c) => c.toggleBulletList(),
     active: 'bulletList',
   },
   {
     id: 'numbered-list',
-    label: 'numbered list',
+    label: 'Numbered list',
     icon: ListOrdered,
     rich: (c) => c.toggleOrderedList(),
     active: 'orderedList',
   },
   {
     id: 'checklist',
-    label: 'checklist',
+    label: 'Checklist',
     icon: ListChecks,
     rich: (c) => c.toggleTaskList(),
     active: 'taskList',
   },
   {
     id: 'indent',
-    label: 'indent',
+    label: 'Indent',
     icon: ListIndentIncrease,
     rich: (c, editor) =>
       c.sinkListItem(editor.isActive('taskList') ? 'taskItem' : 'listItem'),
   },
   {
     id: 'outdent',
-    label: 'outdent',
+    label: 'Outdent',
     icon: ListIndentDecrease,
     rich: (c, editor) =>
       c.liftListItem(editor.isActive('taskList') ? 'taskItem' : 'listItem'),
   },
   {
     id: 'quote',
-    label: 'quote',
+    label: 'Quote',
     icon: Quote,
     rich: (c) => c.toggleBlockquote(),
     active: 'blockquote',
   },
   {
     id: 'code-block',
-    label: 'code block',
+    label: 'Code block',
     icon: CodeXml,
     rich: (c) => c.toggleCodeBlock(),
     active: 'codeBlock',
   },
   {
     id: 'divider',
-    label: 'divider',
+    label: 'Divider',
     icon: Minus,
     rich: (c) => c.setHorizontalRule(),
   },
   {
     id: 'hard-break',
-    label: 'line break',
+    label: 'Line break',
     icon: WrapText,
     rich: (c) => c.setHardBreak(),
   },
   {
     id: 'link',
-    label: 'link',
+    label: 'Link',
     icon: Link,
     rich: (c) => c.setLink({ href: 'https://example.com' }),
     active: 'link',
   },
   {
     id: 'unlink',
-    label: 'remove link',
+    label: 'Remove link',
     icon: Unlink,
     rich: (c) => c.unsetLink(),
   },
   {
     id: 'image',
-    label: 'image',
+    label: 'Image',
     icon: Image,
     rich: (c) => c.setImage({ src: 'image.png' }),
   },
   {
     id: 'table',
-    label: 'table',
+    label: 'Table',
     icon: Table,
     rich: (c) => c.insertTable({ rows: 3, cols: 2, withHeaderRow: true }),
   },
   {
     id: 'row-before',
-    label: 'row above',
+    label: 'Row above',
     icon: ArrowUpToLine,
     rich: (c) => c.addRowBefore(),
     table: true,
   },
   {
     id: 'row-after',
-    label: 'row below',
+    label: 'Row below',
     icon: ArrowDownToLine,
     rich: (c) => c.addRowAfter(),
     table: true,
   },
   {
     id: 'row-delete',
-    label: 'delete row',
+    label: 'Delete row',
     icon: Rows2,
     rich: (c) => c.deleteRow(),
     table: true,
   },
   {
     id: 'column-before',
-    label: 'column before',
+    label: 'Column before',
     icon: ArrowLeftToLine,
     rich: (c) => c.addColumnBefore(),
     table: true,
   },
   {
     id: 'column-after',
-    label: 'column after',
+    label: 'Column after',
     icon: ArrowRightToLine,
     rich: (c) => c.addColumnAfter(),
     table: true,
   },
   {
     id: 'column-delete',
-    label: 'delete column',
+    label: 'Delete column',
     icon: Columns2,
     rich: (c) => c.deleteColumn(),
     table: true,
   },
   {
     id: 'table-delete',
-    label: 'delete table',
+    label: 'Delete table',
     icon: Trash2,
     rich: (c) => c.deleteTable(),
     table: true,
@@ -283,8 +283,8 @@ function InsertForm({
       <div className="settings-group">
         <SettingRow
           id="insert-url"
-          label="link destination"
-          description="web address, file path, or heading anchor."
+          label="Link destination"
+          description="Web address, file path, or heading anchor."
         >
           <TextInput
             id="insert-url"
@@ -298,13 +298,13 @@ function InsertForm({
         </SettingRow>
       </div>
       <div className="dialog-actions">
-        <Button onClick={() => close(null)}>cancel</Button>
+        <Button onClick={() => close(null)}>Cancel</Button>
         <Button
           type="submit"
           className="dialog-primary"
           disabled={!value.url.trim()}
         >
-          insert
+          Insert
         </Button>
       </div>
     </form>
@@ -414,7 +414,7 @@ export function useFormattingToolbar(
       } catch (error) {
         toasts.show({
           message:
-            error instanceof Error ? error.message : 'could not attach media.',
+            error instanceof Error ? error.message : 'Could not attach media.',
           variant: 'error',
         })
       }
@@ -447,7 +447,7 @@ export function useFormattingToolbar(
         const document = editor?.state.doc
         const selection = editor?.state.selection
         const result = await dialogs.open<InsertValues>({
-          title: 'insert link',
+          title: 'Insert link',
           content: ({ close }) => (
             <InsertForm
               initial={{

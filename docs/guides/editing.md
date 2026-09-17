@@ -1,5 +1,11 @@
 # editing
 
+## file tabs
+
+the top bar shows open notes as compact pill tabs. new notes, file opens, local links, and remote imports retain other tabs and their unsaved drafts. clicking a filename selects its tab; it no longer starts renaming. use **rename document…** in the command palette or **rename** in the workspace menu.
+
+each tab shows its own unsaved indicator and close button. cmd/ctrl+w closes the active tab; the command palette and hotkey settings expose the same action. arrow keys and home/end navigate focused tabs; overflowing tabs scroll horizontally. closing a dirty tab offers save, discard, or cancel, including for inactive tabs. closing the window checks every unsaved tab. switching back to clean files refreshes them from disk; dirty tabs retain their saved baseline for external-change checks. workspace moves update open paths, and deleting a folder checks and closes all affected tabs. tabs survive renderer reloads within the running app; restoring tabs after quitting is not yet supported.
+
 ## formatting toolbar
 
 the row below the top bar contains undo/redo, bold, italic, strikethrough, inline code, paragraph, headings 1–6, bullet/numbered/task lists, indent/outdent, quote, code block, divider, line break, links, images, and tables. the toolbar has one shared border and background, inset 12 px horizontally and 4 px vertically. individual buttons are flat, with hover and active backgrounds. actions that do not fit move into an ellipsis menu; arrow keys navigate it, escape closes it, and clicking outside dismisses it. formatting follows the last focused pane in split view and restores editor focus after an action. source actions edit selected markdown in a single undo step; rich actions use the editor's own commands. rich-only constructs that cannot be edited safely remain disabled.

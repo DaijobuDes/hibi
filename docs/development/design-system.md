@@ -32,6 +32,8 @@ use `ShortcutKeys` from `src/addons/ui.ts` in addons, or `src/ui/ShortcutKeys.ts
 
 ## settings
 
+write UI labels and descriptions in sentence case, preserving proper names such as GitHub, Vim, Markdown, and Typst. the optional lowercase interface style uses `--ui-text-transform`; controls must inherit it. never transform document content or editable field values. status items can set `verbatim: true` for case-sensitive data such as Vim commands. shared setting labels, menus, dialog titles, notifications, and ordinary status labels normalize sentence case at their rendering boundary.
+
 group related rows on one surface with inset separators. each row puts its label and description on the left and its control on the right. controls wrap inside narrow panels, including when the sidebar is widened. keep native input semantics, labels, descriptions, and keyboard focus behavior.
 
 use `SettingsFilter` for a compact search field and reset-all action. keep filtered `SettingRow` components mounted with `hidden`, so the command palette can still discover every setting. navigation from the palette reveals its target by clearing the filter. reset applies to the whole page, including hidden results. see the [generated component reference](../reference/settings-filter-api.md).

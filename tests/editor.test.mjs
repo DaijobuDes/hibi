@@ -24,16 +24,18 @@ test('empty entry, three views, and lossless source switching', {
   })
   const page = await app.firstWindow()
   page.setDefaultTimeout(7000)
-  const rich = page.getByRole('textbox', { name: 'document editor' })
+  const rich = page.getByRole('textbox', { name: /document editor/i })
   await rich.waitFor()
   assert.equal((await rich.innerText()).trim(), '')
   assert.equal(
     await rich.locator('p').getAttribute('data-placeholder'),
-    'start typing',
+    'Start typing',
   )
   await page.waitForFunction(
     () =>
-      document.activeElement?.getAttribute('aria-label') === 'document editor',
+      (
+        document.activeElement?.getAttribute('aria-label') ?? ''
+      ).toLowerCase() === 'document editor',
   )
   await rich.fill('hello editor')
   await page.waitForFunction(
@@ -47,8 +49,10 @@ test('empty entry, three views, and lossless source switching', {
   await page.waitForFunction(
     () => getComputedStyle(document.querySelector('.titlebar')).opacity === '1',
   )
-  await page.getByRole('button', { name: 'side-by-side', exact: true }).click()
-  const source = page.getByRole('textbox', { name: 'markdown editor' })
+  await page
+    .getByRole('button', { name: /^side-by-side$/i, exact: true })
+    .click()
+  const source = page.getByRole('textbox', { name: /markdown editor/i })
   await source.waitFor()
   const geometry = await page.evaluate(() => {
     const panes = document
@@ -85,15 +89,15 @@ test('empty entry, three views, and lossless source switching', {
   assert.equal(geometry.padding, '48px')
   assert.equal(geometry.besideSidebar, true)
   assert.equal(geometry.flat, true)
-  await page.getByRole('button', { name: 'editor settings' }).click()
-  await page.getByRole('main', { name: 'settings' }).waitFor()
+  await page.getByRole('button', { name: /editor settings/i }).click()
+  await page.getByRole('main', { name: /settings/i }).waitFor()
   assert.equal(await rich.isVisible(), false)
-  await page.getByRole('tab', { name: 'appearance', exact: true }).click()
+  await page.getByRole('tab', { name: /^appearance$/i, exact: true }).click()
   await page
-    .getByRole('checkbox', { name: 'hide top bar while typing' })
+    .getByRole('checkbox', { name: /hide top bar while typing/i })
     .uncheck()
-  await page.getByRole('tab', { name: 'editor', exact: true }).click()
-  await page.getByRole('slider', { name: 'content padding' }).press('Home')
+  await page.getByRole('tab', { name: /^editor$/i, exact: true }).click()
+  await page.getByRole('slider', { name: /content padding/i }).press('Home')
   assert.equal(
     await page.evaluate(
       () => getComputedStyle(document.querySelector('.tiptap')).paddingTop,
@@ -105,16 +109,18 @@ test('empty entry, three views, and lossless source switching', {
   const markdown =
     '# hello\n\n**bold** text\n\n- [x] done\n\n| name | value |\n| --- | --- |\n| one | two |'
   await source.fill(markdown)
-  await rich.getByRole('heading', { name: 'hello', exact: true }).waitFor()
+  await rich.getByRole('heading', { name: /^hello$/i, exact: true }).waitFor()
   assert.equal(await rich.locator('strong').innerText(), 'bold')
   assert.equal(await rich.getByRole('checkbox').isChecked(), true)
   assert.equal(
-    await rich.getByRole('cell', { name: 'two', exact: true }).innerText(),
+    await rich.getByRole('cell', { name: /^two$/i, exact: true }).innerText(),
     'two',
   )
-  await page.getByRole('button', { name: 'normal', exact: true }).click()
+  await page.getByRole('button', { name: /^normal$/i, exact: true }).click()
   await source.waitFor({ state: 'hidden' })
-  await page.getByRole('button', { name: 'markdown only', exact: true }).click()
+  await page
+    .getByRole('button', { name: /^markdown only$/i, exact: true })
+    .click()
   await rich.waitFor({ state: 'hidden' })
   assert.equal(
     (await source.locator('.cm-line').allTextContents()).join('\n'),
@@ -123,7 +129,9 @@ test('empty entry, three views, and lossless source switching', {
   const extended =
     '---\ntitle: keep me\n---\n\n<div data-value="keep">custom html</div>\n'
   await source.fill(extended)
-  await page.getByRole('button', { name: 'side-by-side', exact: true }).click()
+  await page
+    .getByRole('button', { name: /^side-by-side$/i, exact: true })
+    .click()
   assert.equal(await rich.getAttribute('contenteditable'), 'false')
   assert.equal(
     (await source.locator('.cm-line').allTextContents()).join('\n'),
@@ -131,27 +139,27 @@ test('empty entry, three views, and lossless source switching', {
   )
   await page.reload()
   await rich.waitFor()
-  await page.getByRole('button', { name: 'editor settings' }).click()
-  await page.getByRole('tab', { name: 'appearance', exact: true }).click()
+  await page.getByRole('button', { name: /editor settings/i }).click()
+  await page.getByRole('tab', { name: /^appearance$/i, exact: true }).click()
   assert.equal(
     await page
-      .getByRole('checkbox', { name: 'hide top bar while typing' })
+      .getByRole('checkbox', { name: /hide top bar while typing/i })
       .isChecked(),
     false,
   )
   await page
-    .getByRole('tab', { name: 'appearance', exact: true })
+    .getByRole('tab', { name: /^appearance$/i, exact: true })
     .press('ArrowUp')
   await page
     .getByRole('tab', {
-      name: 'code highlighting',
+      name: /^code highlighting$/i,
       exact: true,
       selected: true,
     })
     .waitFor()
   assert.equal(
     await page
-      .getByRole('tab', { name: 'code highlighting', exact: true })
+      .getByRole('tab', { name: /^code highlighting$/i, exact: true })
       .getAttribute('aria-selected'),
     'true',
   )
@@ -162,21 +170,25 @@ test('empty entry, three views, and lossless source switching', {
     ),
     '0px',
   )
-  await page.getByRole('button', { name: 'markdown only', exact: true }).click()
+  await page
+    .getByRole('button', { name: /^markdown only$/i, exact: true })
+    .click()
   await source.waitFor()
   const sourceBefore = (await page.evaluate(() => window.hibi.getDocument()))
     .markdown
   assert.equal(await page.locator('.cm-lineNumbers').count(), 0)
-  await page.getByRole('button', { name: 'editor settings' }).click()
-  await page.getByRole('tab', { name: 'editor', exact: true }).click()
-  await page.getByRole('checkbox', { name: 'show line numbers' }).check()
-  await page.getByRole('button', { name: 'back to editor' }).click()
+  await page.getByRole('button', { name: /editor settings/i }).click()
+  await page.getByRole('tab', { name: /^editor$/i, exact: true }).click()
+  await page.getByRole('checkbox', { name: /show line numbers/i }).check()
+  await page.getByRole('button', { name: /back to editor/i }).click()
   await page.locator('.cm-lineNumbers').waitFor()
   assert.equal(
     (await page.evaluate(() => window.hibi.getDocument())).markdown,
     sourceBefore,
   )
-  await page.getByRole('button', { name: 'side-by-side', exact: true }).click()
+  await page
+    .getByRole('button', { name: /^side-by-side$/i, exact: true })
+    .click()
   await page.locator('.cm-lineNumbers').waitFor()
   await Promise.all([
     page.waitForEvent('domcontentloaded'),
@@ -184,12 +196,14 @@ test('empty entry, three views, and lossless source switching', {
       BrowserWindow.getAllWindows()[0].reload(),
     ),
   ])
-  await page.getByRole('button', { name: 'markdown only', exact: true }).click()
+  await page
+    .getByRole('button', { name: /^markdown only$/i, exact: true })
+    .click()
   await page.locator('.cm-lineNumbers').waitFor()
-  await page.getByRole('button', { name: 'editor settings' }).click()
-  await page.getByRole('tab', { name: 'editor', exact: true }).click()
-  await page.getByRole('checkbox', { name: 'show line numbers' }).uncheck()
-  await page.getByRole('button', { name: 'back to editor' }).click()
+  await page.getByRole('button', { name: /editor settings/i }).click()
+  await page.getByRole('tab', { name: /^editor$/i, exact: true }).click()
+  await page.getByRole('checkbox', { name: /show line numbers/i }).uncheck()
+  await page.getByRole('button', { name: /back to editor/i }).click()
   await page.locator('.cm-lineNumbers').waitFor({ state: 'detached' })
   assert.equal(
     (await page.evaluate(() => window.hibi.getDocument())).markdown,

@@ -14,6 +14,7 @@ import {
   clearDocument,
   getDocument,
   getDocumentPath,
+  hasUnsavedDocuments,
   loadDocument,
   newDocument,
   renameDocument,
@@ -226,7 +227,7 @@ export async function invokeAddon(
       )
         throw new Error('invalid export file.')
       const result = await dialog.showSaveDialog(window, {
-        title: 'export document',
+        title: 'Export document',
         defaultPath: basename(suggestedName),
         filters: [{ name: extension, extensions: [extension] }],
       })
@@ -242,9 +243,9 @@ export async function invokeAddon(
     workspace: {
       id: workspaceId,
       directory: workspaceRoot,
-      hasUnsavedChanges: () => getDocument().dirty,
+      hasUnsavedChanges: hasUnsavedDocuments,
       async reload() {
-        if (getDocument().dirty)
+        if (hasUnsavedDocuments())
           throw new Error('save or discard edits before reloading files.')
         const path = getDocumentPath()
         if (path) {
@@ -266,9 +267,9 @@ export async function invokeAddon(
     },
     async exportHtml(html, suggestedName, pages) {
       const result = await dialog.showSaveDialog(window, {
-        title: 'export documentation',
+        title: 'Export documentation',
         defaultPath: basename(suggestedName),
-        filters: [{ name: 'html', extensions: ['html'] }],
+        filters: [{ name: 'HTML', extensions: ['html'] }],
       })
       if (result.canceled || !result.filePath) return null
       const path = result.filePath

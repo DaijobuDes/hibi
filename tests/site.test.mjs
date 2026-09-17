@@ -67,7 +67,7 @@ test('documentation breadcrumbs, outline, pagination, and phone navigation', {
   const page = await nextWindow
   const errors = []
   page.on('pageerror', (error) => errors.push(error.message))
-  await page.getByRole('heading', { name: 'welcome', exact: true }).waitFor()
+  await page.getByRole('heading', { name: /^welcome$/i, exact: true }).waitFor()
   const headerSurface = await page
     .locator('.documentation-site')
     .evaluate((el) => ({
@@ -85,13 +85,15 @@ test('documentation breadcrumbs, outline, pagination, and phone navigation', {
     await page.locator('html').getAttribute('data-colorscheme'),
     'catppuccin-mocha',
   )
-  await page.getByRole('button', { name: 'colorscheme', exact: true }).click()
+  await page
+    .getByRole('button', { name: /^colorscheme$/i, exact: true })
+    .click()
   const appearance = page.getByRole('dialog', {
-    name: 'appearance',
+    name: /^appearance$/i,
     exact: true,
   })
   await appearance
-    .getByRole('combobox', { name: 'appearance', exact: true })
+    .getByRole('combobox', { name: /^appearance$/i, exact: true })
     .selectOption('light')
   assert.equal(
     await page.locator('html').getAttribute('data-colorscheme'),
@@ -104,18 +106,18 @@ test('documentation breadcrumbs, outline, pagination, and phone navigation', {
   await page.keyboard.press('Escape')
   await appearance.waitFor({ state: 'hidden' })
   await page.reload()
-  await page.getByRole('heading', { name: 'welcome', exact: true }).waitFor()
+  await page.getByRole('heading', { name: /^welcome$/i, exact: true }).waitFor()
   assert.equal(
     await page.locator('html').getAttribute('data-colorscheme'),
     'vscode-light',
   )
   assert.equal(await page.locator('.sidebar-header').count(), 0)
-  const pagination = page.getByRole('navigation', { name: 'page navigation' })
-  await pagination.getByRole('link', { name: 'next getting started' }).click()
+  const pagination = page.getByRole('navigation', { name: /page navigation/i })
+  await pagination.getByRole('link', { name: /next getting started/i }).click()
   await page
-    .getByRole('heading', { name: 'getting started', exact: true })
+    .getByRole('heading', { name: /^getting started$/i, exact: true })
     .waitFor()
-  const breadcrumbs = page.getByRole('navigation', { name: 'breadcrumbs' })
+  const breadcrumbs = page.getByRole('navigation', { name: /breadcrumbs/i })
   assert.ok(
     await breadcrumbs.evaluate((element) =>
       Boolean(element.closest('.site-header')),
@@ -142,7 +144,7 @@ test('documentation breadcrumbs, outline, pagination, and phone navigation', {
   await page.locator('.site-outline').waitFor()
   const usage = page
     .locator('.site-outline')
-    .getByRole('link', { name: 'usage', exact: true })
+    .getByRole('link', { name: /^usage$/i, exact: true })
   await usage.click()
   await page.waitForFunction(() => location.hash.includes('anchor=usage'))
   const aligned = () => {
@@ -167,19 +169,23 @@ test('documentation breadcrumbs, outline, pagination, and phone navigation', {
     ),
     '1px',
   )
-  await pagination.getByRole('link', { name: 'next next steps' }).click()
-  await page.getByRole('heading', { name: 'next steps', exact: true }).waitFor()
+  await pagination.getByRole('link', { name: /next next steps/i }).click()
+  await page
+    .getByRole('heading', { name: /^next steps$/i, exact: true })
+    .waitFor()
   await pagination
-    .getByRole('link', { name: 'previous getting started' })
+    .getByRole('link', { name: /previous getting started/i })
     .click()
   await page
-    .getByRole('heading', { name: 'getting started', exact: true })
+    .getByRole('heading', { name: /^getting started$/i, exact: true })
     .waitFor()
   await mkdir('test-results', { recursive: true })
   await page.screenshot({ path: 'test-results/documentation-desktop.png' })
   for (const width of [320, 390, 768]) {
     await page.setViewportSize({ width, height: 844 })
-    await page.getByRole('button', { name: 'colorscheme', exact: true }).click()
+    await page
+      .getByRole('button', { name: /^colorscheme$/i, exact: true })
+      .click()
     await appearance.waitFor()
     assert.equal(
       await appearance.evaluate((el) => el.scrollWidth <= el.clientWidth),
@@ -212,17 +218,17 @@ test('documentation breadcrumbs, outline, pagination, and phone navigation', {
     assert.equal(bounds.headerScroll, bounds.header, JSON.stringify(bounds))
     const outline = page.locator('.site-outline-mobile')
     await outline.locator('summary').click()
-    await outline.getByRole('link', { name: 'usage', exact: true }).click()
+    await outline.getByRole('link', { name: /^usage$/i, exact: true }).click()
     assert.equal(await outline.evaluate((element) => element.open), false)
     await page.waitForFunction(aligned)
     if (width <= 700) {
-      await page.getByRole('button', { name: 'toggle navigation' }).click()
+      await page.getByRole('button', { name: /toggle navigation/i }).click()
       await page.waitForFunction(
         () => document.querySelector('.site-content').inert,
       )
       assert.equal(
         await page
-          .getByRole('treeitem', { name: 'welcome', exact: true })
+          .getByRole('treeitem', { name: /^welcome$/i, exact: true })
           .evaluate((element) => element.getBoundingClientRect().height),
         44,
       )
@@ -233,7 +239,7 @@ test('documentation breadcrumbs, outline, pagination, and phone navigation', {
             .querySelector('.documentation-site')
             .getAttribute('data-sidebar') === 'false',
       )
-      await page.getByRole('button', { name: 'toggle navigation' }).click()
+      await page.getByRole('button', { name: /toggle navigation/i }).click()
       await page.keyboard.press('Escape')
       await page.waitForFunction(
         () =>
@@ -241,20 +247,22 @@ test('documentation breadcrumbs, outline, pagination, and phone navigation', {
             .querySelector('.documentation-site')
             .getAttribute('data-sidebar') === 'false',
       )
-      await page.getByRole('button', { name: 'toggle navigation' }).click()
-      await page.getByRole('treeitem', { name: 'welcome', exact: true }).click()
+      await page.getByRole('button', { name: /toggle navigation/i }).click()
       await page
-        .getByRole('heading', { name: 'welcome', exact: true })
+        .getByRole('treeitem', { name: /^welcome$/i, exact: true })
+        .click()
+      await page
+        .getByRole('heading', { name: /^welcome$/i, exact: true })
         .waitFor()
       assert.equal(
         await page.locator('.documentation-site').getAttribute('data-sidebar'),
         'false',
       )
       await pagination
-        .getByRole('link', { name: 'next getting started' })
+        .getByRole('link', { name: /next getting started/i })
         .click()
       await page
-        .getByRole('heading', { name: 'getting started', exact: true })
+        .getByRole('heading', { name: /^getting started$/i, exact: true })
         .waitFor()
       if (width === 390)
         await page.screenshot({ path: 'test-results/documentation-mobile.png' })

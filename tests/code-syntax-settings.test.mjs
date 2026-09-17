@@ -23,21 +23,23 @@ test('code highlighting controls update both panes, persist, and discover addon 
   const page = await app.firstWindow()
   page.setDefaultTimeout(6500)
   const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
-  await page.getByRole('textbox', { name: 'document editor' }).waitFor()
+  await page.getByRole('textbox', { name: /document editor/i }).waitFor()
   await pressShortcut(app, `${mod}+Shift+]`)
   const original = '```js\nconst answer = 42\n```'
-  await page.getByRole('textbox', { name: 'markdown editor' }).fill(original)
+  await page.getByRole('textbox', { name: /markdown editor/i }).fill(original)
   await page
     .locator('.source-pane .hibi-token-keyword')
-    .filter({ hasText: 'const' })
+    .filter({ hasText: /const/i })
     .waitFor()
   await page
-    .getByRole('button', { name: 'editor settings', exact: true })
+    .getByRole('button', { name: /^editor settings$/i, exact: true })
     .click()
   await page
-    .getByRole('tab', { name: 'code highlighting', exact: true })
+    .getByRole('tab', { name: /^code highlighting$/i, exact: true })
     .click()
-  await page.getByRole('checkbox', { name: 'javascript', exact: true }).click()
+  await page
+    .getByRole('checkbox', { name: /^javascript$/i, exact: true })
+    .click()
   await page.waitForFunction(
     () =>
       ![...document.querySelectorAll('.source-pane .hibi-token-keyword')].some(
@@ -50,27 +52,29 @@ test('code highlighting controls update both panes, persist, and discover addon 
   )
   await page.reload()
   await page
-    .getByRole('button', { name: 'editor settings', exact: true })
+    .getByRole('button', { name: /^editor settings$/i, exact: true })
     .click()
   await page
-    .getByRole('tab', { name: 'code highlighting', exact: true })
+    .getByRole('tab', { name: /^code highlighting$/i, exact: true })
     .click()
   assert.equal(
     await page
-      .getByRole('checkbox', { name: 'javascript', exact: true })
+      .getByRole('checkbox', { name: /^javascript$/i, exact: true })
       .isChecked(),
     false,
   )
-  await page.getByRole('checkbox', { name: 'javascript', exact: true }).click()
+  await page
+    .getByRole('checkbox', { name: /^javascript$/i, exact: true })
+    .click()
   await page
     .locator('.tiptap pre .hibi-token-keyword')
     .waitFor({ state: 'attached' })
-  await page.getByRole('tab', { name: 'addons', exact: true }).click()
+  await page.getByRole('tab', { name: /^addons$/i, exact: true }).click()
   await page.locator('#addon-typst').click()
   await page
-    .getByRole('tab', { name: 'code highlighting', exact: true })
+    .getByRole('tab', { name: /^code highlighting$/i, exact: true })
     .click()
-  await page.getByRole('checkbox', { name: 'typst', exact: true }).waitFor()
+  await page.getByRole('checkbox', { name: /^typst$/i, exact: true }).waitFor()
   assert.equal(
     (await page.evaluate(() => window.hibi.getDocument())).markdown,
     original,

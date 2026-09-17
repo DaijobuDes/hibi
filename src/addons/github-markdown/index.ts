@@ -15,7 +15,7 @@ const flavor: MarkdownFlavor = {
   name: 'github markdown',
   kind: 'dialect',
   description:
-    'alerts, tables, task lists, strikethrough, and automatic links.',
+    'Alerts, tables, task lists, strikethrough, and automatic links.',
   detect(source) {
     let found = false
     parser.walkTokens(parser.lexer(source), (token) => {
@@ -46,7 +46,7 @@ export default defineAddon({
   start(context) {
     context.editor.registerSyntax({
       id: 'tables',
-      label: 'tables',
+      label: 'Tables',
       group: 'github markdown',
       level: 'block',
       extensions: ['tableKit'],
@@ -54,7 +54,7 @@ export default defineAddon({
     })
     context.editor.registerSyntax({
       id: 'tasks',
-      label: 'task lists',
+      label: 'Task lists',
       group: 'github markdown',
       description: '- [ ] task',
       level: 'block',
@@ -65,7 +65,7 @@ export default defineAddon({
     })
     context.editor.registerSyntax({
       id: 'strike',
-      label: 'strikethrough',
+      label: 'Strikethrough',
       group: 'github markdown',
       description: '~~text~~',
       level: 'inline',
@@ -74,9 +74,9 @@ export default defineAddon({
     })
     context.editor.registerSyntax({
       id: 'alerts',
-      label: 'alerts',
+      label: 'Alerts',
       group: 'github markdown',
-      description: 'note, tip, important, warning, and caution.',
+      description: 'Note, tip, important, warning, and caution.',
       level: 'block',
       extensions: ['githubAlert'],
       matches: (token) =>

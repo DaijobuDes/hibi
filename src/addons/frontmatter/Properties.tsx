@@ -106,7 +106,7 @@ export function Properties({ value, onChange, disabled }: MarkdownEditorProps) {
   }
 
   return (
-    <section className="frontmatter" aria-label="frontmatter properties">
+    <section className="frontmatter" aria-label="Frontmatter properties">
       <div className="frontmatter-heading">
         <Button
           variant="ghost"
@@ -117,7 +117,7 @@ export function Properties({ value, onChange, disabled }: MarkdownEditorProps) {
           onClick={() => setOpen(!open)}
         >
           <ChevronDown aria-hidden="true" />
-          <span>properties</span>
+          <span>Properties</span>
           <span className="frontmatter-count">{items.length}</span>
         </Button>
         <Button
@@ -133,7 +133,7 @@ export function Properties({ value, onChange, disabled }: MarkdownEditorProps) {
           }}
         >
           <Code size={14} aria-hidden="true" />
-          {raw ? 'fields' : 'yaml'}
+          {raw ? 'Fields' : 'YAML'}
         </Button>
       </div>
       <div
@@ -170,7 +170,7 @@ export function Properties({ value, onChange, disabled }: MarkdownEditorProps) {
             >
               <TextArea
                 monospace
-                aria-label="frontmatter yaml"
+                aria-label="Frontmatter YAML"
                 value={draft}
                 onChange={(event) => setDraft(event.target.value)}
                 disabled={disabled}
@@ -185,15 +185,15 @@ export function Properties({ value, onChange, disabled }: MarkdownEditorProps) {
                     setError('')
                   }}
                 >
-                  cancel
+                  Cancel
                 </Button>
                 <Button type="submit" disabled={disabled || yaml !== draftBase}>
-                  apply yaml
+                  Apply YAML
                 </Button>
               </div>
               {yaml !== draftBase && (
                 <p role="alert">
-                  properties changed in markdown. cancel and reopen yaml to edit
+                  Properties changed in Markdown. cancel and reopen YAML to edit
                   the latest values.
                 </p>
               )}
@@ -236,7 +236,7 @@ export function Properties({ value, onChange, disabled }: MarkdownEditorProps) {
                           variant="subtle"
                           id={inputId}
                           value={scalar}
-                          placeholder="empty"
+                          placeholder="Empty"
                           rows={Math.min(
                             5,
                             Math.max(1, scalar.split('\n').length),
@@ -284,22 +284,22 @@ export function Properties({ value, onChange, disabled }: MarkdownEditorProps) {
                                       {String(isScalar(item) ? item.value : '')}
                                     </span>
                                   ))
-                                : 'empty'}
+                                : 'Empty'}
                             </span>
                           ) : isSeq(node) ? (
                             `${node.items.length} items`
                           ) : isMap(node) ? (
                             `${node.items.length} fields`
                           ) : scalar === null ? (
-                            'empty'
+                            'Empty'
                           ) : (
-                            'edit yaml'
+                            'Edit YAML'
                           )}
                         </Button>
                       )}
                       <IconButton
                         className="frontmatter-remove"
-                        aria-label={`remove ${key}`}
+                        aria-label={`Remove ${key}`}
                         disabled={disabled}
                         onClick={() => {
                           save(key, undefined, true)
@@ -347,27 +347,27 @@ export function Properties({ value, onChange, disabled }: MarkdownEditorProps) {
                 >
                   <TextInput
                     ref={addInput}
-                    aria-label="new property name"
-                    placeholder="add property"
+                    aria-label="New property name"
+                    placeholder="Add property"
                     value={name}
                     disabled={disabled}
                     onChange={(event) => setName(event.target.value)}
                   />
                   <Select
-                    aria-label="new property type"
+                    aria-label="New property type"
                     value={kind}
                     disabled={disabled}
                     onChange={(event) => setKind(event.target.value)}
                   >
-                    <option value="text">text</option>
-                    <option value="number">number</option>
-                    <option value="boolean">boolean</option>
-                    <option value="list">list</option>
-                    <option value="object">object</option>
+                    <option value="text">Text</option>
+                    <option value="number">Number</option>
+                    <option value="boolean">Boolean</option>
+                    <option value="list">List</option>
+                    <option value="object">Object</option>
                   </Select>
                   <IconButton
                     type="submit"
-                    aria-label="add property"
+                    aria-label="Add property"
                     disabled={disabled || !name.trim()}
                   >
                     <Plus />
@@ -382,7 +382,7 @@ export function Properties({ value, onChange, disabled }: MarkdownEditorProps) {
                   onClick={() => setAdding(true)}
                 >
                   <Plus aria-hidden="true" />
-                  add property
+                  Add property
                 </Button>
               )}
             </>
@@ -390,10 +390,10 @@ export function Properties({ value, onChange, disabled }: MarkdownEditorProps) {
             <div className="frontmatter-invalid">
               <p>
                 {doc.errors[0]?.message ??
-                  'these properties need the yaml editor.'}
+                  'These properties need the YAML editor.'}
               </p>
               <Button type="button" onClick={editYaml}>
-                edit yaml
+                Edit YAML
               </Button>
             </div>
           )}

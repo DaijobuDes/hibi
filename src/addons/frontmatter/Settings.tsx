@@ -11,8 +11,8 @@ export function Settings() {
     <div className="settings-group">
       <SettingRow
         id="frontmatter-expanded"
-        label="expand properties by default"
-        description="show the property rows when a note opens."
+        label="Expand properties by default"
+        description="Show the property rows when a note opens."
       >
         <Toggle
           id="frontmatter-expanded"

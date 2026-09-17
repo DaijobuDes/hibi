@@ -11,6 +11,8 @@ import {
   splitFrontmatter,
 } from '../src/addons/frontmatter/markdown.ts'
 import { electron } from './electron.mjs'
+import { renameDocument } from './rename.mjs'
+import { uiName } from './ui.mjs'
 
 test('frontmatter preserves raw metadata, spacing, and delimiter boundaries', () => {
   const prefix =
@@ -70,26 +72,31 @@ test('frontmatter contributes slash actions in rich and source panes only while 
   page.setDefaultTimeout(5000)
   const errors = []
   page.on('pageerror', (error) => errors.push(error.message))
-  const rich = page.getByRole('textbox', { name: 'document editor' })
-  const source = page.getByRole('textbox', { name: 'markdown editor' })
-  const menu = page.getByRole('listbox', { name: 'slash commands' })
+  const rich = page.getByRole('textbox', { name: /document editor/i })
+  const source = page.getByRole('textbox', { name: /markdown editor/i })
+  const menu = page.getByRole('listbox', { name: /slash commands/i })
   const action = menu.getByRole('option', {
-    name: 'frontmatter add page properties',
+    name: /frontmatter add page properties/i,
   })
   const read = () =>
     page.evaluate(async () => (await window.hibi.getDocument()).markdown)
   const mode = async (name) => {
     await page.mouse.move(450, 18)
-    await page.getByRole('button', { name, exact: true }).click()
+    await page
+      .getByRole('button', { name: uiName(name, true), exact: true })
+      .click()
   }
   await rich.waitFor()
   await mode('markdown only')
   await source.fill('# keep heading\n\nfirst\n\n/frontmatter\n\nafter')
   await mode('normal')
-  await rich.locator('p').filter({ hasText: '/frontmatter' }).click()
+  await rich
+    .locator('p')
+    .filter({ hasText: /\/frontmatter/i })
+    .click()
   await rich.press('End')
   await action.click()
-  await page.getByRole('region', { name: 'frontmatter properties' }).waitFor()
+  await page.getByRole('region', { name: /frontmatter properties/i }).waitFor()
   const result = await read()
   assert.match(result, /^---\n\{\}\n---\n/)
   assert.ok(!result.includes('/frontmatter'))
@@ -121,9 +128,9 @@ test('frontmatter contributes slash actions in rich and source panes only while 
   await source.press('Escape')
   const toggle = async () => {
     await mode('editor settings')
-    await page.getByRole('tab', { name: 'addons', exact: true }).click()
+    await page.getByRole('tab', { name: /^addons$/i, exact: true }).click()
     await page.locator('#addon-frontmatter').click()
-    await page.getByRole('button', { name: 'back to editor' }).click()
+    await page.getByRole('button', { name: /back to editor/i }).click()
   }
   await toggle()
   await source.fill('/yaml')
@@ -137,7 +144,7 @@ test('frontmatter contributes slash actions in rich and source panes only while 
   await source.press('Enter')
   assert.equal(await read(), addFrontmatter(''))
   await mode('side-by-side')
-  await page.getByRole('region', { name: 'frontmatter properties' }).waitFor()
+  await page.getByRole('region', { name: /frontmatter properties/i }).waitFor()
   assert.deepEqual(
     await page.locator('.toast[data-variant="error"]').allTextContents(),
     [],
@@ -172,23 +179,23 @@ test('frontmatter fields preserve comments, types, nested YAML and body edits', 
     dialog.showMessageBox = async () => ({ response: 1 })
   }, fixture)
   const page = await app.firstWindow()
-  await page.getByRole('textbox', { name: 'document editor' }).waitFor()
+  await page.getByRole('textbox', { name: /document editor/i }).waitFor()
   assert.equal(
-    await page.getByRole('region', { name: 'frontmatter properties' }).count(),
+    await page.getByRole('region', { name: /frontmatter properties/i }).count(),
     0,
   )
-  await page.getByRole('button', { name: 'open', exact: true }).click()
+  await page.getByRole('button', { name: /^open$/i, exact: true }).click()
   const properties = page.getByRole('region', {
-    name: 'frontmatter properties',
+    name: /frontmatter properties/i,
   })
   await properties
-    .getByRole('textbox', { name: 'title', exact: true })
+    .getByRole('textbox', { name: /^title$/i, exact: true })
     .fill('changed: title # literal')
   await properties
-    .getByRole('checkbox', { name: 'public', exact: true })
+    .getByRole('checkbox', { name: /^public$/i, exact: true })
     .check()
   await properties
-    .getByRole('spinbutton', { name: 'order', exact: true })
+    .getByRole('spinbutton', { name: /^order$/i, exact: true })
     .fill('8')
   const read = async () =>
     (await page.evaluate(() => window.hibi.getDocument())).markdown
@@ -200,7 +207,7 @@ test('frontmatter fields preserve comments, types, nested YAML and body edits', 
   assert.equal(values.public, true)
   assert.equal(values.order, 8n)
   const number = properties.getByRole('spinbutton', {
-    name: 'order',
+    name: /^order$/i,
     exact: true,
   })
   await number.fill('')
@@ -216,27 +223,29 @@ test('frontmatter fields preserve comments, types, nested YAML and body edits', 
   assert.match(source, /^\uFEFF---\r\n/)
   assert.ok(source.endsWith('...\r\n\r\nbody stays here\r\n'))
   await properties
-    .getByRole('button', { name: 'add property', exact: true })
+    .getByRole('button', { name: /^add property$/i, exact: true })
     .click()
   await properties
-    .getByRole('textbox', { name: 'new property name' })
+    .getByRole('textbox', { name: /new property name/i })
     .fill('draft')
   await properties
-    .getByRole('combobox', { name: 'new property type' })
+    .getByRole('combobox', { name: /new property type/i })
     .selectOption('boolean')
   await properties
-    .getByRole('button', { name: 'add property', exact: true })
+    .getByRole('button', { name: /^add property$/i, exact: true })
     .click()
-  await properties.getByRole('checkbox', { name: 'draft', exact: true }).check()
   await properties
-    .getByRole('button', { name: 'remove order', exact: true })
+    .getByRole('checkbox', { name: /^draft$/i, exact: true })
+    .check()
+  await properties
+    .getByRole('button', { name: /^remove order$/i, exact: true })
     .click()
   source = await read()
-  await properties.getByRole('button', { name: 'yaml', exact: true }).click()
-  const yaml = properties.getByRole('textbox', { name: 'frontmatter yaml' })
+  await properties.getByRole('button', { name: /^yaml$/i, exact: true }).click()
+  const yaml = properties.getByRole('textbox', { name: /frontmatter yaml/i })
   await yaml.fill('tags: [broken')
   await properties
-    .getByRole('button', { name: 'apply yaml', exact: true })
+    .getByRole('button', { name: /^apply yaml$/i, exact: true })
     .click()
   await properties.getByRole('alert').waitFor()
   assert.equal(await read(), source)
@@ -247,7 +256,7 @@ test('frontmatter fields preserve comments, types, nested YAML and body edits', 
     ),
   )
   await properties
-    .getByRole('button', { name: 'apply yaml', exact: true })
+    .getByRole('button', { name: /^apply yaml$/i, exact: true })
     .click()
   values = parseDocument(splitFrontmatter(await read()).yaml, {
     intAsBigInt: true,
@@ -257,17 +266,19 @@ test('frontmatter fields preserve comments, types, nested YAML and body edits', 
   assert.equal(values.draft, true)
   assert.equal(values.order, undefined)
   await page
-    .getByRole('textbox', { name: 'document editor' })
+    .getByRole('textbox', { name: /document editor/i })
     .fill('updated body')
   assert.equal(splitFrontmatter(await read()).content, 'updated body')
-  await page.getByRole('button', { name: 'side-by-side', exact: true }).click()
+  await page
+    .getByRole('button', { name: /^side-by-side$/i, exact: true })
+    .click()
   await page.waitForFunction(() =>
     document
       .querySelector('.source-pane .cm-content')
       ?.textContent.includes('draft: true'),
   )
   const heights = await properties
-    .getByRole('button', { name: /^properties/ })
+    .getByRole('button', { name: /^properties/i })
     .evaluate(async (button) => {
       const body = document.querySelector('.frontmatter-disclosure')
       const result = [body.getBoundingClientRect().height]
@@ -281,22 +292,25 @@ test('frontmatter fields preserve comments, types, nested YAML and body edits', 
     })
   assert.ok(heights.some((height) => height > 0 && height < heights[0]))
   assert.equal(heights.at(-1), 0)
-  await page.getByRole('button', { name: 'save', exact: true }).click()
+  await page.getByRole('button', { name: /^save$/i, exact: true }).click()
   await page
-    .getByRole('status', { name: 'unsaved changes' })
+    .getByRole('status', { name: /unsaved changes/i })
     .waitFor({ state: 'hidden' })
   assert.equal(await readFile(fixture, 'utf8'), await read())
-  await page.getByRole('button', { name: 'new', exact: true }).click()
+  await page.getByRole('button', { name: /^new$/i, exact: true }).click()
   await page.waitForFunction(
     () => document.querySelector('.tiptap')?.textContent === '',
   )
   await page
-    .getByRole('button', { name: 'command palette', exact: true })
+    .getByRole('button', { name: /^command palette$/i, exact: true })
     .click()
   await page
-    .getByRole('combobox', { name: 'search commands' })
+    .getByRole('combobox', { name: /search commands/i })
     .fill('add frontmatter')
-  await page.getByRole('option').filter({ hasText: 'add frontmatter' }).click()
+  await page
+    .getByRole('option')
+    .filter({ hasText: /add frontmatter/i })
+    .click()
   await properties.waitFor()
   assert.equal(await read(), '---\n{}\n---\n\n')
 })
@@ -316,7 +330,7 @@ test('typing a leading divider never activates frontmatter or disables editing',
     await rm(profile, { recursive: true, force: true })
   })
   const page = await app.firstWindow()
-  const rich = page.getByRole('textbox', { name: 'document editor' })
+  const rich = page.getByRole('textbox', { name: /document editor/i })
   await rich.waitFor()
   await rich.pressSequentially('---')
   await rich.press('Enter')
@@ -334,10 +348,10 @@ test('typing a leading divider never activates frontmatter or disables editing',
     '---\ntitle: still typing',
   ]) {
     await page
-      .getByRole('button', { name: 'markdown only', exact: true })
+      .getByRole('button', { name: /^markdown only$/i, exact: true })
       .click()
-    await page.getByRole('textbox', { name: 'markdown editor' }).fill(source)
-    await page.getByRole('button', { name: 'normal', exact: true }).click()
+    await page.getByRole('textbox', { name: /markdown editor/i }).fill(source)
+    await page.getByRole('button', { name: /^normal$/i, exact: true }).click()
     assert.equal(await rich.getAttribute('contenteditable'), 'true')
     assert.equal(await page.locator('.frontmatter').count(), 0)
     assert.equal(
@@ -380,7 +394,7 @@ test('frontmatter addon, inline rename, and centered workspace entry preserve do
     { fixture, folder },
   )
   const page = await app.firstWindow()
-  const rich = page.getByRole('textbox', { name: 'document editor' })
+  const rich = page.getByRole('textbox', { name: /document editor/i })
   await rich.waitFor()
   const center = await page.locator('.open-workspace').evaluate((button) => {
     const area = button.closest('.sidebar-scroll').getBoundingClientRect()
@@ -395,32 +409,28 @@ test('frontmatter addon, inline rename, and centered workspace entry preserve do
   })
   assert.ok(center.x < 1 && center.y < 1 && center.iconAbove)
   const rename = async (name) => {
-    await page.getByRole('button', { name: 'rename document' }).click()
-    const input = page.getByRole('textbox', { name: 'file name' })
-    await input.fill(name)
-    await input.press('Enter')
+    await renameDocument(page, name)
   }
   await rename('meeting notes')
   await page
-    .getByRole('button', { name: 'rename document' })
-    .filter({ hasText: 'meeting notes.md' })
+    .getByRole('tab', { name: /^meeting notes\.md$/i, exact: true })
     .waitFor()
   assert.equal(await page.getByRole('dialog').count(), 0)
   assert.match(
     await page
-      .getByRole('button', { name: 'command palette', exact: true })
+      .getByRole('button', { name: /^command palette$/i, exact: true })
       .innerText(),
     /k/,
   )
-  await page.getByRole('button', { name: 'save', exact: true }).click()
+  await page.getByRole('button', { name: /^save$/i, exact: true }).click()
   await page.waitForFunction(
-    () => !document.querySelector('button[aria-label=save]').disabled,
+    () => !document.querySelector('button[aria-label=save i]').disabled,
   )
   assert.match(
     await app.evaluate(() => globalThis.suggestedName),
     /meeting notes\.md$/,
   )
-  await page.getByRole('button', { name: 'open', exact: true }).click()
+  await page.getByRole('button', { name: /^open$/i, exact: true }).click()
   await page.waitForFunction(
     () =>
       document.querySelector('.tiptap')?.getAttribute('contenteditable') ===
@@ -437,18 +447,20 @@ test('frontmatter addon, inline rename, and centered workspace entry preserve do
     (await page.evaluate(() => window.hibi.getDocument())).markdown,
     `${prefix}updated body`,
   )
-  await page.getByRole('button', { name: 'markdown only', exact: true }).click()
-  const source = page.getByRole('textbox', { name: 'markdown editor' })
+  await page
+    .getByRole('button', { name: /^markdown only$/i, exact: true })
+    .click()
+  const source = page.getByRole('textbox', { name: /markdown editor/i })
   await source.fill('---\ntitle: changed\n---\n\nsource body')
-  await page.getByRole('button', { name: 'normal', exact: true }).click()
+  await page.getByRole('button', { name: /^normal$/i, exact: true }).click()
   await rich.fill('visual body')
   const edited = (await page.evaluate(() => window.hibi.getDocument())).markdown
   assert.equal(edited, '---\ntitle: changed\n---\n\nvisual body')
   for (const enabled of [false, true]) {
-    await page.getByRole('button', { name: 'editor settings' }).click()
-    await page.getByRole('tab', { name: 'addons', exact: true }).click()
+    await page.getByRole('button', { name: /editor settings/i }).click()
+    await page.getByRole('tab', { name: /^addons$/i, exact: true }).click()
     await page
-      .getByRole('checkbox', { name: 'frontmatter', exact: true })
+      .getByRole('checkbox', { name: /^frontmatter$/i, exact: true })
       .click()
     await page.waitForFunction(
       (editable) =>
@@ -456,30 +468,30 @@ test('frontmatter addon, inline rename, and centered workspace entry preserve do
         String(editable),
       enabled,
     )
-    await page.getByRole('button', { name: 'back to editor' }).click()
+    await page.getByRole('button', { name: /back to editor/i }).click()
     assert.equal(
       (await page.evaluate(() => window.hibi.getDocument())).markdown,
       edited,
     )
   }
   await rename('renamed.md')
-  await page
-    .getByRole('button', { name: 'rename document' })
-    .filter({ hasText: 'renamed.md' })
-    .waitFor()
+  await page.getByRole('tab', { name: /^renamed\.md$/i, exact: true }).waitFor()
   await assert.rejects(readFile(fixture), { code: 'ENOENT' })
   assert.equal(await readFile(join(folder, 'renamed.md'), 'utf8'), original)
   assert.equal(
     (await page.evaluate(() => window.hibi.getDocument())).markdown,
     edited,
   )
-  await page.getByRole('button', { name: 'save', exact: true }).click()
+  await page.getByRole('button', { name: /^save$/i, exact: true }).click()
   await page
-    .getByRole('status', { name: 'unsaved changes' })
+    .getByRole('status', { name: /unsaved changes/i })
     .waitFor({ state: 'hidden' })
   assert.equal(await readFile(join(folder, 'renamed.md'), 'utf8'), edited)
   await rename('occupied.md')
-  await page.getByRole('alert').filter({ hasText: 'already exists' }).waitFor()
+  await page
+    .getByRole('alert')
+    .filter({ hasText: /already exists/i })
+    .waitFor()
   assert.equal(
     await readFile(join(folder, 'occupied.md'), 'utf8'),
     'do not replace',
@@ -493,10 +505,7 @@ test('frontmatter addon, inline rename, and centered workspace entry preserve do
     /file name/,
   )
   await rename('final.md')
-  await page
-    .getByRole('button', { name: 'rename document' })
-    .filter({ hasText: 'final.md' })
-    .waitFor()
+  await page.getByRole('tab', { name: /^final\.md$/i, exact: true }).waitFor()
   await page
     .locator('.toast[data-variant="error"]')
     .waitFor({ state: 'hidden' })

@@ -1,4 +1,5 @@
 import { useState, useSyncExternalStore } from 'react'
+import { sentenceCase } from '../../shared/ui-case'
 import { SettingRow, Toggle } from '../../ui/Controls'
 import { SettingsFilter } from '../../ui/SettingsFilter'
 import { markdownSyntax } from './markdown-syntax'
@@ -16,11 +17,11 @@ export function SyntaxSettings() {
   )
   return (
     <>
-      <h1>syntax</h1>
+      <h1>Syntax</h1>
       <SettingsFilter
         id="markdown-syntax-filter"
-        label="filter syntax"
-        placeholder="filter syntax…"
+        label="Filter syntax"
+        placeholder="Filter syntax…"
         value={query}
         onChange={setQuery}
         resetDisabled={features.every((feature) => feature.enabled)}
@@ -31,7 +32,7 @@ export function SyntaxSettings() {
           key={group}
           hidden={!matching.some((feature) => feature.group === group)}
         >
-          <h2>{group}</h2>
+          <h2>{sentenceCase(group)}</h2>
           <div className="settings-group">
             {features
               .filter((feature) => feature.group === group)
@@ -58,7 +59,7 @@ export function SyntaxSettings() {
           </div>
         </div>
       ))}
-      {!matching.length && <p>no matching syntax.</p>}
+      {!matching.length && <p>No matching syntax.</p>}
     </>
   )
 }

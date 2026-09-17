@@ -20,13 +20,14 @@ import {
 import { type BrowserWindow, shell } from 'electron'
 import type { WorkspaceActionResult } from '../shared/workspace'
 import {
-  clearDocument,
-  confirmDiscard,
+  closeDeletedDocuments,
+  confirmDiscardAll,
   getDocument,
-  getDocumentPath,
+  getOpenDocuments,
   newPendingDocument,
   relocateDocument,
   renameDocument,
+  selectDocumentTab,
 } from './document'
 import { isDocumentName } from './document-types'
 import { refreshWorkspace, workspaceRoot } from './workspace'
@@ -94,7 +95,11 @@ async function unique(parent: string, name: string) {
       parent,
       `${stem}${index ? ` ${index + 1}` : ''}${extension}`,
     )
-    if (!(await lstat(candidate).catch(missing))) return candidate
+    if (
+      !(await lstat(candidate).catch(missing)) &&
+      !getOpenDocuments().some((draft) => draft.file === candidate)
+    )
+      return candidate
   }
   throw new Error('choose a different name.')
 }
@@ -164,21 +169,18 @@ export async function workspaceAction(
     else if (!(await newPendingDocument(window, resultPath))) return null
   } else {
     const draft =
-      getDocument().ephemeral &&
       typeof path === 'string' &&
-      getDocumentPath() === join(base, path)
-    const source = await resolveEntry(base, path, draft)
+      getOpenDocuments().find((draft) => draft.pendingPath === join(base, path))
+    const source = await resolveEntry(base, path, Boolean(draft))
+    if (draft && draft.tabId !== getDocument().tabId)
+      await selectDocumentTab(window, draft.tabId)
     const folder = draft ? false : (await lstat(source)).isDirectory()
     if (!folder && !isDocumentName(source, true))
       throw new Error('choose a markdown file.')
     if (action === 'delete') {
-      if (
-        contains(source, getDocumentPath()) &&
-        !(await confirmDiscard(window))
-      )
-        return null
+      if (!(await confirmDiscardAll(window, source))) return null
       if (await lstat(source).catch(missing)) await shell.trashItem(source)
-      if (contains(source, getDocumentPath())) clearDocument(window)
+      closeDeletedDocuments(window, source)
       resultPath = source
     } else {
       if (action === 'rename') {
@@ -201,6 +203,8 @@ export async function workspaceAction(
         }
       if (contains(source, resultPath))
         throw new Error('a folder cannot be placed inside itself.')
+      if (getOpenDocuments().some((draft) => draft.file === resultPath))
+        throw new Error('an open document already uses that destination.')
       if (await lstat(resultPath).catch(missing))
         throw new Error('an item already exists at that destination.')
       if (draft) {

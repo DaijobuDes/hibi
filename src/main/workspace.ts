@@ -9,10 +9,11 @@ import type {
   WorkspaceState,
 } from '../shared/workspace'
 import {
-  confirmDiscard,
   getDocument,
   getDocumentPath,
+  getOpenDocuments,
   loadDocument,
+  selectDocumentTab,
 } from './document'
 import { readMarkdown } from './files'
 import { getRecentWorkspaces, rememberWorkspace } from './recent-workspaces'
@@ -84,8 +85,11 @@ export function getWorkspace(): WorkspaceState | null {
   const path = getDocumentPath()
   const activePath = path ? relativePath(root, path) : null
   let visible = entries
-  if (getDocument().ephemeral && activePath) {
-    const parts = activePath.split('/')
+  const open = getOpenDocuments()
+  for (const draft of open) {
+    const draftPath = draft.pendingPath && relativePath(root, draft.pendingPath)
+    if (!draftPath) continue
+    const parts = draftPath.split('/')
     const addDraft = (
       items: WorkspaceEntry[],
       depth: number,
@@ -94,8 +98,8 @@ export function getWorkspace(): WorkspaceState | null {
       if (!name) return items
       if (depth === parts.length - 1)
         return [
-          ...items.filter((item) => item.path !== activePath),
-          { path: activePath, name, kind: 'file' },
+          ...items.filter((item) => item.path !== draftPath),
+          { path: draftPath, name, kind: 'file' },
         ]
       return items.map((item) =>
         item.name === name && item.children
@@ -103,12 +107,23 @@ export function getWorkspace(): WorkspaceState | null {
           : item,
       )
     }
-    visible = addDraft(entries, 0)
+    visible = addDraft(visible, 0)
   }
+  const dirty = new Set(
+    open
+      .filter((draft) => draft.dirty && draft.file)
+      .map((draft) => relativePath(root!, draft.file!)),
+  )
+  const decorate = (items: WorkspaceEntry[]): WorkspaceEntry[] =>
+    items.map((item) => ({
+      ...item,
+      dirty: dirty.has(item.path),
+      ...(item.children ? { children: decorate(item.children) } : {}),
+    }))
   return {
     id: workspaceId()!,
     name: basename(root),
-    entries: visible,
+    entries: decorate(visible),
     activePath,
   }
 }
@@ -131,7 +146,7 @@ export async function openWorkspace(
 ): Promise<WorkspaceState | null> {
   const result = await dialog.showOpenDialog(window, {
     properties: ['openDirectory'],
-    title: 'open workspace',
+    title: 'Open workspace',
   })
   const selected = result.filePaths[0]
   if (result.canceled || !selected) return null
@@ -203,7 +218,13 @@ export async function openWorkspaceFile(window: BrowserWindow, path: unknown) {
   if (!root) throw new Error('open a workspace first.')
   if (typeof path === 'string' && getWorkspace()?.activePath === path)
     return getDocument()
-  if (!(await confirmDiscard(window))) return null
+  const draft =
+    typeof path === 'string' &&
+    getOpenDocuments().find(
+      (draft) =>
+        draft.pendingPath && relativePath(root!, draft.pendingPath) === path,
+    )
+  if (draft) return selectDocumentTab(window, draft.tabId)
   return loadDocument(window, await resolveWorkspaceFile(root, path))
 }
 
@@ -212,16 +233,18 @@ export async function snapshotWorkspace(): Promise<WorkspaceSnapshot> {
   if (!selected) throw new Error('open a workspace first.')
   const tree = await scanWorkspace(selected)
   const pages: WorkspaceSnapshot['pages'] = []
-  const currentPath = getDocumentPath()
-  const currentMarkdown = getDocument().markdown
+  const drafts = new Map(
+    getOpenDocuments()
+      .filter((draft) => draft.dirty && draft.file)
+      .map((draft) => [draft.file, draft.markdown]),
+  )
   let bytes = 0
   async function collect(items: WorkspaceEntry[]) {
     for (const item of items) {
       if (item.kind === 'folder') await collect(item.children ?? [])
       else {
         const path = await resolveWorkspaceFile(selected as string, item.path)
-        const markdown =
-          path === currentPath ? currentMarkdown : await readMarkdown(path)
+        const markdown = drafts.get(path) ?? (await readMarkdown(path))
         bytes += Buffer.byteLength(markdown)
         if (pages.length >= 2000 || bytes > 20 * 1024 * 1024)
           throw new Error(

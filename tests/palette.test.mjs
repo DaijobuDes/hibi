@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { electron } from './electron.mjs'
 import { pressShortcut } from './keyboard.mjs'
+import { uiName } from './ui.mjs'
 
 test('command palette, full-height settings, and local geist fonts', {
   timeout: 45000,
@@ -27,15 +28,15 @@ test('command palette, full-height settings, and local geist fonts', {
   const page = await app.firstWindow()
   const errors = []
   page.on('pageerror', (error) => errors.push(error.message))
-  const rich = page.getByRole('textbox', { name: 'document editor' })
+  const rich = page.getByRole('textbox', { name: /document editor/i })
   await rich.waitFor()
   await rich.fill('keep this draft')
   await pressShortcut(
     app,
     process.platform === 'darwin' ? 'Meta+k' : 'Control+k',
   )
-  const palette = page.getByRole('dialog', { name: 'command palette' })
-  const search = page.getByRole('combobox', { name: 'search commands' })
+  const palette = page.getByRole('dialog', { name: /command palette/i })
+  const search = page.getByRole('combobox', { name: /search commands/i })
   await palette.waitFor()
   await page.emulateMedia({ reducedMotion: 'no-preference' })
   const marker = palette.locator('.command-selection')
@@ -98,19 +99,19 @@ test('command palette, full-height settings, and local geist fonts', {
   await page.mouse.click(12, 400)
   await palette.waitFor({ state: 'hidden' })
   await page
-    .getByRole('button', { name: 'command palette', exact: true })
+    .getByRole('button', { name: /^command palette$/i, exact: true })
     .click()
   await palette.waitFor()
   await page.mouse.click(300, 18)
   await palette.waitFor({ state: 'hidden' })
   await page
-    .getByRole('button', { name: 'command palette', exact: true })
+    .getByRole('button', { name: /^command palette$/i, exact: true })
     .click()
   await palette.waitFor()
   await search.fill('side-by-side')
   await search.press('Enter')
   await palette.waitFor({ state: 'hidden' })
-  await page.getByRole('textbox', { name: 'markdown editor' }).waitFor()
+  await page.getByRole('textbox', { name: /markdown editor/i }).waitFor()
   assert.equal(
     (await page.evaluate(() => window.hibi.getDocument())).markdown,
     'keep this draft',
@@ -128,12 +129,12 @@ test('command palette, full-height settings, and local geist fonts', {
   )
 
   await page
-    .getByRole('button', { name: 'command palette', exact: true })
+    .getByRole('button', { name: /^command palette$/i, exact: true })
     .click()
   await search.fill('preferences settings')
   await search.press('Enter')
   await palette.waitFor({ state: 'hidden' })
-  const settings = page.getByRole('main', { name: 'settings', exact: true })
+  const settings = page.getByRole('main', { name: /^settings$/i, exact: true })
   await settings.waitFor()
   await page.waitForFunction(
     () =>
@@ -145,7 +146,9 @@ test('command palette, full-height settings, and local geist fonts', {
     true,
   )
   for (const category of ['appearance', 'addons', 'hibi', 'hotkeys']) {
-    await page.getByRole('tab', { name: category, exact: true }).click()
+    await page
+      .getByRole('tab', { name: uiName(category, true), exact: true })
+      .click()
     if (category === 'hotkeys')
       assert.deepEqual(
         await page.locator('.hotkey-binding kbd').first().evaluate(keyStyle),
@@ -154,7 +157,7 @@ test('command palette, full-height settings, and local geist fonts', {
     for (const width of [1000, 480]) {
       await page.setViewportSize({ width, height: 720 })
       const geometry = await page
-        .getByRole('tabpanel', { name: category, exact: true })
+        .getByRole('tabpanel', { name: uiName(category, true), exact: true })
         .evaluate((panel) => {
           const bounds = panel.getBoundingClientRect()
           return {
@@ -170,9 +173,9 @@ test('command palette, full-height settings, and local geist fonts', {
     }
     await page.setViewportSize({ width: 1000, height: 720 })
   }
-  await page.getByRole('tab', { name: 'appearance', exact: true }).click()
+  await page.getByRole('tab', { name: /^appearance$/i, exact: true }).click()
   const rowGeometry = await page
-    .locator('#settings-appearance .setting-row')
+    .locator('#settings-appearance .setting-row:has(select)')
     .first()
     .evaluate((row) => {
       const label = row.querySelector('.setting-copy').getBoundingClientRect()
@@ -186,7 +189,7 @@ test('command palette, full-height settings, and local geist fonts', {
       }
     })
   assert.ok(rowGeometry.separated && rowGeometry.centered)
-  await page.getByRole('tab', { name: 'editor', exact: true }).click()
+  await page.getByRole('tab', { name: /^editor$/i, exact: true }).click()
   assert.deepEqual(
     await page.evaluate(() => {
       const sidebar = document
@@ -216,7 +219,9 @@ test('command palette, full-height settings, and local geist fonts', {
     'markdown only',
   ]) {
     assert.equal(
-      await page.getByRole('button', { name, exact: true }).count(),
+      await page
+        .getByRole('button', { name: uiName(name, true), exact: true })
+        .count(),
       0,
       name,
     )
@@ -232,18 +237,18 @@ test('command palette, full-height settings, and local geist fonts', {
   await page.screenshot({ path: 'test-results/settings.png' })
 
   await page
-    .getByRole('button', { name: 'command palette', exact: true })
+    .getByRole('button', { name: /^command palette$/i, exact: true })
     .click()
   await search.fill('no matching action')
   await page
     .getByRole('status')
-    .filter({ hasText: 'no commands found.' })
+    .filter({ hasText: /no commands found\./i })
     .waitFor()
   await search.press('Escape')
   await palette.waitFor({ state: 'hidden' })
   assert.equal(await settings.isVisible(), true)
   await page
-    .getByRole('button', { name: 'command palette', exact: true })
+    .getByRole('button', { name: /^command palette$/i, exact: true })
     .click()
   const first = await search.getAttribute('aria-activedescendant')
   await search.press('ArrowDown')
@@ -257,7 +262,7 @@ test('command palette, full-height settings, and local geist fonts', {
 
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page
-    .getByRole('button', { name: 'command palette', exact: true })
+    .getByRole('button', { name: /^command palette$/i, exact: true })
     .click()
   await palette.waitFor()
   assert.equal(

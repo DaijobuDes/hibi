@@ -36,7 +36,7 @@ export const mathFlavor: MarkdownFlavor = {
   id: 'latex',
   name: 'math',
   kind: 'syntax',
-  description: 'inline $…$ and block $$…$$ latex.',
+  description: 'Inline $…$ and block $$…$$ latex.',
   detect(source) {
     let found = false
     detector.walkTokens(detector.lexer(source), (token) => {

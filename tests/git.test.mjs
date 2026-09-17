@@ -79,18 +79,18 @@ test('git addon stages, commits, switches, pulls and pushes only to a disposable
   const page = await app.firstWindow()
   page.setDefaultTimeout(7000)
   const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
-  await page.getByRole('textbox', { name: 'document editor' }).waitFor()
+  await page.getByRole('textbox', { name: /document editor/i }).waitFor()
   await pressShortcut(app, `${mod}+Shift+o`)
-  await page.getByRole('button', { name: 'new workspace file' }).waitFor()
+  await page.getByRole('button', { name: /new workspace file/i }).waitFor()
   await pressShortcut(app, `${mod}+o`)
   await page.waitForFunction(
     () => document.querySelector('.tiptap')?.textContent === 'initial',
   )
-  await page.getByRole('button', { name: 'editor settings' }).click()
-  await page.getByRole('tab', { name: 'addons', exact: true }).click()
+  await page.getByRole('button', { name: /editor settings/i }).click()
+  await page.getByRole('tab', { name: /^addons$/i, exact: true }).click()
   await page.locator('#addon-git').click()
   await page.waitForFunction(() => document.querySelector('#addon-git').checked)
-  await page.getByRole('button', { name: 'back to editor' }).click()
+  await page.getByRole('button', { name: /back to editor/i }).click()
   const invoke = (method, input) =>
     page.evaluate(
       ({ method, input }) => window.hibi.invokeAddon('git', method, input),
@@ -109,19 +109,19 @@ test('git addon stages, commits, switches, pulls and pushes only to a disposable
   await invoke('unstage', 'note.md')
   assert.equal((await invoke('state')).files[0].worktree, 'M')
   await invoke('stage', 'note.md')
-  await page.getByRole('button', { name: 'git', exact: true }).click()
-  const panel = page.getByRole('dialog', { name: 'git', exact: true })
-  await panel.getByLabel('commit staged changes').fill('local commit')
-  await panel.getByRole('button', { name: 'commit', exact: true }).click()
-  await panel.getByText('working tree clean.').waitFor()
-  await panel.getByRole('button', { name: /^push/ }).click()
+  await page.getByRole('button', { name: /^git$/i, exact: true }).click()
+  const panel = page.getByRole('dialog', { name: /^git$/i, exact: true })
+  await panel.getByLabel(/commit staged changes/i).fill('local commit')
+  await panel.getByRole('button', { name: /^commit$/i, exact: true }).click()
+  await panel.getByText(/working tree clean\./i).waitFor()
+  await panel.getByRole('button', { name: /^push/i }).click()
   await waitForAsync(
     page,
     async () => (await window.hibi.invokeAddon('git', 'state')).ahead === 0,
   ).catch(async () => {
     // The native operation lock may still be held while push is finishing.
     await panel
-      .getByText('working…', { exact: true })
+      .getByText(/^working…$/i, { exact: true })
       .waitFor({ state: 'hidden' })
     assert.equal((await invoke('state')).ahead, 0)
   })
@@ -129,27 +129,27 @@ test('git addon stages, commits, switches, pulls and pushes only to a disposable
     await git(remote, 'log', '-1', '--format=%s', 'main'),
     'local commit',
   )
-  await panel.getByLabel('git branch').selectOption('refs/heads/other')
+  await panel.getByLabel(/git branch/i).selectOption('refs/heads/other')
   await panel
-    .getByText('working…', { exact: true })
+    .getByText(/^working…$/i, { exact: true })
     .waitFor({ state: 'hidden' })
   assert.equal((await invoke('state')).branch, 'other')
   assert.equal(
     (await page.evaluate(() => window.hibi.getDocument())).markdown,
     'initial',
   )
-  await panel.getByLabel('git branch').selectOption('refs/heads/main')
+  await panel.getByLabel(/git branch/i).selectOption('refs/heads/main')
   await panel
-    .getByText('working…', { exact: true })
+    .getByText(/^working…$/i, { exact: true })
     .waitFor({ state: 'hidden' })
   await git(peer, 'pull', '--ff-only')
   await writeFile(join(peer, 'note.md'), 'remote change')
   await git(peer, 'add', 'note.md')
   await git(peer, 'commit', '-m', 'remote change')
   await git(peer, 'push')
-  await panel.getByRole('button', { name: /^pull/ }).click()
+  await panel.getByRole('button', { name: /^pull/i }).click()
   await panel
-    .getByText('working…', { exact: true })
+    .getByText(/^working…$/i, { exact: true })
     .waitFor({ state: 'hidden' })
   assert.equal(await readFile(join(root, 'note.md'), 'utf8'), 'remote change')
   assert.equal(
@@ -174,18 +174,24 @@ test('git addon stages, commits, switches, pulls and pushes only to a disposable
     })
   })
   await writeFile(join(root, 'guides', 'nested.md'), 'modified nested file')
-  const guides = page.getByRole('treeitem', { name: 'guides', exact: true })
+  const guides = page.getByRole('treeitem', { name: /^guides$/i, exact: true })
   await guides.locator('.sidebar-decoration').waitFor()
   assert.equal(await guides.getAttribute('aria-expanded'), 'false')
   await guides.click()
-  const nested = page.getByRole('treeitem', { name: 'nested.md', exact: true })
-  await nested.locator('.sidebar-decoration').filter({ hasText: 'M' }).waitFor()
+  const nested = page.getByRole('treeitem', {
+    name: /^nested\.md$/i,
+    exact: true,
+  })
+  await nested
+    .locator('.sidebar-decoration')
+    .filter({ hasText: /M/i })
+    .waitFor()
   await git(root, 'add', 'guides/nested.md')
   await page.waitForFunction(
     () =>
       document
         .getElementById('sidebar-guides/nested.md')
-        ?.getAttribute('aria-description') === 'git: modified (staged)',
+        ?.getAttribute('aria-description') === 'Git: modified (staged)',
   )
   assert.equal(
     await page.evaluate(() => {
@@ -210,9 +216,9 @@ test('git addon stages, commits, switches, pulls and pushes only to a disposable
   )
   await guides.click()
   await page
-    .getByRole('treeitem', { name: 'new.md', exact: true })
+    .getByRole('treeitem', { name: /^new\.md$/i, exact: true })
     .locator('.sidebar-decoration')
-    .filter({ hasText: 'U' })
+    .filter({ hasText: /U/i })
     .waitFor()
   await rm(join(root, 'guides', 'removed.md'))
   await page.waitForFunction(() =>
@@ -222,16 +228,16 @@ test('git addon stages, commits, switches, pulls and pushes only to a disposable
       ?.includes('3 changed files'),
   )
   await page
-    .getByRole('treeitem', { name: 'removed.md', exact: true })
+    .getByRole('treeitem', { name: /^removed\.md$/i, exact: true })
     .waitFor({ state: 'hidden' })
   await mkdir('test-results', { recursive: true })
   await page.screenshot({
     path: 'test-results/git-explorer.png',
     animations: 'disabled',
   })
-  await page.getByRole('treeitem', { name: 'note.md', exact: true }).click()
-  await page.getByRole('button', { name: 'editor settings' }).click()
-  await page.getByRole('tab', { name: 'addons', exact: true }).click()
+  await page.getByRole('treeitem', { name: /^note\.md$/i, exact: true }).click()
+  await page.getByRole('button', { name: /editor settings/i }).click()
+  await page.getByRole('tab', { name: /^addons$/i, exact: true }).click()
   await page.locator('#addon-git').click()
   await page.waitForFunction(
     () => !document.querySelector('.workspace-sidebar .sidebar-decoration'),
@@ -241,16 +247,16 @@ test('git addon stages, commits, switches, pulls and pushes only to a disposable
     /not enabled/,
   )
   await page.locator('#addon-git').click()
-  await page.getByRole('button', { name: 'back to editor' }).click()
+  await page.getByRole('button', { name: /back to editor/i }).click()
   await nested.locator('.sidebar-decoration').waitFor()
   await assert.rejects(
     page.evaluate(() => window.hibi.queryAddon('git', 'stage', 'note.md')),
     /unknown addon method/,
   )
   await page
-    .getByRole('textbox', { name: 'document editor' })
+    .getByRole('textbox', { name: /document editor/i })
     .fill('unsaved edits')
-  const note = page.getByRole('treeitem', { name: 'note.md', exact: true })
+  const note = page.getByRole('treeitem', { name: /^note\.md$/i, exact: true })
   await note.locator('.sidebar-dirty').waitFor()
   assert.equal(await note.locator('.sidebar-decoration').count(), 0)
   await assert.rejects(invoke('switch', 'refs/heads/other'), /save edits/)

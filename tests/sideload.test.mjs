@@ -110,29 +110,29 @@ test('sideloads reviewed packages disabled, discovers their settings/themes/comm
   const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
   const choose = async (query) => {
     await pressShortcut(app, `${mod}+k`)
-    const input = page.getByRole('combobox', { name: 'search commands' })
+    const input = page.getByRole('combobox', { name: /search commands/i })
     await input.fill(query)
     await page.getByRole('option').first().waitFor()
     await input.press('Enter')
     await page
-      .getByRole('dialog', { name: 'command palette' })
+      .getByRole('dialog', { name: /command palette/i })
       .waitFor({ state: 'hidden' })
   }
-  const rich = page.getByRole('textbox', { name: 'document editor' })
+  const rich = page.getByRole('textbox', { name: /document editor/i })
   await rich.waitFor()
   await rich.fill('keep this draft')
   await pressShortcut(app, `${mod}+Shift+o`)
-  await page.getByRole('button', { name: 'new workspace file' }).waitFor()
+  await page.getByRole('button', { name: /new workspace file/i }).waitFor()
   assert.equal(await page.evaluate(() => window.fixtureStarts), undefined)
   assert.equal(
     (await page.evaluate(() => window.hibi.getInstalledAddons())).length,
     0,
   )
-  await page.getByRole('button', { name: 'editor settings' }).click()
-  await page.getByRole('tab', { name: 'addons', exact: true }).click()
+  await page.getByRole('button', { name: /editor settings/i }).click()
+  await page.getByRole('tab', { name: /^addons$/i, exact: true }).click()
   await pressShortcut(app, `${mod}+k`)
   await page
-    .getByRole('combobox', { name: 'search commands' })
+    .getByRole('combobox', { name: /search commands/i })
     .fill('install theme or extension')
   await page.getByRole('option').first().click()
   await page.locator('#addon-fixture-addon').waitFor()
@@ -152,8 +152,8 @@ test('sideloads reviewed packages disabled, discovers their settings/themes/comm
   await page.waitForFunction(
     () => document.activeElement?.id === 'fixture-option',
   )
-  await page.getByRole('button', { name: 'back to editor' }).click()
-  await page.getByText('fixture active', { exact: true }).waitFor()
+  await page.getByRole('button', { name: /back to editor/i }).click()
+  await page.getByText(/^fixture active$/i, { exact: true }).waitFor()
   await choose('fixture: append')
   await waitForAsync(page, async () =>
     (await window.hibi.getDocument()).markdown.includes('fixture'),
@@ -163,12 +163,12 @@ test('sideloads reviewed packages disabled, discovers their settings/themes/comm
     /^keep this draft/,
   )
   await pressShortcut(app, `${mod}+Shift+]`)
-  const source = page.getByRole('textbox', { name: 'markdown editor' })
+  const source = page.getByRole('textbox', { name: /markdown editor/i })
   const code = 'keep this draft\n\n```fixture-code\nhello addon\n```'
   await source.fill(code)
   await page
     .locator('.source-pane .hibi-token-keyword')
-    .filter({ hasText: /^hello addon$/ })
+    .filter({ hasText: /^hello addon$/i })
     .waitFor()
   await page
     .locator('.rich-pane .hibi-token-keyword')
@@ -206,7 +206,7 @@ test('sideloads reviewed packages disabled, discovers their settings/themes/comm
   await choose('enable fixture addon')
   await page
     .locator('.source-pane .hibi-token-keyword')
-    .filter({ hasText: /^hello addon$/ })
+    .filter({ hasText: /^hello addon$/i })
     .waitFor()
   await app.evaluate((_electron, path) => {
     globalThis.packageSource = path
@@ -232,12 +232,12 @@ test('sideloads reviewed packages disabled, discovers their settings/themes/comm
   await page.waitForFunction(
     () => document.documentElement.dataset.colorscheme === 'hibi-dark',
   )
-  await page.getByRole('button', { name: 'editor settings' }).click()
-  await page.getByRole('tab', { name: 'addons', exact: true }).click()
+  await page.getByRole('button', { name: /editor settings/i }).click()
+  await page.getByRole('tab', { name: /^addons$/i, exact: true }).click()
   await page
     .locator('.setting-row')
     .filter({ has: page.locator('#addon-fixture-addon') })
-    .getByRole('button', { name: 'remove', exact: true })
+    .getByRole('button', { name: /^remove$/i, exact: true })
     .click()
   await page.locator('#addon-fixture-addon').waitFor({ state: 'detached' })
   assert.equal(
@@ -247,12 +247,12 @@ test('sideloads reviewed packages disabled, discovers their settings/themes/comm
     0,
   )
   assert.equal(
-    await page.getByText('fixture active', { exact: true }).count(),
+    await page.getByText(/^fixture active$/i, { exact: true }).count(),
     0,
   )
   await pressShortcut(app, `${mod}+k`)
   await page
-    .getByRole('combobox', { name: 'search commands' })
+    .getByRole('combobox', { name: /search commands/i })
     .fill('fixture: append')
   assert.equal(await page.getByRole('option').count(), 0)
   await page.keyboard.press('Escape')

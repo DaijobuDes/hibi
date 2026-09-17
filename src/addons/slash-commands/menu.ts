@@ -25,13 +25,13 @@ export function createSlashMenu(
   list.className = 'command-results slash-results'
   list.id = `slash-${crypto.randomUUID()}`
   list.setAttribute('role', 'listbox')
-  list.setAttribute('aria-label', 'slash commands')
+  list.setAttribute('aria-label', 'Slash commands')
   const footer = document.createElement('div')
   footer.className = 'palette-footer slash-footer'
   for (const [shortcut, label] of [
-    ['arrowup+arrowdown', 'navigate'],
-    ['enter', 'select'],
-    ['escape', 'close'],
+    ['arrowup+arrowdown', 'Navigate'],
+    ['enter', 'Select'],
+    ['escape', 'Close'],
   ]) {
     const hint = document.createElement('span')
     const keys = document.createElement('span')
@@ -157,7 +157,7 @@ export function createSlashMenu(
         if (!results.length) {
           const empty = document.createElement('p')
           empty.className = 'commands-empty'
-          empty.textContent = 'no commands found.'
+          empty.textContent = 'No commands found.'
           empty.setAttribute('role', 'status')
           list.append(empty)
         }

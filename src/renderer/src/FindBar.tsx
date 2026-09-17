@@ -40,14 +40,14 @@ export function FindBar({
   }, [open])
 
   return (
-    <search className="find-bar" aria-label="find in note" hidden={!open}>
+    <search className="find-bar" aria-label="Find in note" hidden={!open}>
       <div className="find-input">
         <Search size={15} aria-hidden="true" />
         <TextInput
           variant="inline"
           ref={input}
-          aria-label="find in note"
-          placeholder="find in note"
+          aria-label="Find in note"
+          placeholder="Find in note"
           value={query}
           spellCheck={false}
           onChange={(event) => onQuery(event.target.value)}
@@ -66,7 +66,7 @@ export function FindBar({
       </div>
       <output
         aria-live="polite"
-        aria-label="find matches"
+        aria-label="Find matches"
         style={{ width: counterWidth }}
       >
         <span className="find-count" ref={counter}>
@@ -75,8 +75,8 @@ export function FindBar({
       </output>
       <IconButton
         type="button"
-        aria-label="previous match"
-        title="previous match (shift+enter)"
+        aria-label="Previous match"
+        title="Previous match (shift+enter)"
         disabled={!status.total}
         onMouseDown={(event) => event.preventDefault()}
         onClick={() => onMove('previous')}
@@ -85,8 +85,8 @@ export function FindBar({
       </IconButton>
       <IconButton
         type="button"
-        aria-label="next match"
-        title="next match (enter)"
+        aria-label="Next match"
+        title="Next match (enter)"
         disabled={!status.total}
         onMouseDown={(event) => event.preventDefault()}
         onClick={() => onMove('next')}
@@ -95,8 +95,8 @@ export function FindBar({
       </IconButton>
       <IconButton
         type="button"
-        aria-label="close find"
-        title="close find (escape)"
+        aria-label="Close find"
+        title="Close find (escape)"
         onClick={onClose}
       >
         <X size={16} aria-hidden="true" />

@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { electron } from './electron.mjs'
+import { uiName } from './ui.mjs'
 
 test('titlebar insets titles without leading actions and adapts outer button corners', async (t) => {
   const profile = await mkdtemp(join(tmpdir(), 'hibi-titlebar-'))
@@ -18,20 +19,25 @@ test('titlebar insets titles without leading actions and adapts outer button cor
   await page.setViewportSize({ width: 1000, height: 600 })
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page
-    .getByRole('button', { name: 'rename document', exact: true })
-    .click()
-  const rename = page.getByRole('textbox', { name: 'file name', exact: true })
-  assert.deepEqual(
-    await rename.evaluate((input) => {
-      const style = getComputedStyle(input)
-      return { border: style.borderTopWidth, background: style.backgroundColor }
-    }),
-    { border: '0px', background: 'rgba(0, 0, 0, 0)' },
+    .getByRole('tab', { name: /^untitled\.md$/i, exact: true })
+    .dblclick()
+  assert.equal(
+    await page
+      .getByRole('textbox', { name: /^file name$/i, exact: true })
+      .count(),
+    0,
   )
-  await rename.press('Escape')
-  await page.getByRole('button', { name: 'editor settings' }).click()
+  assert.equal(
+    await page
+      .locator('.document-tab')
+      .evaluate((tab) => getComputedStyle(tab).borderRadius),
+    '6px',
+  )
+  await page.getByRole('button', { name: /editor settings/i }).click()
   for (const category of ['hibi', 'appearance']) {
-    await page.getByRole('tab', { name: category, exact: true }).click()
+    await page
+      .getByRole('tab', { name: uiName(category, true), exact: true })
+      .click()
     await page.locator('.settings-content').evaluate((el) => el.scrollTo(0, 0))
     await page.evaluate(() => document.fonts.ready)
     const clip = { x: 220, y: 0, width: 500, height: 36 }
@@ -54,9 +60,15 @@ test('titlebar insets titles without leading actions and adapts outer button cor
         element.parentElement.getBoundingClientRect().left,
     )
   assert.equal(inset, 16)
-  await page.getByLabel('position', { exact: true }).selectOption('top-center')
-  await page.getByLabel('dismiss after', { exact: true }).selectOption('3000')
-  await page.getByRole('button', { name: 'show preview', exact: true }).click()
+  await page
+    .getByLabel(/^position$/i, { exact: true })
+    .selectOption('top-center')
+  await page
+    .getByLabel(/^dismiss after$/i, { exact: true })
+    .selectOption('3000')
+  await page
+    .getByRole('button', { name: /^show preview$/i, exact: true })
+    .click()
   await page.locator('.sonner[data-position="top-center"]').waitFor()
   assert.deepEqual(
     await page.evaluate(() =>
@@ -65,11 +77,13 @@ test('titlebar insets titles without leading actions and adapts outer button cor
     { position: 'top-center', duration: 3000 },
   )
   await page
-    .getByRole('button', { name: 'dismiss notice', exact: true })
+    .getByRole('button', { name: /^dismiss notice$/i, exact: true })
     .click()
-  await page.getByRole('button', { name: 'back to editor' }).click()
+  await page.getByRole('button', { name: /back to editor/i }).click()
   for (const open of [true, false]) {
-    await page.getByRole('button', { name: 'toggle workspace sidebar' }).click()
+    await page
+      .getByRole('button', { name: /toggle workspace sidebar/i })
+      .click()
     const surface = await page.locator('.editor-surface').evaluate((el) => {
       const styles = getComputedStyle(el, '::before')
       return {

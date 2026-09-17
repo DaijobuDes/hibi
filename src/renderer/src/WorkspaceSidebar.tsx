@@ -112,7 +112,7 @@ export function WorkspaceSidebar({
     const entry = find(workspace?.entries ?? [])
     if (!entry) return
     menu.open({
-      label: `actions for ${entry.name}`,
+      label: `Actions for ${entry.name}`,
       anchor,
       items: workspaceMenuItems(entry, {
         dialogs,
@@ -128,7 +128,7 @@ export function WorkspaceSidebar({
         id: entry.path,
         label: entry.name,
         icon: entry.kind === 'folder' ? Folder : FileText,
-        dirty: dirty && workspace?.activePath === entry.path,
+        dirty: workspace?.activePath === entry.path ? dirty : !!entry.dirty,
         ...(decorations.has(entry.path)
           ? { decoration: decorations.get(entry.path)! }
           : {}),
@@ -161,7 +161,7 @@ export function WorkspaceSidebar({
           onCancel: () => setEditing(null),
         }
       }
-      label="workspace files"
+      label="Workspace files"
       header={
         workspace && (
           <>
@@ -173,26 +173,26 @@ export function WorkspaceSidebar({
                   : undefined,
               }}
             >
-              {workspace?.name ?? 'workspace'}
+              {workspace?.name ?? 'Workspace'}
             </span>
             <IconButton
-              aria-label="new workspace file"
-              title="new file"
+              aria-label="New workspace file"
+              title="New file"
               onClick={() => void create('new-file')}
             >
               <FilePlus2 size={14} />
             </IconButton>
             <IconButton
-              aria-label="new workspace folder"
-              title="new folder"
+              aria-label="New workspace folder"
+              title="New folder"
               onClick={() => void create('new-folder')}
             >
               <FolderPlus size={14} />
             </IconButton>
             <IconButton
               type="button"
-              aria-label="open workspace"
-              title="open folder"
+              aria-label="Open workspace"
+              title="Open folder"
               onClick={onOpen}
             >
               <FolderOpen size={15} />
@@ -200,8 +200,8 @@ export function WorkspaceSidebar({
             {workspace && (
               <IconButton
                 type="button"
-                aria-label="refresh workspace"
-                title="refresh files"
+                aria-label="Refresh workspace"
+                title="Refresh files"
                 onClick={onRefresh}
               >
                 <RefreshCw size={14} />
@@ -217,11 +217,11 @@ export function WorkspaceSidebar({
           <button
             className="open-workspace"
             type="button"
-            aria-label="open workspace"
+            aria-label="Open workspace"
             onClick={onOpen}
           >
             <FolderOpen size={28} strokeWidth={1.25} aria-hidden="true" />
-            <span>open a folder</span>
+            <span>Open a folder</span>
           </button>
         )
       }

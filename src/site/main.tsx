@@ -344,7 +344,7 @@ function DocumentationSite() {
   const next = pageIndex >= 0 ? pages[pageIndex + 1] : undefined
   const folders = current.path.split('/').slice(0, -1)
   const outlineLinks = (
-    <nav aria-label="in this page">
+    <nav aria-label="In this page">
       {outline.map((heading) => (
         <a
           key={heading.id}
@@ -385,7 +385,7 @@ function DocumentationSite() {
         <div className="site-navigation-controls">
           <IconButton
             type="button"
-            aria-label="toggle navigation"
+            aria-label="Toggle navigation"
             aria-expanded={sidebar}
             onClick={() => setSidebar(!sidebar)}
           >
@@ -395,7 +395,7 @@ function DocumentationSite() {
         <div className="site-header-content">
           <nav
             className="site-breadcrumbs"
-            aria-label="breadcrumbs"
+            aria-label="Breadcrumbs"
             aria-hidden={mobile && sidebar}
           >
             <ol>
@@ -426,7 +426,7 @@ function DocumentationSite() {
               })}
               <li aria-current="page">
                 <ChevronRight aria-hidden="true" />
-                <span>{page?.title ?? 'page not found'}</span>
+                <span>{page?.title ?? 'Page not found'}</span>
               </li>
             </ol>
           </nav>
@@ -434,21 +434,21 @@ function DocumentationSite() {
             type="button"
             className="site-search"
             onClick={() => setPalette(true)}
-            aria-label="search documentation"
+            aria-label="Search documentation"
           >
             <Search size={15} />
-            <span className="site-search-label">search documentation</span>
+            <span className="site-search-label">Search documentation</span>
             <ShortcutKeys
               shortcut={/Mac/.test(navigator.platform) ? 'meta+k' : 'ctrl+k'}
               platform={/Mac/.test(navigator.platform) ? 'darwin' : 'linux'}
             />
           </button>
           <IconButton
-            aria-label="colorscheme"
-            title="colorscheme"
+            aria-label="Colorscheme"
+            title="Colorscheme"
             onClick={() =>
               dialogs.open({
-                title: 'appearance',
+                title: 'Appearance',
                 content: () => <ColorschemeSettings store={colorschemes} />,
               })
             }
@@ -461,7 +461,7 @@ function DocumentationSite() {
         <button
           type="button"
           className="site-nav-scrim"
-          aria-label="close navigation"
+          aria-label="Close navigation"
           aria-hidden={!mobile || !sidebar}
           tabIndex={mobile && sidebar ? 0 : -1}
           onClick={() => setSidebar(false)}
@@ -475,11 +475,11 @@ function DocumentationSite() {
             navigate(path)
             if (innerWidth <= 700) setSidebar(false)
           }}
-          label="documentation navigation"
+          label="Documentation navigation"
         />
         <main
           className="site-content"
-          aria-label="documentation"
+          aria-label="Documentation"
           inert={mobile && sidebar}
         >
           {page ? (
@@ -488,7 +488,7 @@ function DocumentationSite() {
                 {outline.length > 0 && (
                   <details className="site-outline-mobile">
                     <summary>
-                      in this page
+                      In this page
                       <ChevronDown size={14} aria-hidden="true" />
                     </summary>
                     {outlineLinks}
@@ -500,12 +500,12 @@ function DocumentationSite() {
                   dangerouslySetInnerHTML={{ __html: html }}
                 />
                 {(previous || next) && (
-                  <nav className="site-pagination" aria-label="page navigation">
+                  <nav className="site-pagination" aria-label="Page navigation">
                     {previous ? (
                       <a href={destination(previous.path)}>
                         <span>
                           <ArrowLeft size={14} aria-hidden="true" />
-                          previous
+                          Previous
                         </span>
                         <strong>{previous.title}</strong>
                       </a>
@@ -515,7 +515,7 @@ function DocumentationSite() {
                     {next ? (
                       <a className="site-next" href={destination(next.path)}>
                         <span>
-                          next
+                          Next
                           <ArrowRight size={14} aria-hidden="true" />
                         </span>
                         <strong>{next.title}</strong>
@@ -528,16 +528,16 @@ function DocumentationSite() {
               </div>
               {outline.length > 0 && (
                 <aside className="site-outline">
-                  <p>in this page</p>
+                  <p>In this page</p>
                   {outlineLinks}
                 </aside>
               )}
             </div>
           ) : (
             <div className="site-missing">
-              <h1>page not found</h1>
+              <h1>Page not found</h1>
               <button type="button" onClick={() => setPalette(true)}>
-                search documentation
+                Search documentation
               </button>
             </div>
           )}

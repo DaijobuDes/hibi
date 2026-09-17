@@ -5,10 +5,10 @@ import keybeatsLicense from './LICENSE.keybeats.md?raw'
 
 export default {
   id: 'keybeats',
-  name: 'keybeats',
+  name: 'keyBeats',
   version: '1.0.0',
   apiVersion: 1,
-  description: 'mechanical keyboard sounds while editing your notes.',
+  description: 'Mechanical keyboard sounds while editing your notes.',
   defaultEnabled: false,
   authors: [
     { ...authors.yug, role: 'original author' },
@@ -17,6 +17,6 @@ export default {
   ],
   licenses: [
     { id: 'keybeats', name: 'keyBeats', license: 'MIT', text: keybeatsLicense },
-    { id: 'kbsim', name: 'kbsim sounds', license: 'MIT', text: soundsLicense },
+    { id: 'kbsim', name: 'Kbsim sounds', license: 'MIT', text: soundsLicense },
   ],
 } satisfies AddonManifest

@@ -47,7 +47,7 @@ export function TypstPreview({
                   message:
                     error instanceof Error
                       ? error.message
-                      : 'typst compilation failed.',
+                      : 'Typst compilation failed.',
                 },
               ],
             })
@@ -69,7 +69,7 @@ export function TypstPreview({
     >
       {busy && (
         <p className="typst-progress" role="status">
-          compiling typst…
+          Compiling Typst…
         </p>
       )}
       {image && (

@@ -18,7 +18,7 @@ const options = {
 export function startMath(context: AddonContext) {
   context.editor.registerSyntax({
     id: 'inline',
-    label: 'inline math',
+    label: 'Inline math',
     group: 'math',
     description: '$expression$',
     level: 'inline',
@@ -27,7 +27,7 @@ export function startMath(context: AddonContext) {
   })
   context.editor.registerSyntax({
     id: 'block',
-    label: 'block math',
+    label: 'Block math',
     group: 'math',
     description: '$$ expression $$',
     level: 'block',
@@ -71,10 +71,10 @@ export function startMath(context: AddonContext) {
   })
   const prompt = (value = '') =>
     context.dialogs.prompt({
-      title: 'math',
-      label: 'latex',
+      title: 'Math',
+      label: 'Latex',
       defaultValue: value,
-      confirmLabel: 'apply',
+      confirmLabel: 'Apply',
       validate: (value) =>
         !value.trim()
           ? 'enter an expression.'
@@ -211,10 +211,10 @@ export function startMath(context: AddonContext) {
   })
   for (const block of [false, true]) {
     const id = block ? 'block' : 'inline',
-      label = block ? 'block math' : 'inline math'
+      label = block ? 'Block math' : 'Inline math'
     context.commands.register({
       id,
-      label: `insert ${label}`,
+      label: `Insert ${label}`,
       run: () => insert(block),
     })
     context.toolbar.register({

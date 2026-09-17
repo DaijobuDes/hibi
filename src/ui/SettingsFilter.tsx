@@ -40,7 +40,7 @@ export function SettingsFilter({
         onChange={(event) => onChange(event.target.value)}
       />
       <Button disabled={disabled || resetDisabled} onClick={onReset}>
-        reset all
+        Reset all
       </Button>
     </div>
   )

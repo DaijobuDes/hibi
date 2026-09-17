@@ -8,6 +8,7 @@ import {
   useSyncExternalStore,
 } from 'react'
 import { createPortal } from 'react-dom'
+import { sentenceCase } from '../shared/ui-case'
 import { createTooltipScope, tooltipStore } from './tooltip-store'
 import './tooltip.css'
 
@@ -132,7 +133,7 @@ export function TooltipHost() {
       className="ui-tooltip"
       aria-hidden={!active}
     >
-      {text.current}
+      {sentenceCase(text.current)}
     </div>,
     container.current,
   )

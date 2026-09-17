@@ -68,19 +68,19 @@ export function HotkeySettings({
     ({ id }) => id !== recording && candidate && hotkeys[id] === candidate,
   )
   const invalid =
-    shortcutError(candidate, platform) ??
+    shortcutError(candidate, platform, recording ?? undefined) ??
     (conflict ? `already used by ${conflict.label}.` : '')
 
   return (
     <>
-      <h1>hotkeys</h1>
+      <h1>Hotkeys</h1>
       <p className="settings-description">
-        choose a shortcut to rebind it. changes save on this device.
+        Choose a shortcut to rebind it. changes save on this device.
       </p>
       <SettingsFilter
         id="hotkey-filter"
-        label="filter hotkeys"
-        placeholder="filter commands…"
+        label="Filter hotkeys"
+        placeholder="Filter commands…"
         value={query}
         onChange={setQuery}
         disabled={!!recording || saving}
@@ -108,7 +108,7 @@ export function HotkeySettings({
                   className="hotkey-recorder"
                   id={`hotkey-${id}`}
                   ref={recording === id ? recorder : undefined}
-                  aria-label={`rebind ${label}`}
+                  aria-label={`Rebind ${label}`}
                   aria-pressed={recording === id}
                   disabled={saving || (!!recording && recording !== id)}
                   onClick={async () => {
@@ -154,20 +154,20 @@ export function HotkeySettings({
                     candidate ? (
                       <ShortcutKeys shortcut={candidate} platform={platform} />
                     ) : (
-                      <span>press shortcut…</span>
+                      <span>Press shortcut…</span>
                     )
                   ) : hotkeys[id] ? (
                     <ShortcutKeys shortcut={hotkeys[id]} platform={platform} />
                   ) : (
-                    <span>unassigned</span>
+                    <span>Unassigned</span>
                   )}
                 </button>
                 {recording === id ? (
                   <>
                     <IconButton
                       type="button"
-                      aria-label={`save shortcut for ${label}`}
-                      title="save shortcut (enter)"
+                      aria-label={`Save shortcut for ${label}`}
+                      title="Save shortcut (enter)"
                       disabled={saving || !candidate || !!invalid}
                       onClick={() => void save({ ...hotkeys, [id]: candidate })}
                     >
@@ -175,8 +175,8 @@ export function HotkeySettings({
                     </IconButton>
                     <IconButton
                       type="button"
-                      aria-label="cancel rebinding"
-                      title="cancel (escape)"
+                      aria-label="Cancel rebinding"
+                      title="Cancel (escape)"
                       disabled={saving}
                       onClick={cancel}
                     >
@@ -187,8 +187,8 @@ export function HotkeySettings({
                   <>
                     <IconButton
                       type="button"
-                      aria-label={`reset shortcut for ${label}`}
-                      title="reset shortcut"
+                      aria-label={`Reset shortcut for ${label}`}
+                      title="Reset shortcut"
                       disabled={
                         saving || !!recording || hotkeys[id] === defaults[id]
                       }
@@ -200,8 +200,8 @@ export function HotkeySettings({
                     </IconButton>
                     <IconButton
                       type="button"
-                      aria-label={`clear shortcut for ${label}`}
-                      title="clear shortcut"
+                      aria-label={`Clear shortcut for ${label}`}
+                      title="Clear shortcut"
                       disabled={saving || !!recording || !hotkeys[id]}
                       onClick={() => void save({ ...hotkeys, [id]: '' })}
                     >
@@ -212,7 +212,7 @@ export function HotkeySettings({
               </div>
               {recording === id && (
                 <p className="hotkey-feedback" role="status">
-                  {invalid || 'enter to save · escape to cancel'}
+                  {invalid || 'Enter to save · escape to cancel'}
                 </p>
               )}
             </div>
@@ -224,7 +224,7 @@ export function HotkeySettings({
         </p>
       )}
       <p className="settings-description hotkey-note">
-        standard editing and window shortcuts stay reserved.
+        Standard editing and window shortcuts stay reserved.
       </p>
     </>
   )

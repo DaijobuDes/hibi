@@ -66,7 +66,7 @@ export function createVim(context: AddonContext) {
             label: vimPreferences().status
               ? this.pending || this.lastCommand
               : '',
-            tooltip: this.pending ? 'pending vim command' : 'last vim command',
+            tooltip: this.pending ? 'Pending Vim command' : 'Last Vim command',
           })
         }
         commitCommand = () => {
@@ -125,7 +125,7 @@ export function createVim(context: AddonContext) {
         applyPreferences = () => {
           this.status.update({
             label: vimPreferences().status
-              ? `vim · ${this.cm?.state.vim?.mode ?? 'normal'}`
+              ? `Vim · ${this.cm?.state.vim?.mode ?? 'normal'}`
               : '',
           })
           this.publishCommand()
@@ -142,7 +142,7 @@ export function createVim(context: AddonContext) {
               ? this.pending
               : prefix
             this.prompt = input
-            input.setAttribute('aria-label', 'vim command')
+            input.setAttribute('aria-label', 'Vim command')
             input.addEventListener('input', this.promptInput)
             input.addEventListener('keyup', this.promptInput)
             input.addEventListener('keydown', this.promptKey, true)
@@ -156,14 +156,15 @@ export function createVim(context: AddonContext) {
           this.cm = null
           this.status = context.statusBar.register({
             id: 'mode',
-            label: 'vim · normal',
-            tooltip: 'vim mode in the markdown pane',
+            label: 'Vim · normal',
+            tooltip: 'Vim mode in the Markdown pane',
             when: 'source',
           })
           this.commandStatus = context.statusBar.register({
             id: 'command',
+            verbatim: true,
             label: '',
-            tooltip: 'last vim command',
+            tooltip: 'Last Vim command',
             when: 'source',
           })
           contexts.set(view, context)

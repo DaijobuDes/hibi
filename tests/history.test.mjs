@@ -26,10 +26,10 @@ test('local history snapshots on save, previews, and restores without overwritin
   }, file)
   const page = await app.firstWindow()
   page.setDefaultTimeout(6000)
-  await page.getByRole('textbox', { name: 'document editor' }).waitFor()
+  await page.getByRole('textbox', { name: /document editor/i }).waitFor()
   const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
   await pressShortcut(app, `${mod}+o`)
-  const rich = page.getByRole('textbox', { name: 'document editor' })
+  const rich = page.getByRole('textbox', { name: /document editor/i })
   await waitForAsync(
     page,
     async () => (await window.hibi.getDocument()).markdown === 'original',
@@ -60,25 +60,25 @@ test('local history snapshots on save, previews, and restores without overwritin
   )
   await pressShortcut(app, `${mod}+k`)
   await page
-    .getByRole('combobox', { name: 'search commands' })
+    .getByRole('combobox', { name: /search commands/i })
     .fill('version history')
   await page.getByRole('option').first().waitFor()
   await page.keyboard.press('Enter')
   const history = page.getByRole('dialog', {
-    name: 'version history',
+    name: /^version history$/i,
     exact: true,
   })
   await history
-    .getByRole('navigation', { name: 'saved versions' })
+    .getByRole('navigation', { name: /saved versions/i })
     .getByRole('button')
     .last()
     .click()
   await page.waitForFunction(
     () =>
-      document.querySelector('[aria-label="version preview"]').textContent ===
+      document.querySelector('[aria-label="version preview" i]').textContent ===
       'original',
   )
-  await history.getByRole('button', { name: 'restore to editor' }).click()
+  await history.getByRole('button', { name: /restore to editor/i }).click()
   await waitForAsync(page, async () => {
     const doc = await window.hibi.getDocument()
     return doc.dirty && doc.markdown === 'original'

@@ -40,13 +40,13 @@ test('typing pills, source formatting shortcuts, and sidebar shortcut', {
   const page = await app.firstWindow()
   page.setDefaultTimeout(6000)
   const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
-  await page.getByRole('textbox', { name: 'document editor' }).waitFor()
-  await page.getByRole('button', { name: 'editor settings' }).click()
-  await page.getByRole('tab', { name: 'addons', exact: true }).click()
+  await page.getByRole('textbox', { name: /document editor/i }).waitFor()
+  await page.getByRole('button', { name: /editor settings/i }).click()
+  await page.getByRole('tab', { name: /^addons$/i, exact: true }).click()
   await page.locator('#addon-typing-speed').click()
-  await page.getByRole('button', { name: 'back to editor' }).click()
+  await page.getByRole('button', { name: /back to editor/i }).click()
   await page
-    .getByRole('textbox', { name: 'document editor' })
+    .getByRole('textbox', { name: /document editor/i })
     .pressSequentially('hello')
   const cpm = page.locator('[data-status-id="typing-speed.cpm"]')
   const wpm = page.locator('[data-status-id="typing-speed.wpm"]')
@@ -59,9 +59,9 @@ test('typing pills, source formatting shortcuts, and sidebar shortcut', {
       ) > 5,
   )
   const initialCpm = await cpm.innerText()
-  assert.match(await wpm.innerText(), /^≈\d+ wpm$/)
+  assert.match(await wpm.innerText(), /^≈\d+ WPM$/)
   await pressShortcut(app, `${mod}+Shift+]`)
-  const source = page.getByRole('textbox', { name: 'markdown editor' })
+  const source = page.getByRole('textbox', { name: /markdown editor/i })
   await source.press(`${mod}+a`)
   await pressShortcut(app, `${mod}+b`)
   await waitForAsync(
@@ -79,7 +79,7 @@ test('typing pills, source formatting shortcuts, and sidebar shortcut', {
   await source.press('ArrowRight')
   await source.pressSequentially('!')
   const afterTyping = await cpm.innerText()
-  assert.match(afterTyping, /^≈[1-9]\d* cpm$/)
+  assert.match(afterTyping, /^≈[1-9]\d* CPM$/)
   const before = await page.locator('.app').getAttribute('data-sidebar')
   await pressShortcut(app, `${mod}+/`)
   await page.waitForFunction(
@@ -91,9 +91,9 @@ test('typing pills, source formatting shortcuts, and sidebar shortcut', {
   assert.equal(await cpm.innerText(), afterTyping)
   await page.keyboard.press('Escape')
   await page
-    .getByRole('dialog', { name: 'command palette' })
+    .getByRole('dialog', { name: /command palette/i })
     .waitFor({ state: 'hidden' })
-  await page.getByRole('button', { name: 'editor settings' }).click()
+  await page.getByRole('button', { name: /editor settings/i }).click()
   await page.locator('#addon-typing-speed').click()
   assert.equal(await cpm.count(), 0)
 })

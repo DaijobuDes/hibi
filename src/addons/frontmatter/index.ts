@@ -15,10 +15,10 @@ export default defineAddon({
     })
     context.commands.register({
       id: 'add',
-      label: 'add frontmatter',
+      label: 'Add frontmatter',
       slash: {
-        label: 'frontmatter',
-        description: 'add page properties',
+        label: 'Frontmatter',
+        description: 'Add page properties',
         keywords: 'properties metadata yaml',
         when: (source) => !parseFrontmatter(source),
         transform: addFrontmatter,

@@ -83,7 +83,7 @@ process.parentPort.on('message', ({ data }: { data: CompileJob }) => {
           message:
             error instanceof Error
               ? error.message
-              : 'typst compilation failed.',
+              : 'Typst compilation failed.',
         },
       ],
     })

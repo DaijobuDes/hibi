@@ -63,7 +63,7 @@ test('github alerts edit in rich/split view, keep markers, and export with theme
   const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
   const read = () =>
     page.evaluate(async () => (await window.hibi.getDocument()).markdown)
-  const rich = page.getByRole('textbox', { name: 'document editor' })
+  const rich = page.getByRole('textbox', { name: /document editor/i })
   await rich.waitFor()
   await rich.pressSequentially('> [!WARNING]')
   await rich.press('Enter')
@@ -71,7 +71,7 @@ test('github alerts edit in rich/split view, keep markers, and export with theme
   await rich.pressSequentially('typed body')
   assert.match(await read(), /> \[!WARNING\]\n> typed body/)
   await pressShortcut(app, `${mod}+Shift+]`)
-  const source = page.getByRole('textbox', { name: 'markdown editor' })
+  const source = page.getByRole('textbox', { name: /markdown editor/i })
   const initial = alertTypes
     .map(
       (type) =>
@@ -86,7 +86,7 @@ test('github alerts edit in rich/split view, keep markers, and export with theme
   assert.equal(await read(), initial)
   await page
     .locator('[data-status-id="flavor"]')
-    .filter({ hasText: 'github markdown' })
+    .filter({ hasText: /github markdown/i })
     .waitFor()
   const warning = rich.locator('[data-alert="warning"]')
   assert.equal(await warning.locator('strong').innerText(), 'hello warning')
@@ -129,13 +129,13 @@ test('github alerts edit in rich/split view, keep markers, and export with theme
   )
   assert.equal(await readFile(file, 'utf8'), edited)
   await pressShortcut(app, `${mod}+Shift+o`)
-  await page.getByRole('button', { name: 'new workspace file' }).waitFor()
+  await page.getByRole('button', { name: /new workspace file/i }).waitFor()
   await pressShortcut(app, `${mod}+k`)
   await page
-    .getByRole('combobox', { name: 'search commands' })
+    .getByRole('combobox', { name: /search commands/i })
     .fill('export documentation')
   await page.getByRole('option').first().click()
-  await page.getByText(/exported 1 pages/).waitFor()
+  await page.getByText(/exported 1 pages/i).waitFor()
   const next = app.waitForEvent('window')
   await app.evaluate(({ BrowserWindow }, output) => {
     const window = new BrowserWindow({
@@ -165,11 +165,13 @@ test('github alerts edit in rich/split view, keep markers, and export with theme
   )
   await site.close()
   await page
-    .getByRole('button', { name: 'editor settings', exact: true })
+    .getByRole('button', { name: /^editor settings$/i, exact: true })
     .click()
-  await page.getByRole('tab', { name: 'addons', exact: true }).click()
+  await page.getByRole('tab', { name: /^addons$/i, exact: true }).click()
   await page.locator('#addon-github-markdown').click()
-  await page.getByRole('button', { name: 'back to app', exact: true }).click()
+  await page
+    .getByRole('button', { name: /^back to app$/i, exact: true })
+    .click()
   await page.waitForFunction(
     () => !document.querySelector('.tiptap .github-alert'),
   )

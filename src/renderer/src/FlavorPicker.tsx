@@ -23,8 +23,8 @@ export function FlavorPicker({
     <div className="settings-group">
       <SettingRow
         id="file-dialect"
-        label="markdown dialect"
-        description="automatic mode recognizes features from enabled extensions."
+        label="Markdown dialect"
+        description="Automatic mode recognizes features from enabled extensions."
       >
         <Select
           id="file-dialect"
@@ -33,8 +33,8 @@ export function FlavorPicker({
             change({ ...choice, dialect: event.target.value })
           }
         >
-          <option value="auto">automatic</option>
-          <option value="markdown">plain markdown</option>
+          <option value="auto">Automatic</option>
+          <option value="markdown">Plain Markdown</option>
           {available
             .filter((flavor) => flavor.kind === 'dialect')
             .map((flavor) => (
@@ -46,8 +46,8 @@ export function FlavorPicker({
       </SettingRow>
       <SettingRow
         id="file-syntax-auto"
-        label="detect extra syntax"
-        description="recognize math and other enabled syntax extensions automatically."
+        label="Detect extra syntax"
+        description="Recognize math and other enabled syntax extensions automatically."
       >
         <Toggle
           id="file-syntax-auto"
@@ -93,7 +93,7 @@ export function FlavorPicker({
                 />
               ) : (
                 <Button onClick={() => void onEnable(flavor.addonId)}>
-                  enable extension
+                  Enable extension
                 </Button>
               )}
             </SettingRow>

@@ -11,6 +11,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react'
+import { sentenceCase } from '../shared/ui-case'
 import { Button, IconButton, TextInput } from './Controls'
 import type {
   DialogApi,
@@ -90,7 +91,7 @@ export function createDialogService() {
           content: () => null,
           footer: ({ close }) => (
             <Button className="dialog-primary" onClick={() => close(null)}>
-              {options.confirmLabel ?? 'ok'}
+              {options.confirmLabel ?? 'Ok'}
             </Button>
           ),
         }).result
@@ -103,10 +104,10 @@ export function createDialogService() {
             footer: ({ close }) => (
               <>
                 <Button onClick={() => close(false)}>
-                  {options.cancelLabel ?? 'cancel'}
+                  {options.cancelLabel ?? 'Cancel'}
                 </Button>
                 <Button className="dialog-primary" onClick={() => close(true)}>
-                  {options.confirmLabel ?? 'confirm'}
+                  {options.confirmLabel ?? 'Confirm'}
                 </Button>
               </>
             ),
@@ -202,8 +203,8 @@ class ContentBoundary extends Component<
   render() {
     return this.state.failed ? (
       <div role="alert">
-        <p>this dialog could not load.</p>
-        <Button onClick={this.props.close}>close</Button>
+        <p>This dialog could not load.</p>
+        <Button onClick={this.props.close}>Close</Button>
       </div>
     ) : (
       this.props.children
@@ -254,15 +255,15 @@ function DialogFrame({
       ref={modal}
       className={`app-dialog${request.closing ? ' closing' : ''}`}
       data-size={request.options.size ?? 'normal'}
-      aria-label={request.options.title}
+      aria-label={sentenceCase(request.options.title)}
       aria-describedby={request.options.description ? description : undefined}
       closeOnOutsideClick={request.options.closeOnOutsideClick ?? true}
       onDismiss={() => close()}
     >
       <header className="dialog-heading">
         <div className="dialog-title-row">
-          <h2>{request.options.title}</h2>
-          <IconButton aria-label="close dialog" onClick={() => close()}>
+          <h2>{sentenceCase(request.options.title)}</h2>
+          <IconButton aria-label="Close dialog" onClick={() => close()}>
             <X size={16} aria-hidden="true" />
           </IconButton>
         </div>
@@ -271,7 +272,7 @@ function DialogFrame({
         )}
         {request.options.description && (
           <p id={description} className="dialog-description">
-            {request.options.description}
+            {sentenceCase(request.options.description)}
           </p>
         )}
       </header>
@@ -327,7 +328,7 @@ function PromptForm({
         }
       }}
     >
-      <label htmlFor={id}>{options.label}</label>
+      <label htmlFor={id}>{sentenceCase(options.label)}</label>
       <TextInput
         ref={input}
         id={id}
@@ -347,10 +348,10 @@ function PromptForm({
       )}
       <div className="dialog-actions">
         <Button onClick={() => close(null)}>
-          {options.cancelLabel ?? 'cancel'}
+          {options.cancelLabel ?? 'Cancel'}
         </Button>
         <Button type="submit" className="dialog-primary">
-          {options.confirmLabel ?? 'save'}
+          {options.confirmLabel ?? 'Save'}
         </Button>
       </div>
     </form>

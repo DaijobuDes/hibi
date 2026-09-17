@@ -174,7 +174,7 @@ export function EditorToolbar({
         <nav
           ref={row}
           className="editor-toolbar"
-          aria-label="editor toolbar"
+          aria-label="Editor toolbar"
           data-mode={preferences.mode}
         >
           {visible.slice(0, count).map((item) => {
@@ -196,7 +196,7 @@ export function EditorToolbar({
           <IconButton
             ref={more}
             className="toolbar-overflow"
-            aria-label="more formatting actions"
+            aria-label="More formatting actions"
             aria-haspopup="menu"
             aria-expanded={open}
             aria-controls={menuId}
@@ -212,7 +212,7 @@ export function EditorToolbar({
             role="menu"
             aria-hidden={!open}
             inert={!open}
-            aria-label="more formatting actions"
+            aria-label="More formatting actions"
             className="toolbar-menu"
             onToggle={(event) => setOpen(event.newState === 'open')}
             onKeyDown={(event) => {
@@ -314,12 +314,12 @@ export function ToolbarSettings() {
   }
   return (
     <>
-      <h2>toolbar</h2>
+      <h2>Toolbar</h2>
       <div className="settings-group">
         <SettingRow
           id="toolbar-visible"
-          label="show toolbar"
-          description="show addon actions below the top bar."
+          label="Show toolbar"
+          description="Show addon actions below the top bar."
         >
           <Toggle
             id="toolbar-visible"
@@ -331,8 +331,8 @@ export function ToolbarSettings() {
         </SettingRow>
         <SettingRow
           id="toolbar-autohide"
-          label="hide toolbar while typing"
-          description="fade with the top bar and move the page up while you write."
+          label="Hide toolbar while typing"
+          description="Fade with the top bar and move the page up while you write."
         >
           <Toggle
             id="toolbar-autohide"
@@ -344,8 +344,8 @@ export function ToolbarSettings() {
         </SettingRow>
         <SettingRow
           id="toolbar-mode"
-          label="toolbar labels"
-          description="choose how toolbar actions appear."
+          label="Toolbar labels"
+          description="Choose how toolbar actions appear."
         >
           <Select
             id="toolbar-mode"
@@ -356,30 +356,30 @@ export function ToolbarSettings() {
               })
             }
           >
-            <option value="icons">icons</option>
-            <option value="icons-and-text">icons and text</option>
-            <option value="text">text</option>
+            <option value="icons">Icons</option>
+            <option value="icons-and-text">Icons and text</option>
+            <option value="text">Text</option>
           </Select>
         </SettingRow>
       </div>
       <details className="toolbar-order">
         <summary>
           <ChevronRight size={14} aria-hidden />
-          arrange toolbar actions
+          Arrange toolbar actions
         </summary>
         <div className="toolbar-order-panel">
           <div className="toolbar-order-heading">
             <p id={help}>
-              drag to reorder. select an action to move it with the arrows.
+              Drag to reorder. select an action to move it with the arrows.
             </p>
             <Button
               disabled={!preferences.order?.length}
               onClick={() => toolbar.setPreferences({ order: [] })}
             >
-              reset order
+              Reset order
             </Button>
           </div>
-          <ol aria-label="toolbar order">
+          <ol aria-label="Toolbar order">
             {items.map((item) => {
               const Icon = item.icon ?? Puzzle
               const drag = reorder.props(item.id)
@@ -435,14 +435,14 @@ export function ToolbarSettings() {
               </p>
               <div>
                 <IconButton
-                  aria-label={`move ${active.label} earlier`}
+                  aria-label={`Move ${active.label} earlier`}
                   disabled={position === 0}
                   onClick={() => move(active.id, -1)}
                 >
                   <ArrowLeft size={16} aria-hidden />
                 </IconButton>
                 <IconButton
-                  aria-label={`move ${active.label} later`}
+                  aria-label={`Move ${active.label} later`}
                   disabled={position === items.length - 1}
                   onClick={() => move(active.id, 1)}
                 >

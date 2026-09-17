@@ -21,32 +21,32 @@ export default defineAddon({
     })
     const open = () => {
       context.dialogs.open({
-        title: 'git',
+        title: 'Git',
         size: 'wide',
         content: () => <GitPanel context={context} />,
       })
     }
     context.statusBar.register({
       id: 'repository',
-      label: 'git',
-      tooltip: 'repository status and branches',
+      label: 'Git',
+      tooltip: 'Repository status and branches',
       onClick: open,
     })
     context.commands.register({
       id: 'status',
-      label: 'git: status, diffs, and commits',
+      label: 'Git: status, diffs, and commits',
       keywords: 'repository stage unstage',
       run: open,
     })
     context.commands.register({
       id: 'branches',
-      label: 'git: switch branch',
+      label: 'Git: switch branch',
       run: open,
     })
     for (const action of ['pull', 'push'] as const)
       context.commands.register({
         id: action,
-        label: `git: ${action}`,
+        label: `Git: ${action}`,
         async run() {
           await context.native.invoke(action)
           context.notify(

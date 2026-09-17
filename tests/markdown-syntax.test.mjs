@@ -14,6 +14,7 @@ import { installSyntaxPreferences } from '../src/renderer/src/syntax-parser.ts'
 import { electron } from './electron.mjs'
 import { pressShortcut } from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
+import { uiName } from './ui.mjs'
 
 test('syntax controls preserve raw tokens in both lexer and export paths', () => {
   const parser = installSyntaxPreferences(
@@ -89,14 +90,16 @@ test('syntax settings preserve edits, update rich formatting, and discover addon
   const errors = []
   page.on('pageerror', (error) => errors.push(error.message))
   const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
-  const rich = page.getByRole('textbox', { name: 'document editor' })
+  const rich = page.getByRole('textbox', { name: /document editor/i })
   await rich.waitFor()
   await pressShortcut(app, `${mod}+Shift+]`)
-  const source = page.getByRole('textbox', { name: 'markdown editor' })
+  const source = page.getByRole('textbox', { name: /markdown editor/i })
   const initial =
     '# one\n\n## two\n\n**bold** H~2~O ~~strike~~\n\n-# small **text**\n\n> [!WARNING]\n> hello'
   await source.fill(initial)
-  await page.getByRole('button', { name: 'side-by-side', exact: true }).click()
+  await page
+    .getByRole('button', { name: /^side-by-side$/i, exact: true })
+    .click()
   await rich.locator('sub').waitFor()
   assert.equal(
     await rich.locator('.markdown-subtext').innerText(),
@@ -105,13 +108,15 @@ test('syntax settings preserve edits, update rich formatting, and discover addon
   assert.equal(await rich.locator('s').innerText(), 'strike')
   const settings = async () => {
     await page
-      .getByRole('button', { name: 'editor settings', exact: true })
+      .getByRole('button', { name: /^editor settings$/i, exact: true })
       .click()
-    await page.getByRole('tab', { name: 'syntax', exact: true }).click()
+    await page.getByRole('tab', { name: /^syntax$/i, exact: true }).click()
   }
   await settings()
   for (const name of ['heading 1', 'bold', 'alerts', 'subscript', 'small text'])
-    await page.getByRole('checkbox', { name, exact: true }).click()
+    await page
+      .getByRole('checkbox', { name: uiName(name, true), exact: true })
+      .click()
   await page.waitForFunction(
     () =>
       !document.querySelector(
@@ -122,12 +127,14 @@ test('syntax settings preserve edits, update rich formatting, and discover addon
     (await page.evaluate(() => window.hibi.getDocument())).markdown,
     initial,
   )
-  await page.getByRole('button', { name: 'back to app', exact: true }).click()
+  await page
+    .getByRole('button', { name: /^back to app$/i, exact: true })
+    .click()
   assert.equal(await rich.locator('h2').innerText(), 'two')
   assert.match(await rich.innerText(), /\*\*bold\*\* H~2~O/)
   await rich
     .locator('.hibi-literal-block')
-    .filter({ hasText: '# one' })
+    .filter({ hasText: /# one/i })
     .fill('# changed')
   await waitForAsync(page, async () =>
     (await window.hibi.getDocument()).markdown.includes('# changed'),
@@ -137,14 +144,18 @@ test('syntax settings preserve edits, update rich formatting, and discover addon
   assert.ok(edited.includes('> [!WARNING]\n> hello'))
   await settings()
   for (const name of ['heading 1', 'bold', 'alerts', 'subscript', 'small text'])
-    await page.getByRole('checkbox', { name, exact: true }).click()
-  await page.getByRole('tab', { name: 'addons', exact: true }).click()
+    await page
+      .getByRole('checkbox', { name: uiName(name, true), exact: true })
+      .click()
+  await page.getByRole('tab', { name: /^addons$/i, exact: true }).click()
   await page.locator('#addon-math').click()
-  await page.getByRole('tab', { name: 'syntax', exact: true }).click()
+  await page.getByRole('tab', { name: /^syntax$/i, exact: true }).click()
   await page
-    .getByRole('checkbox', { name: 'inline math', exact: true })
+    .getByRole('checkbox', { name: /^inline math$/i, exact: true })
     .waitFor()
-  await page.getByRole('button', { name: 'back to app', exact: true }).click()
+  await page
+    .getByRole('button', { name: /^back to app$/i, exact: true })
+    .click()
   await rich.locator('h1').waitFor()
   assert.equal(await rich.locator('h1').innerText(), 'changed')
   assert.equal(await rich.locator('sub').innerText(), '2')
@@ -153,15 +164,19 @@ test('syntax settings preserve edits, update rich formatting, and discover addon
     edited,
   )
   await settings()
-  await page.getByRole('checkbox', { name: 'bold', exact: true }).click()
+  await page.getByRole('checkbox', { name: /^bold$/i, exact: true }).click()
   await page.reload()
   await settings()
   assert.equal(
-    await page.getByRole('checkbox', { name: 'bold', exact: true }).isChecked(),
+    await page
+      .getByRole('checkbox', { name: /^bold$/i, exact: true })
+      .isChecked(),
     false,
   )
-  await page.getByRole('checkbox', { name: 'bold', exact: true }).click()
-  await page.getByRole('button', { name: 'back to app', exact: true }).click()
+  await page.getByRole('checkbox', { name: /^bold$/i, exact: true }).click()
+  await page
+    .getByRole('button', { name: /^back to app$/i, exact: true })
+    .click()
   assert.equal(
     (await page.evaluate(() => window.hibi.getDocument())).markdown,
     edited,
@@ -180,7 +195,7 @@ test('syntax settings preserve edits, update rich formatting, and discover addon
   await rich.pressSequentially('-# typed small')
   await rich
     .locator('.markdown-subtext')
-    .filter({ hasText: 'typed small' })
+    .filter({ hasText: /typed small/i })
     .waitFor()
   await rich.press('Enter')
   await rich.pressSequentially('normal again')

@@ -24,7 +24,7 @@ test('autosave preserves later edits, pauses on external changes, and never prom
   })
   const page = await app.firstWindow()
   page.setDefaultTimeout(6500)
-  const rich = page.getByRole('textbox', { name: 'document editor' })
+  const rich = page.getByRole('textbox', { name: /document editor/i })
   await rich.waitFor()
   await app.evaluate(({ dialog }, file) => {
     globalThis.dialogsShown = 0
@@ -39,17 +39,17 @@ test('autosave preserves later edits, pauses on external changes, and never prom
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] })
   }, file)
   const pill = page.locator('[data-status-id="autosave"]')
-  assert.equal(await pill.innerText(), 'autosave off')
+  assert.equal(await pill.innerText(), 'Autosave off')
   await pill.click()
-  await page.getByRole('checkbox', { name: 'autosave', exact: true }).check()
-  await page.getByLabel('save after', { exact: true }).selectOption('1000')
-  await page.getByRole('button', { name: 'back to editor' }).click()
+  await page.getByRole('checkbox', { name: /^autosave$/i, exact: true }).check()
+  await page.getByLabel(/^save after$/i, { exact: true }).selectOption('1000')
+  await page.getByRole('button', { name: /back to editor/i }).click()
   await rich.fill('new draft')
   await page.waitForTimeout(1200)
   assert.equal(await app.evaluate(() => globalThis.dialogsShown), 0)
-  assert.equal(await pill.innerText(), 'autosave · save first')
+  assert.equal(await pill.innerText(), 'Autosave · save first')
   await rich.fill('')
-  await page.getByRole('button', { name: 'open', exact: true }).click()
+  await page.getByRole('button', { name: /^open$/i, exact: true }).click()
   await waitForAsync(
     page,
     async () => (await window.hibi.getDocument()).canAutosave,
@@ -76,7 +76,7 @@ test('autosave preserves later edits, pauses on external changes, and never prom
   await page.waitForFunction(
     () =>
       document.querySelector('[data-status-id="autosave"]').textContent ===
-      'autosave · saved',
+      'Autosave · saved',
   )
   assert.equal(await rich.innerText(), 'keep typing during save')
   assert.equal(await readFile(file, 'utf8'), 'keep typing during save')
@@ -86,7 +86,7 @@ test('autosave preserves later edits, pauses on external changes, and never prom
   await page.waitForFunction(
     () =>
       document.querySelector('[data-status-id="autosave"]').textContent ===
-      'autosave · paused',
+      'Autosave · paused',
   )
   assert.equal(await app.evaluate(() => globalThis.dialogsShown), 0)
   assert.equal(await readFile(file, 'utf8'), 'external edit')
@@ -97,7 +97,7 @@ test('autosave preserves later edits, pauses on external changes, and never prom
   await rich.fill('another local edit')
   await page.waitForTimeout(1200)
   assert.equal(await readFile(file, 'utf8'), 'external edit')
-  await page.getByRole('button', { name: 'save', exact: true }).click()
+  await page.getByRole('button', { name: /^save$/i, exact: true }).click()
   await waitForAsync(page, async () => !(await window.hibi.getDocument()).dirty)
   assert.equal(await readFile(file, 'utf8'), 'another local edit')
   await page.waitForFunction(
@@ -113,12 +113,12 @@ test('autosave preserves later edits, pauses on external changes, and never prom
   await pill.click()
   assert.equal(
     await page
-      .getByRole('checkbox', { name: 'autosave', exact: true })
+      .getByRole('checkbox', { name: /^autosave$/i, exact: true })
       .isChecked(),
     true,
   )
   assert.equal(
-    await page.getByLabel('save after', { exact: true }).inputValue(),
+    await page.getByLabel(/^save after$/i, { exact: true }).inputValue(),
     '1000',
   )
 })

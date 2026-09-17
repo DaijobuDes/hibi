@@ -15,9 +15,9 @@ export default defineAddon({
   start(context) {
     context.editor.registerSyntax({
       id: 'blocks',
-      label: 'typst blocks',
+      label: 'Typst blocks',
       group: 'typst',
-      description: 'render fenced typst inside markdown.',
+      description: 'Render fenced Typst inside Markdown.',
       level: 'block',
       extensions: ['typstBlock'],
       matches: (token) =>
@@ -99,7 +99,7 @@ export default defineAddon({
     })
     context.commands.register({
       id: 'new',
-      label: 'new typst document',
+      label: 'New Typst document',
       run: async () => {
         if (await context.native.invoke('create'))
           context.app.runAction('side-by-side')
@@ -109,7 +109,7 @@ export default defineAddon({
       const document = context.editor.getDocument()
       if (!document?.name.toLowerCase().endsWith('.typ')) {
         await context.dialogs.alert({
-          title: 'open a typst document',
+          title: 'Open a Typst document',
           description:
             'open a .typ file, or use the pdf button on a typst block.',
         })
@@ -123,12 +123,12 @@ export default defineAddon({
     }
     context.commands.register({
       id: 'pdf',
-      label: 'export typst pdf',
+      label: 'Export Typst PDF',
       run: exportPdf,
     })
     const pdf = context.toolbar.register({
       id: 'pdf',
-      label: 'export typst pdf',
+      label: 'Export Typst PDF',
       icon: FileDown,
       onClick: exportPdf,
       hidden: true,
@@ -138,10 +138,10 @@ export default defineAddon({
     )
     context.commands.register({
       id: 'block',
-      label: 'insert typst block',
+      label: 'Insert Typst block',
       slash: {
-        label: 'typst',
-        description: 'rendered typst block',
+        label: 'Typst',
+        description: 'Rendered Typst block',
         transform: (source) =>
           `${source}\n\n\`\`\`typst\n$ sum_(k=1)^n k = (n(n+1))/2 $\n\`\`\`\n`,
       },
@@ -149,9 +149,9 @@ export default defineAddon({
         const document = context.editor.getDocument()
         if (!document || !isMarkdownDocument(document.name)) {
           await context.dialogs.alert({
-            title: 'open a markdown document',
+            title: 'Open a Markdown document',
             description:
-              'typst blocks belong inside markdown. write typst directly in .typ files.',
+              'Typst blocks belong inside Markdown. write Typst directly in .typ files.',
           })
           return
         }

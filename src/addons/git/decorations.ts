@@ -89,7 +89,7 @@ export function gitDecorations(
       path: file.path,
       badge: state.badge,
       color: state.color,
-      label: `git: ${state.name}${file.original ? ` from ${file.original}` : ''}${stage ? ` (${stage})` : ''}`,
+      label: `Git: ${state.name}${file.original ? ` from ${file.original}` : ''}${stage ? ` (${stage})` : ''}`,
     }
   })
   for (const [path, folder] of folders)
@@ -97,7 +97,7 @@ export function gitDecorations(
       path,
       badge: '●',
       color: folder.status.color,
-      label: `git: contains ${folder.count} changed ${folder.count === 1 ? 'file' : 'files'}${folder.status.badge === '!' ? ', including merge conflicts' : ''}`,
+      label: `Git: contains ${folder.count} changed ${folder.count === 1 ? 'file' : 'files'}${folder.status.badge === '!' ? ', including merge conflicts' : ''}`,
     })
   return result
 }

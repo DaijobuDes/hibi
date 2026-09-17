@@ -24,12 +24,12 @@ test('empty formatted blocks remain editable and rich editing survives vim and v
   const page = await app.firstWindow()
   page.setDefaultTimeout(6000)
   const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
-  const rich = page.getByRole('textbox', { name: 'document editor' })
+  const rich = page.getByRole('textbox', { name: /document editor/i })
   await rich.waitFor()
-  await page.getByRole('button', { name: 'editor settings' }).click()
-  await page.getByRole('tab', { name: 'addons', exact: true }).click()
+  await page.getByRole('button', { name: /editor settings/i }).click()
+  await page.getByRole('tab', { name: /^addons$/i, exact: true }).click()
   await page.locator('#addon-vim').click()
-  await page.getByRole('button', { name: 'back to editor' }).click()
+  await page.getByRole('button', { name: /back to editor/i }).click()
   await rich.fill('/table')
   await rich.press('Enter')
   await rich.locator('td').first().click()
@@ -46,7 +46,7 @@ test('empty formatted blocks remain editable and rich editing survives vim and v
     (await window.hibi.getDocument()).markdown.includes('after table'),
   )
   await pressShortcut(app, `${mod}+Shift+\\`)
-  const source = page.getByRole('textbox', { name: 'markdown editor' })
+  const source = page.getByRole('textbox', { name: /markdown editor/i })
   await source.waitFor()
   await page.locator('[data-vim-plugin]').waitFor()
   await source.focus()
@@ -89,7 +89,7 @@ test('empty formatted blocks remain editable and rich editing survives vim and v
           'true',
     )
     await rich.fill(`/${command}`)
-    await page.getByRole('listbox', { name: 'slash commands' }).waitFor()
+    await page.getByRole('listbox', { name: /slash commands/i }).waitFor()
     await rich.press('Enter')
     await rich
       .locator({ code: 'pre', quote: 'blockquote', h1: 'h1' }[command])

@@ -1,5 +1,9 @@
 # settings
 
+## interface text
+
+the interface uses sentence case by default. enable **Lowercase interface** under **Appearance** to display built-in screens, extension panels, tooltips, notifications, and app menus in lowercase. the preference persists across launches. document content, typed field values, code, and case-sensitive Vim commands keep their original spelling.
+
 ## autosave
 
 editor settings include an autosave switch (off by default) and a delay from one to thirty seconds after typing stops. its status-bar pill opens those settings and shows off, save first, waiting, saving, saved, or paused. new and remote drafts need one manual save to choose a local destination. external file changes pause autosave; use manual save to review the conflict. autosave uses the same local-history snapshots as manual saves and never opens a file dialog or silently replaces external edits.

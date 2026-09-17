@@ -5,6 +5,7 @@ import { basename, join, resolve } from 'node:path'
 import test from 'node:test'
 import { electron } from './electron.mjs'
 import { checkSidebarResize } from './sidebar-resize.mjs'
+import { uiName } from './ui.mjs'
 
 test('switching documents retains split/source layout without replaying view transitions', {
   timeout: 30000,
@@ -30,16 +31,18 @@ test('switching documents retains split/source layout without replaying view tra
         filePaths: [file],
       })
     }, file)
-  await page.getByRole('textbox', { name: 'document editor' }).waitFor()
+  await page.getByRole('textbox', { name: /document editor/i }).waitFor()
   await chooseFile(first)
-  await page.getByRole('button', { name: 'open', exact: true }).click()
-  await page.getByRole('heading', { name: 'first', exact: true }).waitFor()
+  await page.getByRole('button', { name: /^open$/i, exact: true }).click()
+  await page.getByRole('heading', { name: /^first$/i, exact: true }).waitFor()
   for (const [mode, label, file] of [
     ['side-by-side', 'side-by-side', second],
     ['markdown', 'markdown only', first],
   ]) {
-    await page.getByRole('button', { name: label, exact: true }).click()
-    await page.getByRole('textbox', { name: 'markdown editor' }).waitFor()
+    await page
+      .getByRole('button', { name: uiName(label, true), exact: true })
+      .click()
+    await page.getByRole('textbox', { name: /markdown editor/i }).waitFor()
     await page.evaluate(() =>
       Promise.all(
         document
@@ -59,7 +62,7 @@ test('switching documents retains split/source layout without replaying view tra
         )
       const frames = []
       try {
-        document.querySelector('button[aria-label="open"]').click()
+        document.querySelector('button[aria-label="open" i]').click()
         const start = performance.now()
         while (performance.now() - start < 500) {
           await new Promise(requestAnimationFrame)
@@ -120,9 +123,11 @@ test('split panes align corresponding carets in both directions without feedback
   await page.evaluate(() => {
     document.hasFocus = () => true
   })
-  await page.getByRole('textbox', { name: 'document editor' }).waitFor()
-  await page.getByRole('button', { name: 'side-by-side', exact: true }).click()
-  const source = page.getByRole('textbox', { name: 'markdown editor' })
+  await page.getByRole('textbox', { name: /document editor/i }).waitFor()
+  await page
+    .getByRole('button', { name: /^side-by-side$/i, exact: true })
+    .click()
+  const source = page.getByRole('textbox', { name: /markdown editor/i })
   const markdown = Array.from(
     { length: 90 },
     (_, index) =>
@@ -174,7 +179,7 @@ test('split panes align corresponding carets in both directions without feedback
     await source.evaluate((element) => element === document.activeElement),
     true,
   )
-  const rich = page.getByRole('textbox', { name: 'document editor' })
+  const rich = page.getByRole('textbox', { name: /document editor/i })
   await rich.locator('h2').nth(45).click()
   await aligned('.rich-pane .editor-cursor', '.source-pane .mirror-cursor')
   assert.equal(
@@ -194,7 +199,7 @@ test('split panes align corresponding carets in both directions without feedback
     (await page.evaluate(() => window.hibi.getDocument())).markdown,
     markdown,
   )
-  await page.getByRole('button', { name: 'normal', exact: true }).click()
+  await page.getByRole('button', { name: /^normal$/i, exact: true }).click()
   await page.evaluate(() =>
     Promise.all(
       document
@@ -235,7 +240,7 @@ test('source font and layout are ready before the pane starts moving', {
     await rm(profile, { recursive: true, force: true })
   })
   const page = await app.firstWindow()
-  await page.getByRole('textbox', { name: 'document editor' }).waitFor()
+  await page.getByRole('textbox', { name: /document editor/i }).waitFor()
   await page.addInitScript(() => {
     const load = document.fonts.load.bind(document.fonts)
     document.fonts.load = (font, text) =>
@@ -251,10 +256,12 @@ test('source font and layout are ready before the pane starts moving', {
       BrowserWindow.getAllWindows()[0].reload(),
     ),
   ])
-  const rich = page.getByRole('textbox', { name: 'document editor' })
+  const rich = page.getByRole('textbox', { name: /document editor/i })
   await rich.waitFor()
   await rich.fill('keep edits made while the source engine loads')
-  await page.getByRole('button', { name: 'side-by-side', exact: true }).click()
+  await page
+    .getByRole('button', { name: /^side-by-side$/i, exact: true })
+    .click()
   assert.equal(
     await page.locator('.editor-panes').getAttribute('data-source-ready'),
     'false',
@@ -267,7 +274,7 @@ test('source font and layout are ready before the pane starts moving', {
     () => typeof window.releaseSourceFont === 'function',
   )
   await page.evaluate(() => window.releaseSourceFont())
-  const source = page.getByRole('textbox', { name: 'markdown editor' })
+  const source = page.getByRole('textbox', { name: /markdown editor/i })
   await source.waitFor()
   assert.equal(
     await page.locator('.editor-panes').getAttribute('data-source-ready'),
@@ -301,20 +308,20 @@ test('panes move horizontally and sidebar selection slides without fading settin
     await rm(profile, { recursive: true, force: true })
   })
   const page = await app.firstWindow()
-  await page.getByRole('textbox', { name: 'document editor' }).waitFor()
+  await page.getByRole('textbox', { name: /document editor/i }).waitFor()
   await page.waitForFunction(
     () =>
       document.querySelector('.editor-panes').dataset.sourceReady === 'true',
   )
   await page
-    .getByRole('textbox', { name: 'document editor' })
+    .getByRole('textbox', { name: /document editor/i })
     .fill(
       'long paragraphs should keep their wrapping while a panel slides across the window. '.repeat(
         40,
       ),
     )
   assert.equal(
-    await page.getByRole('button', { name: 'format', exact: true }).count(),
+    await page.getByRole('button', { name: /^format$/i, exact: true }).count(),
     0,
   )
   assert.equal(await page.locator('#format-menu').count(), 0)
@@ -331,7 +338,9 @@ test('panes move horizontally and sidebar selection slides without fading settin
       ),
     )
   async function sampleSplit(from, to = 'side-by-side') {
-    await page.getByRole('button', { name: from, exact: true }).click()
+    await page
+      .getByRole('button', { name: uiName(from, true), exact: true })
+      .click()
     await settle()
     return page.evaluate(async (target) => {
       const sample = () => {
@@ -356,7 +365,7 @@ test('panes move horizontally and sidebar selection slides without fading settin
         }
       }
       const samples = [sample()]
-      document.querySelector(`button[aria-label="${target}"]`).click()
+      document.querySelector(`button[aria-label="${target}" i]`).click()
       const start = performance.now()
       while (performance.now() - start < 300) {
         await new Promise(requestAnimationFrame)
@@ -427,7 +436,9 @@ test('panes move horizontally and sidebar selection slides without fading settin
     ),
   )
   assert.equal(dismissSource.at(-1).dividerOpacity, 0)
-  await page.getByRole('button', { name: 'side-by-side', exact: true }).click()
+  await page
+    .getByRole('button', { name: /^side-by-side$/i, exact: true })
+    .click()
   await settle()
   const divider = await page
     .locator('.editor-panes')
@@ -438,9 +449,9 @@ test('panes move horizontally and sidebar selection slides without fading settin
   await page.screenshot({ path: 'test-results/split-view.png' })
 
   await page
-    .getByRole('button', { name: 'editor settings', exact: true })
+    .getByRole('button', { name: /^editor settings$/i, exact: true })
     .click()
-  await page.getByRole('main', { name: 'settings', exact: true }).waitFor()
+  await page.getByRole('main', { name: /^settings$/i, exact: true }).waitFor()
   await settle()
   const selection = await page.evaluate(async () => {
     const marker = document.querySelector('.category-selection')
@@ -491,8 +502,10 @@ test('panes move horizontally and sidebar selection slides without fading settin
       .evaluate((element) => getComputedStyle(element).transitionDuration),
     '0s',
   )
-  await page.getByRole('button', { name: 'back to editor' }).click()
-  await page.getByRole('button', { name: 'markdown only', exact: true }).click()
+  await page.getByRole('button', { name: /back to editor/i }).click()
+  await page
+    .getByRole('button', { name: /^markdown only$/i, exact: true })
+    .click()
   assert.equal(
     await page
       .locator('.editor-content')
@@ -507,7 +520,7 @@ test('panes move horizontally and sidebar selection slides without fading settin
     true,
   )
   await page
-    .getByRole('button', { name: 'command palette', exact: true })
+    .getByRole('button', { name: /^command palette$/i, exact: true })
     .click()
   await page.getByRole('dialog').waitFor()
   const bounds = await page.getByRole('dialog').boundingBox()
@@ -532,8 +545,8 @@ test('workspace sidebar slides at a fixed width and the titlebar follows its sta
     await rm(profile, { recursive: true, force: true })
   })
   const page = await app.firstWindow()
-  await page.getByRole('textbox', { name: 'document editor' }).waitFor()
-  await page.getByRole('button', { name: 'toggle workspace sidebar' }).click()
+  await page.getByRole('textbox', { name: /document editor/i }).waitFor()
+  await page.getByRole('button', { name: /toggle workspace sidebar/i }).click()
   await page.waitForFunction(
     () =>
       document.querySelector('.workspace-sidebar > .sidebar').getAnimations()
@@ -548,7 +561,9 @@ test('workspace sidebar slides at a fixed width and the titlebar follows its sta
       const sidebar = document.querySelector('.workspace-sidebar > .sidebar')
       const editor = document.querySelector('.editor-surface')
       const toolbar = document.querySelector('.sidebar-toolbar')
-      document.querySelector('[aria-label="toggle workspace sidebar"]').click()
+      document
+        .querySelector('[aria-label="toggle workspace sidebar" i]')
+        .click()
       const samples = []
       let reversed = false
       const start = performance.now()
@@ -556,7 +571,7 @@ test('workspace sidebar slides at a fixed width and the titlebar follows its sta
         await new Promise(requestAnimationFrame)
         if (reverse && !reversed && performance.now() - start > 64) {
           document
-            .querySelector('[aria-label="toggle workspace sidebar"]')
+            .querySelector('[aria-label="toggle workspace sidebar" i]')
             .click()
           reversed = true
         }
@@ -622,18 +637,18 @@ test('workspace sidebar slides at a fixed width and the titlebar follows its sta
     assert.equal(samples.at(-1).x, opening ? 0 : -196)
     assert.equal(samples.at(-1).toolbarWidth, opening ? 196 : 132)
   }
-  await page.getByRole('button', { name: 'editor settings' }).click()
+  await page.getByRole('button', { name: /editor settings/i }).click()
   assert.equal(
     await page.locator('.sidebar-toolbar').evaluate((el) => el.offsetWidth),
     196,
   )
   assert.equal(
-    await page.getByRole('button', { name: 'new', exact: true }).count(),
+    await page.getByRole('button', { name: /^new$/i, exact: true }).count(),
     0,
   )
-  await page.getByRole('button', { name: 'back to editor' }).click()
+  await page.getByRole('button', { name: /back to editor/i }).click()
   await page.emulateMedia({ reducedMotion: 'reduce' })
-  await page.getByRole('button', { name: 'toggle workspace sidebar' }).click()
+  await page.getByRole('button', { name: /toggle workspace sidebar/i }).click()
   assert.equal(
     await page.locator('.workspace-sidebar').evaluate((el) => el.inert),
     true,
@@ -644,7 +659,7 @@ test('workspace sidebar slides at a fixed width and the titlebar follows its sta
       .evaluate((el) => getComputedStyle(el).visibility),
     'hidden',
   )
-  await page.getByRole('button', { name: 'toggle workspace sidebar' }).click()
+  await page.getByRole('button', { name: /toggle workspace sidebar/i }).click()
   await page.emulateMedia({ reducedMotion: 'no-preference' })
   await checkSidebarResize(page, 196, '.editor-surface', async () => {
     await Promise.all([
@@ -653,18 +668,20 @@ test('workspace sidebar slides at a fixed width and the titlebar follows its sta
         BrowserWindow.getAllWindows()[0].reload(),
       ),
     ])
-    await page.getByRole('button', { name: 'toggle workspace sidebar' }).click()
+    await page
+      .getByRole('button', { name: /toggle workspace sidebar/i })
+      .click()
   })
-  await page.getByRole('button', { name: 'editor settings' }).click()
-  const resize = page.getByRole('separator', { name: 'resize sidebar' })
+  await page.getByRole('button', { name: /editor settings/i }).click()
+  const resize = page.getByRole('separator', { name: /resize sidebar/i })
   await resize.press('ArrowRight')
   assert.equal(Number(await resize.getAttribute('aria-valuenow')), 204)
-  await page.getByRole('button', { name: 'back to editor' }).click()
+  await page.getByRole('button', { name: /back to editor/i }).click()
   assert.equal(
     Number(
       await page
         .locator('.workspace-sidebar')
-        .getByRole('separator', { name: 'resize sidebar' })
+        .getByRole('separator', { name: /resize sidebar/i })
         .getAttribute('aria-valuenow'),
     ),
     204,

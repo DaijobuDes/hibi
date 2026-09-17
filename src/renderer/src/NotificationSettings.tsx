@@ -11,12 +11,12 @@ export function NotificationSettings() {
   )
   return (
     <>
-      <h2>notifications</h2>
+      <h2>Notifications</h2>
       <div className="settings-group">
         <SettingRow
           id="notification-position"
-          label="position"
-          description="where notifications appear in the window."
+          label="Position"
+          description="Where notifications appear in the window."
         >
           <Select
             id="notification-position"
@@ -36,8 +36,8 @@ export function NotificationSettings() {
         </SettingRow>
         <SettingRow
           id="notification-duration"
-          label="dismiss after"
-          description="hover or focus a notification to pause its countdown."
+          label="Dismiss after"
+          description="Hover or focus a notification to pause its countdown."
         >
           <Select
             id="notification-duration"
@@ -52,30 +52,30 @@ export function NotificationSettings() {
               ...new Set([3000, 5000, 8000, 10000, 0, preferences.duration]),
             ].map((duration) => (
               <option key={duration} value={duration}>
-                {duration ? `${duration / 1000} seconds` : 'never'}
+                {duration ? `${duration / 1000} seconds` : 'Never'}
               </option>
             ))}
           </Select>
         </SettingRow>
         <SettingRow
           id="notification-preview"
-          label="preview"
-          description="try the current position and countdown."
+          label="Preview"
+          description="Try the current position and countdown."
         >
           <Button
             id="notification-preview"
-            aria-label="show preview"
+            aria-label="Show preview"
             onClick={() =>
               service.api.show({
-                message: 'notification preview',
+                message: 'Notification preview',
                 description: preferences.duration
-                  ? 'hover to pause the countdown.'
-                  : 'stays until you dismiss it.',
+                  ? 'Hover to pause the countdown.'
+                  : 'Stays until you dismiss it.',
                 variant: 'success',
               })
             }
           >
-            show preview
+            Show preview
           </Button>
         </SettingRow>
       </div>

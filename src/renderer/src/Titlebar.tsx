@@ -12,13 +12,13 @@ import {
   Search,
   SlidersHorizontal,
 } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
 import type { DocumentCommand, DocumentState } from '../../shared/desktop'
 import { isMarkdownDocument } from '../../shared/document-types'
 import { type Hotkeys, shortcutLabels } from '../../shared/hotkeys'
-import { IconButton, TextInput } from '../../ui/Controls'
+import { IconButton } from '../../ui/Controls'
 import { useMenus } from '../../ui/MenuHost'
 import { ShortcutKeys } from '../../ui/ShortcutKeys'
+import { DocumentTabs } from './DocumentTabs'
 import type { ViewMode } from './Editor'
 import type { SidebarView } from './OutlineSidebar'
 
@@ -53,7 +53,8 @@ export function Titlebar({
   onSidebar,
   sidebarView,
   onSidebarView,
-  onRename,
+  onSelectTab,
+  onCloseTab,
   busy,
 }: {
   document: DocumentState | null
@@ -70,22 +71,11 @@ export function Titlebar({
   onSidebar: () => void
   sidebarView: SidebarView
   onSidebarView: (view: SidebarView) => void
-  onRename: (name: string) => Promise<void>
+  onSelectTab: (id: string) => void
+  onCloseTab: (id: string) => void
   busy: boolean
 }) {
   const menus = useMenus(console.error)
-  const [renaming, setRenaming] = useState(false)
-  const [name, setName] = useState('')
-  const input = useRef<HTMLInputElement>(null)
-  useEffect(() => {
-    const field = input.current
-    if (!renaming || !field) return
-    field.focus()
-    const extension = field.value.lastIndexOf('.')
-    field.setSelectionRange(0, extension > 0 ? extension : field.value.length)
-  }, [renaming])
-  // biome-ignore lint/correctness/useExhaustiveDependencies: changing documents or screens cancels inline renaming.
-  useEffect(() => setRenaming(false), [document?.name, settingsOpen])
   return (
     <header className="titlebar" aria-busy={busy}>
       <div className="sidebar-toolbar" data-open={sidebarOpen || settingsOpen}>
@@ -93,12 +83,12 @@ export function Titlebar({
           <>
             <IconButton
               type="button"
-              aria-label="toggle workspace sidebar"
+              aria-label="Toggle workspace sidebar"
               aria-pressed={sidebarOpen}
               title={
                 sidebarView === 'workspace'
-                  ? 'workspace sidebar'
-                  : 'in this page'
+                  ? 'Workspace sidebar'
+                  : 'In this page'
               }
               onClick={onSidebar}
             >
@@ -110,23 +100,23 @@ export function Titlebar({
             </IconButton>
             <IconButton
               className="sidebar-view-menu"
-              aria-label="sidebar views"
+              aria-label="Sidebar views"
               aria-haspopup="menu"
-              title="sidebar views"
+              title="Sidebar views"
               onClick={(event) =>
                 menus.open({
-                  label: 'sidebar views',
+                  label: 'Sidebar views',
                   anchor: event.currentTarget,
                   items: [
                     {
                       id: 'workspace',
-                      label: 'workspace',
+                      label: 'Workspace',
                       icon: FolderOpen,
                       onSelect: () => onSidebarView('workspace'),
                     },
                     {
                       id: 'outline',
-                      label: 'in this page',
+                      label: 'In this page',
                       icon: ListTree,
                       onSelect: () => onSidebarView('outline'),
                     },
@@ -161,62 +151,23 @@ export function Titlebar({
         )}
         <div className="document-title">
           {settingsOpen ? (
-            <span>settings</span>
-          ) : renaming ? (
-            <TextInput
-              variant="inline"
-              ref={input}
-              className="inline-edit rename-input"
-              aria-label="file name"
-              value={name}
-              spellCheck={false}
-              onChange={(event) => setName(event.target.value)}
-              onBlur={() => setRenaming(false)}
-              onKeyDown={(event) => {
-                if (event.key === 'Escape') {
-                  event.preventDefault()
-                  setRenaming(false)
-                }
-                if (event.key === 'Enter') {
-                  event.preventDefault()
-                  setRenaming(false)
-                  void onRename(name)
-                }
-              }}
+            <span>Settings</span>
+          ) : document ? (
+            <DocumentTabs
+              document={document}
+              busy={busy}
+              onSelect={onSelectTab}
+              onClose={onCloseTab}
             />
           ) : (
-            <button
-              type="button"
-              className="document-name"
-              aria-label="rename document"
-              title="rename document"
-              disabled={disabled}
-              onClick={() => {
-                if (busy) return
-                setName(document?.name ?? 'untitled.md')
-                setRenaming(true)
-              }}
-            >
-              <span>
-                {settingsOpen ? 'settings' : (document?.name ?? 'hibi')}
-              </span>
-              {!settingsOpen && document?.dirty && (
-                <span
-                  className="dirty-dot"
-                  role="status"
-                  aria-label="unsaved changes"
-                >
-                  •
-                </span>
-              )}
-            </button>
+            <span>Hibi</span>
           )}
         </div>
         <button
           type="button"
           className="palette-trigger"
-          aria-label="command palette"
-          title="command palette"
+          aria-label="Command palette"
+          data-tooltip="Command palette"
           onClick={onPalette}
         >
           <Search size={14} strokeWidth={1.5} aria-hidden="true" />
@@ -226,15 +177,15 @@ export function Titlebar({
         </button>
         <nav
           className="view-switch"
-          aria-label={settingsOpen ? 'navigation' : 'editor view'}
+          aria-label={settingsOpen ? 'Navigation' : 'Editor view'}
         >
           {!settingsOpen &&
             (['normal', 'side-by-side', 'markdown'] as const).map((view) => {
               const label =
                 view === 'markdown'
                   ? document && !isMarkdownDocument(document.name)
-                    ? 'source only'
-                    : 'markdown only'
+                    ? 'Source only'
+                    : 'Markdown only'
                   : view
               return (
                 <IconButton
@@ -251,8 +202,8 @@ export function Titlebar({
             })}
           <IconButton
             type="button"
-            aria-label={settingsOpen ? 'back to editor' : 'editor settings'}
-            title={settingsOpen ? 'back to editor' : 'editor settings'}
+            aria-label={settingsOpen ? 'Back to editor' : 'Editor settings'}
+            title={settingsOpen ? 'Back to editor' : 'Editor settings'}
             aria-pressed={settingsOpen}
             onClick={onSettings}
           >

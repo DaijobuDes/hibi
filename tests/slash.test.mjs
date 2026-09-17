@@ -3,7 +3,31 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
+import { filterCommands } from '../src/addons/slash-commands/commands.ts'
 import { electron } from './electron.mjs'
+
+test('slash search matches labels, descriptions, and extension keywords without case sensitivity', () => {
+  const context = {
+    commands: {
+      getSlashCommands: () => [
+        {
+          id: 'custom',
+          label: 'MixedCase',
+          description: 'Example',
+          keywords: 'UPPER',
+        },
+      ],
+    },
+  }
+  for (const query of ['table', 'TABLE', 'two COLUMNS'])
+    assert.ok(
+      filterCommands(query, context).some((command) => command.id === 'table'),
+    )
+  for (const query of ['mixedcase', 'example', 'upper'])
+    assert.ok(
+      filterCommands(query, context).some((command) => command.id === 'custom'),
+    )
+})
 
 test('slash commands work in both editors, preserve undo, and coexist with vim', {
   timeout: 60000,
@@ -23,9 +47,9 @@ test('slash commands work in both editors, preserve undo, and coexist with vim',
   page.setDefaultTimeout(5000)
   const errors = []
   page.on('pageerror', (error) => errors.push(error.message))
-  const rich = page.getByRole('textbox', { name: 'document editor' })
-  const source = page.getByRole('textbox', { name: 'markdown editor' })
-  const menu = page.getByRole('listbox', { name: 'slash commands' })
+  const rich = page.getByRole('textbox', { name: /document editor/i })
+  const source = page.getByRole('textbox', { name: /markdown editor/i })
+  const menu = page.getByRole('listbox', { name: /slash commands/i })
   const read = () =>
     page.evaluate(async () => (await window.hibi.getDocument()).markdown)
   const undo = process.platform === 'darwin' ? 'Meta+z' : 'Control+z'
@@ -45,7 +69,7 @@ test('slash commands work in both editors, preserve undo, and coexist with vim',
   )
   assert.equal(await menu.getByRole('option').count(), 12)
   await menu
-    .getByRole('option', { name: 'text plain paragraph', exact: true })
+    .getByRole('option', { name: /^text plain paragraph$/i, exact: true })
     .click()
   assert.equal(await read(), '')
   await rich.fill('/')
@@ -60,7 +84,7 @@ test('slash commands work in both editors, preserve undo, and coexist with vim',
   assert.equal(await rich.locator('h1').count(), 1)
   await rich.fill('/quote')
   await menu.waitFor()
-  await menu.getByRole('option', { name: 'quote blockquote' }).click()
+  await menu.getByRole('option', { name: /quote blockquote/i }).click()
   assert.equal(await rich.locator('blockquote').count(), 1)
   await rich.fill('/')
   await menu.waitFor()
@@ -76,7 +100,9 @@ test('slash commands work in both editors, preserve undo, and coexist with vim',
   assert.equal(await rich.locator('table').count(), 1)
 
   await page.mouse.move(450, 18)
-  await page.getByRole('button', { name: 'markdown only', exact: true }).click()
+  await page
+    .getByRole('button', { name: /^markdown only$/i, exact: true })
+    .click()
   await source.waitFor()
   await source.fill('/code')
   await menu.waitFor()
@@ -135,7 +161,9 @@ test('slash commands work in both editors, preserve undo, and coexist with vim',
   assert.ok(bounds.top >= 0 && bounds.bottom <= bounds.height)
   await source.press('Enter')
   await page.mouse.move(400, 18)
-  await page.getByRole('button', { name: 'side-by-side', exact: true }).click()
+  await page
+    .getByRole('button', { name: /^side-by-side$/i, exact: true })
+    .click()
   await rich.locator('h2').last().click()
   await rich.pressSequentially('/quote')
   await menu.waitFor()
@@ -143,28 +171,33 @@ test('slash commands work in both editors, preserve undo, and coexist with vim',
   assert.equal(await rich.locator('blockquote').count(), 1)
   assert.match(await read(), />/)
   await page.mouse.move(400, 18)
-  await page.getByRole('button', { name: 'markdown only', exact: true }).click()
+  await page
+    .getByRole('button', { name: /^markdown only$/i, exact: true })
+    .click()
 
   await page.mouse.move(450, 18)
-  await page.getByRole('button', { name: 'editor settings' }).click()
-  await page.getByRole('tab', { name: 'addons', exact: true }).click()
+  await page.getByRole('button', { name: /editor settings/i }).click()
+  await page.getByRole('tab', { name: /^addons$/i, exact: true }).click()
   await page.locator('#addon-slash-commands').click()
   await page.waitForFunction(
     () =>
       !document.querySelector('style[data-addon-style="slash-commands.menu"]'),
   )
-  await page.getByRole('button', { name: 'back to editor' }).click()
+  await page.getByRole('button', { name: /back to editor/i }).click()
   await source.fill('/h1')
   assert.equal(await menu.count(), 0)
   const beforeToggle = await read()
   await page.mouse.move(450, 18)
-  await page.getByRole('button', { name: 'editor settings' }).click()
-  await page.getByRole('tab', { name: 'addons', exact: true }).click()
+  await page.getByRole('button', { name: /editor settings/i }).click()
+  await page.getByRole('tab', { name: /^addons$/i, exact: true }).click()
   await page.locator('#addon-slash-commands').click()
   await page.locator('#addon-vim').click()
-  await page.getByRole('button', { name: 'back to editor' }).click()
+  await page.getByRole('button', { name: /back to editor/i }).click()
   assert.equal(await read(), beforeToggle)
-  await page.getByRole('status').filter({ hasText: 'vim · normal' }).waitFor()
+  await page
+    .getByRole('status')
+    .filter({ hasText: /vim · normal/i })
+    .waitFor()
   await source.press('Escape')
   await source.press('/')
   await page.locator('.cm-vim-panel input').waitFor()
@@ -175,6 +208,9 @@ test('slash commands work in both editors, preserve undo, and coexist with vim',
   await menu.waitFor()
   await source.press('Enter')
   assert.equal(await read(), '### ')
-  await page.getByRole('status').filter({ hasText: 'vim · insert' }).waitFor()
+  await page
+    .getByRole('status')
+    .filter({ hasText: /vim · insert/i })
+    .waitFor()
   assert.deepEqual(errors, [])
 })

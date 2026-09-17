@@ -18,7 +18,11 @@ import {
   sep,
 } from 'node:path'
 import { type BrowserWindow, dialog } from 'electron'
-import type { AutosaveResult, DocumentState } from '../shared/desktop'
+import type {
+  AutosaveResult,
+  DocumentState,
+  DocumentTab,
+} from '../shared/desktop'
 import {
   isMarkdownDocument,
   markdownExtensions,
@@ -35,11 +39,152 @@ let pendingPath: string | null = null
 let revision = 0
 let untitledName = 'untitled.md'
 let draftId = randomUUID()
-let back: (string | null)[] = []
-let forward: (string | null)[] = []
+let back: string[] = []
+let forward: string[] = []
+let activeTab: string = randomUUID()
+const tabs = new Map<string, ReturnType<typeof snapshot>>()
+
+function snapshot() {
+  return { markdown, saved, path, pendingPath, untitledName, draftId }
+}
+function storeTab() {
+  tabs.set(activeTab, snapshot())
+}
+function activateTab(id: string) {
+  const draft = tabs.get(id)
+  if (!draft) throw new Error('this tab is no longer open.')
+  activeTab = id
+  ;({ markdown, saved, path, pendingPath, untitledName, draftId } = draft)
+}
+function startTab(reuseEmpty = false) {
+  storeTab()
+  if (reuseEmpty && isEmptyTab()) return
+  activeTab = randomUUID()
+}
+function isEmptyTab() {
+  return !path && !pendingPath && !markdown && untitledName === 'untitled.md'
+}
+export function getOpenDocuments() {
+  storeTab()
+  return [...tabs].map(([id, draft]) => ({
+    ...draft,
+    tabId: id,
+    file: draft.path ?? draft.pendingPath,
+    dirty: draft.markdown !== draft.saved || !!draft.pendingPath,
+  }))
+}
+export function getDocumentTabs(): DocumentTab[] {
+  return getOpenDocuments().map((draft) => ({
+    id: draft.tabId,
+    name: draft.file ? basename(draft.file) : draft.untitledName,
+    dirty: draft.dirty,
+  }))
+}
+export function hasUnsavedDocuments() {
+  return getOpenDocuments().some((draft) => draft.dirty)
+}
+export async function selectDocumentTab(
+  window: BrowserWindow,
+  id: unknown,
+  remember = true,
+  refresh = false,
+): Promise<DocumentState> {
+  storeTab()
+  if (typeof id !== 'string' || !tabs.has(id))
+    throw new Error('this tab is no longer open.')
+  if (id === activeTab && !refresh) return getDocument()
+  const draft = tabs.get(id)!
+  const current = markdown
+  // Refresh clean files on return; dirty tabs keep their saved baseline for conflict checks.
+  if (draft.path && draft.markdown === draft.saved) {
+    const content = await readMarkdown(draft.path)
+    if (markdown !== current)
+      throw new Error(
+        'document changed while switching tabs. please try again.',
+      )
+    draft.markdown = draft.saved = content
+  }
+  if (remember && id !== activeTab) rememberLocation()
+  activateTab(id)
+  revision++
+  window.setDocumentEdited(hasUnsavedDocuments())
+  return getDocument()
+}
+
+async function confirmTabDiscard(window: BrowserWindow, id: string) {
+  storeTab()
+  const previous = activeTab
+  try {
+    activateTab(id)
+    return await confirmDiscard(window)
+  } finally {
+    storeTab()
+    activateTab(previous)
+    window.setDocumentEdited(hasUnsavedDocuments())
+  }
+}
+export async function confirmDiscardAll(
+  window: BrowserWindow,
+  within?: string,
+) {
+  const affected = getOpenDocuments().filter(
+    (draft) => !within || containsPath(within, draft.file),
+  )
+  for (const draft of affected)
+    if (draft.dirty && !(await confirmTabDiscard(window, draft.tabId)))
+      return false
+  return true
+}
+function containsPath(parent: string, file: string | null) {
+  if (!file) return false
+  const child = relative(parent, file)
+  return (
+    child === '' ||
+    (!isAbsolute(child) && child !== '..' && !child.startsWith(`..${sep}`))
+  )
+}
+function removeTabs(window: BrowserWindow, ids: Set<string>) {
+  storeTab()
+  const order = [...tabs.keys()]
+  const currentIndex = order.indexOf(activeTab)
+  for (const id of ids) tabs.delete(id)
+  back = back.filter((id) => !ids.has(id))
+  forward = forward.filter((id) => !ids.has(id))
+  if (ids.has(activeTab)) {
+    const next =
+      order.slice(currentIndex + 1).find((id) => tabs.has(id)) ??
+      [...tabs.keys()].at(-1)
+    if (next) {
+      activateTab(next)
+      revision++
+    } else {
+      activeTab = randomUUID()
+      clearDocument(window, false)
+    }
+  }
+  window.setDocumentEdited(hasUnsavedDocuments())
+  return getDocument()
+}
+export async function closeDocumentTab(window: BrowserWindow, id: unknown) {
+  storeTab()
+  if (typeof id !== 'string' || !tabs.has(id))
+    throw new Error('this tab is no longer open.')
+  if (!(await confirmTabDiscard(window, id))) return null
+  return removeTabs(window, new Set([id]))
+}
+export function closeDeletedDocuments(window: BrowserWindow, parent: string) {
+  return removeTabs(
+    window,
+    new Set(
+      getOpenDocuments()
+        .filter((draft) => containsPath(parent, draft.file))
+        .map((draft) => draft.tabId),
+    ),
+  )
+}
 
 function rememberLocation() {
-  back.push(path)
+  back.push(activeTab)
   if (back.length > 100) back.shift()
   forward = []
 }
@@ -52,13 +197,10 @@ export async function navigateDocument(
     throw new Error('invalid navigation direction.')
   const from = direction === 'back' ? back : forward
   const to = direction === 'back' ? forward : back
-  if (!from.length || !(await confirmDiscard(window))) return null
+  if (!from.length) return null
   const destination = from.at(-1)!
-  const previous = path
-  const result =
-    destination === null
-      ? clearDocument(window, false)
-      : await loadDocument(window, destination, markdown, false)
+  const previous = activeTab
+  const result = await selectDocumentTab(window, destination, false)
   from.pop()
   to.push(previous)
   return result
@@ -70,10 +212,12 @@ export function importDocument(
   name: string,
 ) {
   validateMarkdown(content)
-  clearDocument(window)
+  if (!isEmptyTab()) rememberLocation()
+  startTab(true)
+  clearDocument(window, false)
   untitledName = name
   markdown = content
-  window.setDocumentEdited(markdown !== saved)
+  window.setDocumentEdited(hasUnsavedDocuments())
   return getDocument()
 }
 
@@ -84,6 +228,8 @@ export function getDocumentPath(): string | null {
 export function getDocument(): DocumentState {
   const currentPath = getDocumentPath()
   return {
+    tabId: activeTab,
+    tabs: getDocumentTabs(),
     id: currentPath
       ? createHash('sha256').update(currentPath).digest('hex')
       : draftId,
@@ -98,8 +244,12 @@ export function getDocument(): DocumentState {
 }
 
 export function discardChanges(): void {
-  markdown = saved
-  pendingPath = null
+  storeTab()
+  for (const draft of tabs.values()) {
+    draft.markdown = draft.saved
+    draft.pendingPath = null
+  }
+  activateTab(activeTab)
   revision += 1
 }
 
@@ -123,7 +273,7 @@ export async function saveDocument(
       defaultPath: destination ?? defaultPath ?? untitledName,
       filters: [
         {
-          name: 'documents',
+          name: 'Documents',
           extensions: isMarkdownDocument(destination ?? untitledName)
             ? markdownExtensions
             : [extname(destination ?? untitledName).slice(1) || 'md'],
@@ -140,6 +290,14 @@ export async function saveDocument(
       return join(await realpath(dirname(chosen)), basename(chosen))
     },
   )
+  if (
+    getOpenDocuments().some(
+      (draft) => draft.tabId !== activeTab && draft.file === destination,
+    )
+  )
+    throw new Error(
+      'this file is already open in another tab. choose a different name.',
+    )
   let previous: string | null = null
   if (destination === path) {
     const disk = await readMarkdown(destination).catch(
@@ -153,9 +311,9 @@ export async function saveDocument(
       if (automatic) return null
       const choice = await dialog.showMessageBox(window, {
         type: 'warning',
-        message: 'this file changed outside hibi.',
-        detail: 'replace the file with your current document?',
-        buttons: ['replace', 'cancel'],
+        message: 'This file changed outside Hibi.',
+        detail: 'Replace the file with your current document?',
+        buttons: ['Replace', 'Cancel'],
         defaultId: 1,
         cancelId: 1,
       })
@@ -166,7 +324,7 @@ export async function saveDocument(
   path = destination
   pendingPath = null
   saved = content
-  window.setDocumentEdited(markdown !== saved)
+  window.setDocumentEdited(hasUnsavedDocuments())
   try {
     if (previous !== null) await recordVersion(destination, previous)
     await recordVersion(destination, content)
@@ -197,7 +355,7 @@ export function restoreDocument(
   validateMarkdown(content)
   markdown = content
   revision += 1
-  window.setDocumentEdited(markdown !== saved)
+  window.setDocumentEdited(hasUnsavedDocuments())
   return getDocument()
 }
 
@@ -205,9 +363,9 @@ export async function confirmDiscard(window: BrowserWindow): Promise<boolean> {
   if (markdown === saved && !pendingPath) return true
   const result = await dialog.showMessageBox(window, {
     type: 'warning',
-    message: `save changes to ${getDocument().name}?`,
-    detail: 'your changes will be lost if you do not save them.',
-    buttons: ['save', 'don’t save', 'cancel'],
+    message: `Save changes to ${getDocument().name}?`,
+    detail: 'Your changes will be lost if you do not save them.',
+    buttons: ['Save', 'Don’t save', 'Cancel'],
     defaultId: 0,
     cancelId: 2,
   })
@@ -219,8 +377,9 @@ export async function confirmDiscard(window: BrowserWindow): Promise<boolean> {
 export async function newDocument(
   window: BrowserWindow,
 ): Promise<DocumentState | null> {
-  if (!(await confirmDiscard(window))) return null
-  return clearDocument(window)
+  rememberLocation()
+  startTab()
+  return clearDocument(window, false)
 }
 
 export function clearDocument(
@@ -234,7 +393,7 @@ export function clearDocument(
   pendingPath = null
   untitledName = 'untitled.md'
   revision += 1
-  window.setDocumentEdited(false)
+  window.setDocumentEdited(hasUnsavedDocuments())
   return getDocument()
 }
 
@@ -244,7 +403,7 @@ export async function newPendingDocument(
 ): Promise<DocumentState | null> {
   if (!(await newDocument(window))) return null
   pendingPath = destination
-  window.setDocumentEdited(true)
+  window.setDocumentEdited(hasUnsavedDocuments())
   return getDocument()
 }
 
@@ -258,10 +417,12 @@ export function relocateDocument(from: string, to: string): void {
         ? join(to, child)
         : current
   }
-  path = relocate(path)
-  pendingPath = relocate(pendingPath)
-  back = back.map(relocate)
-  forward = forward.map(relocate)
+  storeTab()
+  for (const draft of tabs.values()) {
+    draft.path = relocate(draft.path)
+    draft.pendingPath = relocate(draft.pendingPath)
+  }
+  activateTab(activeTab)
 }
 
 export async function renameDocument(value: unknown): Promise<DocumentState> {
@@ -288,6 +449,12 @@ export async function renameDocument(value: unknown): Promise<DocumentState> {
   if (!path) {
     if (pendingPath) {
       const destination = join(dirname(pendingPath), name)
+      if (
+        getOpenDocuments().some(
+          (draft) => draft.tabId !== activeTab && draft.file === destination,
+        )
+      )
+        throw new Error('a file with that name is already open.')
       const exists = await lstat(destination).catch(
         (error: NodeJS.ErrnoException) => {
           if (error.code !== 'ENOENT') throw error
@@ -302,6 +469,12 @@ export async function renameDocument(value: unknown): Promise<DocumentState> {
   }
   const destination = join(dirname(path), name)
   if (destination === path) return getDocument()
+  if (
+    getOpenDocuments().some(
+      (draft) => draft.tabId !== activeTab && draft.file === destination,
+    )
+  )
+    throw new Error('a file with that name is already open.')
   const existing = await lstat(destination).catch(
     (error: NodeJS.ErrnoException) => {
       if (error.code !== 'ENOENT') throw error
@@ -340,11 +513,10 @@ export async function renameDocument(value: unknown): Promise<DocumentState> {
 export async function openDocument(
   window: BrowserWindow,
 ): Promise<DocumentState | null> {
-  if (!(await confirmDiscard(window))) return null
   const current = markdown
   const result = await dialog.showOpenDialog(window, {
     properties: ['openFile'],
-    filters: [{ name: 'documents', extensions: documentExtensions() }],
+    filters: [{ name: 'Documents', extensions: documentExtensions() }],
   })
   const selected = result.filePaths[0]
   if (result.canceled || !selected) return null
@@ -359,14 +531,17 @@ export async function loadDocument(
   remember = true,
 ): Promise<DocumentState> {
   chosen = await realpath(chosen)
+  const existing = getOpenDocuments().find((draft) => draft.file === chosen)
+  if (existing) return selectDocumentTab(window, existing.tabId, remember, true)
   const content = await readMarkdown(chosen)
   if (markdown !== current)
     throw new Error('document changed while opening a file. please try again.')
-  if (remember && chosen !== path) rememberLocation()
+  if (remember && chosen !== path && !isEmptyTab()) rememberLocation()
+  startTab(true)
   path = chosen
   pendingPath = null
   markdown = saved = content
   revision += 1
-  window.setDocumentEdited(false)
+  window.setDocumentEdited(hasUnsavedDocuments())
   return getDocument()
 }

@@ -53,12 +53,12 @@ export function VersionHistory({
   return (
     <>
       {loading ? (
-        <p role="status">loading versions…</p>
+        <p role="status">Loading versions…</p>
       ) : !versions.length ? (
-        <p>save this file to start its local history.</p>
+        <p>Save this file to start its local history.</p>
       ) : (
         <div className="version-history">
-          <nav aria-label="saved versions">
+          <nav aria-label="Saved versions">
             {versions.map((version, index) => (
               <Button
                 key={version.id}
@@ -67,26 +67,26 @@ export function VersionHistory({
               >
                 <span>{new Date(version.savedAt).toLocaleString()}</span>
                 <small>
-                  {index === 0 ? 'latest · ' : ''}
+                  {index === 0 ? 'Latest · ' : ''}
                   {version.bytes.toLocaleString()} bytes
                 </small>
               </Button>
             ))}
           </nav>
-          <section aria-label="version preview">
-            <pre>{preview ?? 'loading preview…'}</pre>
+          <section aria-label="Version preview">
+            <pre>{preview ?? 'Loading preview…'}</pre>
           </section>
         </div>
       )}
       {error && <p role="alert">{error}</p>}
       <div className="dialog-actions">
-        <Button onClick={() => close(null)}>cancel</Button>
+        <Button onClick={() => close(null)}>Cancel</Button>
         <Button
           className="dialog-primary"
           onClick={() => close(selected)}
           disabled={!selected || preview === null || !!error}
         >
-          restore to editor
+          Restore to editor
         </Button>
       </div>
     </>

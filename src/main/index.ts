@@ -32,6 +32,7 @@ import {
 } from '../shared/hotkeys'
 import { MEDIA_CHANNELS } from '../shared/media'
 import { SIDELOAD_CHANNELS } from '../shared/sideload'
+import { UI_CASE_CHANNEL } from '../shared/ui-case'
 import { WORKSPACE_CHANNELS } from '../shared/workspace'
 import {
   enableAddon,
@@ -44,16 +45,20 @@ import {
 import { appearanceColors, loadAppearance, saveAppearance } from './appearance'
 import {
   autosaveDocument,
+  closeDocumentTab,
   confirmDiscard,
+  confirmDiscardAll,
   discardChanges,
   getDocument,
   getDocumentPath,
+  hasUnsavedDocuments,
   navigateDocument,
   newDocument,
   openDocument,
   renameDocument,
   restoreDocument,
   saveDocument,
+  selectDocumentTab,
   updateDocument,
 } from './document'
 import { listVersions, previewVersion } from './history'
@@ -74,6 +79,7 @@ import {
   resolveAssetPath,
 } from './security'
 import { installedAddons, installedAsset, openAddonsFolder } from './sideload'
+import { getUiCase, loadUiCase, saveUiCase } from './ui-case'
 import {
   getWorkspace,
   observeWorkspace,
@@ -218,7 +224,7 @@ function createWindow(): void {
     minHeight: 360,
     show: false,
     focusable: !testing,
-    title: 'hibi',
+    title: 'Hibi',
     icon: appIcon,
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
     ...(process.platform === 'darwin'
@@ -263,13 +269,13 @@ function createWindow(): void {
   let allowClose = false
   let confirmingClose = false
   window.on('close', (event) => {
-    if (allowClose || (!getDocument().dirty && !fileOperation)) return
+    if (allowClose || (!hasUnsavedDocuments() && !fileOperation)) return
     event.preventDefault()
     if (confirmingClose) return
     confirmingClose = true
     void (async () => {
       await fileOperation?.catch(() => undefined)
-      if (await confirmDiscard(window)) {
+      if (await confirmDiscardAll(window)) {
         discardChanges()
         allowClose = true
         if (quitting) app.quit()
@@ -313,9 +319,9 @@ function createWindow(): void {
     void dialog
       .showMessageBox(window, {
         type: 'error',
-        message: 'hibi needs to reload.',
-        detail: 'the window stopped responding. unsaved changes may be lost.',
-        buttons: ['reload', 'quit'],
+        message: 'Hibi needs to reload.',
+        detail: 'The window stopped responding. unsaved changes may be lost.',
+        buttons: ['Reload', 'Quit'],
         defaultId: 0,
         cancelId: 1,
       })
@@ -352,63 +358,73 @@ function installMenu(): void {
   const menu: MenuItemConstructorOptions[] = [
     ...(process.platform === 'darwin' ? [{ role: 'appMenu' as const }] : []),
     {
-      label: 'file',
+      label: 'File',
       submenu: [
         {
-          label: 'new',
+          label: 'New',
           accelerator: accelerator(hotkeys.new),
           click: command('new'),
         },
         {
-          label: 'open…',
+          label: 'Open…',
           accelerator: accelerator(hotkeys.open),
           click: command('open'),
         },
         {
-          label: 'open from remote…',
+          label: 'Open from remote…',
           click: () =>
             mainWindow?.webContents.send(DOCUMENT_CHANNELS.requestRemote),
         },
         {
-          label: 'save',
+          label: 'Save',
           accelerator: accelerator(hotkeys.save),
           click: command('save'),
         },
         {
-          label: 'save as…',
+          label: 'Save as…',
           accelerator: accelerator(hotkeys.saveAs),
           click: command('saveAs'),
         },
         { type: 'separator' },
-        { role: process.platform === 'darwin' ? 'close' : 'quit' },
+        {
+          label: 'Close tab',
+          accelerator: accelerator(hotkeys['close-tab']),
+          click: command('close-tab'),
+        },
+        {
+          role: process.platform === 'darwin' ? 'close' : 'quit',
+          ...(process.platform === 'darwin'
+            ? { accelerator: 'CmdOrCtrl+Shift+W' }
+            : {}),
+        },
       ],
     },
     { role: 'editMenu' },
     {
-      label: 'view',
+      label: 'View',
       submenu: [
         {
-          label: 'command palette',
+          label: 'Command palette',
           accelerator: accelerator(hotkeys.palette),
           click: command('palette'),
         },
         {
-          label: 'find in note',
+          label: 'Find in note',
           accelerator: accelerator(hotkeys.find),
           click: command('find'),
         },
         {
-          label: 'settings',
+          label: 'Settings',
           accelerator: accelerator(hotkeys.settings),
           click: command('settings'),
         },
         {
-          label: 'back',
+          label: 'Back',
           accelerator: accelerator(hotkeys.back),
           click: command('back'),
         },
         {
-          label: 'forward',
+          label: 'Forward',
           accelerator: accelerator(hotkeys.forward),
           click: command('forward'),
         },
@@ -429,7 +445,17 @@ function installMenu(): void {
     },
     { role: 'windowMenu' },
   ]
-  Menu.setApplicationMenu(Menu.buildFromTemplate(menu))
+  const built = Menu.buildFromTemplate(menu)
+  if (getUiCase() === 'lowercase') {
+    const lowercase = (items: Electron.MenuItem[]) => {
+      for (const item of items) {
+        item.label = item.label.toLocaleLowerCase()
+        if (item.submenu) lowercase(item.submenu.items)
+      }
+    }
+    lowercase(built.items)
+  }
+  Menu.setApplicationMenu(built)
 }
 
 if (!app.requestSingleInstanceLock()) {
@@ -456,6 +482,7 @@ if (!app.requestSingleInstanceLock()) {
       await loadHotkeys()
       await loadAddons()
       await loadAppearance()
+      await loadUiCase()
       protocol.handle('app', serveAsset)
       session.defaultSession.setPermissionCheckHandler(() => false)
       session.defaultSession.setPermissionRequestHandler(
@@ -491,6 +518,11 @@ if (!app.requestSingleInstanceLock()) {
           electron: process.versions.electron,
           platform: process.platform,
         }
+      })
+      ipcMain.handle(UI_CASE_CHANNEL, async (event, value: unknown) => {
+        trustedWindow(event)
+        await saveUiCase(value)
+        installMenu()
       })
       ipcMain.handle(APPEARANCE_CHANNEL, async (event, value: unknown) => {
         const window = trustedWindow(event)
@@ -572,6 +604,12 @@ if (!app.requestSingleInstanceLock()) {
         trustedWindow(event)
         return getDocument()
       })
+      ipcMain.handle(DOCUMENT_CHANNELS.selectTab, (event, id: unknown) =>
+        runFileOperation(event, (window) => selectDocumentTab(window, id)),
+      )
+      ipcMain.handle(DOCUMENT_CHANNELS.closeTab, (event, id: unknown) =>
+        runFileOperation(event, (window) => closeDocumentTab(window, id)),
+      )
       ipcMain.handle(HISTORY_CHANNELS.list, (event) => {
         trustedWindow(event)
         return listVersions(getDocumentPath())
@@ -656,7 +694,7 @@ if (!app.requestSingleInstanceLock()) {
       ipcMain.handle(DOCUMENT_CHANNELS.update, (event, value: unknown) => {
         const window = trustedWindow(event)
         updateDocument(value)
-        window.setDocumentEdited(getDocument().dirty)
+        window.setDocumentEdited(hasUnsavedDocuments())
       })
       ipcMain.handle(DOCUMENT_CHANNELS.open, (event) =>
         runFileOperation(event, openDocument),

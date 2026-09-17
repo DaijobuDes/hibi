@@ -37,10 +37,10 @@ test('workspace popovers, durable folders, ephemeral files, inline rename, dirty
   const page = await app.firstWindow()
   page.setDefaultTimeout(7000)
   const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
-  await page.getByRole('textbox', { name: 'document editor' }).waitFor()
+  await page.getByRole('textbox', { name: /document editor/i }).waitFor()
   await pressShortcut(app, `${mod}+Shift+o`)
-  await page.getByRole('button', { name: 'new workspace folder' }).click()
-  const rename = page.getByRole('textbox', { name: 'rename item' })
+  await page.getByRole('button', { name: /new workspace folder/i }).click()
+  const rename = page.getByRole('textbox', { name: /rename item/i })
   await rename.waitFor()
   const renameStyle = await rename.evaluate((input) => {
     const style = getComputedStyle(input)
@@ -55,22 +55,22 @@ test('workspace popovers, durable folders, ephemeral files, inline rename, dirty
   await rename.press('Enter')
   await rename.waitFor({ state: 'hidden' })
   await access(join(root, 'guides'))
-  const more = page.getByRole('button', { name: 'actions for guides' })
+  const more = page.getByRole('button', { name: /actions for guides/i })
   await more.click()
-  const menu = page.getByRole('menu', { name: 'actions for guides' })
+  const menu = page.getByRole('menu', { name: /actions for guides/i })
   await menu.waitFor()
   await page.keyboard.press('Escape')
   await page.waitForFunction(
     () => !document.querySelector('.ui-menu').matches(':popover-open'),
   )
   await more.click()
-  await menu.getByRole('menuitem', { name: 'new file', exact: true }).click()
+  await menu.getByRole('menuitem', { name: /^new file$/i, exact: true }).click()
   await rename.waitFor()
   await assert.rejects(access(join(root, 'guides', 'untitled.md')))
   await rename.fill('hello.md')
   await rename.press('Enter')
   await rename.waitFor({ state: 'hidden' })
-  const rich = page.getByRole('textbox', { name: 'document editor' })
+  const rich = page.getByRole('textbox', { name: /document editor/i })
   await page.waitForFunction(
     () =>
       document.querySelector('.tiptap')?.getAttribute('contenteditable') ===
@@ -87,8 +87,8 @@ test('workspace popovers, durable folders, ephemeral files, inline rename, dirty
   )
   await page.waitForFunction(() => !document.querySelector('.sidebar-dirty'))
   await rich.fill('still editing')
-  await page.getByRole('button', { name: 'actions for hello.md' }).click()
-  await page.getByRole('menuitem', { name: 'rename', exact: true }).click()
+  await page.getByRole('button', { name: /actions for hello\.md/i }).click()
+  await page.getByRole('menuitem', { name: /^rename$/i, exact: true }).click()
   await rename.fill('renamed.md')
   await rename.press('Enter')
   await rename.waitFor({ state: 'hidden' })

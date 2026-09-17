@@ -41,7 +41,7 @@ export function richTags(browse: (tag: string) => void): RichExtension {
                       {
                         class: 'hibi-tag',
                         'data-tag': match.tag,
-                        'data-tooltip': `shift-click to browse #${match.tag}`,
+                        'data-tooltip': `Shift-click to browse #${match.tag}`,
                       },
                     ),
                   )
@@ -118,7 +118,7 @@ export function sourceTags(
                     class: 'hibi-tag',
                     attributes: {
                       'data-tag': match.tag,
-                      'data-tooltip': `shift-click to browse #${match.tag}`,
+                      'data-tooltip': `Shift-click to browse #${match.tag}`,
                     },
                   }).range(match.from, match.to),
                 )

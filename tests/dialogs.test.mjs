@@ -58,12 +58,12 @@ test('shared dialogs validate input, trap focus, queue, and clean up by addon ow
   const page = await next
   page.setDefaultTimeout(5000)
   await page.waitForFunction(() => Boolean(window.dialogTest))
-  const prompt = page.getByRole('button', { name: 'open built-in prompt' })
-  const target = page.getByRole('button', { name: 'tooltip target' })
+  const prompt = page.getByRole('button', { name: /open built-in prompt/i })
+  const target = page.getByRole('button', { name: /tooltip target/i })
   await target.focus()
   const tip = page.getByRole('tooltip')
   await tip.waitFor()
-  assert.equal(await tip.innerText(), 'shared help')
+  assert.equal(await tip.innerText(), 'Shared help')
   assert.match(await target.getAttribute('aria-describedby'), /^existing-help /)
   await page.keyboard.press('Escape')
   await tip.waitFor({ state: 'hidden' })
@@ -75,7 +75,7 @@ test('shared dialogs validate input, trap focus, queue, and clean up by addon ow
     otherTips.api.show({ anchor, text: 'new' })
     tips.dispose()
   })
-  assert.equal(await tip.innerText(), 'new')
+  assert.equal(await tip.innerText(), 'New')
   await page.evaluate(() => window.dialogTest.otherTips.dispose())
   await tip.waitFor({ state: 'hidden' })
   await page.evaluate(() => {
@@ -100,12 +100,12 @@ test('shared dialogs validate input, trap focus, queue, and clean up by addon ow
       onClick() {},
     })
   })
-  const action = page.getByRole('button', { name: 'test action' })
+  const action = page.getByRole('button', { name: /test action/i })
   await action.waitFor()
   assert.equal(await action.locator('svg').count(), 1)
   assert.equal(await action.innerText(), '')
   assert.equal(
-    await page.getByRole('button', { name: 'source only' }).count(),
+    await page.getByRole('button', { name: /source only/i }).count(),
     0,
   )
   await action.click()
@@ -140,8 +140,8 @@ test('shared dialogs validate input, trap focus, queue, and clean up by addon ow
   assert.equal(await action.count(), 0)
   assert.equal(await page.evaluate(() => window.toolbarClicks), 1)
   await prompt.click()
-  const dialog = page.getByRole('dialog', { name: 'name this note' })
-  const input = dialog.getByRole('textbox', { name: 'name', exact: true })
+  const dialog = page.getByRole('dialog', { name: /name this note/i })
+  const input = dialog.getByRole('textbox', { name: /^name$/i, exact: true })
   await input.waitFor()
   assert.equal(
     await input.evaluate((element) => element === document.activeElement),
@@ -149,7 +149,10 @@ test('shared dialogs validate input, trap focus, queue, and clean up by addon ow
   )
   await input.fill('')
   await input.press('Enter')
-  await dialog.getByRole('alert').filter({ hasText: 'enter a name.' }).waitFor()
+  await dialog
+    .getByRole('alert')
+    .filter({ hasText: /enter a name\./i })
+    .waitFor()
   for (let i = 0; i < 6; i++) {
     await page.keyboard.press('Tab')
     assert.equal(
@@ -163,7 +166,7 @@ test('shared dialogs validate input, trap focus, queue, and clean up by addon ow
   await input.press('Enter')
   await dialog.waitFor({ state: 'hidden' })
   assert.equal(
-    await page.getByLabel('dialog result').textContent(),
+    await page.getByLabel(/dialog result/i).textContent(),
     '"  keep spacing  "',
   )
   assert.equal(
@@ -173,17 +176,17 @@ test('shared dialogs validate input, trap focus, queue, and clean up by addon ow
   await prompt.click()
   await page.keyboard.press('Escape')
   await dialog.waitFor({ state: 'hidden' })
-  assert.equal(await page.getByLabel('dialog result').innerText(), 'null')
+  assert.equal(await page.getByLabel(/dialog result/i).innerText(), 'null')
 
-  await page.getByRole('button', { name: 'open built-in confirm' }).click()
+  await page.getByRole('button', { name: /open built-in confirm/i }).click()
   await page
-    .getByRole('dialog', { name: 'continue?' })
-    .getByRole('button', { name: 'continue', exact: true })
+    .getByRole('dialog', { name: /continue\?/i })
+    .getByRole('button', { name: /^continue$/i, exact: true })
     .click()
   await page.waitForFunction(
     () => document.querySelector('output').textContent === 'true',
   )
-  await page.getByRole('button', { name: 'open built-in confirm' }).click()
+  await page.getByRole('button', { name: /open built-in confirm/i }).click()
   await page.mouse.click(4, 4)
   await page.waitForFunction(
     () => document.querySelector('output').textContent === 'false',
@@ -211,10 +214,10 @@ test('shared dialogs validate input, trap focus, queue, and clean up by addon ow
       )
     }
   })
-  await page.getByRole('dialog', { name: 'active addon dialog' }).waitFor()
+  await page.getByRole('dialog', { name: /active addon dialog/i }).waitFor()
   assert.equal(await page.getByRole('dialog').count(), 1)
   await page.evaluate(() => window.dialogTest.owner.dispose())
-  const other = page.getByRole('dialog', { name: 'other addon dialog' })
+  const other = page.getByRole('dialog', { name: /other addon dialog/i })
   await other.waitFor()
   assert.deepEqual(await page.evaluate(() => window.completedDialogs), [
     { title: 'active addon dialog', value: null },
@@ -225,7 +228,7 @@ test('shared dialogs validate input, trap focus, queue, and clean up by addon ow
     path: 'test-results/addon-dialog.png',
     animations: 'disabled',
   })
-  await other.getByRole('button', { name: 'custom result' }).click()
+  await other.getByRole('button', { name: /custom result/i }).click()
   await other.waitFor({ state: 'hidden' })
   assert.deepEqual(await page.evaluate(() => window.completedDialogs.at(-1)), {
     title: 'other addon dialog',
@@ -255,15 +258,15 @@ test('shared dialogs validate input, trap focus, queue, and clean up by addon ow
         ),
     })
   })
-  const custom = page.getByRole('dialog', { name: 'keyboard custom' })
-  await custom.getByRole('button', { name: 'keep open' }).focus()
+  const custom = page.getByRole('dialog', { name: /keyboard custom/i })
+  await custom.getByRole('button', { name: /keep open/i }).focus()
   await page.evaluate(() => {
     const anchor = document.querySelector('dialog[open] button:last-child')
     anchor.dataset.tooltip = 'inside modal'
     anchor.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
   })
   await tip.waitFor()
-  assert.equal(await tip.innerText(), 'inside modal')
+  assert.equal(await tip.innerText(), 'Inside modal')
   assert.equal(await tip.evaluate((el) => el.matches(':popover-open')), true)
   await page.keyboard.press('Space')
   assert.equal(await page.evaluate(() => window.customClicked), true)
@@ -280,9 +283,9 @@ test('shared dialogs validate input, trap focus, queue, and clean up by addon ow
       },
     })
   })
-  const broken = page.getByRole('dialog', { name: 'broken content' })
+  const broken = page.getByRole('dialog', { name: /broken content/i })
   await broken.getByRole('alert').waitFor()
-  await broken.getByRole('button', { name: 'close', exact: true }).click()
+  await broken.getByRole('button', { name: /^close$/i, exact: true }).click()
   assert.equal(await page.evaluate(() => window.handle.result), null)
   assert.equal(
     await page.evaluate(() => window.dialogTest.dialogs.isOpen()),
@@ -294,7 +297,7 @@ test('shared dialogs validate input, trap focus, queue, and clean up by addon ow
   await page.evaluate(() =>
     window.dialogTest.toasts.show({ message: 'timed notice', duration: 1200 }),
   )
-  const toast = page.locator('.toast').filter({ hasText: 'timed notice' })
+  const toast = page.locator('.toast').filter({ hasText: /timed notice/i })
   await toast.waitFor()
   await page.waitForFunction(() => {
     const bar = document.querySelector('.toast-progress')
@@ -373,7 +376,10 @@ test('shared dialogs validate input, trap focus, queue, and clean up by addon ow
     }),
   )
   assert.equal(await page.locator('.toast').count(), 1)
-  await page.getByRole('status').filter({ hasText: 'updated notice' }).waitFor()
+  await page
+    .getByRole('status')
+    .filter({ hasText: /updated notice/i })
+    .waitFor()
   // Notifications stay interactive above a native modal, without dismissing that modal.
   await page.evaluate(() => {
     const { dialogs, createElement } = window.dialogTest
@@ -388,17 +394,17 @@ test('shared dialogs validate input, trap focus, queue, and clean up by addon ow
         ),
     })
   })
-  const footerDialog = page.getByRole('dialog', { name: 'fixed actions' })
+  const footerDialog = page.getByRole('dialog', { name: /fixed actions/i })
   await footerDialog.waitFor()
   await footerDialog.locator('.sonner').waitFor()
-  await footerDialog.getByRole('button', { name: 'dismiss notice' }).click()
+  await footerDialog.getByRole('button', { name: /dismiss notice/i }).click()
   await page.locator('.toast').waitFor({ state: 'hidden' })
   assert.equal(await footerDialog.isVisible(), true)
   const footerBounds = await footerDialog
     .locator('.dialog-footer')
     .boundingBox()
   assert.ok(footerBounds.y + footerBounds.height <= 560)
-  await footerDialog.getByRole('button', { name: 'footer action' }).click()
+  await footerDialog.getByRole('button', { name: /footer action/i }).click()
   assert.equal(await page.evaluate(() => window.footerDialog.result), 'saved')
   await page.evaluate(() => {
     const { toastOwner, otherToasts } = window.dialogTest
@@ -412,7 +418,7 @@ test('shared dialogs validate input, trap focus, queue, and clean up by addon ow
     toastOwner.api.show({ message: 'must not appear' })
   })
   assert.equal(await page.locator('.toast').count(), 1)
-  assert.match(await page.locator('.toast').innerText(), /other notice/)
+  assert.match(await page.locator('.toast').innerText(), /Other notice/)
   await page.evaluate(() => window.dialogTest.otherToasts.dispose())
   await page.locator('.sonner').waitFor({ state: 'hidden' })
 })

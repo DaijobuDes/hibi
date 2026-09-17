@@ -13,6 +13,7 @@ import test from 'node:test'
 import { electron } from './electron.mjs'
 import { pressShortcut } from './keyboard.mjs'
 import { checkSidebarResize } from './sidebar-resize.mjs'
+import { uiName } from './ui.mjs'
 
 test('nested workspace editing, addon lifecycle, and offline static export', {
   timeout: 60000,
@@ -67,16 +68,18 @@ test('nested workspace editing, addon lifecycle, and offline static export', {
   const page = await app.firstWindow()
   const errors = []
   page.on('pageerror', (error) => errors.push(error.message))
-  await page.getByRole('textbox', { name: 'document editor' }).waitFor()
-  await page.getByRole('button', { name: 'toggle workspace sidebar' }).click()
+  await page.getByRole('textbox', { name: /document editor/i }).waitFor()
+  await page.getByRole('button', { name: /toggle workspace sidebar/i }).click()
   await page
-    .getByRole('button', { name: 'open workspace', exact: true })
+    .getByRole('button', { name: /^open workspace$/i, exact: true })
     .click()
-  await page.getByRole('treeitem', { name: 'guides', exact: true }).click()
-  await page.getByRole('treeitem', { name: 'advanced', exact: true }).click()
-  await page.getByRole('treeitem', { name: 'setup.md', exact: true }).click()
+  await page.getByRole('treeitem', { name: /^guides$/i, exact: true }).click()
+  await page.getByRole('treeitem', { name: /^advanced$/i, exact: true }).click()
   await page
-    .getByRole('heading', { name: 'installation', exact: true })
+    .getByRole('treeitem', { name: /^setup\.md$/i, exact: true })
+    .click()
+  await page
+    .getByRole('heading', { name: /^installation$/i, exact: true })
     .waitFor()
   assert.equal(
     (await page.evaluate(() => window.hibi.getWorkspace())).activePath,
@@ -91,7 +94,7 @@ test('nested workspace editing, addon lifecycle, and offline static export', {
     process.platform === 'darwin' ? 'Meta+f' : 'Control+f',
   )
   await page
-    .getByRole('textbox', { name: 'find in note', exact: true })
+    .getByRole('textbox', { name: /^find in note$/i, exact: true })
     .fill('final list item')
   await page.waitForFunction(
     () => document.querySelector('.find-bar output')?.textContent === '1/1',
@@ -101,11 +104,11 @@ test('nested workspace editing, addon lifecycle, and offline static export', {
     false,
   )
   await page
-    .getByRole('textbox', { name: 'find in note', exact: true })
+    .getByRole('textbox', { name: /^find in note$/i, exact: true })
     .press('Escape')
   assert.equal(
     await page
-      .getByRole('treeitem', { name: 'linked.md', exact: true })
+      .getByRole('treeitem', { name: /^linked\.md$/i, exact: true })
       .count(),
     0,
   )
@@ -122,7 +125,7 @@ test('nested workspace editing, addon lifecycle, and offline static export', {
     /outside/,
   )
   await page
-    .getByRole('textbox', { name: 'document editor' })
+    .getByRole('textbox', { name: /document editor/i })
     .fill('unsaved workspace draft')
   assert.equal(
     await page.locator('.workspace-sidebar').getAttribute('data-open'),
@@ -135,14 +138,20 @@ test('nested workspace editing, addon lifecycle, and offline static export', {
       checkboxChecked: false,
     })
   })
-  await page.getByRole('treeitem', { name: 'README.md', exact: true }).click()
+  await page
+    .getByRole('treeitem', { name: /^README\.md$/i, exact: true })
+    .click()
+  await page.getByRole('tab', { name: /^setup\.md$/i, exact: true }).click()
+  await page.waitForFunction(
+    () => document.querySelector('.app').getAttribute('aria-busy') === 'false',
+  )
   assert.equal(
     (await page.evaluate(() => window.hibi.getDocument())).markdown,
     draft,
   )
-  await page.getByRole('button', { name: 'save', exact: true }).click()
+  await page.getByRole('button', { name: /^save$/i, exact: true }).click()
   await page
-    .getByRole('status', { name: 'unsaved changes' })
+    .getByRole('status', { name: /unsaved changes/i })
     .waitFor({ state: 'hidden' })
   assert.equal(
     await readFile(join(folder, 'guides', 'advanced', 'setup.md'), 'utf8'),
@@ -152,15 +161,17 @@ test('nested workspace editing, addon lifecycle, and offline static export', {
     join(folder, 'guides', 'advanced', 'setup.md'),
     '# installation\n\nconfigure quantumwidgets here.\n\n![local page](../../page.svg)',
   )
-  await page.getByRole('treeitem', { name: 'README.md', exact: true }).click()
-  await page.getByRole('heading', { name: 'welcome', exact: true }).waitFor()
+  await page
+    .getByRole('treeitem', { name: /^README\.md$/i, exact: true })
+    .click()
+  await page.getByRole('heading', { name: /^welcome$/i, exact: true }).waitFor()
 
   await page
-    .getByRole('button', { name: 'editor settings', exact: true })
+    .getByRole('button', { name: /^editor settings$/i, exact: true })
     .click()
-  await page.getByRole('tab', { name: 'addons', exact: true }).click()
+  await page.getByRole('tab', { name: /^addons$/i, exact: true }).click()
   const enabled = page.getByRole('checkbox', {
-    name: 'documentation',
+    name: /^documentation$/i,
     exact: true,
   })
   await enabled.click()
@@ -196,7 +207,7 @@ test('nested workspace editing, addon lifecycle, and offline static export', {
     /unknown addon method/,
   )
   await page
-    .getByRole('button', { name: 'back to editor', exact: true })
+    .getByRole('button', { name: /^back to editor$/i, exact: true })
     .click()
   assert.equal(
     await page.locator('.workspace-sidebar .sidebar-footer').count(),
@@ -206,12 +217,12 @@ test('nested workspace editing, addon lifecycle, and offline static export', {
     app,
     process.platform === 'darwin' ? 'Meta+k' : 'Control+k',
   )
-  const exportSearch = page.getByRole('combobox', { name: 'search commands' })
+  const exportSearch = page.getByRole('combobox', { name: /search commands/i })
   await exportSearch.fill('export documentation')
   await exportSearch.press('Enter')
   await page
     .getByRole('status')
-    .filter({ hasText: 'exported 2 pages' })
+    .filter({ hasText: /exported 2 pages/i })
     .waitFor()
   for (const kind of ['notice', 'error']) {
     if (kind === 'error') {
@@ -220,7 +231,7 @@ test('nested workspace editing, addon lifecycle, and offline static export', {
           throw new Error('could not open example file')
         }
       })
-      await page.getByRole('button', { name: 'open', exact: true }).click()
+      await page.getByRole('button', { name: /^open$/i, exact: true }).click()
     }
     await page.waitForFunction((kind) => {
       const notice = document
@@ -248,7 +259,10 @@ test('nested workspace editing, addon lifecycle, and offline static export', {
     assert.equal(geometry.right, 16)
     assert.equal(geometry.editorTop, 36)
     await page
-      .getByRole('button', { name: `dismiss ${kind}`, exact: true })
+      .getByRole('button', {
+        name: uiName(`dismiss ${kind}`, true),
+        exact: true,
+      })
       .click()
   }
   const html = await readFile(output, 'utf8')
@@ -288,8 +302,8 @@ test('nested workspace editing, addon lifecycle, and offline static export', {
   const site = await nextWindow
   const siteErrors = []
   site.on('pageerror', (error) => siteErrors.push(error.message))
-  await site.getByRole('heading', { name: 'welcome', exact: true }).waitFor()
-  await site.getByText('replace tokens: $& $$', { exact: true }).waitFor()
+  await site.getByRole('heading', { name: /^welcome$/i, exact: true }).waitFor()
+  await site.getByText(/^replace tokens: \$& \$\$$/i, { exact: true }).waitFor()
   assert.equal(await site.evaluate(() => typeof window.hibi), 'undefined')
   assert.equal(await site.locator('[contenteditable="true"]').count(), 0)
   assert.equal(await site.locator('.view-switch').count(), 0)
@@ -302,7 +316,7 @@ test('nested workspace editing, addon lifecycle, and offline static export', {
             .querySelector('.documentation-site')
             .getAttribute('data-sidebar') === 'false',
       )
-      await site.getByRole('button', { name: 'toggle navigation' }).click()
+      await site.getByRole('button', { name: /toggle navigation/i }).click()
       await site.waitForFunction(
         () =>
           document.querySelector('.sidebar').getBoundingClientRect().x === 0,
@@ -310,7 +324,7 @@ test('nested workspace editing, addon lifecycle, and offline static export', {
     }
     for (const opening of [false, true]) {
       const samples = await site.evaluate(async () => {
-        document.querySelector('[aria-label="toggle navigation"]').click()
+        document.querySelector('[aria-label="toggle navigation" i]').click()
         const samples = []
         const start = performance.now()
         while (performance.now() - start < 320) {
@@ -372,13 +386,13 @@ test('nested workspace editing, addon lifecycle, and offline static export', {
   assert.equal(await site.evaluate(() => window.compromised), undefined)
   assert.equal(await site.locator('article img').getAttribute('src'), null)
   assert.equal(
-    await site.getByText('bad', { exact: true }).getAttribute('href'),
+    await site.getByText(/^bad$/i, { exact: true }).getAttribute('href'),
     null,
   )
   await site.context().setOffline(true)
-  await site.getByRole('link', { name: 'nested guide', exact: true }).click()
+  await site.getByRole('link', { name: /^nested guide$/i, exact: true }).click()
   await site
-    .getByRole('heading', { name: 'installation', exact: true })
+    .getByRole('heading', { name: /^installation$/i, exact: true })
     .waitFor()
   assert.match(site.url(), /page=guides%2Fadvanced%2Fsetup.md/)
   await site.waitForFunction(() => {
@@ -390,11 +404,11 @@ test('nested workspace editing, addon lifecycle, and offline static export', {
     )
   })
   await site
-    .getByRole('treeitem', { name: 'installation', exact: true })
+    .getByRole('treeitem', { name: /^installation$/i, exact: true })
     .waitFor()
-  await site.getByRole('treeitem', { name: 'welcome', exact: true }).click()
+  await site.getByRole('treeitem', { name: /^welcome$/i, exact: true }).click()
   await site
-    .getByRole('treeitem', { name: 'welcome', exact: true, selected: true })
+    .getByRole('treeitem', { name: /^welcome$/i, exact: true, selected: true })
     .waitFor()
   await site.waitForFunction(
     () =>
@@ -404,7 +418,7 @@ test('nested workspace editing, addon lifecycle, and offline static export', {
     .locator('.sidebar-selection')
     .evaluate((element) => element.getBoundingClientRect().top)
   const selection = await site
-    .getByRole('treeitem', { name: 'installation', exact: true })
+    .getByRole('treeitem', { name: /^installation$/i, exact: true })
     .evaluate(async (button) => {
       button.click()
       const frames = []
@@ -445,7 +459,7 @@ test('nested workspace editing, addon lifecycle, and offline static export', {
   await site.keyboard.press(
     process.platform === 'darwin' ? 'Meta+k' : 'Control+k',
   )
-  const search = site.getByRole('combobox', { name: 'search commands' })
+  const search = site.getByRole('combobox', { name: /search commands/i })
   const siteKeyStyle = (element) => {
     const style = getComputedStyle(element)
     return [
@@ -462,12 +476,18 @@ test('nested workspace editing, addon lifecycle, and offline static export', {
   )
   await site.mouse.click(12, 400)
   await site.getByRole('dialog').waitFor({ state: 'hidden' })
-  await site.getByRole('button', { name: 'search documentation' }).click()
+  await site.getByRole('button', { name: /search documentation/i }).click()
   await search.waitFor()
   await search.fill('instalation')
-  await site.getByRole('option').filter({ hasText: 'installation' }).waitFor()
+  await site
+    .getByRole('option')
+    .filter({ hasText: /installation/i })
+    .waitFor()
   await search.fill('quantumwidgets')
-  await site.getByRole('option').filter({ hasText: 'installation' }).waitFor()
+  await site
+    .getByRole('option')
+    .filter({ hasText: /installation/i })
+    .waitFor()
   await search.press('Enter')
   await site.getByRole('dialog').waitFor({ state: 'hidden' })
   await mkdir('test-results', { recursive: true })
@@ -483,5 +503,5 @@ test('nested workspace editing, addon lifecycle, and offline static export', {
     app,
     process.platform === 'darwin' ? 'Meta+k' : 'Control+k',
   )
-  await page.getByRole('dialog', { name: 'command palette' }).waitFor()
+  await page.getByRole('dialog', { name: /command palette/i }).waitFor()
 })

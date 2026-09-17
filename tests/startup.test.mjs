@@ -12,6 +12,7 @@ import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { electron } from './electron.mjs'
 import { pressShortcut } from './keyboard.mjs'
+import { uiName } from './ui.mjs'
 
 test('startup placeholder stays out of documents and reopens persisted recent workspaces', {
   timeout: 45000,
@@ -28,7 +29,7 @@ test('startup placeholder stays out of documents and reopens persisted recent wo
     })
     const page = await app.firstWindow()
     page.setDefaultTimeout(6500)
-    await page.getByRole('textbox', { name: 'document editor' }).waitFor()
+    await page.getByRole('textbox', { name: /document editor/i }).waitFor()
     return page
   }
   t.after(async () => {
@@ -36,14 +37,18 @@ test('startup placeholder stays out of documents and reopens persisted recent wo
     await rm(temp, { recursive: true, force: true })
   })
   let page = await launch()
-  const welcome = () => page.getByRole('region', { name: 'start writing' })
-  await welcome().getByRole('heading', { name: 'start typing' }).waitFor()
-  await welcome().getByText('no recent workspaces yet.').waitFor()
+  const welcome = () => page.getByRole('region', { name: /start writing/i })
+  await welcome()
+    .getByRole('heading', { name: /start typing/i })
+    .waitFor()
+  await welcome()
+    .getByText(/no recent workspaces yet\./i)
+    .waitFor()
   assert.equal(
     (await page.evaluate(() => window.hibi.getDocument())).markdown,
     '',
   )
-  const rich = page.getByRole('textbox', { name: 'document editor' })
+  const rich = page.getByRole('textbox', { name: /document editor/i })
   await rich.press('a')
   await welcome().waitFor({ state: 'hidden' })
   await rich.fill('')
@@ -86,28 +91,30 @@ test('startup placeholder stays out of documents and reopens persisted recent wo
   // A fresh process has an empty startup draft and the same workspace history.
   page = await launch()
   await welcome()
-    .getByRole('button', { name: reordered[0], exact: true })
+    .getByRole('button', { name: uiName(reordered[0], true), exact: true })
     .waitFor()
   assert.equal(await welcome().locator('li').count(), 5)
   await rm(reordered[0], { recursive: true })
   await welcome()
-    .getByRole('button', { name: reordered[0], exact: true })
+    .getByRole('button', { name: uiName(reordered[0], true), exact: true })
     .click()
   await page
     .locator('.toast')
-    .filter({ hasText: /ENOENT|no such file/ })
+    .filter({ hasText: /ENOENT|no such file/i })
     .waitFor()
   assert.equal(await welcome().isVisible(), true)
   await welcome()
-    .getByRole('button', { name: reordered[1], exact: true })
+    .getByRole('button', { name: uiName(reordered[1], true), exact: true })
     .click()
   await welcome().waitFor({ state: 'hidden' })
-  await page.getByRole('treeitem', { name: 'empty.md', exact: true }).click()
+  await page
+    .getByRole('treeitem', { name: /^empty\.md$/i, exact: true })
+    .click()
   assert.equal(await welcome().count(), 0)
-  await page.locator('.tiptap p[data-placeholder="start typing"]').waitFor()
+  await page.locator('.tiptap p[data-placeholder="Start typing"]').waitFor()
   assert.equal(
     await page.locator('.tiptap p').getAttribute('data-placeholder'),
-    'start typing',
+    'Start typing',
   )
   assert.equal(
     (await page.evaluate(() => window.hibi.getDocument())).markdown,
@@ -117,16 +124,18 @@ test('startup placeholder stays out of documents and reopens persisted recent wo
   app = null
 
   page = await launch()
-  await welcome().getByRole('button', { name: 'dismiss this' }).click()
+  await welcome()
+    .getByRole('button', { name: /dismiss this/i })
+    .click()
   await welcome().waitFor({ state: 'hidden' })
   assert.equal(
     await page
-      .getByRole('textbox', { name: 'document editor' })
+      .getByRole('textbox', { name: /document editor/i })
       .evaluate((element) => element === document.activeElement),
     true,
   )
   await page.reload()
-  await page.getByRole('textbox', { name: 'document editor' }).waitFor()
+  await page.getByRole('textbox', { name: /document editor/i }).waitFor()
   assert.equal(await welcome().count(), 0)
   assert.equal(
     (await page.evaluate(() => window.hibi.getDocument())).markdown,

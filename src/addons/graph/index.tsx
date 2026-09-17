@@ -9,7 +9,7 @@ export default defineAddon({
     context.styles.register('graph', css)
     const open = () => {
       context.dialogs.open({
-        title: 'workspace graph',
+        title: 'Workspace graph',
         size: 'wide',
         content: ({ close }) => (
           <GraphPanel context={context} close={() => close(null)} />
@@ -18,20 +18,20 @@ export default defineAddon({
     }
     context.commands.register({
       id: 'open',
-      label: 'open workspace graph',
+      label: 'Open workspace graph',
       keywords: 'notes links connections backlinks',
       run: open,
     })
     context.toolbar.register({
       id: 'open',
-      label: 'workspace graph',
+      label: 'Workspace graph',
       icon: Network,
       onClick: open,
     })
     context.statusBar.register({
       id: 'open',
-      label: 'graph',
-      tooltip: 'explore workspace connections',
+      label: 'Graph',
+      tooltip: 'Explore workspace connections',
       onClick: open,
     })
   },

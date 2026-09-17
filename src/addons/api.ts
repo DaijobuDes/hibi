@@ -105,6 +105,8 @@ export type RichExtension = {
 }
 
 export type StatusItem = {
+  /** Keep case-sensitive content such as Vim commands unchanged by UI casing. */
+  verbatim?: boolean
   id: string
   label: string
   tooltip?: string

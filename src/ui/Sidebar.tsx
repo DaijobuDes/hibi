@@ -76,7 +76,7 @@ function RenameInput({
       variant="inline"
       ref={input}
       className="inline-edit sidebar-rename"
-      aria-label="rename item"
+      aria-label="Rename item"
       value={editing.value}
       disabled={editing.disabled}
       onChange={(event) => editing.onChange(event.target.value)}
@@ -437,7 +437,7 @@ export function Sidebar({
                       <button
                         type="button"
                         className="sidebar-more"
-                        aria-label={`actions for ${item.label}`}
+                        aria-label={`Actions for ${item.label}`}
                         aria-haspopup="menu"
                         onClick={(event) =>
                           onMenu(item.id, event.currentTarget)
@@ -460,13 +460,13 @@ export function Sidebar({
           <hr
             className="sidebar-resizer"
             data-dragging={dragging}
-            aria-label="resize sidebar"
+            aria-label="Resize sidebar"
             aria-orientation="vertical"
             aria-valuemin={MIN_SIDEBAR_WIDTH}
             aria-valuemax={resize.maxWidth}
             aria-valuenow={resize.width}
             tabIndex={0}
-            title="drag to resize; double-click to reset"
+            title="Drag to resize; double-click to reset"
             onDoubleClick={resize.onReset}
             onPointerDown={(event) => {
               if (event.button !== 0 || !event.isPrimary) return

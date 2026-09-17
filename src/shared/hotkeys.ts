@@ -6,40 +6,41 @@ export const HOTKEY_CHANNELS = {
 } as const
 
 export const actions = [
-  { id: 'palette', label: 'command palette', category: 'app', key: 'k' },
-  { id: 'new', label: 'new document', category: 'file', key: 'n' },
-  { id: 'open', label: 'open document…', category: 'file', key: 'o' },
+  { id: 'palette', label: 'Command palette', category: 'app', key: 'k' },
+  { id: 'new', label: 'New document', category: 'file', key: 'n' },
+  { id: 'close-tab', label: 'Close tab', category: 'file', key: 'w' },
+  { id: 'open', label: 'Open document…', category: 'file', key: 'o' },
   {
     id: 'open-workspace',
-    label: 'open workspace…',
+    label: 'Open workspace…',
     category: 'file',
     key: 'shift+o',
   },
-  { id: 'save', label: 'save document', category: 'file', key: 's' },
-  { id: 'saveAs', label: 'save as…', category: 'file', key: 'shift+s' },
-  { id: 'history', label: 'version history', category: 'file', key: '' },
-  { id: 'find', label: 'find in note', category: 'edit', key: 'f' },
-  { id: 'settings', label: 'open settings', category: 'preferences', key: ',' },
-  { id: 'back', label: 'go back', category: 'view', key: '[' },
-  { id: 'forward', label: 'go forward', category: 'view', key: ']' },
+  { id: 'save', label: 'Save document', category: 'file', key: 's' },
+  { id: 'saveAs', label: 'Save as…', category: 'file', key: 'shift+s' },
+  { id: 'history', label: 'Version history', category: 'file', key: '' },
+  { id: 'find', label: 'Find in note', category: 'edit', key: 'f' },
+  { id: 'settings', label: 'Open settings', category: 'preferences', key: ',' },
+  { id: 'back', label: 'Go back', category: 'view', key: '[' },
+  { id: 'forward', label: 'Go forward', category: 'view', key: ']' },
   {
     id: 'install-addon',
-    label: 'install theme or extension…',
+    label: 'Install theme or extension…',
     category: 'preferences',
     key: '',
   },
-  { id: 'toggle-sidebar', label: 'toggle sidebar', category: 'view', key: '/' },
-  { id: 'normal', label: 'normal view', category: 'view', key: 'shift+[' },
+  { id: 'toggle-sidebar', label: 'Toggle sidebar', category: 'view', key: '/' },
+  { id: 'normal', label: 'Normal view', category: 'view', key: 'shift+[' },
   {
     id: 'side-by-side',
-    label: 'side-by-side view',
+    label: 'Side-by-side view',
     category: 'view',
     key: 'shift+\\',
   },
-  { id: 'markdown', label: 'markdown only', category: 'view', key: 'shift+]' },
+  { id: 'markdown', label: 'Markdown only', category: 'view', key: 'shift+]' },
   {
     id: 'toggle-titlebar',
-    label: 'toggle top bar auto-hide',
+    label: 'Toggle top bar auto-hide',
     category: 'appearance',
     key: '',
   },
@@ -161,6 +162,7 @@ function isKey(key: string): boolean {
 export function shortcutError(
   shortcut: string,
   platform: string,
+  action?: AppCommand,
 ): string | null {
   if (!shortcut) return null
   const parts = shortcut.split('+')
@@ -174,6 +176,8 @@ export function shortcutError(
   if (!parts.some((part) => part !== 'shift') && !/^f\d+$/.test(key))
     return `include ${platform === 'darwin' ? 'command, control, or option' : 'ctrl or alt'}, or use a function key.`
   const mod = platform === 'darwin' ? 'meta' : 'ctrl'
+  if (shortcut === `${mod}+w` && action !== 'close-tab')
+    return 'reserved for closing tabs.'
   const reserved = [
     'a',
     'c',
@@ -184,7 +188,6 @@ export function shortcutError(
     'shift+v',
     'y',
     'q',
-    'w',
     'h',
     'm',
     'r',
@@ -219,7 +222,7 @@ export function validateHotkeys(value: unknown, platform: string): Hotkeys {
     const shortcut = (value as Record<string, unknown>)[id]
     if (typeof shortcut !== 'string' || shortcut.length > 60)
       throw new Error('invalid shortcut.')
-    const error = shortcutError(shortcut, platform)
+    const error = shortcutError(shortcut, platform, id)
     if (error) throw new Error(error)
     if (shortcut && used.has(shortcut))
       throw new Error('shortcut already assigned.')

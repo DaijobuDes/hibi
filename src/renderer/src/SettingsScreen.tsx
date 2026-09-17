@@ -8,7 +8,7 @@ import {
   Puzzle,
   TextCursorInput,
 } from 'lucide-react'
-import { Component, type ReactNode } from 'react'
+import { Component, type ReactNode, useSyncExternalStore } from 'react'
 import type { AddonState } from '../../addons/api'
 import type { AppInfo } from '../../shared/desktop'
 import type { Hotkeys } from '../../shared/hotkeys'
@@ -16,6 +16,7 @@ import { ColorschemeSettings } from '../../ui/ColorschemeSettings'
 import { Button, Select, SettingRow, Slider, Toggle } from '../../ui/Controls'
 import { Sidebar, type SidebarProps } from '../../ui/Sidebar'
 import { SettingsDiscovery } from '../../ui/settings-index'
+import { uiCase } from '../../ui/ui-case'
 import { AddonMetadata, AddonSettings } from './AddonSettings'
 import { AutosaveSettings } from './AutosaveSettings'
 import { addons } from './addons'
@@ -29,13 +30,13 @@ import { NotificationSettings } from './NotificationSettings'
 import { SyntaxSettings } from './SyntaxSettings'
 
 export const settingsCategories = [
-  { id: 'hibi', label: 'hibi', icon: File },
-  { id: 'editor', label: 'editor', icon: FileText },
-  { id: 'syntax', label: 'syntax', icon: TextCursorInput },
-  { id: 'code-syntax', label: 'code highlighting', icon: Code },
-  { id: 'appearance', label: 'appearance', icon: PanelTop },
-  { id: 'hotkeys', label: 'hotkeys', icon: Keyboard },
-  { id: 'addons', label: 'addons', icon: Puzzle },
+  { id: 'hibi', label: 'Hibi', icon: File },
+  { id: 'editor', label: 'Editor', icon: FileText },
+  { id: 'syntax', label: 'Syntax', icon: TextCursorInput },
+  { id: 'code-syntax', label: 'Code highlighting', icon: Code },
+  { id: 'appearance', label: 'Appearance', icon: PanelTop },
+  { id: 'hotkeys', label: 'Hotkeys', icon: Keyboard },
+  { id: 'addons', label: 'Addons', icon: Puzzle },
 ] as const
 
 class PluginSettingsBoundary extends Component<
@@ -49,9 +50,9 @@ class PluginSettingsBoundary extends Component<
   render() {
     return this.state.failed ? (
       <p role="alert">
-        these plugin settings could not load.{' '}
+        These plugin settings could not load.{' '}
         <button type="button" onClick={() => this.setState({ failed: false })}>
-          retry
+          Retry
         </button>
       </p>
     ) : (
@@ -103,6 +104,7 @@ export function SettingsScreen({
   showLineNumbers: boolean
   onShowLineNumbers: (show: boolean) => void
 }) {
+  const casing = useSyncExternalStore(uiCase.subscribe, uiCase.snapshot)
   const pluginPages = addons.filter(
     (addon) =>
       addon.Settings &&
@@ -127,7 +129,7 @@ export function SettingsScreen({
     <SettingsDiscovery value={true}>
       <main
         className="settings-screen"
-        aria-label="settings"
+        aria-label="Settings"
         hidden={!open}
         inert={!open}
       >
@@ -137,7 +139,7 @@ export function SettingsScreen({
           items={items}
           selected={category}
           onSelect={onCategory}
-          label="settings categories"
+          label="Settings categories"
           mode="tabs"
           idPrefix="category"
           panelPrefix="settings-"
@@ -145,15 +147,15 @@ export function SettingsScreen({
             <div className="sidebar-items">
               <button type="button" onClick={onBack}>
                 <ArrowLeft size={16} aria-hidden />
-                <span className="sidebar-label">back to app</span>
+                <span className="sidebar-label">Back to app</span>
               </button>
             </div>
           }
           footer={
             info && (
               <div className="settings-versions">
-                <span>hibi {info.version}</span>
-                <span>electron {info.electron}</span>
+                <span>Hibi {info.version}</span>
+                <span>Electron {info.electron}</span>
               </div>
             )
           }
@@ -173,13 +175,13 @@ export function SettingsScreen({
             aria-labelledby="category-editor"
             hidden={category !== 'editor'}
           >
-            <h1>editor</h1>
+            <h1>Editor</h1>
             <AutosaveSettings />
             <div className="settings-group">
               <SettingRow
                 id="editor-padding"
-                label="content padding"
-                description="space around your document in every view."
+                label="Content padding"
+                description="Space around your document in every view."
               >
                 <div className="setting-controls">
                   <div className="padding-control">
@@ -197,14 +199,14 @@ export function SettingsScreen({
                     <output htmlFor="editor-padding">{padding} px</output>
                   </div>
                   <Button type="button" onClick={() => onPadding(48)}>
-                    reset to 48 px
+                    Reset to 48 px
                   </Button>
                 </div>
               </SettingRow>
               <SettingRow
                 id="line-numbers"
-                label="show line numbers"
-                description="number each line in markdown and side-by-side views."
+                label="Show line numbers"
+                description="Number each line in Markdown and side-by-side views."
               >
                 <Toggle
                   id="line-numbers"
@@ -237,9 +239,24 @@ export function SettingsScreen({
             aria-labelledby="category-appearance"
             hidden={category !== 'appearance'}
           >
-            <h1>appearance</h1>
+            <h1>Appearance</h1>
+            <div className="settings-group">
+              <SettingRow
+                id="lowercase-interface"
+                label="Lowercase interface"
+                description="Display interface text in lowercase. Your documents and typed values keep their original spelling."
+              >
+                <Toggle
+                  id="lowercase-interface"
+                  checked={casing === 'lowercase'}
+                  onChange={(event) =>
+                    uiCase.set(event.target.checked ? 'lowercase' : 'sentence')
+                  }
+                />
+              </SettingRow>
+            </div>
             <ColorschemeSettings store={colorschemes} showLicense={false} />
-            <h2>cursor</h2>
+            <h2>Cursor</h2>
             <div className="settings-group">
               {(
                 [
@@ -301,12 +318,12 @@ export function SettingsScreen({
                 </SettingRow>
               ))}
             </div>
-            <h2>window</h2>
+            <h2>Window</h2>
             <div className="settings-group">
               <SettingRow
                 id="hide-titlebar"
-                label="hide top bar while typing"
-                description="show it after a pause, or move your pointer to the top."
+                label="Hide top bar while typing"
+                description="Show it after a pause, or move your pointer to the top."
               >
                 <Toggle
                   id="hide-titlebar"

@@ -41,10 +41,12 @@ test('split view mirrors the caret without moving focus or selecting the other p
   })
   const page = await app.firstWindow()
   page.setDefaultTimeout(6000)
-  const rich = page.getByRole('textbox', { name: 'document editor' })
+  const rich = page.getByRole('textbox', { name: /document editor/i })
   await rich.fill('mirror this text')
-  await page.getByRole('button', { name: 'side-by-side', exact: true }).click()
-  const source = page.getByRole('textbox', { name: 'markdown editor' })
+  await page
+    .getByRole('button', { name: /^side-by-side$/i, exact: true })
+    .click()
+  const source = page.getByRole('textbox', { name: /markdown editor/i })
   await source.waitFor()
   await page.evaluate(() => {
     document.hasFocus = () => true
@@ -68,6 +70,8 @@ test('split view mirrors the caret without moving focus or selecting the other p
   await page.locator('.mirror-cursor').waitFor({ state: 'hidden' })
   await source.press('ArrowRight')
   await page.locator('.mirror-cursor').waitFor()
-  await page.getByRole('button', { name: 'markdown only', exact: true }).click()
+  await page
+    .getByRole('button', { name: /^markdown only$/i, exact: true })
+    .click()
   await page.locator('.mirror-cursor').waitFor({ state: 'hidden' })
 })

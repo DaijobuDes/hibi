@@ -37,15 +37,15 @@ test('native file operations preserve drafts and avoid silent overwrites', {
     await rm(folder, { recursive: true, force: true })
   })
   const page = await app.firstWindow()
-  const rich = page.getByRole('textbox', { name: 'document editor' })
+  const rich = page.getByRole('textbox', { name: /document editor/i })
   await rich.waitFor()
   await app.evaluate(({ dialog }, path) => {
     dialog.showSaveDialog = async () => ({ canceled: false, filePath: path })
   }, destination)
   await rich.fill('hello file')
-  await page.getByRole('button', { name: 'save', exact: true }).click()
+  await page.getByRole('button', { name: /^save$/i, exact: true }).click()
   await page
-    .getByRole('status', { name: 'unsaved changes' })
+    .getByRole('status', { name: /unsaved changes/i })
     .waitFor({ state: 'hidden' })
   assert.equal(await readFile(destination, 'utf8'), 'hello file')
   assert.equal(
@@ -61,7 +61,12 @@ test('native file operations preserve drafts and avoid silent overwrites', {
     })
   })
   // Await cancellation before replacing the next dialog response.
-  assert.equal(await page.evaluate(() => window.hibi.newDocument()), null)
+  assert.equal(
+    await page.evaluate(async () =>
+      window.hibi.closeDocumentTab((await window.hibi.getDocument()).tabId),
+    ),
+    null,
+  )
   assert.equal(
     (await page.evaluate(() => window.hibi.getDocument())).markdown,
     'unsaved draft',
@@ -86,23 +91,24 @@ test('native file operations preserve drafts and avoid silent overwrites', {
       checkboxChecked: false,
     })
   })
-  await page.getByRole('button', { name: 'save', exact: true }).click()
+  await page.getByRole('button', { name: /^save$/i, exact: true }).click()
   await page
-    .getByRole('status', { name: 'unsaved changes' })
+    .getByRole('status', { name: /unsaved changes/i })
     .waitFor({ state: 'hidden' })
   assert.equal(await readFile(destination, 'utf8'), 'unsaved draft')
 
   await app.evaluate(({ dialog }, path) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] })
   }, fixture)
-  await page.getByRole('button', { name: 'open', exact: true }).click()
+  await page.getByRole('button', { name: /^open$/i, exact: true }).click()
   await page
-    .getByRole('button', { name: 'rename document' })
-    .filter({ hasText: 'original.md' })
+    .getByRole('tab', { name: /^original\.md$/i, exact: true })
     .waitFor()
-  await page.getByRole('button', { name: 'markdown only', exact: true }).click()
-  await page.getByRole('textbox', { name: 'markdown editor' }).waitFor()
-  await page.getByRole('button', { name: 'save', exact: true }).click()
+  await page
+    .getByRole('button', { name: /^markdown only$/i, exact: true })
+    .click()
+  await page.getByRole('textbox', { name: /markdown editor/i }).waitFor()
+  await page.getByRole('button', { name: /^save$/i, exact: true }).click()
   assert.equal(await readFile(fixture, 'utf8'), original)
   assert.equal(
     await page.evaluate(() =>
@@ -120,7 +126,7 @@ test('native file operations preserve drafts and avoid silent overwrites', {
       'true',
   )
   await page
-    .getByRole('textbox', { name: 'markdown editor' })
+    .getByRole('textbox', { name: /markdown editor/i })
     .fill('recover this draft')
   await app.evaluate(({ dialog }) => {
     dialog.showMessageBox = async () => ({

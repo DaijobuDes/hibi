@@ -25,19 +25,24 @@ test('find in note searches rich text and offscreen markdown without editing it'
     await rm(profile, { recursive: true, force: true })
   })
   const page = await app.firstWindow()
-  const rich = page.getByRole('textbox', { name: 'document editor' })
+  const rich = page.getByRole('textbox', { name: /document editor/i })
   await rich.waitFor()
-  await page.getByRole('button', { name: 'markdown only', exact: true }).click()
-  const source = page.getByRole('textbox', { name: 'markdown editor' })
+  await page
+    .getByRole('button', { name: /^markdown only$/i, exact: true })
+    .click()
+  const source = page.getByRole('textbox', { name: /markdown editor/i })
   await source.waitFor()
   const markdown = '# title\n\nhello **world** and hello world.\n\nHELLO world.'
   await source.fill(markdown)
-  await page.getByRole('button', { name: 'normal', exact: true }).click()
+  await page.getByRole('button', { name: /^normal$/i, exact: true }).click()
   await rich.waitFor()
   const shortcut = process.platform === 'darwin' ? 'Meta+f' : 'Control+f'
   await pressShortcut(app, shortcut)
-  const input = page.getByRole('textbox', { name: 'find in note', exact: true })
-  const bar = page.getByRole('search', { name: 'find in note' })
+  const input = page.getByRole('textbox', {
+    name: /^find in note$/i,
+    exact: true,
+  })
+  const bar = page.getByRole('search', { name: /find in note/i })
   await page.waitForFunction(
     () =>
       Math.abs(
@@ -70,7 +75,7 @@ test('find in note searches rich text and offscreen markdown without editing it'
   await waitForCount('1/3')
   await input.press('Shift+Enter')
   await waitForCount('3/3')
-  await page.getByRole('button', { name: 'next match', exact: true }).click()
+  await page.getByRole('button', { name: /^next match$/i, exact: true }).click()
   await waitForCount('1/3')
   await rich.click()
   await pressShortcut(app, shortcut)
@@ -92,7 +97,9 @@ test('find in note searches rich text and offscreen markdown without editing it'
     true,
   )
 
-  await page.getByRole('button', { name: 'markdown only', exact: true }).click()
+  await page
+    .getByRole('button', { name: /^markdown only$/i, exact: true })
+    .click()
   await source.waitFor()
   await pressShortcut(app, shortcut)
   await page.waitForFunction(
@@ -111,7 +118,7 @@ test('find in note searches rich text and offscreen markdown without editing it'
   )
   assert.equal(
     await page
-      .getByRole('button', { name: 'next match', exact: true })
+      .getByRole('button', { name: /^next match$/i, exact: true })
       .isDisabled(),
     true,
   )
@@ -129,16 +136,18 @@ test('find in note searches rich text and offscreen markdown without editing it'
   )
   await source
     .locator('.cm-searchMatch')
-    .filter({ hasText: 'last needle' })
+    .filter({ hasText: /last needle/i })
     .waitFor()
-  await page.getByRole('button', { name: 'close find', exact: true }).click()
+  await page.getByRole('button', { name: /^close find$/i, exact: true }).click()
   await bar.waitFor({ state: 'hidden' })
   assert.equal(
     await source.evaluate((element) => element === document.activeElement),
     true,
   )
 
-  await page.getByRole('button', { name: 'side-by-side', exact: true }).click()
+  await page
+    .getByRole('button', { name: /^side-by-side$/i, exact: true })
+    .click()
   await source.waitFor()
   await source.focus()
   await pressShortcut(app, shortcut)

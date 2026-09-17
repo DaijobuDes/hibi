@@ -128,7 +128,7 @@ export function SourceEditor({
           : (sourceLanguage ?? []),
         markdownMode ? keymap.of(formattingKeymap) : [],
         EditorView.contentAttributes.of({
-          'aria-label': markdownMode ? 'markdown editor' : `${label} editor`,
+          'aria-label': markdownMode ? 'Markdown editor' : `${label} editor`,
         }),
       ]
     }
@@ -197,7 +197,7 @@ export function SourceEditor({
           syntaxHighlighting(highlighting),
           syntaxHighlighting(codeHighlighter),
           EditorView.lineWrapping,
-          placeholder('start typing'),
+          placeholder('Start typing'),
           EditorView.contentAttributes.of({
             spellcheck: 'false',
           }),

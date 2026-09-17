@@ -22,12 +22,14 @@ test('closing settings never overrides a newer editor focus', {
   const page = await app.firstWindow()
   page.setDefaultTimeout(5000)
   await page
-    .getByRole('textbox', { name: 'document editor' })
+    .getByRole('textbox', { name: /document editor/i })
     .fill('initial text')
-  await page.getByRole('button', { name: 'side-by-side', exact: true }).click()
-  const source = page.getByRole('textbox', { name: 'markdown editor' })
+  await page
+    .getByRole('button', { name: /^side-by-side$/i, exact: true })
+    .click()
+  const source = page.getByRole('textbox', { name: /markdown editor/i })
   await source.waitFor()
-  await page.getByRole('button', { name: 'editor settings' }).click()
+  await page.getByRole('button', { name: /editor settings/i }).click()
   await page.evaluate(async () => {
     document.activeElement.dispatchEvent(
       new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
@@ -43,7 +45,7 @@ test('closing settings never overrides a newer editor focus', {
   )
   await source.fill('# source text')
   await page
-    .getByRole('heading', { name: 'source text', exact: true })
+    .getByRole('heading', { name: /^source text$/i, exact: true })
     .waitFor()
   assert.equal(
     (await page.evaluate(() => window.hibi.getDocument())).markdown,

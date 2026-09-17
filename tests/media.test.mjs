@@ -14,6 +14,7 @@ import test from 'node:test'
 import { electron } from './electron.mjs'
 import { pressShortcut } from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
+import { uiName } from './ui.mjs'
 
 test('file picker and drops attach media safely, stream videos, and move/open workspace items', {
   timeout: 45000,
@@ -47,7 +48,7 @@ test('file picker and drops attach media safely, stream videos, and move/open wo
   const page = await app.firstWindow()
   page.setDefaultTimeout(6000)
   const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
-  const rich = page.getByRole('textbox', { name: 'document editor' })
+  const rich = page.getByRole('textbox', { name: /document editor/i })
   await rich.waitFor()
   await app.evaluate(
     ({ dialog }, { gif, workspace }) => {
@@ -65,11 +66,11 @@ test('file picker and drops attach media safely, stream videos, and move/open wo
   )
   async function choose(name) {
     await pressShortcut(app, `${mod}+k`)
-    const palette = page.getByRole('dialog', { name: 'command palette' })
+    const palette = page.getByRole('dialog', { name: /command palette/i })
     await palette.getByRole('combobox').fill(name)
     await palette
       .getByRole('option')
-      .filter({ has: page.getByText(name, { exact: true }) })
+      .filter({ has: page.getByText(uiName(name, true), { exact: true }) })
       .first()
       .click()
   }
@@ -84,7 +85,7 @@ test('file picker and drops attach media safely, stream videos, and move/open wo
     await readFile(gif),
   )
   assert.equal(
-    await page.getByRole('dialog', { name: 'insert image' }).count(),
+    await page.getByRole('dialog', { name: /insert image/i }).count(),
     0,
   )
   await page.evaluate(() => {
@@ -129,7 +130,7 @@ test('file picker and drops attach media safely, stream videos, and move/open wo
     (await readdir(join(workspace, 'assets'))).includes('animation-2.gif'),
   )
   await pressShortcut(app, `${mod}+Shift+]`)
-  const source = page.getByRole('textbox', { name: 'markdown editor' })
+  const source = page.getByRole('textbox', { name: /markdown editor/i })
   await source.waitFor()
   await source.press(`${mod}+End`)
   await drop(gif, source)
@@ -168,7 +169,7 @@ test('file picker and drops attach media safely, stream videos, and move/open wo
     join(root, 'site.html'),
   )
   await choose('export documentation')
-  await page.getByText(/exported .*pages/).waitFor()
+  await page.getByText(/exported .*pages/i).waitFor()
   const nextWindow = app.waitForEvent('window')
   const exported = await app.evaluateHandle(
     async ({ BrowserWindow }, path) => {
@@ -202,14 +203,14 @@ test('file picker and drops attach media safely, stream videos, and move/open wo
     await page.evaluate(async (url) => (await fetch(url)).status, url),
     404,
   )
-  const tree = page.getByRole('tree', { name: 'workspace files' })
-  const one = tree.getByRole('treeitem', { name: 'one.md', exact: true })
+  const tree = page.getByRole('tree', { name: /workspace files/i })
+  const one = tree.getByRole('treeitem', { name: /^one\.md$/i, exact: true })
   await one.waitFor()
   await source.fill('# unsaved one')
   const transfer = await page.evaluateHandle(() => new DataTransfer())
   await one.dispatchEvent('dragstart', { dataTransfer: transfer })
   await tree
-    .getByRole('treeitem', { name: 'folder', exact: true })
+    .getByRole('treeitem', { name: /^folder$/i, exact: true })
     .dispatchEvent('drop', { dataTransfer: transfer })
   await waitForAsync(
     page,
@@ -226,7 +227,7 @@ test('file picker and drops attach media safely, stream videos, and move/open wo
     '# one',
   )
   await tree
-    .getByRole('treeitem', { name: 'one.md', exact: true })
+    .getByRole('treeitem', { name: /^one\.md$/i, exact: true })
     .dispatchEvent('dragstart', { dataTransfer: transfer })
   await page
     .locator('.workspace-sidebar .sidebar-scroll')
@@ -248,7 +249,7 @@ test('file picker and drops attach media safely, stream videos, and move/open wo
   const fake = join(root, 'fake.png')
   await writeFile(fake, 'not an image')
   await drop(fake, source)
-  await page.getByText(/choose a supported image, gif, or video\./).waitFor()
+  await page.getByText(/choose a supported image, gif, or video\./i).waitFor()
   const guarded = join(root, 'guarded')
   const outside = join(root, 'outside')
   await mkdir(guarded)
@@ -265,7 +266,9 @@ test('file picker and drops attach media safely, stream videos, and move/open wo
   )
   await drop(gif, source)
   await page
-    .getByText(/the assets folder must be beside this note, without symlinks\./)
+    .getByText(
+      /the assets folder must be beside this note, without symlinks\./i,
+    )
     .waitFor()
   assert.deepEqual(await readdir(outside), [])
   // Save cancellation does not create attachments or alter the draft.

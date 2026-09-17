@@ -71,9 +71,9 @@ test('compact filters reset preferences, group addons, and install reviewed url 
   page.setDefaultTimeout(6500)
   const errors = []
   page.on('pageerror', (error) => errors.push(error.message))
-  await page.getByRole('textbox', { name: 'document editor' }).waitFor()
-  await page.getByRole('button', { name: 'editor settings' }).click()
-  await page.getByRole('tab', { name: 'addons', exact: true }).click()
+  await page.getByRole('textbox', { name: /document editor/i }).waitFor()
+  await page.getByRole('button', { name: /editor settings/i }).click()
+  await page.getByRole('tab', { name: /^addons$/i, exact: true }).click()
   const addons = page.locator('#settings-addons')
   assert.equal(
     await addons
@@ -81,43 +81,45 @@ test('compact filters reset preferences, group addons, and install reviewed url 
       .isChecked(),
     true,
   )
-  await addons.getByRole('searchbox', { name: 'filter addons' }).fill('vim')
+  await addons.getByRole('searchbox', { name: /filter addons/i }).fill('vim')
   assert.equal(await addons.locator('.setting-row:visible').count(), 1)
   assert.match(
     await addons.locator('.setting-row:visible .addon-metadata').innerText(),
-    /built-in/,
+    /Built-in/,
   )
   await addons.locator('#addon-vim').click()
   await addons
     .locator('.addon-state-group[data-enabled="true"] #addon-vim')
     .waitFor()
   await page.waitForFunction(() => document.activeElement?.id === 'addon-vim')
-  await addons.getByRole('button', { name: 'reset all', exact: true }).click()
+  await addons
+    .getByRole('button', { name: /^reset all$/i, exact: true })
+    .click()
   await addons
     .locator('.addon-state-group[data-enabled="false"] #addon-vim')
     .waitFor()
-  await addons.getByRole('button', { name: 'hibi garden' }).click()
+  await addons.getByRole('button', { name: /hibi garden/i }).click()
   assert.deepEqual(await app.evaluate(() => globalThis.openedAddonLinks), [
     'https://hibi.garden/addons',
   ])
-  await addons.getByRole('button', { name: 'open plugins folder' }).click()
+  await addons.getByRole('button', { name: /open plugins folder/i }).click()
   assert.equal(
     await app.evaluate(() => globalThis.openedAddonFolder),
     join(profile, 'installed-addons'),
   )
-  await addons.getByRole('button', { name: 'install from url' }).click()
+  await addons.getByRole('button', { name: /install from url/i }).click()
   const prompt = page.getByRole('dialog', {
-    name: 'install from url',
+    name: /^install from url$/i,
     exact: true,
   })
-  await prompt.getByLabel('addon url').fill('file:///etc/passwd')
-  await prompt.getByRole('button', { name: 'download', exact: true }).click()
+  await prompt.getByLabel(/addon url/i).fill('file:///etc/passwd')
+  await prompt.getByRole('button', { name: /^download$/i, exact: true }).click()
   await prompt.locator('[role="alert"]').waitFor()
-  await prompt.getByLabel('addon url').fill('https://example.com/addon.zip')
-  await prompt.getByRole('button', { name: 'download', exact: true }).click()
+  await prompt.getByLabel(/addon url/i).fill('https://example.com/addon.zip')
+  await prompt.getByRole('button', { name: /^download$/i, exact: true }).click()
   await prompt.waitFor({ state: 'hidden' })
   await addons
-    .getByRole('searchbox', { name: 'filter addons' })
+    .getByRole('searchbox', { name: /filter addons/i })
     .fill('url fixture')
   const installed = addons.locator(
     '.addon-state-group[data-enabled="false"] #addon-url-fixture',
@@ -126,7 +128,7 @@ test('compact filters reset preferences, group addons, and install reviewed url 
   assert.equal(await installed.isChecked(), false)
   assert.match(
     await addons.locator('.setting-row:visible .addon-metadata').innerText(),
-    /third-party/,
+    /Third-party/,
   )
   assert.equal(await page.evaluate(() => window.urlFixtureStarted), undefined)
   assert.match(
@@ -144,49 +146,51 @@ test('compact filters reset preferences, group addons, and install reviewed url 
   )
   await installed.click()
   await page.waitForFunction(() => window.urlFixtureStarted === true)
-  await page.getByRole('tab', { name: 'syntax', exact: true }).click()
+  await page.getByRole('tab', { name: /^syntax$/i, exact: true }).click()
   const syntax = page.locator('#settings-syntax')
-  await syntax.getByRole('checkbox', { name: 'italic', exact: true }).click()
-  await syntax.getByRole('searchbox', { name: 'filter syntax' }).fill('bold')
+  await syntax.getByRole('checkbox', { name: /^italic$/i, exact: true }).click()
+  await syntax.getByRole('searchbox', { name: /filter syntax/i }).fill('bold')
   assert.equal(await syntax.locator('.setting-row:visible').count(), 1)
-  await syntax.getByRole('button', { name: 'reset all', exact: true }).click()
+  await syntax
+    .getByRole('button', { name: /^reset all$/i, exact: true })
+    .click()
   assert.equal(
     await syntax
-      .getByRole('button', { name: 'reset all', exact: true })
+      .getByRole('button', { name: /^reset all$/i, exact: true })
       .isDisabled(),
     true,
   )
-  await syntax.getByRole('searchbox', { name: 'filter syntax' }).fill('')
+  await syntax.getByRole('searchbox', { name: /filter syntax/i }).fill('')
   assert.equal(
     await syntax
-      .getByRole('checkbox', { name: 'italic', exact: true })
+      .getByRole('checkbox', { name: /^italic$/i, exact: true })
       .isChecked(),
     true,
   )
   await page
-    .getByRole('tab', { name: 'code highlighting', exact: true })
+    .getByRole('tab', { name: /^code highlighting$/i, exact: true })
     .click()
   const code = page.locator('#settings-code-syntax')
-  await code.getByRole('checkbox', { name: 'python', exact: true }).click()
+  await code.getByRole('checkbox', { name: /^python$/i, exact: true }).click()
   await code
-    .getByRole('searchbox', { name: 'filter languages' })
+    .getByRole('searchbox', { name: /filter languages/i })
     .fill('javascript')
   assert.equal(await code.locator('.setting-row:visible').count(), 1)
-  await code.getByRole('button', { name: 'reset all', exact: true }).click()
+  await code.getByRole('button', { name: /^reset all$/i, exact: true }).click()
   await pressShortcut(
     app,
     `${process.platform === 'darwin' ? 'Meta' : 'Control'}+k`,
   )
-  await page.getByRole('combobox', { name: 'search commands' }).fill('python')
+  await page.getByRole('combobox', { name: /search commands/i }).fill('python')
   await page
     .getByRole('option')
-    .filter({ has: page.getByText('python', { exact: true }) })
+    .filter({ has: page.getByText(/^python$/i, { exact: true }) })
     .first()
     .click()
-  await code.getByRole('checkbox', { name: 'python', exact: true }).waitFor()
+  await code.getByRole('checkbox', { name: /^python$/i, exact: true }).waitFor()
   assert.equal(
     await code
-      .getByRole('searchbox', { name: 'filter languages' })
+      .getByRole('searchbox', { name: /filter languages/i })
       .inputValue(),
     '',
   )

@@ -12,6 +12,7 @@ import {
   themePreferences,
 } from '../src/shared/colorschemes.ts'
 import { electron } from './electron.mjs'
+import { uiName } from './ui.mjs'
 
 function contrast(a, b) {
   const luminance = (hex) =>
@@ -131,19 +132,21 @@ test('app palettes update all surfaces, preserve editing, and persist native app
   })
   let page = await app.firstWindow()
   page.setDefaultTimeout(5000)
-  const editor = page.getByRole('textbox', { name: 'document editor' })
+  const editor = page.getByRole('textbox', { name: /document editor/i })
   await editor.fill('keep this note')
   await page.evaluate(() => {
     window.originalEditor = document.querySelector('.tiptap')
   })
-  await page.getByRole('button', { name: 'editor settings' }).click()
-  await page.getByRole('tab', { name: 'appearance', exact: true }).click()
+  await page.getByRole('button', { name: /editor settings/i }).click()
+  await page.getByRole('tab', { name: /^appearance$/i, exact: true }).click()
   for (const scheme of bundledColorschemes) {
     await page
-      .getByRole('combobox', { name: 'appearance', exact: true })
+      .getByRole('combobox', { name: /^appearance$/i, exact: true })
       .selectOption(scheme.appearance)
     await page
-      .getByRole('combobox', { name: `${scheme.appearance} colorscheme` })
+      .getByRole('combobox', {
+        name: uiName(`${scheme.appearance} colorscheme`),
+      })
       .selectOption(scheme.id)
     await page.waitForFunction(
       (id) => document.documentElement.dataset.colorscheme === id,
@@ -168,7 +171,7 @@ test('app palettes update all surfaces, preserve editing, and persist native app
     )
   }
   await page
-    .getByRole('combobox', { name: 'dark colorscheme' })
+    .getByRole('combobox', { name: /dark colorscheme/i })
     .selectOption('catppuccin-mocha')
   await mkdir('test-results', { recursive: true })
   await page.screenshot({
@@ -203,7 +206,7 @@ test('app palettes update all surfaces, preserve editing, and persist native app
     }, payload),
     true,
   )
-  await page.getByRole('button', { name: 'back to editor' }).click()
+  await page.getByRole('button', { name: /back to editor/i }).click()
   await editor.press('End')
   await editor.pressSequentially('!')
   await editor.press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z')

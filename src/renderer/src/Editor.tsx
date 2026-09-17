@@ -215,7 +215,7 @@ export function MarkdownEditor({
           return false
         },
         attributes: {
-          'aria-label': 'document editor',
+          'aria-label': 'Document editor',
           role: 'textbox',
           'aria-multiline': 'true',
         },
@@ -235,7 +235,7 @@ export function MarkdownEditor({
         if (node.type.name === 'heading')
           headings.push({
             id: String(pos),
-            label: node.textContent || 'untitled heading',
+            label: node.textContent || 'Untitled heading',
             level: Number(node.attrs.level),
           })
       })
@@ -455,7 +455,7 @@ export function MarkdownEditor({
           <section
             className="rich-pane"
             onFocusCapture={() => setFocusedPane('rich')}
-            aria-label="formatted document"
+            aria-label="Formatted document"
             aria-hidden={paneMode === 'markdown'}
             inert={paneMode === 'markdown'}
           >
@@ -464,7 +464,7 @@ export function MarkdownEditor({
                 <format.Preview value={value} document={documentState} />
               ) : (
                 <p className="format-unavailable">
-                  enable {formatName} for preview. source editing remains
+                  Enable {formatName} for preview. source editing remains
                   available.
                 </p>
               ))}
@@ -489,13 +489,13 @@ export function MarkdownEditor({
           <section
             className="source-pane"
             onFocusCapture={() => setFocusedPane('source')}
-            aria-label="markdown source"
+            aria-label="Markdown source"
             aria-hidden={paneMode === 'normal'}
             inert={paneMode === 'normal'}
           >
             {sourceMounted && (
               <Suspense
-                fallback={<LoadingScreen label="loading markdown editor" />}
+                fallback={<LoadingScreen label="Loading Markdown editor" />}
               >
                 <SourceEditor
                   markdownMode={markdownDocument}

@@ -7,7 +7,7 @@ export async function checkSidebarResize(
   reload,
 ) {
   const handle = page.getByRole('separator', {
-    name: 'resize sidebar',
+    name: /^resize sidebar$/i,
     exact: true,
   })
   await handle.waitFor()

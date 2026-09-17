@@ -101,10 +101,10 @@ test('local images resolve from the note, validate content, and retain their Mar
   }, first)
   const page = await app.firstWindow()
   page.setDefaultTimeout(6500)
-  await page.getByRole('textbox', { name: 'document editor' }).waitFor()
+  await page.getByRole('textbox', { name: /document editor/i }).waitFor()
   const toolbar = await page.evaluate(async () => {
     const header = document.querySelector('.titlebar')
-    const button = header.querySelector('button[aria-label="open"]')
+    const button = header.querySelector('button[aria-label="open" i]')
     button.click()
     const frames = []
     const start = performance.now()

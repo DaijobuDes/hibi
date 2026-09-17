@@ -158,7 +158,7 @@ button:disabled {
   width: var(--icon-size);
   height: var(--icon-size);
 }
-.titlebar button:hover,
+.titlebar button:hover:not(:disabled),
 .titlebar button[aria-pressed="true"] {
   background: var(--active);
 }
@@ -214,6 +214,7 @@ button:disabled {
 .titlebar .document-title {
   -webkit-app-region: drag;
   min-width: 0;
+  flex: 1;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -239,7 +240,7 @@ button:disabled {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.document-title > :first-child {
+.document-title > span {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -262,12 +263,49 @@ button:disabled {
   padding: 0 6px;
   margin-left: auto;
 }
-.rename-input {
-  -webkit-app-region: no-drag;
-  width: clamp(100px, 18vw, 240px);
+.document-tabs {
+  display: flex;
+  gap: var(--space-1);
   min-width: 0;
-  height: 26px;
-  padding: 0 8px;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-app-region: no-drag;
+}
+.document-tab {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  min-width: 72px;
+  max-width: 200px;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+}
+.document-tab:hover {
+  background: var(--hover);
+}
+.document-tab[data-active="true"] {
+  background: var(--active);
+  color: var(--ink);
+}
+.document-tab .document-name {
+  flex: 1;
+  min-width: 0;
+  color: inherit;
+}
+.titlebar .document-tab .document-name:hover {
+  background: transparent;
+}
+.titlebar .document-tab .tab-close {
+  width: 20px;
+  min-width: 20px;
+  height: 22px;
+  min-height: 22px;
+  margin-right: 2px;
+  opacity: 0;
+}
+.document-tab:is(:hover, :focus-within, [data-active="true"]) .tab-close {
+  opacity: 1;
 }
 .document-actions {
   flex-shrink: 0;

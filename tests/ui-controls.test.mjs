@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { electron } from './electron.mjs'
 import { pressShortcut } from './keyboard.mjs'
+import { uiName } from './ui.mjs'
 
 test('extension and core fields share themes, focus states, and narrow layouts', {
   timeout: 45000,
@@ -22,15 +23,15 @@ test('extension and core fields share themes, focus states, and narrow layouts',
   const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
   const choose = async (name) => {
     await pressShortcut(app, `${mod}+k`)
-    await page.getByRole('combobox', { name: 'search commands' }).fill(name)
+    await page.getByRole('combobox', { name: /search commands/i }).fill(name)
     await page
       .getByRole('option')
-      .filter({ has: page.getByText(name, { exact: true }) })
+      .filter({ has: page.getByText(uiName(name, true), { exact: true }) })
       .first()
       .click()
     await page.locator('.command-palette').waitFor({ state: 'hidden' })
   }
-  await page.getByRole('textbox', { name: 'document editor' }).waitFor()
+  await page.getByRole('textbox', { name: /document editor/i }).waitFor()
   await choose('enable graph')
   await choose('enable tags')
   const fieldStyle = (field) =>
@@ -65,7 +66,7 @@ test('extension and core fields share themes, focus states, and narrow layouts',
       mode,
     )
     await page.reload()
-    await page.getByRole('textbox', { name: 'document editor' }).waitFor()
+    await page.getByRole('textbox', { name: /document editor/i }).waitFor()
     const core = await fieldStyle(page.locator('#markdown-syntax-filter'))
     assert.equal(core.borderRadius, '6px')
     assert.equal(core.fontSize, '13px')
@@ -77,8 +78,11 @@ test('extension and core fields share themes, focus states, and narrow layouts',
       ['browse tags', 'tags', 'filter tags'],
     ]) {
       await choose(command)
-      const dialog = page.getByRole('dialog', { name: title, exact: true })
-      const field = dialog.getByRole('searchbox', { name: label })
+      const dialog = page.getByRole('dialog', {
+        name: uiName(title, true),
+        exact: true,
+      })
+      const field = dialog.getByRole('searchbox', { name: uiName(label) })
       await field.waitFor()
       assert.deepEqual(await fieldStyle(field), core)
       await field.fill('filter')
@@ -134,7 +138,7 @@ test('extension and core fields share themes, focus states, and narrow layouts',
         }),
         true,
       )
-      await dialog.getByRole('button', { name: 'close dialog' }).click()
+      await dialog.getByRole('button', { name: /close dialog/i }).click()
       await dialog.waitFor({ state: 'hidden' })
       await app.evaluate(({ BrowserWindow }) =>
         BrowserWindow.getAllWindows()[0].setSize(1000, 720),

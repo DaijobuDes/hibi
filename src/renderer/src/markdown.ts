@@ -83,7 +83,7 @@ export function editorExtensions(flavors: readonly MarkdownFlavor[]) {
     ...flavors
       .flatMap((flavor) => flavor.richExtensions ?? [])
       .filter((extension) => markdownSyntax.extensionEnabled(extension.name)),
-    Placeholder.configure({ placeholder: 'start typing' }),
+    Placeholder.configure({ placeholder: 'Start typing' }),
   ]
 }
 

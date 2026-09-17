@@ -74,11 +74,11 @@ export function RecoveryScreen({
   return (
     <main
       className="recovery-screen"
-      aria-label={onBack ? 'recovery screen preview' : 'editor recovery'}
+      aria-label={onBack ? 'Recovery screen preview' : 'Editor recovery'}
     >
       <header className="recovery-chrome">
-        <span>hibi</span>
-        {onBack && <span>preview</span>}
+        <span>Hibi</span>
+        {onBack && <span>Preview</span>}
       </header>
       <div className="recovery-body">
         <section className="recovery-content" aria-labelledby="recovery-title">
@@ -89,25 +89,25 @@ export function RecoveryScreen({
             aria-hidden
           />
           <h1 id="recovery-title" ref={heading} tabIndex={-1}>
-            let’s get you back to writing.
+            Let’s get you back to writing.
           </h1>
           <p>
             {onBack
-              ? 'this is a preview of hibi’s recovery screen. your editor is still open underneath.'
-              : 'the editor ran into an unexpected error. reload hibi to try again.'}
+              ? 'This is a preview of Hibi’s recovery screen. your editor is still open underneath.'
+              : 'The editor ran into an unexpected error. reload Hibi to try again.'}
           </p>
           {draft && (
             <div className="recovery-draft">
               <File size={16} aria-hidden />
               <span>{draft.name}</span>
               <span>
-                {draft.dirty ? 'unsaved draft available' : 'document available'}
+                {draft.dirty ? 'Unsaved draft available' : 'Document available'}
               </span>
             </div>
           )}
           {!onBack && draft?.dirty && (
             <p className="recovery-hint">
-              the latest draft received by hibi is available in this window.
+              The latest draft received by Hibi is available in this window.
               save a copy before reloading if you need one.
             </p>
           )}
@@ -115,7 +115,7 @@ export function RecoveryScreen({
             {onBack ? (
               <Button onClick={onBack}>
                 <ArrowLeft />
-                back to settings
+                Back to settings
               </Button>
             ) : (
               <>
@@ -125,20 +125,20 @@ export function RecoveryScreen({
                   onClick={() => location.reload()}
                 >
                   <RotateCcw />
-                  reload hibi
+                  Reload Hibi
                 </Button>
                 <Button
                   disabled={busy || !draft}
                   onClick={() => void saveCopy()}
                 >
                   <Save />
-                  {busy ? 'saving…' : 'save a copy'}
+                  {busy ? 'Saving…' : 'Save a copy'}
                 </Button>
               </>
             )}
           </div>
           <details className="recovery-details">
-            <summary>error details</summary>
+            <summary>Error details</summary>
             <pre>{details}</pre>
             <Button variant="ghost" onClick={() => void copyDetails()}>
               {copied ? <Check /> : <Copy />}

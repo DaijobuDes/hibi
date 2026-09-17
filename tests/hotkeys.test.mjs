@@ -120,7 +120,7 @@ test('rebind, conflict, clear, reset, native menus, and relaunch persistence', {
   let page = await launch()
   const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
   const storedMod = process.platform === 'darwin' ? 'meta' : 'ctrl'
-  const rich = page.getByRole('textbox', { name: 'document editor' })
+  const rich = page.getByRole('textbox', { name: /document editor/i })
   await rich.waitFor()
   await rich.fill('keyboard checks')
   for (const [key, mode] of [
@@ -142,15 +142,15 @@ test('rebind, conflict, clear, reset, native menus, and relaunch persistence', {
     'keyboard checks',
   )
   await pressShortcut(app, `${mod}+k`)
-  const palette = page.getByRole('dialog', { name: 'command palette' })
-  const search = page.getByRole('combobox', { name: 'search commands' })
+  const palette = page.getByRole('dialog', { name: /command palette/i })
+  const search = page.getByRole('combobox', { name: /search commands/i })
   await palette.waitFor()
   await search.fill('preferences settings')
   await search.press('Enter')
   await palette.waitFor({ state: 'hidden' })
-  await page.getByRole('tab', { name: 'hotkeys', exact: true }).click()
+  await page.getByRole('tab', { name: /^hotkeys$/i, exact: true }).click()
   const binding = page.getByRole('button', {
-    name: 'rebind command palette',
+    name: /^rebind command palette$/i,
     exact: true,
   })
   await binding.click()
@@ -160,11 +160,14 @@ test('rebind, conflict, clear, reset, native menus, and relaunch persistence', {
   await pressShortcut(app, `${mod}+s`)
   await page
     .getByRole('status')
-    .filter({ hasText: 'already used by save document' })
+    .filter({ hasText: /already used by save document/i })
     .waitFor()
   assert.equal(await app.evaluate(() => globalThis.saveCalls), 0)
   await pressShortcut(app, `${mod}+w`)
-  await page.getByRole('status').filter({ hasText: 'reserved' }).waitFor()
+  await page
+    .getByRole('status')
+    .filter({ hasText: /reserved/i })
+    .waitFor()
   assert.equal(app.windows().length, 1)
   await pressShortcut(app, `${mod}+j`)
   await binding.press('Enter')
@@ -177,7 +180,7 @@ test('rebind, conflict, clear, reset, native menus, and relaunch persistence', {
   )
 
   const saveBinding = page.getByRole('button', {
-    name: 'rebind save document',
+    name: /^rebind save document$/i,
     exact: true,
   })
   await saveBinding.click()
@@ -192,8 +195,8 @@ test('rebind, conflict, clear, reset, native menus, and relaunch persistence', {
   const menuSave = await app.evaluate(
     ({ Menu }) =>
       Menu.getApplicationMenu()
-        .items.find((item) => item.label === 'file')
-        .submenu.items.find((item) => item.label === 'save').accelerator,
+        .items.find((item) => item.label === 'File')
+        .submenu.items.find((item) => item.label === 'Save').accelerator,
   )
   assert.equal(
     menuSave.toLowerCase(),
@@ -205,13 +208,15 @@ test('rebind, conflict, clear, reset, native menus, and relaunch persistence', {
   )
   await binding.press('Escape')
   assert.equal(
-    await page.getByRole('main', { name: 'settings', exact: true }).isVisible(),
+    await page
+      .getByRole('main', { name: /^settings$/i, exact: true })
+      .isVisible(),
     true,
   )
 
   await page
     .getByRole('button', {
-      name: 'clear shortcut for find in note',
+      name: /^clear shortcut for find in note$/i,
       exact: true,
     })
     .click()
@@ -220,7 +225,7 @@ test('rebind, conflict, clear, reset, native menus, and relaunch persistence', {
   )
   await page
     .getByRole('button', {
-      name: 'reset shortcut for find in note',
+      name: /^reset shortcut for find in note$/i,
       exact: true,
     })
     .click()
@@ -237,7 +242,7 @@ test('rebind, conflict, clear, reset, native menus, and relaunch persistence', {
   await mkdir('test-results', { recursive: true })
   await page.screenshot({ path: 'test-results/hotkeys.png' })
   await page
-    .getByRole('button', { name: 'back to editor', exact: true })
+    .getByRole('button', { name: /^back to editor$/i, exact: true })
     .click()
   await rich.waitFor()
   await rich.focus()
@@ -269,19 +274,19 @@ test('rebind, conflict, clear, reset, native menus, and relaunch persistence', {
 
   await app.close()
   page = await launch()
-  await page.getByRole('textbox', { name: 'document editor' }).waitFor()
+  await page.getByRole('textbox', { name: /document editor/i }).waitFor()
   await pressShortcut(app, `${mod}+j`)
-  await page.getByRole('dialog', { name: 'command palette' }).waitFor()
+  await page.getByRole('dialog', { name: /command palette/i }).waitFor()
   assert.equal(
     (await page.evaluate(() => window.hibi.getHotkeys())).save,
     `${storedMod}+shift+d`,
   )
   await page
-    .getByRole('combobox', { name: 'search commands' })
+    .getByRole('combobox', { name: /search commands/i })
     .fill('preferences settings')
-  await page.getByRole('combobox', { name: 'search commands' }).press('Enter')
-  await page.getByRole('tab', { name: 'hotkeys', exact: true }).click()
-  await page.getByRole('button', { name: 'reset all', exact: true }).click()
+  await page.getByRole('combobox', { name: /search commands/i }).press('Enter')
+  await page.getByRole('tab', { name: /^hotkeys$/i, exact: true }).click()
+  await page.getByRole('button', { name: /^reset all$/i, exact: true }).click()
   await page.waitForFunction(() =>
     window.hibi.getHotkeys().then((keys) => keys.palette.endsWith('+k')),
   )

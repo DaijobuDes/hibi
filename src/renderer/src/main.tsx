@@ -679,12 +679,12 @@ function App() {
   async function openRemote() {
     if (busyRef.current || dialogs.isOpen()) return
     const url = await dialogs.prompt({
-      title: 'open from remote',
-      label: 'markdown url',
+      title: 'Open from remote',
+      label: 'Markdown URL',
       placeholder: 'https://example.com/readme.md',
       description:
-        'open raw markdown as an editable draft, then save it locally.',
-      confirmLabel: 'open',
+        'Open raw Markdown as an editable draft, then save it locally.',
+      confirmLabel: 'Open',
     })
     if (url)
       await applyDocumentOperation(() => window.hibi.openRemoteDocument(url))
@@ -743,6 +743,12 @@ function App() {
     }
     setPaletteOpen(false)
     switch (command) {
+      case 'close-tab':
+        if (document)
+          void applyDocumentOperation(() =>
+            window.hibi.closeDocumentTab(document.tabId),
+          )
+        break
       case 'back':
       case 'forward':
         navigate(command)
@@ -750,10 +756,10 @@ function App() {
       case 'history':
         void dialogs
           .open<string>({
-            title: 'version history',
+            title: 'Version history',
             size: 'wide',
             description:
-              'local snapshots on save. restoring changes the editor; save to replace the file.',
+              'Local snapshots on save. restoring changes the editor; save to replace the file.',
             content: ({ close }) => <VersionHistory close={close} />,
           })
           .result.then(async (id) => {
@@ -872,9 +878,9 @@ function App() {
       return
     }
     dialogs.open({
-      title: 'markdown flavor',
+      title: 'Markdown flavor',
       description:
-        'choose this file’s dialect and extra syntax. automatic detection recognizes enabled features.',
+        'Choose this file’s dialect and extra syntax. automatic detection recognizes enabled features.',
       content: () => (
         <FlavorPicker
           initial={flavorChoice}
@@ -897,13 +903,13 @@ function App() {
       category,
       label:
         id === 'settings' && settingsOpen
-          ? 'back to editor'
+          ? 'Back to editor'
           : id === 'markdown' && !markdownDocument
-            ? 'source only'
+            ? 'Source only'
             : id === 'toggle-titlebar'
               ? hideTitlebar
-                ? 'keep top bar visible'
-                : 'hide top bar while typing'
+                ? 'Keep top bar visible'
+                : 'Hide top bar while typing'
               : label,
       shortcut: hotkeys[id],
       run: () => addonHost.app.runAction(id),
@@ -913,7 +919,7 @@ function App() {
       id: `sidebar.${view}`,
       category: 'view' as const,
       label:
-        view === 'workspace' ? 'show workspace sidebar' : 'show in this page',
+        view === 'workspace' ? 'Show workspace sidebar' : 'Show in this page',
       run: () => {
         setSettingsOpen(false)
         selectSidebarView(view)
@@ -922,38 +928,38 @@ function App() {
     {
       id: 'settings.licenses',
       category: 'settings',
-      label: 'open source licenses',
+      label: 'Open source licenses',
       run: () => openSetting('hibi', 'open-source-licenses'),
     },
     ...actions.map(({ id, label }) => ({
       id: `shortcut.${id}`,
       category: 'settings' as const,
-      label: `shortcut: ${label}`,
+      label: `Shortcut: ${label}`,
       keywords: 'keyboard hotkeys rebind',
       run: () => openSetting('hotkeys', `hotkey-${id}`),
     })),
     {
       id: 'flavor.choose',
       category: 'edit',
-      label: 'change markdown flavor…',
+      label: 'Change Markdown flavor…',
       run: openFlavors,
     },
     {
       id: 'flavor.auto',
       category: 'edit',
-      label: 'automatically detect markdown flavor',
+      label: 'Automatically detect Markdown flavor',
       run: () => changeFlavor(automaticFlavor),
     },
     {
       id: 'flavor.markdown',
       category: 'edit',
-      label: 'use plain markdown flavor',
+      label: 'Use plain Markdown flavor',
       run: () => changeFlavor({ dialect: 'markdown', syntax: [] }),
     },
     ...availableFlavors.map((flavor) => ({
       id: `flavor.${flavor.id}`,
       category: 'edit' as const,
-      label: `use ${flavor.name} flavor`,
+      label: `Use ${flavor.name} flavor`,
       keywords: flavor.description,
       run: () =>
         changeFlavor(
@@ -977,7 +983,7 @@ function App() {
     ...settingsCategories.map(({ id, label }) => ({
       id: `settings.${id}`,
       category: 'settings' as const,
-      label: `open ${label} settings`,
+      label: `Open ${label} settings`,
       run: () => openSetting(id),
     })),
     ...indexedSettings
@@ -1000,7 +1006,7 @@ function App() {
             manifest.kind === 'theme'
               ? ('themes' as const)
               : ('extensions' as const),
-          label: `${enabled ? 'disable' : 'enable'} ${manifest.name}`,
+          label: `${enabled ? 'Disable' : 'Enable'} ${manifest.name}`,
           keywords: manifest.description,
           run: () => {
             void addonHost.setEnabled(manifest.id, !enabled)
@@ -1022,7 +1028,7 @@ function App() {
               {
                 id: `addon.remove.${manifest.id}`,
                 category: 'extensions' as const,
-                label: `remove ${manifest.name}`,
+                label: `Remove ${manifest.name}`,
                 run: () => {
                   void addonHost.remove(manifest.id)
                 },
@@ -1062,8 +1068,8 @@ function App() {
       id: 'toolbar.toggle',
       category: 'view',
       label: toolbarSnapshot.preferences.visible
-        ? 'hide toolbar'
-        : 'show toolbar',
+        ? 'Hide toolbar'
+        : 'Show toolbar',
       run: () =>
         toolbar.setPreferences({
           visible: !toolbarSnapshot.preferences.visible,
@@ -1093,19 +1099,19 @@ function App() {
       {
         id: 'workspace.new-file',
         category: 'file',
-        label: 'new workspace file',
+        label: 'New workspace file',
         run: () => run(() => create('new-file')),
       },
       {
         id: 'workspace.new-folder',
         category: 'file',
-        label: 'new workspace folder',
+        label: 'New workspace folder',
         run: () => run(() => create('new-folder')),
       },
       {
         id: 'workspace.refresh',
         category: 'file',
-        label: 'refresh workspace',
+        label: 'Refresh workspace',
         run: () => void refreshFiles(),
       },
     )
@@ -1130,16 +1136,17 @@ function App() {
           run: () => run(item.onSelect),
         })),
       )
-  } else if (document && !busy)
+  }
+  if (document && !busy)
     paletteCommands.push({
       id: 'document.rename',
       category: 'file',
-      label: 'rename document…',
+      label: 'Rename document…',
       run: () => {
         void dialogs
           .prompt({
-            title: 'rename document',
-            label: 'file name',
+            title: 'Rename document',
+            label: 'File name',
             defaultValue: document.name,
           })
           .then((name) => {
@@ -1228,7 +1235,12 @@ function App() {
         busy={busy}
         sidebarView={sidebarView}
         onSidebarView={selectSidebarView}
-        onRename={renameFile}
+        onSelectTab={(id) =>
+          void applyDocumentOperation(() => window.hibi.selectDocumentTab(id))
+        }
+        onCloseTab={(id) =>
+          void applyDocumentOperation(() => window.hibi.closeDocumentTab(id))
+        }
         sidebarOpen={sidebarOpen}
         onSidebar={() => setSidebarOpen(!sidebarOpen)}
         hotkeys={hotkeys}
@@ -1307,7 +1319,15 @@ function App() {
         inert={settingsOpen}
       >
         <EditorToolbar mode={mode} typing={typing} />
-        <div className="editor-page" data-startup={showWelcome}>
+        <div
+          className="editor-page"
+          id="document-editor-panel"
+          role="tabpanel"
+          aria-labelledby={
+            document ? `document-tab-${document.tabId}` : undefined
+          }
+          data-startup={showWelcome}
+        >
           {document && (
             <MarkdownEditor
               onOutline={setOutline}
@@ -1358,8 +1378,8 @@ function App() {
                   tooltip: !markdownDocument
                     ? `${sourceName} document · click for addons`
                     : unsupportedFlavor
-                      ? 'some detected syntax is disabled; choose a flavor or enable its extension'
-                      : `${flavorChoice.dialect === 'auto' ? 'detected' : 'selected'} markdown flavor · click to change`,
+                      ? 'Some detected syntax is disabled; choose a flavor or enable its extension'
+                      : `${flavorChoice.dialect === 'auto' ? 'Detected' : 'Selected'} markdown flavor · click to change`,
                   onClick: openFlavors,
                 },
                 {
@@ -1378,9 +1398,9 @@ function App() {
       </div>
       {failed && (
         <p role="alert">
-          could not connect to hibi.{' '}
+          Could not connect to Hibi.{' '}
           <button type="button" onClick={() => location.reload()}>
-            retry
+            Retry
           </button>
         </p>
       )}

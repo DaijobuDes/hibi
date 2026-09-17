@@ -48,7 +48,7 @@ export function GitPanel({ context }: { context: AddonContext }) {
     <Panel className="git-panel">
       <ControlRow className="git-actions">
         <Select
-          aria-label="git branch"
+          aria-label="Git branch"
           disabled={busy || !state}
           value={state ? `refs/heads/${state.branch}` : ''}
           onChange={(event) => void run('switch', event.target.value)}
@@ -63,21 +63,21 @@ export function GitPanel({ context }: { context: AddonContext }) {
           ))}
         </Select>
         <Button disabled={busy} onClick={() => void run('state')}>
-          refresh
+          Refresh
         </Button>
         <Button disabled={busy || !state} onClick={() => void run('pull')}>
-          pull{state?.behind ? ` (${state.behind})` : ''}
+          Pull{state?.behind ? ` (${state.behind})` : ''}
         </Button>
         <Button disabled={busy || !state} onClick={() => void run('push')}>
-          push{state?.ahead ? ` (${state.ahead})` : ''}
+          Push{state?.ahead ? ` (${state.ahead})` : ''}
         </Button>
       </ControlRow>
-      {busy && <p role="status">working…</p>}
+      {busy && <p role="status">Working…</p>}
       {error && <p role="alert">{error}</p>}
       {state && (
         <>
-          {!state.files.length && <p>working tree clean.</p>}
-          <section className="git-files" aria-label="changed files">
+          {!state.files.length && <p>Working tree clean.</p>}
+          <section className="git-files" aria-label="Changed files">
             {state.files.map((file) => (
               <div className="git-file" key={file.path}>
                 <Button
@@ -99,19 +99,19 @@ export function GitPanel({ context }: { context: AddonContext }) {
                   }
                   onClick={() => void run('stage', file.path)}
                 >
-                  stage
+                  Stage
                 </Button>
                 <Button
                   disabled={busy || [' ', '?'].includes(file.index)}
                   onClick={() => void run('unstage', file.path)}
                 >
-                  unstage
+                  Unstage
                 </Button>
               </div>
             ))}
           </section>
           {diff && (
-            <section aria-label={`diff for ${diff.path}`}>
+            <section aria-label={`Diff for ${diff.path}`}>
               <pre className="git-diff">{diff.text}</pre>
             </section>
           )}
@@ -122,10 +122,10 @@ export function GitPanel({ context }: { context: AddonContext }) {
               if (!busy && message.trim()) void run('commit', message)
             }}
           >
-            <label htmlFor="git-message">commit staged changes</label>
+            <label htmlFor="git-message">Commit staged changes</label>
             <TextInput
               id="git-message"
-              placeholder="commit message"
+              placeholder="Commit message"
               value={message}
               maxLength={8000}
               disabled={busy}
@@ -139,7 +139,7 @@ export function GitPanel({ context }: { context: AddonContext }) {
                 !state.files.some((file) => ![' ', '?'].includes(file.index))
               }
             >
-              commit
+              Commit
             </Button>
           </form>
         </>

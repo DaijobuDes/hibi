@@ -20,6 +20,7 @@ export type WorkspaceEntry = {
   path: string
   name: string
   kind: 'file' | 'folder'
+  dirty?: boolean
   children?: WorkspaceEntry[]
 }
 

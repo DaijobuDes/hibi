@@ -36,25 +36,25 @@ export function TagsPanel({
       <ControlRow className="tags-controls">
         <TextInput
           type="search"
-          aria-label="filter tags"
-          placeholder="filter tags…"
+          aria-label="Filter tags"
+          placeholder="Filter tags…"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
         />
         <Button onClick={refresh} disabled={loading}>
-          refresh
+          Refresh
         </Button>
       </ControlRow>
       {error && <p role="alert">{error}</p>}
       {loading ? (
-        <p role="status">reading tags…</p>
+        <p role="status">Reading tags…</p>
       ) : !workspace ? (
         <Button onClick={() => void context.workspace.open().then(refresh)}>
-          open a folder
+          Open a folder
         </Button>
       ) : (
         <div className="tags-browser">
-          <section className="tags-list" aria-label="workspace tags">
+          <section className="tags-list" aria-label="Workspace tags">
             {matches.map(([tag, paths]) => (
               <Button
                 variant="row"
@@ -67,17 +67,17 @@ export function TagsPanel({
               </Button>
             ))}
             {!matches.length && (
-              <p>no tags found. write #tag in a note to add one.</p>
+              <p>No tags found. write #tag in a note to add one.</p>
             )}
           </section>
           <section
             className="tags-files"
-            aria-label={selected ? `notes tagged #${selected}` : 'tagged notes'}
+            aria-label={selected ? `Notes tagged #${selected}` : 'Tagged notes'}
           >
             <p>
               {selected
                 ? `#${selected} · ${files.length} ${files.length === 1 ? 'note' : 'notes'}`
-                : 'select a tag to see its notes.'}
+                : 'Select a tag to see its notes.'}
             </p>
             {files.map((path) => (
               <Button

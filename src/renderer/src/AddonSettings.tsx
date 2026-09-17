@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Addon, AddonManifest, AddonState } from '../../addons/api'
 import { addonPackageUrl } from '../../shared/addon-package'
+import { sentenceCase } from '../../shared/ui-case'
 import { Button, ControlRow, SettingRow, Toggle } from '../../ui/Controls'
 import { useDialogs } from '../../ui/DialogProvider'
 import { SettingsFilter } from '../../ui/SettingsFilter'
@@ -10,17 +11,17 @@ import { addonRegistry } from './addon-registry'
 export function AddonMetadata({ manifest }: { manifest: AddonManifest }) {
   return (
     <span className="addon-metadata">
-      <span>{addonRegistry.origin(manifest.id)}</span>
-      <span>{manifest.kind ?? 'extension'}</span>
+      <span>{sentenceCase(addonRegistry.origin(manifest.id))}</span>
+      <span>{sentenceCase(manifest.kind ?? 'Extension')}</span>
       {manifest.version && <span>v{manifest.version}</span>}
       {manifest.authors?.map((author) => (
         <span
           key={author.discordId ?? author.github ?? author.displayName}
           data-tooltip={
             author.discordId
-              ? `discord: ${author.discordId}`
+              ? `Discord: ${author.discordId}`
               : author.github
-                ? `github: ${author.github}`
+                ? `GitHub: ${author.github}`
                 : undefined
           }
           data-discord-id={author.discordId}
@@ -93,12 +94,12 @@ export function AddonSettings({
   }
   async function fromUrl() {
     const value = await dialogs.prompt({
-      title: 'install from url',
-      label: 'addon url',
+      title: 'Install from URL',
+      label: 'Addon URL',
       placeholder: 'https://example.com/addon.zip',
       description:
-        'use a public https git repository or addon zip link. the repository must include a ready-to-use hibi-addon.json and entry. review before installing; it starts disabled.',
-      confirmLabel: 'download',
+        'Use a public https Git repository or addon zip link. the repository must include a ready-to-use Hibi-addon.JSON and entry. review before installing; it starts disabled.',
+      confirmLabel: 'Download',
       validate: (value) => {
         try {
           addonPackageUrl(value)
@@ -112,28 +113,28 @@ export function AddonSettings({
   }
   return (
     <>
-      <h1>addons</h1>
+      <h1>Addons</h1>
       <ControlRow className="addon-catalog-actions">
         <Button
           disabled={busy}
           onClick={() => void run(() => window.hibi.openAddonGarden())}
         >
-          hibi garden
+          Hibi garden
         </Button>
         <Button disabled={busy} onClick={() => void fromUrl()}>
-          install from url
+          Install from URL
         </Button>
         <Button
           disabled={busy}
           onClick={() => void run(() => window.hibi.openAddonsFolder())}
         >
-          open plugins folder
+          Open plugins folder
         </Button>
       </ControlRow>
       <SettingsFilter
         id="addon-filter"
-        label="filter addons"
-        placeholder="filter addons…"
+        label="Filter addons"
+        placeholder="Filter addons…"
         value={query}
         onChange={setQuery}
         disabled={busy}
@@ -157,7 +158,7 @@ export function AddonSettings({
             data-enabled={active}
             hidden={!group.some((addon) => matching.includes(addon))}
           >
-            <h2>{active ? 'enabled' : 'disabled'}</h2>
+            <h2>{active ? 'Enabled' : 'Disabled'}</h2>
             <div className="settings-group">
               {group.map(({ manifest }) => (
                 <SettingRow
@@ -178,7 +179,7 @@ export function AddonSettings({
                         disabled={busy}
                         onClick={() => void run(() => remove(manifest.id))}
                       >
-                        remove
+                        Remove
                       </Button>
                     )}
                     <Toggle
@@ -199,7 +200,7 @@ export function AddonSettings({
           </div>
         )
       })}
-      {!matching.length && <p>no matching addons.</p>}
+      {!matching.length && <p>No matching addons.</p>}
     </>
   )
 }

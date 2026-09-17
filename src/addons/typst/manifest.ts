@@ -4,12 +4,12 @@ import { authors } from '../authors'
 
 export default {
   id: 'typst',
-  name: 'typst',
+  name: 'Typst',
   kind: 'extension',
   version: '1.0.0',
   apiVersion: 1,
   description:
-    'typst documents, live previews, pdf export, and rendered markdown blocks.',
+    'Typst documents, live previews, PDF export, and rendered Markdown blocks.',
   defaultEnabled: false,
   fileExtensions: ['typ'],
   authors: [
@@ -28,7 +28,7 @@ export default {
   licenses: [
     {
       id: 'typst-assets',
-      name: 'typst bundled fonts and assets',
+      name: 'Typst bundled fonts and assets',
       license: 'see notices',
       text: notice,
     },

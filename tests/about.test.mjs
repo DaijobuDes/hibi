@@ -64,17 +64,17 @@ test('hibi opens first, sponsor uses a fixed URL, and license dialogs stay reada
   page.setDefaultTimeout(5000)
   const errors = []
   page.on('pageerror', (error) => errors.push(error.message))
-  await page.getByRole('button', { name: 'editor settings' }).click()
-  const sidebar = page.getByRole('tablist', { name: 'settings categories' })
-  assert.equal(await sidebar.getByRole('tab').first().innerText(), 'hibi')
+  await page.getByRole('button', { name: /editor settings/i }).click()
+  const sidebar = page.getByRole('tablist', { name: /settings categories/i })
+  assert.equal(await sidebar.getByRole('tab').first().innerText(), 'Hibi')
   assert.equal(
     await page
-      .getByRole('tab', { name: 'hibi', exact: true })
+      .getByRole('tab', { name: /^hibi$/i, exact: true })
       .getAttribute('aria-selected'),
     'true',
   )
-  const panel = page.getByRole('tabpanel', { name: 'hibi', exact: true })
-  await panel.getByText('version 0.1.0', { exact: true }).waitFor()
+  const panel = page.getByRole('tabpanel', { name: /^hibi$/i, exact: true })
+  await panel.getByText(/^version 0\.1\.0$/i, { exact: true }).waitFor()
   const react = panel
     .getByRole('button')
     .filter({ has: page.locator('.license-name', { hasText: /^react19/ }) })
@@ -112,7 +112,7 @@ test('hibi opens first, sponsor uses a fixed URL, and license dialogs stay reada
       globalThis.openedSponsor = url
     }
   })
-  await panel.getByRole('button', { name: 'sponsor on github' }).click()
+  await panel.getByRole('button', { name: /sponsor on github/i }).click()
   assert.equal(
     await app.evaluate(() => globalThis.openedSponsor),
     'https://github.com/sponsors/schmayterling',
@@ -126,7 +126,7 @@ test('hibi opens first, sponsor uses a fixed URL, and license dialogs stay reada
     animations: 'disabled',
   })
   await react.click()
-  const dialog = page.getByRole('dialog', { name: 'react', exact: true })
+  const dialog = page.getByRole('dialog', { name: /^react$/i, exact: true })
   await dialog.locator('.license-text').waitFor()
   assert.ok(
     (await dialog.locator('.license-text').innerText()).includes(
@@ -159,6 +159,6 @@ test('hibi opens first, sponsor uses a fixed URL, and license dialogs stay reada
     await dialog.waitFor({ state: 'hidden' })
   }
   assert.deepEqual(errors, [])
-  await page.getByRole('tab', { name: 'appearance', exact: true }).click()
+  await page.getByRole('tab', { name: /^appearance$/i, exact: true }).click()
   assert.equal(await page.locator('.colorscheme-license').count(), 0)
 })

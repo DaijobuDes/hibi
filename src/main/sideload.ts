@@ -247,7 +247,7 @@ export async function installPackage(
     }
   }
   const selection = await dialog.showOpenDialog(window, {
-    title: 'install addon package folder',
+    title: 'Install addon package folder',
     properties: ['openDirectory'],
   })
   if (selection.canceled || !selection.filePaths[0]) return false
@@ -268,13 +268,13 @@ async function installDirectory(
     throw new Error('an installed package cannot replace a bundled addon.')
   const verdict = await dialog.showMessageBox(window, {
     type: data.manifest.kind === 'extension' ? 'warning' : 'question',
-    message: `install ${data.manifest.name} ${data.manifest.version}?`,
+    message: `Install ${data.manifest.name} ${data.manifest.version}?`,
     detail: `${data.manifest.description}\n\nby ${data.manifest.authors?.map((author) => author.displayName).join(', ')}${host ? `\n\ndownloaded from ${host}` : ''}\n\n${data.manifest.kind === 'extension' ? 'extensions run trusted renderer code and can read and edit documents through hibi’s api. only install code you trust. ' : ''}the addon will be installed disabled.`,
     buttons: [
-      'cancel',
+      'Cancel',
       installed.some((item) => item.manifest.id === data.manifest.id)
-        ? 'replace package'
-        : 'install',
+        ? 'Replace package'
+        : 'Install',
     ],
     defaultId: 0,
     cancelId: 0,

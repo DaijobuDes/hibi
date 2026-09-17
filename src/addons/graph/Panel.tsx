@@ -52,8 +52,8 @@ export function GraphPanel({
       <ControlRow className="graph-controls">
         <TextInput
           type="search"
-          aria-label="filter graph notes"
-          placeholder="filter notes…"
+          aria-label="Filter graph notes"
+          placeholder="Filter notes…"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
         />
@@ -62,18 +62,18 @@ export function GraphPanel({
           disabled={!workspace?.activePath}
           onClick={() => setLocal((value) => !value)}
         >
-          current note
+          Current note
         </Button>
         <Button onClick={refresh} disabled={loading}>
-          refresh
+          Refresh
         </Button>
       </ControlRow>
       {error && <p role="alert">{error}</p>}
       {loading ? (
-        <p role="status">reading workspace…</p>
+        <p role="status">Reading workspace…</p>
       ) : !workspace ? (
         <Button onClick={() => void context.workspace.open().then(refresh)}>
-          open a folder
+          Open a folder
         </Button>
       ) : (
         <>
@@ -88,10 +88,10 @@ export function GraphPanel({
               open={open}
             />
           ) : (
-            <p>no matching notes.</p>
+            <p>No matching notes.</p>
           )}
           <p className="graph-help">
-            click a note to open it. drag notes or the background; scroll to
+            Click a note to open it. drag notes or the background; scroll to
             zoom.
           </p>
         </>

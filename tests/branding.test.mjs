@@ -51,7 +51,7 @@ test('development runtime uses the hibi bundle name and supplied icon', {
     await rm(profile, { recursive: true, force: true })
   })
   await (await app.firstWindow())
-    .getByRole('textbox', { name: 'document editor' })
+    .getByRole('textbox', { name: /document editor/i })
     .waitFor()
   assert.equal(await app.evaluate(({ app }) => app.getName()), 'hibi')
   const icons = await app.evaluate(({ app, nativeImage }) =>

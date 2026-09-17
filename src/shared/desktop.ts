@@ -6,6 +6,8 @@ export const DOCUMENT_CHANNELS = {
   new: 'document:new',
   save: 'document:save',
   autosave: 'document:autosave',
+  selectTab: 'document:select-tab',
+  closeTab: 'document:close-tab',
   rename: 'document:rename',
   image: 'document:image',
   navigate: 'document:navigate',
@@ -16,6 +18,9 @@ export const DOCUMENT_CHANNELS = {
 
 export const MAX_DOCUMENT_BYTES = 2 * 1024 * 1024
 export type DocumentState = {
+  /** Stable window-local tab identity, including across save and rename. */
+  tabId: string
+  tabs: DocumentTab[]
   /** Opaque identity for per-file preferences. Contains no filesystem path. */
   id: string
   /** Workspace draft with a target name but no file on disk yet. */
@@ -28,6 +33,7 @@ export type DocumentState = {
   /** True only after this document has a real local save destination. */
   canAutosave: boolean
 }
+export type DocumentTab = { id: string; name: string; dirty: boolean }
 export type AutosaveResult = {
   status: 'saved' | 'skipped' | 'conflict'
   document: DocumentState | null
@@ -95,7 +101,10 @@ export type DesktopApi = {
     callback: (workspace: WorkspaceState | null) => void,
   ) => () => void
   getAppInfo: () => Promise<AppInfo>
+  setUiCase: (value: import('./ui-case').UiCase) => Promise<void>
   getDocument: () => Promise<DocumentState>
+  selectDocumentTab: (id: string) => Promise<DocumentState>
+  closeDocumentTab: (id: string) => Promise<DocumentState | null>
   updateDocument: (markdown: string) => Promise<void>
   openDocument: () => Promise<DocumentState | null>
   newDocument: () => Promise<DocumentState | null>

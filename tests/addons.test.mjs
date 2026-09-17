@@ -38,13 +38,15 @@ test('plugin pages, metadata, shared controls, and full source vim editing', {
   const page = await app.firstWindow()
   const errors = []
   page.on('pageerror', (error) => errors.push(error.message))
-  await page.getByRole('textbox', { name: 'document editor' }).waitFor()
-  await page.getByRole('button', { name: 'open', exact: true }).click()
+  await page.getByRole('textbox', { name: /document editor/i }).waitFor()
+  await page.getByRole('button', { name: /^open$/i, exact: true }).click()
   await page.waitForFunction(() =>
     document.querySelector('.tiptap')?.textContent.includes('alpha'),
   )
-  await page.getByRole('button', { name: 'markdown only', exact: true }).click()
-  const source = page.getByRole('textbox', { name: 'markdown editor' })
+  await page
+    .getByRole('button', { name: /^markdown only$/i, exact: true })
+    .click()
+  const source = page.getByRole('textbox', { name: /markdown editor/i })
   await source.waitFor()
   const read = async () =>
     (await page.evaluate(() => window.hibi.getDocument())).markdown
@@ -57,8 +59,8 @@ test('plugin pages, metadata, shared controls, and full source vim editing', {
       { id, enabled },
     )
   }
-  await page.getByRole('button', { name: 'editor settings' }).click()
-  await page.getByRole('tab', { name: 'editor', exact: true }).click()
+  await page.getByRole('button', { name: /editor settings/i }).click()
+  await page.getByRole('tab', { name: /^editor$/i, exact: true }).click()
   await mkdir('test-results', { recursive: true })
   await page.screenshot({
     path: 'test-results/settings-buttons.png',
@@ -66,18 +68,18 @@ test('plugin pages, metadata, shared controls, and full source vim editing', {
   })
   assert.equal(
     await page
-      .getByRole('button', { name: 'reset to 48 px' })
+      .getByRole('button', { name: /reset to 48 px/i })
       .evaluate((el) => getComputedStyle(el).borderTopWidth),
     '1px',
   )
-  await page.getByRole('tab', { name: 'appearance', exact: true }).click()
+  await page.getByRole('tab', { name: /^appearance$/i, exact: true }).click()
   await page.screenshot({
     path: 'test-results/settings-chevron.png',
     animations: 'disabled',
   })
   assert.equal(
     await page
-      .getByRole('combobox', { name: 'cursor style' })
+      .getByRole('combobox', { name: /cursor style/i })
       .evaluate((el) => getComputedStyle(el).appearance),
     'none',
   )
@@ -91,8 +93,8 @@ test('plugin pages, metadata, shared controls, and full source vim editing', {
     text: el.textContent,
   }))
   assert.ok(footer.bottom > footer.height - 80)
-  assert.match(footer.text, /hibi 0\.1\.0.*electron 44\.3\.0/)
-  await page.getByRole('tab', { name: 'addons', exact: true }).click()
+  assert.match(footer.text, /Hibi 0\.1\.0.*Electron 44\.3\.0/)
+  await page.getByRole('tab', { name: /^addons$/i, exact: true }).click()
   assert.ok(
     (await page
       .locator('#settings-addons [data-discord-id="1262793452236570667"]')
@@ -108,7 +110,7 @@ test('plugin pages, metadata, shared controls, and full source vim editing', {
     await page.locator('style[data-addon-style="vim.editor"]').count(),
     1,
   )
-  await page.getByRole('tab', { name: 'vim', exact: true }).click()
+  await page.getByRole('tab', { name: /^vim$/i, exact: true }).click()
   await page.waitForFunction(() => {
     const selected = document.querySelector(
       '.settings-sidebar [aria-selected="true"]',
@@ -127,9 +129,9 @@ test('plugin pages, metadata, shared controls, and full source vim editing', {
     await page.locator('.settings-sidebar .sidebar-section').innerText(),
     'plugins',
   )
-  await page.getByRole('checkbox', { name: 'show vim status' }).uncheck()
-  await page.getByRole('checkbox', { name: 'show vim status' }).check()
-  await page.getByRole('button', { name: 'back to editor' }).click()
+  await page.getByRole('checkbox', { name: /show vim status/i }).uncheck()
+  await page.getByRole('checkbox', { name: /show vim status/i }).check()
+  await page.getByRole('button', { name: /back to editor/i }).click()
   await page.waitForFunction(
     () =>
       document.querySelector('[data-vim-plugin="true"]') ||
@@ -139,7 +141,10 @@ test('plugin pages, metadata, shared controls, and full source vim editing', {
     await page.locator('.toast[data-variant="error"]').allTextContents(),
     [],
   )
-  await page.getByRole('status').filter({ hasText: 'vim · normal' }).waitFor()
+  await page
+    .getByRole('status')
+    .filter({ hasText: /vim · normal/i })
+    .waitFor()
   const statusBounds = await page
     .locator('.app-statusbar')
     .evaluate((element) => ({
@@ -156,8 +161,10 @@ test('plugin pages, metadata, shared controls, and full source vim editing', {
   assert.equal(statusBounds.left, statusBounds.pageLeft)
   assert.equal(statusBounds.bottom, statusBounds.height)
   assert.equal(statusBounds.sidebarBottom, statusBounds.height)
-  for (const open of [false, true]) {
-    await page.getByRole('button', { name: 'toggle workspace sidebar' }).click()
+  for (const open of [true, false]) {
+    await page
+      .getByRole('button', { name: /toggle workspace sidebar/i })
+      .click()
     await page.waitForFunction(
       (open) =>
         document.querySelector('.app-statusbar').getBoundingClientRect()
@@ -179,9 +186,11 @@ test('plugin pages, metadata, shared controls, and full source vim editing', {
   assert.equal(await read(), initial)
   await source.press('Escape')
   const pendingCommand = page.locator(
-    '.app-statusbar [title="pending vim command"]',
+    '.app-statusbar [data-tooltip="pending vim command" i]',
   )
-  const lastCommand = page.locator('.app-statusbar [title="last vim command"]')
+  const lastCommand = page.locator(
+    '.app-statusbar [data-tooltip="last vim command" i]',
+  )
   await source.pressSequentially('2')
   assert.equal(await pendingCommand.innerText(), '2')
   await source.pressSequentially('2')
@@ -207,7 +216,10 @@ test('plugin pages, metadata, shared controls, and full source vim editing', {
   assert.equal((await read()).match(/alpha beta gamma/g).length, 2)
   await source.press('u')
   await source.pressSequentially('gg0ciw')
-  await page.getByRole('status').filter({ hasText: 'vim · insert' }).waitFor()
+  await page
+    .getByRole('status')
+    .filter({ hasText: /vim · insert/i })
+    .waitFor()
   await page.keyboard.type('omega')
   assert.equal(await lastCommand.innerText(), 'ciw')
   await page.keyboard.press('Escape')
@@ -219,8 +231,9 @@ test('plugin pages, metadata, shared controls, and full source vim editing', {
     await input.fill(command)
     await page.waitForFunction(
       (command) =>
-        document.querySelector('.app-statusbar [title="pending vim command"]')
-          ?.textContent === `:${command}`,
+        document.querySelector(
+          '.app-statusbar [data-tooltip="pending vim command" i]',
+        )?.textContent === `:${command}`,
       command,
     )
     await input.press('Enter')
@@ -234,7 +247,10 @@ test('plugin pages, metadata, shared controls, and full source vim editing', {
   await source.pressSequentially('qj@a')
   assert.match(await read(), /second line!/)
   await source.pressSequentially('gg0vww')
-  await page.getByRole('status').filter({ hasText: 'vim · visual' }).waitFor()
+  await page
+    .getByRole('status')
+    .filter({ hasText: /vim · visual/i })
+    .waitFor()
   await page
     .locator('.cm-selectionBackground')
     .first()
@@ -255,7 +271,7 @@ test('plugin pages, metadata, shared controls, and full source vim editing', {
   assert.equal(await read(), beforeSearch)
   await ex('w')
   await page
-    .getByRole('status', { name: 'unsaved changes' })
+    .getByRole('status', { name: /unsaved changes/i })
     .waitFor({ state: 'hidden' })
   assert.equal(await readFile(fixture, 'utf8'), await read())
   await page.mouse.move(450, 18)
@@ -266,17 +282,17 @@ test('plugin pages, metadata, shared controls, and full source vim editing', {
     path: 'test-results/vim-status.png',
     animations: 'disabled',
   })
-  await page.getByRole('button', { name: 'editor settings' }).click()
-  await page.getByRole('tab', { name: 'vim', exact: true }).click()
-  await page.getByRole('checkbox', { name: 'show vim status' }).uncheck()
-  await page.getByRole('button', { name: 'back to editor' }).click()
+  await page.getByRole('button', { name: /editor settings/i }).click()
+  await page.getByRole('tab', { name: /^vim$/i, exact: true }).click()
+  await page.getByRole('checkbox', { name: /show vim status/i }).uncheck()
+  await page.getByRole('button', { name: /back to editor/i }).click()
   assert.equal(await page.locator('[data-status-id^="vim."]').count(), 0)
-  await page.getByRole('button', { name: 'editor settings' }).click()
-  await page.getByRole('checkbox', { name: 'show vim status' }).check()
-  await page.getByRole('button', { name: 'back to editor' }).click()
+  await page.getByRole('button', { name: /editor settings/i }).click()
+  await page.getByRole('checkbox', { name: /show vim status/i }).check()
+  await page.getByRole('button', { name: /back to editor/i }).click()
   assert.equal(await lastCommand.innerText(), ':w')
-  await page.getByRole('button', { name: 'editor settings' }).click()
-  await page.getByRole('tab', { name: 'addons', exact: true }).click()
+  await page.getByRole('button', { name: /editor settings/i }).click()
+  await page.getByRole('tab', { name: /^addons$/i, exact: true }).click()
   await toggleAddon('vim', false)
   assert.equal(
     await page.locator('style[data-addon-style="vim.editor"]').count(),
@@ -286,7 +302,7 @@ test('plugin pages, metadata, shared controls, and full source vim editing', {
     await page.locator('.settings-sidebar .sidebar-section').count(),
     0,
   )
-  await page.getByRole('button', { name: 'back to editor' }).click()
+  await page.getByRole('button', { name: /back to editor/i }).click()
   await page.waitForFunction(() => !document.querySelector('[data-vim-plugin]'))
   assert.equal(await page.locator('[data-status-id^="vim."]').count(), 0)
   const beforePlain = await read()

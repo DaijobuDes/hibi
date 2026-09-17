@@ -24,15 +24,15 @@ export type SlashCommand =
 export const commands: BlockCommand[] = [
   {
     id: 'text',
-    label: 'text',
-    description: 'plain paragraph',
+    label: 'Text',
+    description: 'Plain paragraph',
     keywords: 'paragraph normal',
     markdown: '',
     rich: (chain) => chain.setParagraph(),
   },
   ...([1, 2, 3] as const).map((level) => ({
     id: `heading-${level}`,
-    label: `heading ${level}`,
+    label: `Heading ${level}`,
     description:
       ['large heading', 'medium heading', 'small heading'][level - 1] ?? '',
     keywords: `h${level} title`,
@@ -41,40 +41,40 @@ export const commands: BlockCommand[] = [
   })),
   {
     id: 'bullet-list',
-    label: 'bullet list',
-    description: 'unordered list',
+    label: 'Bullet list',
+    description: 'Unordered list',
     keywords: 'ul bullets',
     markdown: '- ',
     rich: (chain) => chain.toggleBulletList(),
   },
   {
     id: 'numbered-list',
-    label: 'numbered list',
-    description: 'ordered list',
+    label: 'Numbered list',
+    description: 'Ordered list',
     keywords: 'ol numbers',
     markdown: '1. ',
     rich: (chain) => chain.toggleOrderedList(),
   },
   {
     id: 'checklist',
-    label: 'checklist',
-    description: 'tasks with checkboxes',
+    label: 'Checklist',
+    description: 'Tasks with checkboxes',
     keywords: 'todo task list',
     markdown: '- [ ] ',
     rich: (chain) => chain.toggleTaskList(),
   },
   {
     id: 'quote',
-    label: 'quote',
-    description: 'blockquote',
+    label: 'Quote',
+    description: 'Blockquote',
     keywords: 'quotation',
     markdown: '> ',
     rich: (chain) => chain.toggleBlockquote(),
   },
   {
     id: 'code',
-    label: 'code block',
-    description: 'fenced code',
+    label: 'Code block',
+    description: 'Fenced code',
     keywords: 'codeblock pre',
     markdown: '```\n\n```',
     cursor: 4,
@@ -82,16 +82,16 @@ export const commands: BlockCommand[] = [
   },
   {
     id: 'divider',
-    label: 'divider',
-    description: 'horizontal rule',
+    label: 'Divider',
+    description: 'Horizontal rule',
     keywords: 'hr separator line',
     markdown: '---\n\n',
     rich: (chain) => chain.setHorizontalRule(),
   },
   {
     id: 'table',
-    label: 'table',
-    description: 'two columns with a header',
+    label: 'Table',
+    description: 'Two columns with a header',
     keywords: 'grid columns',
     markdown: '| column 1 | column 2 |\n| --- | --- |\n|  |  |',
     cursor: 2,
@@ -115,9 +115,9 @@ export function filterCommands(query: string, context: AddonContext) {
   ]
   return available.filter((command) =>
     terms.every((term) =>
-      `${command.label} ${command.description} ${command.keywords}`.includes(
-        term,
-      ),
+      `${command.label} ${command.description} ${command.keywords}`
+        .toLowerCase()
+        .includes(term),
     ),
   )
 }

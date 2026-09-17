@@ -16,7 +16,7 @@ test('primary, selected, and disabled buttons retain their color pairs while hov
     await rm(profile, { recursive: true, force: true })
   })
   const page = await app.firstWindow()
-  await page.getByRole('textbox', { name: 'document editor' }).waitFor()
+  await page.getByRole('textbox', { name: /document editor/i }).waitFor()
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.evaluate(() => {
     const panel = document.createElement('div')

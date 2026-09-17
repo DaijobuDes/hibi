@@ -56,24 +56,24 @@ test('shift-click links, note/settings history, and file-menu remote imports', {
     },
     join(root, 'a.md'),
   )
-  const rich = page.getByRole('textbox', { name: 'document editor' })
+  const rich = page.getByRole('textbox', { name: /document editor/i })
   await rich.waitFor()
   await pressShortcut(app, `${mod}+o`)
-  await rich.getByRole('link', { name: 'next', exact: true }).waitFor()
+  await rich.getByRole('link', { name: /^next$/i, exact: true }).waitFor()
   await rich
-    .getByRole('link', { name: 'web', exact: true })
+    .getByRole('link', { name: /^web$/i, exact: true })
     .click({ modifiers: ['Shift'] })
   assert.equal(
     await app.evaluate(() => globalThis.lastExternal),
     'https://example.com/',
   )
-  await rich.getByRole('link', { name: 'next', exact: true }).click()
+  await rich.getByRole('link', { name: /^next$/i, exact: true }).click()
   assert.equal(
     (await page.evaluate(() => window.hibi.getDocument())).name,
     'a.md',
   )
   await rich
-    .getByRole('link', { name: 'next', exact: true })
+    .getByRole('link', { name: /^next$/i, exact: true })
     .click({ modifiers: ['Shift'] })
   const waitName = async (name) => {
     await waitForAsync(
@@ -91,15 +91,15 @@ test('shift-click links, note/settings history, and file-menu remote imports', {
   await waitName('a.md')
   await pressShortcut(app, `${mod}+]`)
   await waitName('b.md')
-  // Cancel keeps both the document and history cursor intact.
+  // History switches tabs without discarding the other note's draft.
   await rich.fill('unsaved second')
   await app.evaluate(({ dialog }) => {
     dialog.showMessageBox = async () => ({ response: 2 })
   })
   await pressShortcut(app, `${mod}+[`)
-  await page.waitForFunction(
-    () => document.querySelector('.app').getAttribute('aria-busy') === 'false',
-  )
+  await waitName('a.md')
+  await page.getByRole('tab', { name: /^b\.md$/i, exact: true }).click()
+  await waitName('b.md')
   assert.equal(
     (await page.evaluate(() => window.hibi.getDocument())).markdown,
     '# unsaved second',
@@ -110,7 +110,7 @@ test('shift-click links, note/settings history, and file-menu remote imports', {
   await pressShortcut(app, `${mod}+[`)
   await waitName('a.md')
   await pressShortcut(app, `${mod}+Shift+\\`)
-  const source = page.getByRole('textbox', { name: 'markdown editor' })
+  const source = page.getByRole('textbox', { name: /markdown editor/i })
   await source.waitFor()
   await source.click()
   const point = await source.evaluate((element) => {
@@ -131,16 +131,16 @@ test('shift-click links, note/settings history, and file-menu remote imports', {
   await page.mouse.click(point.x, point.y)
   await page.keyboard.up('Shift')
   await waitName('b.md')
-  await page.getByRole('button', { name: 'editor settings' }).click()
-  await page.getByRole('tab', { name: 'appearance', exact: true }).click()
-  await page.getByRole('tab', { name: 'hotkeys', exact: true }).click()
+  await page.getByRole('button', { name: /editor settings/i }).click()
+  await page.getByRole('tab', { name: /^appearance$/i, exact: true }).click()
+  await page.getByRole('tab', { name: /^hotkeys$/i, exact: true }).click()
   await pressShortcut(app, `${mod}+[`)
   await page
-    .getByRole('tab', { name: 'appearance', exact: true, selected: true })
+    .getByRole('tab', { name: /^appearance$/i, exact: true, selected: true })
     .waitFor()
   await pressShortcut(app, `${mod}+]`)
   await page
-    .getByRole('tab', { name: 'hotkeys', exact: true, selected: true })
+    .getByRole('tab', { name: /^hotkeys$/i, exact: true, selected: true })
     .waitFor()
   await page.keyboard.press('Escape')
   await page.waitForFunction(
@@ -149,10 +149,10 @@ test('shift-click links, note/settings history, and file-menu remote imports', {
   const beforeSettings = (await page.evaluate(() => window.hibi.getDocument()))
     .markdown
   await page
-    .getByRole('button', { name: 'editor settings', exact: true })
+    .getByRole('button', { name: /^editor settings$/i, exact: true })
     .click()
-  const back = page.getByRole('button', { name: 'back to app', exact: true })
-  const categoryTab = page.getByRole('tab', { name: 'hibi', exact: true })
+  const back = page.getByRole('button', { name: /^back to app$/i, exact: true })
+  const categoryTab = page.getByRole('tab', { name: /^hibi$/i, exact: true })
   const backBounds = await back.boundingBox()
   const tabBounds = await categoryTab.boundingBox()
   assert.equal(backBounds.x, tabBounds.x)
@@ -169,16 +169,16 @@ test('shift-click links, note/settings history, and file-menu remote imports', {
   async function remote(address) {
     await app.evaluate(({ Menu }) =>
       Menu.getApplicationMenu()
-        .items.find((item) => item.label === 'file')
-        .submenu.items.find((item) => item.label === 'open from remote…')
+        .items.find((item) => item.label === 'File')
+        .submenu.items.find((item) => item.label === 'Open from remote…')
         .click(),
     )
     const dialog = page.getByRole('dialog', {
-      name: 'open from remote',
+      name: /^open from remote$/i,
       exact: true,
     })
-    await dialog.getByLabel('markdown url', { exact: true }).fill(address)
-    await dialog.getByRole('button', { name: 'open', exact: true }).click()
+    await dialog.getByLabel(/^markdown url$/i, { exact: true }).fill(address)
+    await dialog.getByRole('button', { name: /^open$/i, exact: true }).click()
   }
   await remote(`${url}/readme.md`)
   await waitName('readme.md')
@@ -187,14 +187,14 @@ test('shift-click links, note/settings history, and file-menu remote imports', {
   assert.equal(imported.dirty, true)
   await remote(`${url}/html`)
   await page
-    .getByText(/this url is a web page\. use the raw markdown file url\./)
+    .getByText(/this url is a web page\. use the raw markdown file url\./i)
     .waitFor()
   assert.equal(
     (await page.evaluate(() => window.hibi.getDocument())).markdown,
     '# remote note',
   )
   await remote(`${url}/large`)
-  await page.getByText(/remote documents must be under 2 mib\./).waitFor()
+  await page.getByText(/remote documents must be under 2 mib\./i).waitFor()
   await assert.rejects(
     page.evaluate(() => window.hibi.openRemoteDocument('file:///etc/passwd')),
   )

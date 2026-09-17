@@ -1,0 +1,27 @@
+:root {
+  --ui-text-transform: none;
+}
+:root[data-ui-case="lowercase"] {
+  --ui-text-transform: lowercase;
+}
+body,
+:where(button, select, option, summary) {
+  text-transform: var(--ui-text-transform);
+}
+/* Content and typed values keep their exact spelling in either interface style. */
+:where(
+  .editor-content,
+  .documentation-site article,
+  input,
+  textarea,
+  code,
+  pre,
+  [data-verbatim="true"]
+) {
+  text-transform: none;
+}
+:where(input, textarea)::placeholder,
+.tiptap .is-editor-empty::before,
+.cm-placeholder {
+  text-transform: var(--ui-text-transform);
+}

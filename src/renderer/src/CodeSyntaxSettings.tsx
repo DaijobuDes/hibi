@@ -17,11 +17,11 @@ export function CodeSyntaxSettings() {
   )
   return (
     <>
-      <h1>code highlighting</h1>
+      <h1>Code highlighting</h1>
       <SettingsFilter
         id="code-syntax-filter"
-        label="filter languages"
-        placeholder="filter languages…"
+        label="Filter languages"
+        placeholder="Filter languages…"
         value={query}
         onChange={setQuery}
         resetDisabled={languages.every((language) => language.enabled)}
@@ -34,7 +34,7 @@ export function CodeSyntaxSettings() {
             hidden={!matching.some((language) => language.owner === owner)}
           >
             <h2>
-              {owner === 'built-in' ? 'languages' : owner.replaceAll('-', ' ')}
+              {owner === 'built-in' ? 'Languages' : owner.replaceAll('-', ' ')}
             </h2>
             <div className="settings-group">
               {languages
@@ -47,8 +47,8 @@ export function CodeSyntaxSettings() {
                     hidden={!matching.includes(language)}
                     description={
                       language.aliases.length
-                        ? `also applies to ${language.aliases.join(', ')}.`
-                        : 'highlight matching code blocks.'
+                        ? `Also applies to ${language.aliases.join(', ')}.`
+                        : 'Highlight matching code blocks.'
                     }
                   >
                     <Toggle
@@ -67,7 +67,7 @@ export function CodeSyntaxSettings() {
           </div>
         ),
       )}
-      {!matching.length && <p>no matching languages.</p>}
+      {!matching.length && <p>No matching languages.</p>}
     </>
   )
 }

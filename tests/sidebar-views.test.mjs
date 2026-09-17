@@ -22,23 +22,31 @@ test('sidebar starts hidden, stays open while typing, and navigates the page out
   })
   const page = await app.firstWindow()
   page.setDefaultTimeout(6500)
-  await page.getByRole('textbox', { name: 'document editor' }).waitFor()
+  await page.getByRole('textbox', { name: /document editor/i }).waitFor()
   assert.equal(await page.locator('.app').getAttribute('data-sidebar'), 'false')
-  await page.getByRole('button', { name: 'markdown only', exact: true }).click()
-  const source = page.getByRole('textbox', { name: 'markdown editor' })
+  await page
+    .getByRole('button', { name: /^markdown only$/i, exact: true })
+    .click()
+  const source = page.getByRole('textbox', { name: /markdown editor/i })
   const text =
     '# alpha\n\n' +
     'paragraph\n\n'.repeat(40) +
     '## second\n\n```md\n# code example\n```\n'
   await source.fill(text)
-  await page.getByRole('button', { name: 'sidebar views', exact: true }).click()
   await page
-    .getByRole('menuitem', { name: 'in this page', exact: true })
+    .getByRole('button', { name: /^sidebar views$/i, exact: true })
     .click()
-  const outline = page.getByRole('tree', { name: 'in this page' })
-  await outline.getByRole('treeitem', { name: 'second', exact: true }).waitFor()
+  await page
+    .getByRole('menuitem', { name: /^in this page$/i, exact: true })
+    .click()
+  const outline = page.getByRole('tree', { name: /in this page/i })
+  await outline
+    .getByRole('treeitem', { name: /^second$/i, exact: true })
+    .waitFor()
   assert.equal(await outline.getByRole('treeitem').count(), 2)
-  await outline.getByRole('treeitem', { name: 'second', exact: true }).click()
+  await outline
+    .getByRole('treeitem', { name: /^second$/i, exact: true })
+    .click()
   await page.waitForFunction(() =>
     document.activeElement?.classList.contains('cm-content'),
   )
@@ -54,10 +62,10 @@ test('sidebar starts hidden, stays open while typing, and navigates the page out
   await source.press('x')
   assert.equal(await page.locator('.app').getAttribute('data-sidebar'), 'true')
   await outline
-    .getByRole('treeitem', { name: 'secondx', exact: true })
+    .getByRole('treeitem', { name: /^secondx$/i, exact: true })
     .waitFor()
-  await page.getByRole('button', { name: 'normal', exact: true }).click()
-  await outline.getByRole('treeitem', { name: 'alpha', exact: true }).click()
+  await page.getByRole('button', { name: /^normal$/i, exact: true }).click()
+  await outline.getByRole('treeitem', { name: /^alpha$/i, exact: true }).click()
   await page.waitForFunction(() =>
     document.activeElement?.classList.contains('tiptap'),
   )
@@ -79,12 +87,16 @@ test('sidebar starts hidden, stays open while typing, and navigates the page out
     process.platform === 'darwin' ? 'Meta+/' : 'Control+/',
   )
   await outline.waitFor()
-  await page.getByRole('button', { name: 'sidebar views', exact: true }).click()
-  await page.getByRole('menuitem', { name: 'workspace', exact: true }).click()
   await page
-    .getByRole('button', { name: 'open workspace', exact: true })
+    .getByRole('button', { name: /^sidebar views$/i, exact: true })
+    .click()
+  await page
+    .getByRole('menuitem', { name: /^workspace$/i, exact: true })
+    .click()
+  await page
+    .getByRole('button', { name: /^open workspace$/i, exact: true })
     .waitFor()
   await page.reload()
-  await page.getByRole('textbox', { name: 'document editor' }).waitFor()
+  await page.getByRole('textbox', { name: /document editor/i }).waitFor()
   assert.equal(await page.locator('.app').getAttribute('data-sidebar'), 'false')
 })

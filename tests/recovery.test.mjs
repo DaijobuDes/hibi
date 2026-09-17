@@ -23,16 +23,16 @@ test('recovery preview preserves the live draft; real render failures offer reco
   const page = await app.firstWindow()
   page.setDefaultTimeout(6500)
   await page
-    .getByRole('textbox', { name: 'document editor' })
+    .getByRole('textbox', { name: /document editor/i })
     .fill('keep this draft')
-  await page.getByRole('button', { name: 'editor settings' }).click()
-  await page.getByRole('button', { name: 'preview explode screen' }).click()
-  const preview = page.getByRole('dialog', { name: 'recovery preview' })
+  await page.getByRole('button', { name: /editor settings/i }).click()
+  await page.getByRole('button', { name: /preview explode screen/i }).click()
+  const preview = page.getByRole('dialog', { name: /recovery preview/i })
   await preview
-    .getByRole('heading', { name: 'let’s get you back to writing.' })
+    .getByRole('heading', { name: /let’s get you back to writing\./i })
     .waitFor()
   assert.equal(
-    await preview.getByRole('button', { name: 'reload hibi' }).count(),
+    await preview.getByRole('button', { name: /reload hibi/i }).count(),
     0,
   )
   await page.keyboard.press('Escape')
@@ -81,16 +81,19 @@ test('recovery preview preserves the live draft; real render failures offer reco
   }, html)
   const crashed = await next
   crashed.setDefaultTimeout(6500)
-  await crashed.getByRole('button', { name: 'trigger render failure' }).click()
-  await crashed.getByRole('main', { name: 'editor recovery' }).waitFor()
-  await crashed.getByText('unsaved draft available').waitFor()
-  await crashed.getByRole('button', { name: 'save a copy' }).click()
-  await crashed.getByRole('status').filter({ hasText: 'copy saved.' }).waitFor()
+  await crashed.getByRole('button', { name: /trigger render failure/i }).click()
+  await crashed.getByRole('main', { name: /editor recovery/i }).waitFor()
+  await crashed.getByText(/unsaved draft available/i).waitFor()
+  await crashed.getByRole('button', { name: /save a copy/i }).click()
+  await crashed
+    .getByRole('status')
+    .filter({ hasText: /copy saved\./i })
+    .waitFor()
   assert.equal(
     await crashed.locator('body').getAttribute('data-copy-saved'),
     'true',
   )
-  await crashed.getByText('error details', { exact: true }).click()
+  await crashed.getByText(/^error details$/i, { exact: true }).click()
   assert.match(
     await crashed.locator('.recovery-details pre').innerText(),
     /fixture render failure/,
@@ -104,14 +107,14 @@ test('recovery preview preserves the live draft; real render failures offer reco
       },
     }),
   )
-  await crashed.getByRole('button', { name: 'copy details' }).click()
+  await crashed.getByRole('button', { name: /copy details/i }).click()
   assert.match(
     await crashed.locator('body').getAttribute('data-copied-error'),
     /fixture render failure/,
   )
-  await crashed.getByRole('button', { name: 'reload hibi' }).click()
+  await crashed.getByRole('button', { name: /reload hibi/i }).click()
   await crashed
-    .getByRole('button', { name: 'trigger render failure' })
+    .getByRole('button', { name: /trigger render failure/i })
     .waitFor()
   await crashed.close()
 })

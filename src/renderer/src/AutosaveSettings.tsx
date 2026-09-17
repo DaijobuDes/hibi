@@ -6,12 +6,12 @@ export function AutosaveSettings() {
   const settings = useSyncExternalStore(autosave.subscribe, autosave.snapshot)
   return (
     <>
-      <h2>saving</h2>
+      <h2>Saving</h2>
       <div className="settings-group">
         <SettingRow
           id="autosave-enabled"
-          label="autosave"
-          description="save local files after a pause. new drafts need an initial save; files changed outside hibi pause autosave."
+          label="Autosave"
+          description="Save local files after a pause. new drafts need an initial save; files changed outside Hibi pause autosave."
         >
           <Toggle
             id="autosave-enabled"
@@ -23,8 +23,8 @@ export function AutosaveSettings() {
         </SettingRow>
         <SettingRow
           id="autosave-delay"
-          label="save after"
-          description="wait this long after your last edit."
+          label="Save after"
+          description="Wait this long after your last edit."
         >
           <Select
             id="autosave-delay"

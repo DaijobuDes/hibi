@@ -1,9 +1,10 @@
 import type { StatusItem } from '../../addons/api'
+import { sentenceCase } from '../../shared/ui-case'
 
 export function StatusBar({ items }: { items: readonly StatusItem[] }) {
   if (!items.length) return null
   return (
-    <section className="app-statusbar" aria-label="editor status">
+    <section className="app-statusbar" aria-label="Editor status">
       {items.map((item) =>
         item.onClick ? (
           <button
@@ -11,20 +12,22 @@ export function StatusBar({ items }: { items: readonly StatusItem[] }) {
             type="button"
             className="status-pill"
             data-status-id={item.id}
-            title={item.tooltip}
+            data-verbatim={item.verbatim}
+            data-tooltip={item.tooltip}
             onClick={() => void item.onClick?.()}
           >
-            {item.label}
+            {item.verbatim ? item.label : sentenceCase(item.label)}
           </button>
         ) : (
           <span
             key={item.id}
             className="status-pill"
             data-status-id={item.id}
-            title={item.tooltip}
+            data-verbatim={item.verbatim}
+            data-tooltip={item.tooltip}
             role="status"
           >
-            {item.label}
+            {item.verbatim ? item.label : sentenceCase(item.label)}
           </span>
         ),
       )}

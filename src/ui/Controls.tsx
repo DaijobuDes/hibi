@@ -1,12 +1,16 @@
 import { ChevronDown } from 'lucide-react'
 import {
+  Children,
   type ComponentProps,
   type CSSProperties,
+  cloneElement,
+  isValidElement,
   type ReactNode,
   useContext,
   useEffect,
   useRef,
 } from 'react'
+import { sentenceCase } from '../shared/ui-case'
 import { SettingsDiscovery, settingsIndex } from './settings-index'
 import './controls.css'
 
@@ -82,7 +86,18 @@ export function Button({
 export function Select({ children, ...props }: ComponentProps<'select'>) {
   return (
     <span className="select-control">
-      <select {...props}>{children}</select>
+      <select {...props}>
+        {Children.map(children, (child) =>
+          isValidElement<ComponentProps<'option'>>(child) &&
+          child.type === 'option' &&
+          typeof child.props.children === 'string'
+            ? cloneElement(child, {
+                value: child.props.value ?? child.props.children,
+                children: sentenceCase(child.props.children),
+              })
+            : child,
+        )}
+      </select>
       <ChevronDown aria-hidden="true" />
     </span>
   )
@@ -150,16 +165,21 @@ export function SettingRow({
   hidden?: boolean
 }) {
   const row = useRef<HTMLDivElement>(null)
+  const displayLabel = sentenceCase(label)
   const discover = useContext(SettingsDiscovery)
   useEffect(() => {
     if (discover && row.current)
-      return settingsIndex.register(row.current, id, label)
-  }, [discover, id, label])
+      return settingsIndex.register(row.current, id, displayLabel)
+  }, [discover, id, displayLabel])
   return (
     <div className="setting-row" ref={row} hidden={hidden}>
       <div className="setting-copy">
-        <label htmlFor={id}>{label}</label>
-        <p id={`${id}-description`}>{description}</p>
+        <label htmlFor={id}>{displayLabel}</label>
+        <p id={`${id}-description`}>
+          {typeof description === 'string'
+            ? sentenceCase(description)
+            : description}
+        </p>
       </div>
       {children}
     </div>

@@ -17,7 +17,7 @@ test('loading page is centered, animates, and respects reduced motion', {
     await rm(profile, { recursive: true, force: true })
   })
   const page = await app.firstWindow()
-  await page.getByRole('textbox', { name: 'document editor' }).waitFor()
+  await page.getByRole('textbox', { name: /document editor/i }).waitFor()
   const state = await page.evaluate(() => window.hibi.getDocument())
   await app.evaluate(({ ipcMain }, state) => {
     globalThis.releaseLoading = []
@@ -31,7 +31,7 @@ test('loading page is centered, animates, and respects reduced motion', {
     )
   }, state)
   await page.reload()
-  await page.getByRole('status', { name: 'loading editor' }).waitFor()
+  await page.getByRole('status', { name: /loading editor/i }).waitFor()
   const loading = await page.evaluate(() => {
     const icon = document.querySelector('.loading-page').getBoundingClientRect()
     return {
@@ -68,9 +68,9 @@ test('loading page is centered, animates, and respects reduced motion', {
       release()
     }),
   )
-  await page.getByRole('textbox', { name: 'document editor' }).waitFor()
+  await page.getByRole('textbox', { name: /document editor/i }).waitFor()
   assert.equal(
-    await page.getByRole('status', { name: 'loading editor' }).count(),
+    await page.getByRole('status', { name: /loading editor/i }).count(),
     0,
   )
 })

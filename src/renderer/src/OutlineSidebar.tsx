@@ -31,8 +31,8 @@ export function OutlineSidebar({
       className="document-sidebar outline-sidebar"
       open={open}
       resize={resize}
-      label="in this page"
-      header={<span>in this page</span>}
+      label="In this page"
+      header={<span>In this page</span>}
       items={headings.map((heading) => ({
         ...heading,
         icon: icons[heading.level - 1] ?? Heading1,

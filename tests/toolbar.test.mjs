@@ -6,6 +6,7 @@ import test from 'node:test'
 import { electron } from './electron.mjs'
 import { pressShortcut } from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
+import { uiName } from './ui.mjs'
 
 test('toolbar auto-hide defaults on, shares top-bar timing, and moves content smoothly', {
   timeout: 30000,
@@ -24,22 +25,25 @@ test('toolbar auto-hide defaults on, shares top-bar timing, and moves content sm
   const page = await app.firstWindow()
   page.setDefaultTimeout(6000)
   await page.emulateMedia({ reducedMotion: 'no-preference' })
-  const rich = page.getByRole('textbox', { name: 'document editor' })
+  const rich = page.getByRole('textbox', { name: /document editor/i })
   await rich.waitFor()
-  await page.getByRole('button', { name: 'editor settings' }).click()
-  await page.getByRole('tab', { name: 'appearance', exact: true }).click()
+  await page.getByRole('button', { name: /editor settings/i }).click()
+  await page.getByRole('tab', { name: /^appearance$/i, exact: true }).click()
   const autoHide = page.getByRole('checkbox', {
-    name: 'hide toolbar while typing',
+    name: /^hide toolbar while typing$/i,
     exact: true,
   })
   assert.equal(await autoHide.isChecked(), true)
   assert.equal(
     await page
-      .getByRole('checkbox', { name: 'hide top bar while typing', exact: true })
+      .getByRole('checkbox', {
+        name: /^hide top bar while typing$/i,
+        exact: true,
+      })
       .isChecked(),
     true,
   )
-  await page.getByRole('button', { name: 'back to editor' }).click()
+  await page.getByRole('button', { name: /back to editor/i }).click()
   const expanded = await page
     .locator('.toolbar-slot')
     .evaluate((element) => element.getBoundingClientRect().height)
@@ -115,9 +119,9 @@ test('toolbar auto-hide defaults on, shares top-bar timing, and moves content sm
     ),
   )
   assert.equal(showing.at(-1).fade, 0)
-  await page.getByRole('button', { name: 'editor settings' }).click()
+  await page.getByRole('button', { name: /editor settings/i }).click()
   await autoHide.uncheck()
-  await page.getByRole('button', { name: 'back to editor' }).click()
+  await page.getByRole('button', { name: /back to editor/i }).click()
   await rich.press('b')
   await page.waitForFunction(
     () => getComputedStyle(document.querySelector('.titlebar')).opacity === '0',
@@ -129,11 +133,11 @@ test('toolbar auto-hide defaults on, shares top-bar timing, and moves content sm
     expanded,
   )
   await page.reload()
-  await page.getByRole('button', { name: 'editor settings' }).click()
-  await page.getByRole('tab', { name: 'appearance', exact: true }).click()
+  await page.getByRole('button', { name: /editor settings/i }).click()
+  await page.getByRole('tab', { name: /^appearance$/i, exact: true }).click()
   assert.equal(await autoHide.isChecked(), false)
   await autoHide.check()
-  await page.getByRole('button', { name: 'back to editor' }).click()
+  await page.getByRole('button', { name: /back to editor/i }).click()
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await rich.press('c')
   await page.waitForFunction(
@@ -171,8 +175,8 @@ test('markdown toolbar formats both panes, preserves undo, and persists drag ord
   page.setDefaultTimeout(7000)
   const errors = []
   page.on('pageerror', (error) => errors.push(error.message))
-  const rich = page.getByRole('textbox', { name: 'document editor' })
-  const bar = page.getByRole('navigation', { name: 'editor toolbar' })
+  const rich = page.getByRole('textbox', { name: /document editor/i })
+  const bar = page.getByRole('navigation', { name: /editor toolbar/i })
   const action = (id) => bar.locator(`[data-toolbar-id="format.${id}"]`)
   const run = async (id) => {
     if (
@@ -184,7 +188,7 @@ test('markdown toolbar formats both panes, preserves undo, and persists drag ord
     )
       await bar
         .getByRole('button', {
-          name: 'more formatting actions',
+          name: /^more formatting actions$/i,
           exact: true,
         })
         .click()
@@ -212,13 +216,13 @@ test('markdown toolbar formats both panes, preserves undo, and persists drag ord
   )
   await page.setViewportSize({ width: 480, height: 720 })
   const more = bar.getByRole('button', {
-    name: 'more formatting actions',
+    name: /^more formatting actions$/i,
     exact: true,
   })
   await more.waitFor()
   await more.click()
   const overflow = page.getByRole('menu', {
-    name: 'more formatting actions',
+    name: /^more formatting actions$/i,
     exact: true,
   })
   await overflow.waitFor()
@@ -271,11 +275,11 @@ test('markdown toolbar formats both panes, preserves undo, and persists drag ord
   await run('bold')
   await waitForMarkdown('hello')
   await run('link')
-  const link = page.getByRole('dialog', { name: 'insert link', exact: true })
+  const link = page.getByRole('dialog', { name: /^insert link$/i, exact: true })
   await link
-    .getByLabel('link destination', { exact: true })
+    .getByLabel(/^link destination$/i, { exact: true })
     .fill('https://example.com')
-  await link.getByRole('button', { name: 'insert', exact: true }).click()
+  await link.getByRole('button', { name: /^insert$/i, exact: true }).click()
   await link.waitFor({ state: 'hidden' })
   await waitForMarkdown('[hello](https://example.com)')
   await run('unlink')
@@ -296,8 +300,10 @@ test('markdown toolbar formats both panes, preserves undo, and persists drag ord
   await run('table-delete')
   assert.equal(await rich.locator('table').count(), 0)
 
-  await page.getByRole('button', { name: 'markdown only', exact: true }).click()
-  const source = page.getByRole('textbox', { name: 'markdown editor' })
+  await page
+    .getByRole('button', { name: /^markdown only$/i, exact: true })
+    .click()
+  const source = page.getByRole('textbox', { name: /markdown editor/i })
   await source.waitFor()
   for (const [id, expected] of [
     ['bold', '**hello**'],
@@ -348,11 +354,13 @@ test('markdown toolbar formats both panes, preserves undo, and persists drag ord
   await run('image')
   await waitForMarkdown('![sample](assets/sample.gif)')
   assert.equal(
-    await page.getByRole('dialog', { name: 'insert image' }).count(),
+    await page.getByRole('dialog', { name: /insert image/i }).count(),
     0,
   )
   await source.fill('split text')
-  await page.getByRole('button', { name: 'side-by-side', exact: true }).click()
+  await page
+    .getByRole('button', { name: /^side-by-side$/i, exact: true })
+    .click()
   await source.click()
   await source.press('Control+a')
   await run('italic')
@@ -399,10 +407,10 @@ test('markdown toolbar formats both panes, preserves undo, and persists drag ord
     await bar.getByRole('button').first().getAttribute('data-toolbar-id'),
     'format.italic',
   )
-  await page.getByRole('button', { name: 'editor settings' }).click()
-  await page.getByRole('tab', { name: 'appearance', exact: true }).click()
+  await page.getByRole('button', { name: /editor settings/i }).click()
+  await page.getByRole('tab', { name: /^appearance$/i, exact: true }).click()
   await page.locator('.toolbar-order summary').click()
-  const order = page.getByRole('list', { name: 'toolbar order' })
+  const order = page.getByRole('list', { name: /toolbar order/i })
   const row = (id) => order.locator(`[data-toolbar-id="format.${id}"]`)
   await row('bold').dragTo(row('italic'), { targetPosition: { x: 10, y: 1 } })
   assert.equal(
@@ -410,7 +418,7 @@ test('markdown toolbar formats both panes, preserves undo, and persists drag ord
     'format.bold',
   )
   await page
-    .getByRole('button', { name: 'move bold later', exact: true })
+    .getByRole('button', { name: /^move bold later$/i, exact: true })
     .click()
   assert.equal(
     await order.locator('li').first().getAttribute('data-toolbar-id'),
@@ -463,7 +471,7 @@ test('select all stays in the active pane after changing views or clicking line 
   const page = await app.firstWindow()
   await page.evaluate(() => localStorage.setItem('line-numbers', 'true'))
   await page.reload()
-  const rich = page.getByRole('textbox', { name: 'document editor' })
+  const rich = page.getByRole('textbox', { name: /document editor/i })
   await rich.fill('first\nsecond\nlast')
   const select = async () => {
     await pressShortcut(
@@ -487,7 +495,9 @@ test('select all stays in the active pane after changing views or clicking line 
     })
   }
   for (const mode of ['markdown only', 'side-by-side']) {
-    await page.getByRole('button', { name: mode, exact: true }).click()
+    await page
+      .getByRole('button', { name: uiName(mode, true), exact: true })
+      .click()
     await page.waitForFunction(() =>
       document.activeElement?.classList.contains('cm-content'),
     )
@@ -501,7 +511,7 @@ test('select all stays in the active pane after changing views or clicking line 
     assert.match(selected.anchor, /cm-content/)
     assert.match(selected.focus, /cm-content/)
     await page
-      .getByRole('textbox', { name: 'markdown editor' })
+      .getByRole('textbox', { name: /markdown editor/i })
       .press('Control+a')
     assert.equal(
       await page.evaluate(() => window.getSelection().toString()),

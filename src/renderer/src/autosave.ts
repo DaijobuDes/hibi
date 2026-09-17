@@ -100,25 +100,25 @@ export function useAutosave(
     return () => clearTimeout(timer)
   }, [document, busy, settings, currentResult, onSaved])
   const label = !settings.enabled
-    ? 'autosave off'
+    ? 'Autosave off'
     : !document?.canAutosave
-      ? 'autosave · save first'
+      ? 'Autosave · save first'
       : currentResult?.status === 'saving'
-        ? 'autosave · saving'
+        ? 'Autosave · saving'
         : currentResult?.status === 'conflict' ||
             currentResult?.status === 'error'
-          ? 'autosave · paused'
+          ? 'Autosave · paused'
           : document.dirty
-            ? 'autosave · waiting'
-            : 'autosave · saved'
+            ? 'Autosave · waiting'
+            : 'Autosave · saved'
   const tooltip =
     currentResult?.status === 'conflict'
-      ? 'file changed outside hibi. save manually to review the changes before autosave resumes.'
+      ? 'File changed outside Hibi. save manually to review the changes before autosave resumes.'
       : (currentResult?.error ??
         (!settings.enabled
-          ? 'autosave is off · click to configure'
+          ? 'Autosave is off · click to configure'
           : !document?.canAutosave
-            ? 'save this draft once to choose its location.'
-            : `save after ${settings.delay / 1000} seconds without typing · click to configure`))
+            ? 'Save this draft once to choose its location.'
+            : `Save after ${settings.delay / 1000} seconds without typing · click to configure`))
   return { label, tooltip }
 }

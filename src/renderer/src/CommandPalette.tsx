@@ -7,6 +7,7 @@ import {
   X,
 } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { sentenceCase } from '../../shared/ui-case'
 import { IconButton, TextInput } from '../../ui/Controls'
 import { Modal } from '../../ui/Modal'
 import { ShortcutKeys } from '../../ui/ShortcutKeys'
@@ -131,7 +132,7 @@ export function CommandPalette({
     <Modal
       ref={dialog}
       className="command-palette"
-      aria-label="command palette"
+      aria-label="Command palette"
       onKeyDown={(event) => {
         if (event.key === 'Escape') {
           event.preventDefault()
@@ -146,14 +147,14 @@ export function CommandPalette({
           variant="inline"
           ref={input}
           role="combobox"
-          aria-label="search commands"
+          aria-label="Search commands"
           aria-expanded="true"
           aria-controls="command-results"
           aria-autocomplete="list"
           aria-activedescendant={
             results[active] ? `command-${results[active].id}` : undefined
           }
-          placeholder="search commands…"
+          placeholder="Search commands…"
           autoComplete="off"
           spellCheck={false}
           value={query}
@@ -180,8 +181,8 @@ export function CommandPalette({
         <IconButton
           type="button"
           className="palette-close"
-          aria-label="close command palette"
-          title="close (escape)"
+          aria-label="Close command palette"
+          title="Close (escape)"
           onClick={() => close()}
         >
           <X size={16} aria-hidden="true" />
@@ -192,7 +193,7 @@ export function CommandPalette({
         ref={list}
         className="command-results"
         role="listbox"
-        aria-label="commands"
+        aria-label="Commands"
       >
         {marker && (
           <div
@@ -226,8 +227,12 @@ export function CommandPalette({
                 className="command-icon"
                 aria-hidden="true"
               />
-              <span className="command-label">{command.label}</span>
-              <span className="command-category">{command.category}</span>
+              <span className="command-label">
+                {sentenceCase(command.label)}
+              </span>
+              <span className="command-category">
+                {sentenceCase(command.category)}
+              </span>
               {command.shortcut && (
                 <ShortcutKeys shortcut={command.shortcut} platform={platform} />
               )}
@@ -237,19 +242,19 @@ export function CommandPalette({
       </div>
       {results.length === 0 && (
         <p className="commands-empty" role="status">
-          no commands found.
+          No commands found.
         </p>
       )}
       <footer className="palette-footer">
         <span>
           <ShortcutKeys shortcut="arrowup" platform={platform} />
-          <ShortcutKeys shortcut="arrowdown" platform={platform} /> navigate
+          <ShortcutKeys shortcut="arrowdown" platform={platform} /> Navigate
         </span>
         <span>
-          <ShortcutKeys shortcut="enter" platform={platform} /> run
+          <ShortcutKeys shortcut="enter" platform={platform} /> Run
         </span>
         <span className="palette-escape">
-          <ShortcutKeys shortcut="escape" platform={platform} /> close
+          <ShortcutKeys shortcut="escape" platform={platform} /> Close
         </span>
       </footer>
     </Modal>

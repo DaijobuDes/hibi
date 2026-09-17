@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
+import { sentenceCase } from '../shared/ui-case'
 import { menus } from './menu-store'
 import type { MenuApi } from './menus'
 import './menus.css'
@@ -44,7 +45,7 @@ export function MenuHost() {
       ref={element}
       popover="auto"
       role="menu"
-      aria-label={menu?.label ?? 'actions'}
+      aria-label={menu?.label ?? 'Actions'}
       className="ui-menu"
       onToggle={(event) => {
         if ((event.nativeEvent as ToggleEvent).newState !== 'closed') return
@@ -89,7 +90,7 @@ export function MenuHost() {
             onClick={() => void item.onSelect()}
           >
             {Icon && <Icon size={15} aria-hidden={true} />}
-            <span>{item.label}</span>
+            <span>{sentenceCase(item.label)}</span>
           </button>
         )
       })}

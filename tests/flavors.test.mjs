@@ -60,31 +60,31 @@ test('flavors auto-detect, persist overrides, render/edit math, and export it of
   const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
   const choose = async (query) => {
     await pressShortcut(app, `${mod}+k`)
-    const input = page.getByRole('combobox', { name: 'search commands' })
+    const input = page.getByRole('combobox', { name: /search commands/i })
     await input.fill(query)
     await page.getByRole('option').first().waitFor()
     await input.press('Enter')
     await page
-      .getByRole('dialog', { name: 'command palette' })
+      .getByRole('dialog', { name: /command palette/i })
       .waitFor({ state: 'hidden' })
   }
-  await page.getByRole('textbox', { name: 'document editor' }).waitFor()
+  await page.getByRole('textbox', { name: /document editor/i }).waitFor()
   await pressShortcut(app, `${mod}+Shift+]`)
-  const source = page.getByRole('textbox', { name: 'markdown editor' })
+  const source = page.getByRole('textbox', { name: /markdown editor/i })
   const initial =
     '# math\n\ninline $x^2$\n\n$$\n\\frac{1}{2}\n$$\n\n`$literal$`\n\n```javascript\nconst answer = 42\n```'
   await source.fill(initial)
   await page
     .locator('.source-pane .hibi-token-keyword')
-    .filter({ hasText: 'const' })
+    .filter({ hasText: /const/i })
     .waitFor()
   await page
     .locator('.rich-pane .hibi-token-keyword')
-    .filter({ hasText: 'const' })
+    .filter({ hasText: /const/i })
     .waitFor({ state: 'attached' })
   await page
     .locator('[data-status-id="flavor"]')
-    .filter({ hasText: 'math' })
+    .filter({ hasText: /math/i })
     .waitFor()
   assert.equal(await page.locator('.tiptap .katex').count(), 0)
   await choose('enable math')
@@ -98,9 +98,9 @@ test('flavors auto-detect, persist overrides, render/edit math, and export it of
   )
   await pressShortcut(app, `${mod}+Shift+[`)
   await page.locator('[data-type="inline-math"]').click()
-  const dialog = page.getByRole('dialog', { name: 'math', exact: true })
-  await dialog.getByLabel('latex', { exact: true }).fill('x^3')
-  await dialog.getByRole('button', { name: 'apply', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: /^math$/i, exact: true })
+  await dialog.getByLabel(/^latex$/i, { exact: true }).fill('x^3')
+  await dialog.getByRole('button', { name: /^apply$/i, exact: true }).click()
   await waitForAsync(page, async () =>
     (await window.hibi.getDocument()).markdown.includes('$x^3$'),
   )
@@ -121,9 +121,9 @@ test('flavors auto-detect, persist overrides, render/edit math, and export it of
   )
   const saved = await readFile(file, 'utf8')
   await pressShortcut(app, `${mod}+Shift+o`)
-  await page.getByRole('button', { name: 'new workspace file' }).waitFor()
+  await page.getByRole('button', { name: /new workspace file/i }).waitFor()
   await choose('export documentation')
-  await page.getByText(/exported 1 pages/).waitFor()
+  await page.getByText(/exported 1 pages/i).waitFor()
   const html = await readFile(output, 'utf8')
   assert.match(html, /Khan Academy/)
   assert.match(html, /data:font\/woff2;base64/)
@@ -157,10 +157,10 @@ test('flavors auto-detect, persist overrides, render/edit math, and export it of
   await site.close()
   await page.locator('[data-status-id="flavor"]').click()
   const picker = page.getByRole('dialog', {
-    name: 'markdown flavor',
+    name: /^markdown flavor$/i,
     exact: true,
   })
-  await picker.getByLabel('detect extra syntax', { exact: true }).uncheck()
+  await picker.getByLabel(/^detect extra syntax$/i, { exact: true }).uncheck()
   await page.keyboard.press('Escape')
   await picker.waitFor({ state: 'hidden' })
   assert.equal(

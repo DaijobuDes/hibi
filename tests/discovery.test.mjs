@@ -24,14 +24,16 @@ test('palette discovers settings, addon controls, themes, and formatting without
   const page = await app.firstWindow()
   page.setDefaultTimeout(6000)
   const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
-  await page.getByRole('textbox', { name: 'document editor' }).waitFor()
+  await page.getByRole('textbox', { name: /document editor/i }).waitFor()
   const choose = async (query) => {
     await pressShortcut(app, `${mod}+k`)
-    await page.getByRole('combobox', { name: 'search commands' }).fill(query)
+    await page.getByRole('combobox', { name: /search commands/i }).fill(query)
     await page.getByRole('option').first().waitFor()
-    await page.getByRole('combobox', { name: 'search commands' }).press('Enter')
     await page
-      .getByRole('dialog', { name: 'command palette' })
+      .getByRole('combobox', { name: /search commands/i })
+      .press('Enter')
+    await page
+      .getByRole('dialog', { name: /command palette/i })
       .waitFor({ state: 'hidden' })
   }
   await choose('cursor blink')
@@ -42,12 +44,12 @@ test('palette discovers settings, addon controls, themes, and formatting without
   await page.waitForFunction(
     () => document.activeElement?.id === 'editor-padding',
   )
-  const slider = page.getByLabel('content padding', { exact: true })
+  const slider = page.getByLabel(/^content padding$/i, { exact: true })
   assert.equal(await slider.getAttribute('class'), 'ui-slider ')
   await slider.press('ArrowRight')
   assert.equal(await slider.inputValue(), '52')
   assert.ok((await slider.getAttribute('style')).includes('54.166'))
-  const toggle = page.getByLabel('show line numbers', { exact: true })
+  const toggle = page.getByLabel(/^show line numbers$/i, { exact: true })
   assert.equal(
     await toggle.evaluate((el) => getComputedStyle(el).borderRadius),
     '999px',
@@ -58,19 +60,19 @@ test('palette discovers settings, addon controls, themes, and formatting without
   await choose('disable vim')
   await pressShortcut(app, `${mod}+k`)
   await page
-    .getByRole('combobox', { name: 'search commands' })
+    .getByRole('combobox', { name: /search commands/i })
     .fill('start in insert mode')
   assert.equal(await page.getByRole('option').count(), 0)
   await page.keyboard.press('Escape')
   await page
-    .getByRole('dialog', { name: 'command palette' })
+    .getByRole('dialog', { name: /command palette/i })
     .waitFor({ state: 'hidden' })
   await choose('themes catppuccin mocha')
   await page.waitForFunction(
     () => document.documentElement.dataset.colorscheme === 'catppuccin-mocha',
   )
-  await page.getByRole('button', { name: 'back to editor' }).click()
-  const rich = page.getByRole('textbox', { name: 'document editor' })
+  await page.getByRole('button', { name: /back to editor/i }).click()
+  const rich = page.getByRole('textbox', { name: /document editor/i })
   await rich.fill('format from palette')
   await rich.press(`${mod}+a`)
   await choose('format bold')

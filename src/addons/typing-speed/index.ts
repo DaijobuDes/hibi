@@ -9,15 +9,15 @@ export default defineAddon({
     const speed = typingSpeed()
     const words = context.statusBar.register({
       id: 'wpm',
-      label: '≈0 wpm',
+      label: '≈0 WPM',
       tooltip:
-        'estimated session words/minute · five characters per word · resets after 5 seconds idle',
+        'Estimated session words/minute · five characters per word · resets after 5 seconds idle',
     })
     const characters = context.statusBar.register({
       id: 'cpm',
-      label: '≈0 cpm',
+      label: '≈0 CPM',
       tooltip:
-        'estimated session characters/minute · excludes paste · resets after 5 seconds idle',
+        'Estimated session characters/minute · excludes paste · resets after 5 seconds idle',
     })
     const refresh = () => {
       const value = speed.read(performance.now())

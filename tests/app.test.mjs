@@ -21,7 +21,7 @@ test('desktop launch, isolation, offline reload, and recovery', {
   const page = await app.firstWindow()
   const errors = []
   page.on('pageerror', (error) => errors.push(error.message))
-  await page.getByRole('textbox', { name: 'document editor' }).waitFor()
+  await page.getByRole('textbox', { name: /document editor/i }).waitFor()
   t.diagnostic(
     `launch to ready content: ${Math.round(performance.now() - started)} ms`,
   )
@@ -40,11 +40,11 @@ test('desktop launch, isolation, offline reload, and recovery', {
     }),
     { maximized: false, fullscreen: false, visible: false, focused: false },
   )
-  await page.getByRole('button', { name: 'editor settings' }).click()
-  await page.getByRole('tab', { name: 'hibi', exact: true }).click()
+  await page.getByRole('button', { name: /editor settings/i }).click()
+  await page.getByRole('tab', { name: /^hibi$/i, exact: true }).click()
   await page
     .locator('.settings-sidebar .settings-versions')
-    .getByText('electron 44.3.0', { exact: true })
+    .getByText(/^electron 44\.3\.0$/i, { exact: true })
     .waitFor()
   await page.keyboard.press('Escape')
   assert.deepEqual(
@@ -91,7 +91,10 @@ test('desktop launch, isolation, offline reload, and recovery', {
         'openWorkspaceFile',
         'onWorkspaceChanged',
         'getAppInfo',
+        'setUiCase',
         'getDocument',
+        'selectDocumentTab',
+        'closeDocumentTab',
         'updateDocument',
         'openDocument',
         'newDocument',
@@ -211,7 +214,7 @@ test('desktop launch, isolation, offline reload, and recovery', {
     async () => {
       await app.context().setOffline(true)
       await page.reload()
-      await page.getByRole('textbox', { name: 'document editor' }).waitFor()
+      await page.getByRole('textbox', { name: /document editor/i }).waitFor()
       await app.evaluate(({ BrowserWindow }) => {
         const window = BrowserWindow.getAllWindows()[0]
         window.unmaximize()
@@ -251,7 +254,9 @@ test('desktop launch, isolation, offline reload, and recovery', {
         app.emit('activate')
       })
       const reopened = await opened
-      await reopened.getByRole('textbox', { name: 'document editor' }).waitFor()
+      await reopened
+        .getByRole('textbox', { name: /document editor/i })
+        .waitFor()
       assert.equal(
         (await reopened.evaluate(() => window.hibi.getAppInfo())).version,
         '0.1.0',

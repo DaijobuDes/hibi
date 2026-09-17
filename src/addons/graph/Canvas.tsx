@@ -133,7 +133,7 @@ export function GraphCanvas({
       <svg
         ref={svg}
         role="application"
-        aria-label="workspace graph"
+        aria-label="Workspace graph"
         tabIndex={0}
         viewBox={`${-size.width / 2} ${-size.height / 2} ${size.width} ${size.height}`}
         onKeyDown={(event) => {
@@ -212,7 +212,7 @@ export function GraphCanvas({
           drag.current = null
         }}
       >
-        <title>workspace note connections</title>
+        <title>Workspace note connections</title>
         <g transform={`translate(${view.x} ${view.y}) scale(${view.scale})`}>
           {layout.edges.map((edge) => (
             <line
@@ -231,7 +231,7 @@ export function GraphCanvas({
               transform={`translate(${node.x ?? 0} ${node.y ?? 0})`}
               role="button"
               tabIndex={0}
-              aria-label={`open ${node.id}`}
+              aria-label={`Open ${node.id}`}
               onKeyDown={(event) => {
                 if (['Enter', ' '].includes(event.key)) {
                   event.preventDefault()
@@ -253,7 +253,7 @@ export function GraphCanvas({
       </svg>
       <div className="graph-zoom">
         <IconButton
-          aria-label="zoom in"
+          aria-label="Zoom in"
           onClick={() =>
             setView((old) => ({ ...old, scale: Math.min(4, old.scale * 1.25) }))
           }
@@ -261,7 +261,7 @@ export function GraphCanvas({
           <Plus size={16} />
         </IconButton>
         <IconButton
-          aria-label="zoom out"
+          aria-label="Zoom out"
           onClick={() =>
             setView((old) => ({
               ...old,
@@ -271,7 +271,7 @@ export function GraphCanvas({
         >
           <Minus size={16} />
         </IconButton>
-        <IconButton aria-label="fit graph" onClick={fit}>
+        <IconButton aria-label="Fit graph" onClick={fit}>
           <Maximize2 size={16} />
         </IconButton>
       </div>

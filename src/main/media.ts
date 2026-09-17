@@ -14,7 +14,6 @@ import { pipeline } from 'node:stream/promises'
 import { type BrowserWindow, dialog } from 'electron'
 import type { AttachmentResult, DocumentMedia } from '../shared/media'
 import {
-  confirmDiscard,
   getDocument,
   getDocumentPath,
   loadDocument,
@@ -112,7 +111,6 @@ export async function openDroppedFile(window: BrowserWindow, value: unknown) {
       'drop a markdown file or folder to open it; drop media onto the editor to attach it.',
     )
   if (path === getDocumentPath()) return { document: getDocument() }
-  if (!(await confirmDiscard(window))) return null
   return { document: await loadDocument(window, path) }
 }
 
@@ -125,9 +123,9 @@ export async function attachMedia(
     throw new Error('the note changed; try attaching again.')
   if (values === null) {
     const result = await dialog.showOpenDialog(window, {
-      title: 'attach image or video',
+      title: 'Attach image or video',
       properties: ['openFile', 'multiSelections'],
-      filters: [{ name: 'images and videos', extensions }],
+      filters: [{ name: 'Images and videos', extensions }],
     })
     if (result.canceled) return null
     values = result.filePaths

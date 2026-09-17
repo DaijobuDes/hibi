@@ -108,7 +108,7 @@ test('css overrides apply, update, and clean up in a real renderer', async (t) =
     await rm(profile, { recursive: true, force: true })
   })
   const page = await app.firstWindow()
-  await page.getByRole('textbox', { name: 'document editor' }).waitFor()
+  await page.getByRole('textbox', { name: /document editor/i }).waitFor()
   const source = await readFile('src/renderer/src/addon-overrides.ts', 'utf8')
   const code = stripTypeScriptTypes(source).replace(
     'export function createAddonOverrides',

@@ -32,10 +32,10 @@ export function StartupPlaceholder({
     <section
       className="startup-placeholder"
       data-mode={mode}
-      aria-label="start writing"
+      aria-label="Start writing"
     >
-      <h2>start typing</h2>
-      <h4>recent workspaces</h4>
+      <h2>Start typing</h2>
+      <h4>Recent workspaces</h4>
       {recent.length ? (
         <ol>
           {recent.map(({ id, path }) => (
@@ -51,10 +51,10 @@ export function StartupPlaceholder({
           ))}
         </ol>
       ) : (
-        <p>no recent workspaces yet.</p>
+        <p>No recent workspaces yet.</p>
       )}
       <Button variant="ghost" disabled={busy} onClick={onDismiss}>
-        dismiss this
+        Dismiss this
       </Button>
     </section>
   )
