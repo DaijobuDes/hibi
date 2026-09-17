@@ -14,7 +14,19 @@ function write(cm: { cm6: object }, close = false) {
   if (!context) return
   void context.editor.runCommand('save').then((saved) => {
     if (saved && close) window.close()
-    else if (saved) context.notify('saved')
+    else {
+      if (saved) context.notify('saved')
+      // Saving briefly disables CodeMirror after its prompt restores focus.
+      requestAnimationFrame(() => {
+        const active = document.activeElement
+        if (
+          (!active || active === document.body || !active.isConnected) &&
+          cm.cm6 instanceof EditorView &&
+          cm.cm6.dom.isConnected
+        )
+          cm.cm6.focus()
+      })
+    }
   })
 }
 Vim.defineEx('write', 'w', (cm, params) => {
