@@ -302,9 +302,6 @@ test('panes move horizontally and sidebar selection slides without fading settin
   })
   const page = await app.firstWindow()
   await page.getByRole('textbox', { name: 'document editor' }).waitFor()
-  await page
-    .getByRole('button', { name: 'toggle workspace sidebar', exact: true })
-    .click()
   await page.waitForFunction(
     () =>
       document.querySelector('.editor-panes').dataset.sourceReady === 'true',
@@ -536,6 +533,12 @@ test('workspace sidebar slides at a fixed width and the titlebar follows its sta
   })
   const page = await app.firstWindow()
   await page.getByRole('textbox', { name: 'document editor' }).waitFor()
+  await page.getByRole('button', { name: 'toggle workspace sidebar' }).click()
+  await page.waitForFunction(
+    () =>
+      document.querySelector('.workspace-sidebar > .sidebar').getAnimations()
+        .length === 0,
+  )
   for (const [opening, reverse] of [
     [false, false],
     [true, false],
@@ -617,7 +620,7 @@ test('workspace sidebar slides at a fixed width and the titlebar follows its sta
       ),
     )
     assert.equal(samples.at(-1).x, opening ? 0 : -196)
-    assert.equal(samples.at(-1).toolbarWidth, opening ? 196 : 112)
+    assert.equal(samples.at(-1).toolbarWidth, opening ? 196 : 132)
   }
   await page.getByRole('button', { name: 'editor settings' }).click()
   assert.equal(
@@ -650,6 +653,7 @@ test('workspace sidebar slides at a fixed width and the titlebar follows its sta
         BrowserWindow.getAllWindows()[0].reload(),
       ),
     ])
+    await page.getByRole('button', { name: 'toggle workspace sidebar' }).click()
   })
   await page.getByRole('button', { name: 'editor settings' }).click()
   const resize = page.getByRole('separator', { name: 'resize sidebar' })

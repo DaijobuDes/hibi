@@ -2,7 +2,9 @@
 
 use **open a folder…** in the left sidebar, the folder button, or **open workspace…** in the command palette. a workspace is an ordinary local folder. hibi creates no project format and does not move your files.
 
-before a folder is open, the sidebar centers a folder icon above **open a folder**. opening a workspace replaces this entry with the file tree and folder controls.
+the sidebar starts hidden on every launch. the chevron beside its top-bar toggle switches between **workspace** and **in this page**. selecting a view opens it, and typing leaves it open. cmd/ctrl+/ toggles the selected view. **in this page** lists the note's rendered headings; selecting one moves the caret to that heading in the active rich or source editor. headings inside code blocks are excluded.
+
+before a folder is open, the workspace view centers a folder icon above **open a folder**. opening a workspace selects that view and replaces this entry with the file tree and folder controls.
 
 on startup, the untouched empty draft shows **start typing**, up to five recent workspace paths, and **dismiss this**. select a path to reopen that folder. the list is local to this app profile, newest first, and updates when a folder opens from the picker or a drop. typing or dismissing removes the welcome content for the rest of the window session. new notes and opened empty files show only the regular **start typing** placeholder. welcome content never becomes part of the document or its saved markdown.
 

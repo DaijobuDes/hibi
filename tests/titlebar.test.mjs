@@ -68,7 +68,7 @@ test('titlebar insets titles without leading actions and adapts outer button cor
     .getByRole('button', { name: 'dismiss notice', exact: true })
     .click()
   await page.getByRole('button', { name: 'back to editor' }).click()
-  for (const open of [false, true]) {
+  for (const open of [true, false]) {
     await page.getByRole('button', { name: 'toggle workspace sidebar' }).click()
     const surface = await page.locator('.editor-surface').evaluate((el) => {
       const styles = getComputedStyle(el, '::before')

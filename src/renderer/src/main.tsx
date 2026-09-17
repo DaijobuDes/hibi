@@ -59,6 +59,12 @@ import {
 } from './flavors'
 import { LoadingScreen } from './LoadingScreen'
 import { projectMarkdown } from './markdown'
+import {
+  type OutlineHeading,
+  type OutlineRequest,
+  OutlineSidebar,
+  type SidebarView,
+} from './OutlineSidebar'
 import { RecoveryBoundary } from './RecoveryScreen'
 import { SettingsScreen, settingsCategories } from './SettingsScreen'
 import { StartupPlaceholder } from './StartupPlaceholder'
@@ -127,6 +133,7 @@ function App() {
   currentDocument.current = document
   const acceptDocument = useCallback((next: DocumentState) => {
     const previous = currentDocument.current
+    if (previous?.revision !== next.revision) setOutlineTarget(null)
     if (
       !isMarkdownDocument(next.name) &&
       (!previous || isMarkdownDocument(previous.name))
@@ -222,9 +229,22 @@ function App() {
     sessionStorage.setItem('hibi:welcome-dismissed', 'true')
   }
   const [workspaceRename, setWorkspaceRename] = useState<WorkspaceRename>(null)
-  const [sidebarOpen, setSidebarOpen] = useState(
-    () => localStorage.getItem('sidebar-open') !== 'false',
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sidebarView, setSidebarView] = useState<SidebarView>(() =>
+    localStorage.getItem('sidebar-view') === 'outline'
+      ? 'outline'
+      : 'workspace',
   )
+  const [outline, setOutline] = useState<OutlineHeading[]>([])
+  const [outlineTarget, setOutlineTarget] = useState<OutlineRequest | null>(
+    null,
+  )
+  function selectSidebarView(view: SidebarView) {
+    setSidebarView(view)
+    localStorage.setItem('sidebar-view', view)
+    setSidebarOpen(true)
+    showTitlebar()
+  }
   const sidebarResize = useSidebarResize(196)
   const [cursorSettings, setCursorSettings] = useState(loadCursor)
   const [showLineNumbers, setShowLineNumbers] = useState(
@@ -281,8 +301,8 @@ function App() {
       setError(error instanceof Error ? error.message : 'addon failed.'),
   })
   useEffect(() => {
-    localStorage.setItem('sidebar-open', String(sidebarOpen))
-  }, [sidebarOpen])
+    localStorage.removeItem('sidebar-open')
+  }, [])
   useEffect(() => window.hibi.onWorkspaceChanged(setWorkspace), [])
   useEffect(() => {
     void window.hibi.getWorkspace().then(setWorkspace)
@@ -324,7 +344,6 @@ function App() {
       !target.closest('[contenteditable="true"]')
     )
       return
-    if (!workspace && sidebarOpen) setSidebarOpen(false)
     clearTimeout(typingTimer.current)
     setTyping(true)
     typingTimer.current = setTimeout(() => setTyping(false), 1200)
@@ -443,6 +462,7 @@ function App() {
         : window.hibi.openWorkspace())
       if (next) {
         setWorkspace(next)
+        selectSidebarView('workspace')
         setWorkspaceRename(null)
         setSidebarOpen(true)
         setSettingsOpen(false)
@@ -560,7 +580,7 @@ function App() {
         savedText.current = result.document.savedMarkdown
         if (action.action === 'new-file') setSettingsOpen(false)
         if (action.action === 'new-file' || action.action === 'new-folder') {
-          setSidebarOpen(true)
+          selectSidebarView('workspace')
           setSettingsOpen(false)
           setWorkspaceRename({
             id: result.path,
@@ -603,7 +623,7 @@ function App() {
         acceptDocument(result.document)
         savedText.current = result.document.savedMarkdown
         setWorkspace(await window.hibi.getWorkspace())
-        if ('workspace' in result) setSidebarOpen(true)
+        if ('workspace' in result) selectSidebarView('workspace')
         setSettingsOpen(false)
       }
     } catch (error) {
@@ -873,6 +893,16 @@ function App() {
       run: () => addonHost.app.runAction(id),
     }))
   paletteCommands.push(
+    ...(['workspace', 'outline'] as const).map((view) => ({
+      id: `sidebar.${view}`,
+      category: 'view' as const,
+      label:
+        view === 'workspace' ? 'show workspace sidebar' : 'show in this page',
+      run: () => {
+        setSettingsOpen(false)
+        selectSidebarView(view)
+      },
+    })),
     {
       id: 'settings.licenses',
       category: 'settings',
@@ -1073,7 +1103,7 @@ function App() {
             create,
             rename(target) {
               setWorkspaceRename(target)
-              setSidebarOpen(true)
+              selectSidebarView('workspace')
               setSettingsOpen(false)
             },
           },
@@ -1180,6 +1210,8 @@ function App() {
     >
       <Titlebar
         busy={busy}
+        sidebarView={sidebarView}
+        onSidebarView={selectSidebarView}
         onRename={renameFile}
         sidebarOpen={sidebarOpen}
         onSidebar={() => setSidebarOpen(!sidebarOpen)}
@@ -1208,12 +1240,24 @@ function App() {
         onAction={runWorkspaceAction}
         onError={(error) => setError(String(error))}
         resize={sidebarResize}
-        open={sidebarOpen && !settingsOpen}
+        open={sidebarOpen && !settingsOpen && sidebarView === 'workspace'}
         workspace={workspace}
         onOpen={() => addonHost.app.runAction('open-workspace')}
         onFile={(path) => void openFile(path)}
         onRefresh={() => void refreshFiles()}
         commands={addonHost.commands}
+      />
+      <OutlineSidebar
+        open={sidebarOpen && !settingsOpen && sidebarView === 'outline'}
+        resize={sidebarResize}
+        headings={outline}
+        selected={outlineTarget?.id ?? null}
+        onSelect={(id) =>
+          setOutlineTarget((previous) => ({
+            id,
+            request: (previous?.request ?? 0) + 1,
+          }))
+        }
       />
       <MenuHost />
       <SettingsScreen
@@ -1250,6 +1294,8 @@ function App() {
         <div className="editor-page" data-startup={showWelcome}>
           {document && (
             <MarkdownEditor
+              onOutline={setOutline}
+              outlineTarget={outlineTarget}
               document={document}
               format={documentFormat}
               formatName={sourceName}

@@ -1,10 +1,12 @@
 import {
   ArrowLeft,
+  ChevronDown,
   Code,
   Columns2,
   FilePlus,
   FileText,
   FolderOpen,
+  ListTree,
   PanelLeft,
   Save,
   Search,
@@ -15,8 +17,10 @@ import type { DocumentCommand, DocumentState } from '../../shared/desktop'
 import { isMarkdownDocument } from '../../shared/document-types'
 import { type Hotkeys, shortcutLabels } from '../../shared/hotkeys'
 import { IconButton, TextInput } from '../../ui/Controls'
+import { useMenus } from '../../ui/MenuHost'
 import { ShortcutKeys } from '../../ui/ShortcutKeys'
 import type { ViewMode } from './Editor'
+import type { SidebarView } from './OutlineSidebar'
 
 const icons = {
   new: FilePlus,
@@ -47,6 +51,8 @@ export function Titlebar({
   platform,
   sidebarOpen,
   onSidebar,
+  sidebarView,
+  onSidebarView,
   onRename,
   busy,
 }: {
@@ -62,9 +68,12 @@ export function Titlebar({
   platform: string
   sidebarOpen: boolean
   onSidebar: () => void
+  sidebarView: SidebarView
+  onSidebarView: (view: SidebarView) => void
   onRename: (name: string) => Promise<void>
   busy: boolean
 }) {
+  const menus = useMenus(console.error)
   const [renaming, setRenaming] = useState(false)
   const [name, setName] = useState('')
   const input = useRef<HTMLInputElement>(null)
@@ -81,15 +90,53 @@ export function Titlebar({
     <header className="titlebar" aria-busy={busy}>
       <div className="sidebar-toolbar" data-open={sidebarOpen || settingsOpen}>
         {!settingsOpen && (
-          <IconButton
-            type="button"
-            aria-label="toggle workspace sidebar"
-            aria-pressed={sidebarOpen}
-            title="workspace sidebar"
-            onClick={onSidebar}
-          >
-            <PanelLeft size={16} strokeWidth={1.5} />
-          </IconButton>
+          <>
+            <IconButton
+              type="button"
+              aria-label="toggle workspace sidebar"
+              aria-pressed={sidebarOpen}
+              title={
+                sidebarView === 'workspace'
+                  ? 'workspace sidebar'
+                  : 'in this page'
+              }
+              onClick={onSidebar}
+            >
+              {sidebarView === 'workspace' ? (
+                <PanelLeft size={16} strokeWidth={1.5} />
+              ) : (
+                <ListTree size={16} strokeWidth={1.5} />
+              )}
+            </IconButton>
+            <IconButton
+              className="sidebar-view-menu"
+              aria-label="sidebar views"
+              aria-haspopup="menu"
+              title="sidebar views"
+              onClick={(event) =>
+                menus.open({
+                  label: 'sidebar views',
+                  anchor: event.currentTarget,
+                  items: [
+                    {
+                      id: 'workspace',
+                      label: 'workspace',
+                      icon: FolderOpen,
+                      onSelect: () => onSidebarView('workspace'),
+                    },
+                    {
+                      id: 'outline',
+                      label: 'in this page',
+                      icon: ListTree,
+                      onSelect: () => onSidebarView('outline'),
+                    },
+                  ],
+                })
+              }
+            >
+              <ChevronDown size={12} />
+            </IconButton>
+          </>
         )}
       </div>
       <div className="document-toolbar">

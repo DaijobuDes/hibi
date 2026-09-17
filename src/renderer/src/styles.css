@@ -184,13 +184,16 @@ button:disabled {
   display: flex;
   align-items: center;
   height: 100%;
-  width: calc(var(--window-controls-width) + 32px);
+  width: calc(var(--window-controls-width) + 52px);
   padding-left: var(--window-controls-width);
   flex-shrink: 0;
   transition: width var(--motion-pane) var(--ease-out);
 }
 .sidebar-toolbar[data-open="true"] {
   width: var(--sidebar-width);
+}
+.titlebar .sidebar-view-menu {
+  width: 18px;
 }
 .app[data-platform="win32"] .sidebar-toolbar,
 .app[data-platform="linux"] .sidebar-toolbar {
@@ -370,7 +373,7 @@ button:disabled {
     opacity: 0;
   }
 }
-.app .workspace-sidebar {
+.app .document-sidebar {
   position: absolute;
   inset: 0 auto 0 0;
   z-index: 1;

@@ -1,3 +1,4 @@
+import { EditorView as SourceView } from '@codemirror/view'
 import { AllSelection, TextSelection } from '@tiptap/pm/state'
 import { EditorContent, useEditor } from '@tiptap/react'
 import {
@@ -40,7 +41,9 @@ import {
   needsSourceEditing,
   projectMarkdown,
 } from './markdown'
+import { markdownPositions } from './markdown-positions'
 import { markdownSyntax } from './markdown-syntax'
+import type { OutlineHeading, OutlineRequest } from './OutlineSidebar'
 
 const SourceEditor = lazy(() =>
   import('./SourceEditor').then((module) => ({ default: module.SourceEditor })),
@@ -68,6 +71,8 @@ export function MarkdownEditor({
   unsupportedFlavor,
   onAttach,
   onLink,
+  onOutline,
+  outlineTarget,
 }: {
   document: DocumentState
   format: DocumentFormat | undefined
@@ -90,6 +95,8 @@ export function MarkdownEditor({
     files: File[] | null,
   ) => Promise<import('../../shared/media').MediaAttachment[] | null>
   onLink: (href: string) => void
+  onOutline: (headings: OutlineHeading[]) => void
+  outlineTarget: OutlineRequest | null
 }) {
   const markdownDocument = isMarkdownDocument(documentState.name)
   const syntaxVersion = useSyncExternalStore(
@@ -220,6 +227,60 @@ export function MarkdownEditor({
     },
     [markdownExtensions, flavors, syntaxVersion],
   )
+  // biome-ignore lint/correctness/useExhaustiveDependencies: source and rich changes update the editor document outside React.
+  useEffect(() => {
+    const headings: OutlineHeading[] = []
+    if (markdownDocument)
+      editor?.state.doc.descendants((node, pos) => {
+        if (node.type.name === 'heading')
+          headings.push({
+            id: String(pos),
+            label: node.textContent || 'untitled heading',
+            level: Number(node.attrs.level),
+          })
+      })
+    onOutline(headings)
+  }, [editor, markdownDocument, value, richRevision, onOutline])
+  const handledOutline = useRef<OutlineRequest | null>(outlineTarget)
+  useEffect(() => {
+    if (!editor || !outlineTarget || handledOutline.current === outlineTarget)
+      return
+    if (mode !== 'normal' && !sourceReady) return
+    const position = Number(outlineTarget.id)
+    if (
+      !Number.isInteger(position) ||
+      position < 0 ||
+      position >= editor.state.doc.content.size ||
+      editor.state.doc.nodeAt(position)?.type.name !== 'heading'
+    )
+      return
+    if (mode === 'normal') {
+      handledOutline.current = outlineTarget
+      editor
+        .chain()
+        .focus()
+        .setTextSelection(position + 1)
+        .scrollIntoView()
+        .run()
+    } else {
+      const element = content.current?.querySelector<HTMLElement>('.cm-content')
+      const view = element && SourceView.findFromDOM(element)
+      if (!view) return
+      const offset = value.lastIndexOf(projection.content)
+      const mapped = markdownPositions(projection.content, editor.state.doc)(
+        position + 1,
+        'rich',
+      )
+      if (offset < 0 || mapped === null) return
+      handledOutline.current = outlineTarget
+      const anchor = Math.min(view.state.doc.length, offset + mapped)
+      view.dispatch({
+        selection: { anchor },
+        effects: SourceView.scrollIntoView(anchor, { y: 'start', yMargin: 48 }),
+      })
+      view.focus()
+    }
+  }, [editor, outlineTarget, mode, sourceReady, value, projection.content])
   useEffect(() => {
     if (paneMode !== 'side-by-side' || !sourceReady || !editor) return
     const rich = content.current?.querySelector<HTMLElement>('.rich-pane')

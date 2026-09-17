@@ -140,7 +140,7 @@ export function WorkspaceSidebar({
     <Sidebar
       resize={resize}
       open={open}
-      className={`workspace-sidebar ${workspace ? '' : 'workspace-empty'}`}
+      className={`document-sidebar workspace-sidebar ${workspace ? '' : 'workspace-empty'}`}
       items={items}
       selected={workspace?.activePath ?? null}
       onSelect={onFile}

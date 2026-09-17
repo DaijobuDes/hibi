@@ -68,6 +68,7 @@ test('nested workspace editing, addon lifecycle, and offline static export', {
   const errors = []
   page.on('pageerror', (error) => errors.push(error.message))
   await page.getByRole('textbox', { name: 'document editor' }).waitFor()
+  await page.getByRole('button', { name: 'toggle workspace sidebar' }).click()
   await page
     .getByRole('button', { name: 'open workspace', exact: true })
     .click()
