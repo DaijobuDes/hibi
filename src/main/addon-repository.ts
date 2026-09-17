@@ -1,6 +1,5 @@
 import { execFile } from 'node:child_process'
-import { lstat, mkdir, readdir } from 'node:fs/promises'
-import { devNull } from 'node:os'
+import { lstat, mkdir, readdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { addonPackageUrl, MAX_ADDON_BYTES } from '../shared/addon-package.ts'
@@ -30,13 +29,15 @@ export async function downloadRepository(
   const repository = join(temporary, 'repository.git')
   const empty = join(temporary, 'empty')
   await mkdir(empty, { mode: 0o700 })
+  const emptyConfig = join(temporary, 'git-config')
+  await writeFile(emptyConfig, '', { mode: 0o600 })
   const env = Object.fromEntries(
     Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_')),
   )
   Object.assign(env, {
     GIT_CONFIG_NOSYSTEM: '1',
-    GIT_CONFIG_GLOBAL: devNull,
-    GIT_CONFIG_SYSTEM: devNull,
+    GIT_CONFIG_GLOBAL: emptyConfig,
+    GIT_CONFIG_SYSTEM: emptyConfig,
     GIT_TERMINAL_PROMPT: '0',
     GIT_ASKPASS: '',
     SSH_ASKPASS: '',

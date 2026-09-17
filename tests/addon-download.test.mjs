@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { execFile, execFileSync } from 'node:child_process'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
-import { devNull, tmpdir } from 'node:os'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { promisify } from 'node:util'
@@ -133,7 +133,7 @@ test('repository installs archive without checkout, hooks, or inherited git conf
   const run = (args) =>
     execFileSync(git, [
       '-c',
-      `core.hooksPath=${devNull}`,
+      `core.hooksPath=${root}`,
       '-c',
       'commit.gpgSign=false',
       '-c',
@@ -159,6 +159,7 @@ test('repository installs archive without checkout, hooks, or inherited git conf
       commands.push({
         args: [...args],
         system: options.env.GIT_CONFIG_NOSYSTEM,
+        config: options.env.GIT_CONFIG_GLOBAL,
       })
       const local = args.map((argument) =>
         argument === 'https://github.com/example/addon.git' ? source : argument,
@@ -179,6 +180,7 @@ test('repository installs archive without checkout, hooks, or inherited git conf
   assert.ok(commands[0].args.includes('--depth=1'))
   assert.ok(commands[1].args.includes('archive'))
   assert.equal(commands[0].system, '1')
+  assert.equal(await readFile(commands[0].config, 'utf8'), '')
   assert.ok(commands[0].args.includes('credential.helper='))
   assert.equal(repositoryUrl('https://github.com/example/addon'), true)
   assert.equal(repositoryUrl('https://git.example.com/addon.git'), true)

@@ -23,6 +23,6 @@ The workflow uses the repository's built-in token; only the publication job has 
 
 `.github/workflows/addons-sync.yml` runs on pushes to `main` that change `src/addons/**`. It can also be run manually for an initial sync. `node scripts/export-addons.mjs` exports `authors.ts`, manifests, Markdown files, and images into `out/addons`, preserving relative paths. Runtime TypeScript, stylesheets, audio, hidden files, and symlinks are excluded; manifests are copied without being executed.
 
-The workflow updates the generated catalog in `hibigarden/site/addons`, removes stale catalog files, and preserves `addons/index.html`. It validates the site's tests and build before committing `addons: sync to main (<source short commit id>)`. Unchanged catalog data creates no commit. Serialized runs use normal pushes so concurrent site work is never overwritten.
+The workflow updates the generated catalog in `hibigarden/site/addons`, removes stale catalog files, and preserves `addons/index.html`. It validates the site's tests and build before committing `chore(addons): sync to main (<source short commit id>)`. Unchanged catalog data creates no commit. Serialized runs use normal pushes so concurrent site work is never overwritten.
 
 Configure `ADDONS_SYNC_TOKEN` on **schmayterling/hibi**, with access to `hibigarden/site` and Contents read/write permission. A secret on the destination repository cannot be read by the source workflow. Documentation publishing remains independent: `docs-sync.yml` runs only when `docs/**` changes on `main`.

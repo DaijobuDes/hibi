@@ -275,6 +275,13 @@ test('plugin pages, metadata, shared controls, and full source vim editing', {
     .getByRole('status', { name: /unsaved changes/i })
     .waitFor({ state: 'hidden' })
   assert.equal(await readFile(fixture, 'utf8'), await read())
+  await page.waitForFunction(() =>
+    document.activeElement?.classList.contains('cm-content'),
+  )
+  assert.equal(
+    await source.evaluate((element) => element === document.activeElement),
+    true,
+  )
   await page.mouse.move(450, 18)
   await page.waitForFunction(
     () => getComputedStyle(document.querySelector('.titlebar')).opacity === '1',

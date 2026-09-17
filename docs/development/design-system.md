@@ -2,6 +2,8 @@
 
 When typing hides both the titlebar and formatting toolbar, their reserved height collapses too, so document padding matches the top and side window edges. A pinned formatting toolbar keeps its window-control inset. Focused titlebar controls retain their space.
 
+Find in note keeps the bars visible while open, so its buttons stay in place when editing the document beneath it.
+
 command palette selection uses one moving background with the shared selection timing. keyboard navigation, hovering, and filtered results share that marker; reduced motion removes its transition.
 
 shared `Modal` supplies native focus trapping and dismissal for the command palette and dialog API. `DialogProvider` supplies the window-level queue; app and addon dialogs share tokens, controls, spacing, motion, and reduced-motion handling.

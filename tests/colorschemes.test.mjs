@@ -189,9 +189,15 @@ test('app palettes update all surfaces, preserve editing, and persist native app
     await app.evaluate(({ nativeTheme }) => nativeTheme.themeSource),
     'dark',
   )
-  const payload = JSON.parse(
-    await readFile(join(profile, 'appearance.json'), 'utf8'),
-  )
+  let payload
+  const deadline = Date.now() + 7000
+  do {
+    payload = JSON.parse(
+      await readFile(join(profile, 'appearance.json'), 'utf8'),
+    )
+    if (payload.preferences.dark === 'catppuccin-mocha') break
+    await new Promise((resolve) => setTimeout(resolve, 30))
+  } while (Date.now() < deadline)
   assert.equal(payload.preferences.dark, 'catppuccin-mocha')
   assert.equal(
     await page.evaluate(async (value) => {

@@ -114,7 +114,7 @@ test('syntax settings preserve edits, update rich formatting, and discover addon
   for (const name of ['heading 1', 'bold', 'alerts', 'subscript', 'small text'])
     await page
       .getByRole('checkbox', { name: uiName(name, true), exact: true })
-      .click()
+      .uncheck()
   await page.waitForFunction(
     () =>
       !document.querySelector(
@@ -144,7 +144,7 @@ test('syntax settings preserve edits, update rich formatting, and discover addon
   for (const name of ['heading 1', 'bold', 'alerts', 'subscript', 'small text'])
     await page
       .getByRole('checkbox', { name: uiName(name, true), exact: true })
-      .click()
+      .check()
   await page.getByRole('tab', { name: /^addons$/i, exact: true }).click()
   await page.locator('#addon-math').click()
   await page.getByRole('tab', { name: /^syntax$/i, exact: true }).click()

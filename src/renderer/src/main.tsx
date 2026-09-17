@@ -357,6 +357,7 @@ function App() {
     if (
       settingsOpen ||
       paletteOpen ||
+      findOpen ||
       !(target instanceof HTMLElement) ||
       !target.closest('[contenteditable="true"]')
     )
