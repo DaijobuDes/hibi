@@ -340,7 +340,6 @@ button:disabled {
   display: block;
   padding: 0 0 var(--space-2);
   margin-bottom: var(--space-2);
-  border-bottom: 1px solid var(--border);
 }
 .settings-sidebar .sidebar-header button:hover {
   background: var(--hover);
