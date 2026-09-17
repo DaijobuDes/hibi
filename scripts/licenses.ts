@@ -15,12 +15,14 @@ type Package = {
 // dependencies install its binary; they are not shipped in the application bundle.
 const buildTools = new Set([
   '@biomejs/biome',
+  '@codspeed/vitest-plugin',
   '@vitejs/plugin-react',
   'electron-builder',
   'electron-vite',
   'playwright',
   'typescript',
   'vite',
+  'vitest',
 ])
 
 export async function collectLicenses(root = resolve('.')) {
