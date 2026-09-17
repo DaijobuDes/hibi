@@ -89,9 +89,10 @@ app.setName('hibi')
 // Let held Vim motions repeat instead of opening macOS's accent picker.
 if (process.platform === 'darwin')
   systemPreferences.setUserDefault('ApplePressAndHoldEnabled', 'boolean', false)
+const iconName = `icon-${process.platform === 'darwin' ? 'mac' : process.platform === 'win32' ? 'win' : 'linux'}.png`
 const appIcon = app.isPackaged
-  ? join(process.resourcesPath, 'icon.png')
-  : join(app.getAppPath(), 'build/icon.png')
+  ? join(process.resourcesPath, 'icons', iconName)
+  : join(app.getAppPath(), 'build', iconName)
 app.enableSandbox()
 const testing = !app.isPackaged && app.commandLine.hasSwitch('hibi-test')
 if (testing)

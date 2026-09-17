@@ -7,8 +7,9 @@ files:
   - package.json
 asar: true
 extraResources:
-  - from: build/icon.png
-    to: icon.png
+  - from: build
+    to: icons
+    filter: ["icon-*.png"]
   - from: node_modules/electron/dist/LICENSES.chromium.html
     to: licenses/electron-third-party.html
   - from: docs/licenses
@@ -31,5 +32,5 @@ win:
   icon: build/icon.ico
   target: [nsis]
 linux:
-  icon: build/icon.png
+  icon: build/icon-linux.png
   target: [AppImage]

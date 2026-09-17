@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
@@ -7,22 +8,29 @@ import { join, resolve } from 'node:path'
 const folder = await mkdtemp(join(tmpdir(), 'hibi-icon-'))
 const source = resolve('build/icon.png')
 try {
+  const require = createRequire(import.meta.url)
+  execFileSync(
+    require('electron'),
+    [resolve('scripts/render-icons.cjs'), source, folder],
+    { stdio: 'pipe' },
+  )
+  for (const [platform, size] of [
+    ['mac', 1024],
+    ['win', 256],
+    ['linux', 512],
+  ])
+    await cp(
+      join(folder, `${platform}-${size}.png`),
+      resolve(`build/icon-${platform}.png`),
+    )
   const { mkdir } = await import('node:fs/promises')
   const iconset = join(folder, 'hibi.iconset')
   await mkdir(iconset)
   for (const size of [16, 32, 128, 256, 512]) {
     for (const scale of [1, 2]) {
-      execFileSync(
-        'sips',
-        [
-          '-z',
-          String(size * scale),
-          String(size * scale),
-          source,
-          '--out',
-          join(iconset, `icon_${size}x${size}${scale === 2 ? '@2x' : ''}.png`),
-        ],
-        { stdio: 'ignore' },
+      await cp(
+        join(folder, `mac-${size * scale}.png`),
+        join(iconset, `icon_${size}x${size}${scale === 2 ? '@2x' : ''}.png`),
       )
     }
   }
@@ -34,9 +42,9 @@ try {
     resolve('build/icon.icns'),
   ])
   const images = await Promise.all(
-    [16, 32, 128, 256].map(async (size) => ({
+    [16, 32, 64, 128, 256].map(async (size) => ({
       size,
-      png: await readFile(join(iconset, `icon_${size}x${size}.png`)),
+      png: await readFile(join(folder, `win-${size}.png`)),
     })),
   )
   const header = Buffer.alloc(6 + images.length * 16)

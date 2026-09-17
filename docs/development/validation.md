@@ -15,6 +15,8 @@ React and CSS edits update in place. main/preload changes restart the developmen
 
 `build/icon.png` is the app artwork. committed `.icns` and `.ico` variants cover macOS and Windows; regenerate them with `npm run icons` on macOS after replacing the PNG. development and preview use an owned, ad-hoc-signed `hibi.app` copy in `node_modules/.cache/hibi-electron`, with the same name and icon as the release. the installed Electron bundle stays unchanged. the cache is refreshed when Electron or the icon changes. packaged builds use the platform icons in `electron-builder.yml`.
 
+platform exports preserve the supplied artwork on a transparent canvas: macOS uses 80% optical occupancy; Windows and Linux use 87.5%. the Dock and window icons use those padded exports too, keeping dev/preview sizing consistent with packaged apps. generation uses Electron's native image converter without showing a window.
+
 Vite can replace its initial navigation when optimizing a newly added dependency. development treats that aborted navigation as a reload, so it does not close the app.
 
 tests use temporary profiles and real Electron windows. file dialogs are controlled against temporary fixtures. validation covers draft preservation, file writes, workspace traversal and nested navigation, local image resolution and offline embedding, frontmatter fields and YAML preservation, addon enable/disable, export sanitization, offline search and deep links, keyboard behavior, reduced motion, and pane geometry.
