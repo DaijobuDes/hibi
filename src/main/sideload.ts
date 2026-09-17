@@ -37,6 +37,9 @@ function validPath(value: unknown): value is string {
       )
   )
 }
+
+import { validDocumentExtensions } from '../shared/document-types'
+
 function manifest(value: unknown): {
   manifest: AddonManifest
   entry: string
@@ -87,6 +90,11 @@ function manifest(value: unknown): {
       ))
   )
     throw new Error('invalid addon licenses.')
+  if (
+    data.fileExtensions !== undefined &&
+    (data.kind === 'theme' || !validDocumentExtensions(data.fileExtensions))
+  )
+    throw new Error('invalid document extensions.')
   const base: AddonManifest = {
     id: data.id,
     name: data.name,
@@ -96,6 +104,11 @@ function manifest(value: unknown): {
     version: data.version,
     authors: data.authors,
     defaultEnabled: false,
+    ...(data.fileExtensions !== undefined
+      ? {
+          fileExtensions: data.fileExtensions,
+        }
+      : {}),
     ...(data.licenses
       ? { licenses: data.licenses as NonNullable<AddonManifest['licenses']> }
       : {}),

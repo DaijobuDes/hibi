@@ -1,0 +1,91 @@
+import { createHash } from 'node:crypto'
+import { join } from 'node:path'
+import { NodeCompiler } from '@myriaddreamin/typst-ts-node-compiler'
+import type { CompileJob } from './compiler'
+
+let compiler: NodeCompiler | null = null
+let previousEntry: string | null = null
+let originals = new Map<string, Buffer>()
+let fontKey = ''
+process.parentPort.on('message', ({ data }: { data: CompileJob }) => {
+  try {
+    const fonts = data.files?.filter(([path]) =>
+      /\.(ttf|otf|ttc|otc)$/i.test(path),
+    )
+    const fontHash = createHash('sha256')
+    for (const [path, bytes] of fonts ?? []) fontHash.update(path).update(bytes)
+    const nextFontKey = fonts ? fontHash.digest('hex') : fontKey
+    if (!compiler || nextFontKey !== fontKey) {
+      compiler = NodeCompiler.create({
+        workspace: data.sandbox,
+        fontArgs: [
+          { fontBlobs: fonts?.map(([, bytes]) => Buffer.from(bytes)) ?? [] },
+        ],
+      })
+      fontKey = nextFontKey
+    }
+    if (data.files) {
+      compiler.resetShadow()
+      originals = new Map(
+        data.files.map(([path, bytes]) => [
+          join(data.sandbox, path),
+          Buffer.from(bytes),
+        ]),
+      )
+      for (const [path, bytes] of originals) compiler.mapShadow(path, bytes)
+      previousEntry = null
+    }
+    const entry = join(data.sandbox, data.entry)
+    if (previousEntry && previousEntry !== entry) {
+      const original = originals.get(previousEntry)
+      if (original) compiler.mapShadow(previousEntry, original)
+      else compiler.unmapShadow(previousEntry)
+    }
+    previousEntry = entry
+    compiler.mapShadow(
+      entry,
+      Buffer.from(
+        data.block
+          ? `#set page(width: auto, height: auto, margin: 8pt)\n${data.source}`
+          : data.source,
+      ),
+    )
+    const result = compiler.compile({ mainFilePath: entry, resetRead: true })
+    const diagnostics =
+      result.takeDiagnostics()?.shortDiagnostics.map((error) => ({
+        message: String(error.message).replaceAll(data.sandbox, '.'),
+        severity: error.severity === 1 ? 'error' : 'warning',
+      })) ?? []
+    if (!result.result) process.parentPort.postMessage({ diagnostics })
+    else {
+      if (result.result.numOfPages > 200)
+        throw new Error('typst preview supports up to 200 pages.')
+      const svg = compiler.plainSvg(result.result)
+      const pdf = data.pdf ? compiler.pdf(result.result) : undefined
+      if (
+        Buffer.byteLength(svg) > 20 * 1024 * 1024 ||
+        (pdf && pdf.byteLength > 64 * 1024 * 1024)
+      )
+        throw new Error('typst output is too large.')
+      process.parentPort.postMessage({
+        svg,
+        pdf,
+        pages: result.result.numOfPages,
+        diagnostics,
+      })
+    }
+    compiler.evictCache(10)
+  } catch (error) {
+    process.parentPort.postMessage({
+      diagnostics: [
+        {
+          severity: 'error',
+          message:
+            error instanceof Error
+              ? error.message
+              : 'typst compilation failed.',
+        },
+      ],
+    })
+  }
+})

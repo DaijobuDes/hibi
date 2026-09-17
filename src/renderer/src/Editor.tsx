@@ -17,11 +17,14 @@ import {
   useState,
 } from 'react'
 import type {
+  DocumentFormat,
   MarkdownExtension,
   MarkdownFlavor,
   RichExtension,
   SourceExtension,
 } from '../../addons/api'
+import type { DocumentState } from '../../shared/desktop'
+import { isMarkdownDocument } from '../../shared/document-types'
 import { isMediaFile } from '../../shared/media'
 import { documentImage } from './DocumentImage'
 import { type CursorSettings, EditorCursor } from './EditorCursor'
@@ -44,6 +47,9 @@ const SourceEditor = lazy(() =>
 export type ViewMode = 'normal' | 'side-by-side' | 'markdown'
 
 export function MarkdownEditor({
+  document: documentState,
+  format,
+  formatName,
   value,
   onChange,
   mode,
@@ -61,6 +67,9 @@ export function MarkdownEditor({
   onAttach,
   onLink,
 }: {
+  document: DocumentState
+  format: DocumentFormat | undefined
+  formatName: string
   value: string
   onChange: (value: string) => void
   mode: ViewMode
@@ -80,9 +89,13 @@ export function MarkdownEditor({
   ) => Promise<import('../../shared/media').MediaAttachment[] | null>
   onLink: (href: string) => void
 }) {
+  const markdownDocument = isMarkdownDocument(documentState.name)
   const projection = useMemo(
-    () => projectMarkdown(value, markdownExtensions),
-    [value, markdownExtensions],
+    () =>
+      markdownDocument
+        ? projectMarkdown(value, markdownExtensions)
+        : { content: '', serialize: () => value, readOnly: true },
+    [value, markdownExtensions, markdownDocument],
   )
   const sourceOnly = useMemo(
     () =>
@@ -103,8 +116,13 @@ export function MarkdownEditor({
   })
   const handledFindMove = useRef(0)
   const [focusedPane, setFocusedPane] = useState<'rich' | 'source'>('rich')
-  const findTarget =
-    mode === 'normal' ? 'rich' : mode === 'markdown' ? 'source' : focusedPane
+  const findTarget = !markdownDocument
+    ? 'source'
+    : mode === 'normal'
+      ? 'rich'
+      : mode === 'markdown'
+        ? 'source'
+        : focusedPane
   const [sourceMounted, setSourceMounted] = useState(mode !== 'normal')
   const [sourceReady, setSourceReady] = useState(false)
   const [initialMode] = useState(mode)
@@ -112,6 +130,12 @@ export function MarkdownEditor({
   // normal view waits for source layout before beginning the pane transition.
   const paneMode = sourceReady || initialMode !== 'normal' ? mode : 'normal'
   const content = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!markdownDocument && sourceReady && mode !== 'normal') {
+      setFocusedPane('source')
+      content.current?.querySelector<HTMLElement>('.cm-content')?.focus()
+    }
+  }, [markdownDocument, sourceReady, mode])
   useEffect(() => {
     if (paneMode !== 'side-by-side' || !sourceReady) return
     const rich = content.current?.querySelector<HTMLElement>('.rich-pane')
@@ -204,6 +228,8 @@ export function MarkdownEditor({
       focusedPane,
       disabled || mode !== paneMode || (findTarget === 'rich' && sourceOnly),
       onAttach,
+      markdownDocument,
+      format,
     )
 
   useEffect(() => {
@@ -282,14 +308,15 @@ export function MarkdownEditor({
   }, [editor, findMove, findOpen, findTarget])
 
   function updateFromSource(markdown: string) {
-    editor
-      ?.chain()
-      .setContent(projectMarkdown(markdown, markdownExtensions).content, {
-        contentType: 'markdown',
-        emitUpdate: false,
-      })
-      .setMeta('addToHistory', false)
-      .run()
+    if (markdownDocument)
+      editor
+        ?.chain()
+        .setContent(projectMarkdown(markdown, markdownExtensions).content, {
+          contentType: 'markdown',
+          emitUpdate: false,
+        })
+        .setMeta('addToHistory', false)
+        .run()
     onChange(markdown)
   }
 
@@ -358,20 +385,32 @@ export function MarkdownEditor({
             aria-hidden={paneMode === 'markdown'}
             inert={paneMode === 'markdown'}
           >
-            {markdownExtensions.map(({ id, Editor }) =>
-              Editor ? (
-                <Editor
-                  key={id}
-                  value={value}
-                  disabled={disabled}
-                  onChange={(markdown) => {
-                    updateFromSource(markdown)
-                    setRichRevision((revision) => revision + 1)
-                  }}
-                />
-              ) : null,
-            )}
-            <EditorContent editor={editor} />
+            {!markdownDocument &&
+              (format ? (
+                <format.Preview value={value} document={documentState} />
+              ) : (
+                <p className="format-unavailable">
+                  enable {formatName} for preview. source editing remains
+                  available.
+                </p>
+              ))}
+            {markdownDocument &&
+              markdownExtensions.map(({ id, Editor }) =>
+                Editor ? (
+                  <Editor
+                    key={id}
+                    value={value}
+                    disabled={disabled}
+                    onChange={(markdown) => {
+                      updateFromSource(markdown)
+                      setRichRevision((revision) => revision + 1)
+                    }}
+                  />
+                ) : null,
+              )}
+            <div hidden={!markdownDocument}>
+              <EditorContent editor={editor} />
+            </div>
           </section>
           <section
             className="source-pane"
@@ -385,6 +424,9 @@ export function MarkdownEditor({
                 fallback={<LoadingScreen label="loading markdown editor" />}
               >
                 <SourceEditor
+                  markdownMode={markdownDocument}
+                  sourceLanguage={format?.language}
+                  label={formatName}
                   onLink={onLink}
                   onFormatting={attachSourceFormatting}
                   sourceExtensions={sourceExtensions}

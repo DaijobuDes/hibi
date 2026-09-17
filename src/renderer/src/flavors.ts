@@ -3,6 +3,18 @@ import type { MarkdownFlavor, RenderedMarkdown } from '../../addons/api'
 import syntaxStyles from '../../ui/syntax.css?raw'
 import { codeHtml, escapeCode } from './code-languages'
 
+export async function renderMarkdownAsync(source: string, documentId?: string) {
+  let rendered = renderMarkdown(source, documentId)
+  for (const flavor of selectedFlavors(
+    loadFlavor(documentId),
+    flavors.snapshot(),
+  )) {
+    if (flavor.export?.transform && flavorMatches(flavor, source))
+      rendered = await flavor.export.transform(rendered, source, documentId)
+  }
+  return rendered
+}
+
 export type FlavorChoice = { dialect: string; syntax: 'auto' | string[] }
 export const automaticFlavor: FlavorChoice = { dialect: 'auto', syntax: 'auto' }
 export type RegisteredFlavor = MarkdownFlavor & { addonId: string }

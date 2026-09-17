@@ -58,7 +58,7 @@ export async function writeMarkdown(
 
 export async function writeText(
   path: string,
-  text: string,
+  text: string | Uint8Array,
   exclusive = false,
 ): Promise<void> {
   const temp = join(dirname(path), `.${basename(path)}.${randomUUID()}.tmp`)

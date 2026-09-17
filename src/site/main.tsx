@@ -54,7 +54,7 @@ const pages = workspace.pages.map((page) => {
         : (page.path
             .split('/')
             .at(-1)
-            ?.replace(/\.(md|markdown)$/i, '') ?? page.path),
+            ?.replace(/\.[^./]+$/, '') ?? page.path),
   }
 })
 const home =

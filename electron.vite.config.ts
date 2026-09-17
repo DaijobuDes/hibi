@@ -1,9 +1,20 @@
+import { resolve } from 'node:path'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'electron-vite'
 import { writeLicenses } from './scripts/licenses'
 
 export default defineConfig({
-  main: { plugins: [{ name: 'app-licenses', buildStart: writeLicenses }] },
+  main: {
+    plugins: [{ name: 'app-licenses', buildStart: writeLicenses }],
+    build: {
+      rollupOptions: {
+        input: {
+          index: resolve('src/main/index.ts'),
+          'typst-worker': resolve('src/addons/typst/compiler-worker.ts'),
+        },
+      },
+    },
+  },
   preload: {
     build: {
       externalizeDeps: false,

@@ -1,4 +1,5 @@
-import { lstat, readFile, rename, writeFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { lstat, readFile, realpath, rename, writeFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import { app, type BrowserWindow, dialog } from 'electron'
 import {
@@ -7,14 +8,19 @@ import {
   type AddonState,
   type NativeAddon,
 } from '../addons/api'
+import { validDocumentExtensions } from '../shared/document-types'
 import { exportedAppearance } from './appearance'
 import {
   clearDocument,
   getDocument,
   getDocumentPath,
   loadDocument,
+  newDocument,
+  renameDocument,
+  updateDocument,
 } from './document'
-import { writeText } from './files'
+import { setDocumentExtensions } from './document-types'
+import { validateMarkdown, writeText } from './files'
 import {
   installedAddons,
   installPackage,
@@ -22,7 +28,9 @@ import {
   removePackage,
 } from './sideload'
 import {
+  getWorkspace,
   refreshWorkspace,
+  resolveWorkspaceFile,
   snapshotWorkspace,
   workspaceId,
   workspaceRoot,
@@ -62,11 +70,16 @@ export async function loadAddons(): Promise<void> {
     if (
       !/^[a-z][a-z0-9-]*$/.test(manifest.id) ||
       ids.has(manifest.id) ||
+      (manifest.fileExtensions !== undefined &&
+        !validDocumentExtensions(manifest.fileExtensions)) ||
       manifest.apiVersion !== ADDON_API_VERSION
     )
       throw new Error('invalid or incompatible addon manifest.')
     ids.add(manifest.id)
   }
+  setDocumentExtensions(
+    manifests().flatMap((manifest) => manifest.fileExtensions ?? []),
+  )
   try {
     const stored = JSON.parse(
       await readFile(join(app.getPath('userData'), 'addons.json'), 'utf8'),
@@ -83,6 +96,9 @@ export async function loadAddons(): Promise<void> {
 }
 
 export function getAddonStates(): AddonState[] {
+  setDocumentExtensions(
+    manifests().flatMap((manifest) => manifest.fileExtensions ?? []),
+  )
   return manifests().map(({ id, defaultEnabled }) => ({
     id,
     enabled: enabled[id] ?? defaultEnabled ?? false,
@@ -108,6 +124,7 @@ async function saveEnabled(id: string, value: boolean): Promise<AddonState[]> {
   await writeFile(`${path}.tmp`, JSON.stringify(next), { mode: 0o600 })
   await rename(`${path}.tmp`, path)
   enabled = next
+  if (!value) natives.find((addon) => addon.id === id)?.stop?.()
   return getAddonStates()
 }
 
@@ -161,6 +178,63 @@ export async function invokeAddon(
   const handler = handlers[method]
   if (!handler) throw new Error('unknown addon method.')
   return handler(input, {
+    document: {
+      get: getDocument,
+      async path(id) {
+        if (!id || id === getDocument().id) return getDocumentPath()
+        const base = workspaceRoot()
+        if (!base)
+          throw new Error('the document is no longer in this workspace.')
+        async function find(
+          entries: import('../shared/workspace').WorkspaceEntry[],
+        ): Promise<string | null> {
+          for (const entry of entries) {
+            if (entry.children) {
+              const match = await find(entry.children)
+              if (match) return match
+            } else {
+              const path = await resolveWorkspaceFile(base!, entry.path)
+              if (createHash('sha256').update(path).digest('hex') === id)
+                return path
+            }
+          }
+          return null
+        }
+        const path = await find(getWorkspace()?.entries ?? [])
+        if (!path)
+          throw new Error('the document is no longer in this workspace.')
+        return path
+      },
+      async create(name, source) {
+        validateMarkdown(source)
+        if (!(await newDocument(window))) return false
+        await renameDocument(name)
+        updateDocument(source)
+        window.setDocumentEdited(getDocument().dirty)
+        return true
+      },
+    },
+    async exportFile(bytes, suggestedName, extension) {
+      if (
+        !(bytes instanceof Uint8Array) ||
+        bytes.byteLength > 64 * 1024 * 1024 ||
+        !/^[a-z0-9]{1,12}$/.test(extension)
+      )
+        throw new Error('invalid export file.')
+      const result = await dialog.showSaveDialog(window, {
+        title: 'export document',
+        defaultPath: basename(suggestedName),
+        filters: [{ name: extension, extensions: [extension] }],
+      })
+      if (result.canceled || !result.filePath) return null
+      if (
+        (await realpath(result.filePath).catch(() => result.filePath)) ===
+        getDocumentPath()
+      )
+        throw new Error('choose a different filename from the open document.')
+      await writeText(result.filePath, bytes)
+      return result.filePath
+    },
     workspace: {
       id: workspaceId,
       directory: workspaceRoot,

@@ -71,6 +71,11 @@ test('workspace popovers, durable folders, ephemeral files, inline rename, dirty
   await rename.press('Enter')
   await rename.waitFor({ state: 'hidden' })
   const rich = page.getByRole('textbox', { name: 'document editor' })
+  await page.waitForFunction(
+    () =>
+      document.querySelector('.tiptap')?.getAttribute('contenteditable') ===
+      'true',
+  )
   await rich.fill('unsaved text')
   assert.equal(await page.locator('.sidebar-dirty').count(), 1)
   await assert.rejects(access(join(root, 'guides', 'hello.md')))

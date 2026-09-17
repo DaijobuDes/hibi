@@ -6,6 +6,7 @@
   },
   "include": [
     "src/addons/*/native.ts",
+    "src/addons/*/compiler-worker.ts",
     "src/addons/*/manifest.ts",
     "src/useraddons/*/native.ts",
     "src/useraddons/*/manifest.ts",

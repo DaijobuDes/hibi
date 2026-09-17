@@ -2,6 +2,7 @@ import { isolateHistory } from '@codemirror/commands'
 import { syntaxTree } from '@codemirror/language'
 import { Prec, Transaction } from '@codemirror/state'
 import { EditorView, ViewPlugin } from '@codemirror/view'
+import { isMarkdownDocument } from '../../shared/document-types'
 import { readFrontmatter } from '../../shared/frontmatter'
 import type { AddonContext } from '../api'
 import { slashQuery } from './commands'
@@ -59,6 +60,11 @@ export function sourceSlashCommands(context: AddonContext) {
         }
         refresh() {
           if (this.destroyed || this.view.composing) return
+          const document = context.editor.getDocument()
+          if (document && !isMarkdownDocument(document.name)) {
+            this.menu.update(null)
+            return
+          }
           const match = current(this.view)
           const rect = match ? this.view.coordsAtPos(match.to) : null
           this.menu.update(

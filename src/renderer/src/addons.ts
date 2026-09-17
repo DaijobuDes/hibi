@@ -17,6 +17,7 @@ import {
   type SourceExtension,
   type StatusItem,
 } from '../../addons/api'
+import { isMarkdownDocument } from '../../shared/document-types'
 import { useDialogService } from '../../ui/DialogProvider'
 import { menus } from '../../ui/menu-store'
 import { useToastService } from '../../ui/Sonner'
@@ -25,9 +26,10 @@ import { createAddonOverrides } from './addon-overrides'
 import { addonRegistry } from './addon-registry'
 import { codeLanguages } from './code-languages'
 import { colorschemes } from './colorschemes'
+import { documentFormats, editorDocument } from './document-formats'
 import { onEditorInput, onEditorKeyEvent } from './editor-events'
 import { explorerDecorations } from './explorer-decorations'
-import { flavors, renderMarkdown } from './flavors'
+import { flavors, renderMarkdown, renderMarkdownAsync } from './flavors'
 import { projectMarkdown } from './markdown'
 import { toolbar } from './toolbar'
 
@@ -291,6 +293,47 @@ export function useAddons(environment: Environment) {
             },
           },
           editor: {
+            getDocument: () => editorDocument.get(),
+            onDocumentChange(listener) {
+              if (disposed) return () => {}
+              const remove = editorDocument.subscribe((document) => {
+                try {
+                  listener(document)
+                } catch (error) {
+                  latest.current.error(error)
+                }
+              })
+              cleanups.add(remove)
+              return () => {
+                remove()
+                cleanups.delete(remove)
+              }
+            },
+            registerDocumentFormat(format) {
+              if (disposed) return () => {}
+              const remove = documentFormats.register(
+                id,
+                format,
+                addon.manifest.fileExtensions ?? [],
+              )
+              cleanups.add(remove)
+              return () => {
+                remove()
+                cleanups.delete(remove)
+              }
+            },
+            async renderDocument(source, name, documentId) {
+              const format = documentFormats.get(name)
+              if (format?.render) return format.render(source, documentId)
+              if (!isMarkdownDocument(name))
+                throw new Error(
+                  `enable the extension for ${name} before exporting it.`,
+                )
+              return renderMarkdownAsync(
+                projectMarkdown(source, [...extensions.values()]).content,
+                documentId,
+              )
+            },
             registerCodeLanguage(language) {
               if (disposed) return () => {}
               const remove = codeLanguages.register(id, language)

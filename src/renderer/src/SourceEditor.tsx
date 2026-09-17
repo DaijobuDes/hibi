@@ -7,6 +7,7 @@ import {
 import { markdown as markdownLanguage } from '@codemirror/lang-markdown'
 import {
   HighlightStyle,
+  type Language,
   syntaxHighlighting,
   syntaxTree,
 } from '@codemirror/language'
@@ -52,6 +53,9 @@ const highlighting = HighlightStyle.define([
 ])
 
 export function SourceEditor({
+  markdownMode,
+  sourceLanguage,
+  label,
   active,
   onReady,
   value,
@@ -67,6 +71,9 @@ export function SourceEditor({
   onFormatting,
   onLink,
 }: {
+  markdownMode: boolean
+  sourceLanguage: Language | undefined
+  label: string
   active: boolean
   onReady: () => void
   value: string
@@ -82,6 +89,13 @@ export function SourceEditor({
   onFormatting: (formatting: SourceFormatting | null) => void
   onLink: (href: string) => void
 }) {
+  const parserOptions = useRef({ markdownMode, sourceLanguage, label })
+  parserOptions.current = { markdownMode, sourceLanguage, label }
+  const configureParser = useRef(() => {})
+  // biome-ignore lint/correctness/useExhaustiveDependencies: parser configuration reads these current values through parserOptions.
+  useEffect(() => {
+    configureParser.current()
+  }, [markdownMode, sourceLanguage, label])
   const host = useRef<HTMLDivElement>(null)
   const view = useRef<EditorView | null>(null)
   const change = useRef(onChange)
@@ -105,8 +119,18 @@ export function SourceEditor({
   useEffect(() => {
     if (!host.current) return
     const language = new Compartment()
-    const markdown = () =>
-      markdownLanguage({ codeLanguages: codeLanguages.resolve })
+    const markdown = () => {
+      const { markdownMode, sourceLanguage, label } = parserOptions.current
+      return [
+        markdownMode
+          ? markdownLanguage({ codeLanguages: codeLanguages.resolve })
+          : (sourceLanguage ?? []),
+        markdownMode ? keymap.of(formattingKeymap) : [],
+        EditorView.contentAttributes.of({
+          'aria-label': markdownMode ? 'markdown editor' : `${label} editor`,
+        }),
+      ]
+    }
     const editor = new EditorView({
       parent: host.current,
       state: EditorState.create({
@@ -126,7 +150,8 @@ export function SourceEditor({
           history(),
           EditorView.domEventHandlers({
             click(event, view) {
-              if (!event.shiftKey) return false
+              if (!event.shiftKey || !parserOptions.current.markdownMode)
+                return false
               const position = view.posAtCoords({
                 x: event.clientX,
                 y: event.clientY,
@@ -151,7 +176,6 @@ export function SourceEditor({
           }),
           keymap.of([
             { key: 'Ctrl-a', run: selectAll },
-            ...formattingKeymap,
             ...defaultKeymap,
             ...historyKeymap,
           ]),
@@ -160,7 +184,6 @@ export function SourceEditor({
           EditorView.lineWrapping,
           placeholder('start typing'),
           EditorView.contentAttributes.of({
-            'aria-label': 'markdown editor',
             spellcheck: 'false',
           }),
           EditorView.updateListener.of((update) => {
@@ -206,6 +229,8 @@ export function SourceEditor({
       }),
     })
     view.current = editor
+    configureParser.current = () =>
+      editor.dispatch({ effects: language.reconfigure(markdown()) })
     const unsubscribe = codeLanguages.subscribe(() =>
       editor.dispatch({ effects: language.reconfigure(markdown()) }),
     )
@@ -222,6 +247,7 @@ export function SourceEditor({
     void window.document.fonts.load('13px "Geist Mono"').then(measure, measure)
     return () => {
       unsubscribe()
+      configureParser.current = () => {}
       disposed = true
       formatting.current = null
       reportFormatting.current(null)

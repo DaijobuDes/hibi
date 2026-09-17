@@ -71,6 +71,8 @@ export type AddonManifest = {
   defaultEnabled?: boolean
   /** Plugin release version; optional for existing API v1 addons. */
   version?: string
+  /** Additional source-file extensions, without dots. Files remain openable when disabled. */
+  fileExtensions?: readonly string[]
   authors?: readonly AddonAuthor[]
   /** Shipped third-party notices, shown under hibi's open source licenses. */
   licenses?: readonly {
@@ -217,12 +219,38 @@ export type MarkdownFlavor = {
   description: string
   /** Content detection is a hint, not proof of the author's intended dialect. */
   detect: (source: string) => boolean
+  /** False when disabled syntax has a lossless built-in fallback, such as a code fence. */
+  readOnlyWhenDisabled?: boolean
   markedOptions?: { gfm?: boolean; breaks?: boolean }
   richExtensions?: readonly AnyExtension[]
   /** Static exports run the same syntax parsers; their HTML is sanitized by the site. */
-  export?: { extensions?: readonly MarkedExtension[]; css?: string }
+  export?: {
+    extensions?: readonly MarkedExtension[]
+    css?: string
+    /** Optional async transformation after markdown rendering, for compiled embeds. */
+    transform?: (
+      rendered: RenderedMarkdown,
+      source: string,
+      documentId?: string,
+    ) => Promise<RenderedMarkdown>
+  }
 }
 export type RenderedMarkdown = { html: string; css: string }
+export type DocumentPreviewProps = {
+  value: string
+  document: Readonly<import('../shared/desktop').DocumentState>
+}
+export type DocumentFormat = {
+  id: string
+  name: string
+  extensions: readonly string[]
+  language: import('@codemirror/language').Language
+  Preview: ComponentType<DocumentPreviewProps>
+  insertMedia?: (
+    attachments: readonly import('../shared/media').MediaAttachment[],
+  ) => string
+  render?: (source: string, documentId?: string) => Promise<RenderedMarkdown>
+}
 export type MarkdownExtension = {
   id: string
   /** Pure source-to-body projection; return null for unrecognized documents. */
@@ -254,6 +282,21 @@ export type AddonContext = {
   patches: PatchApi
   statusBar: { register: (item: StatusItem) => StatusHandle }
   editor: {
+    getDocument: () => Readonly<
+      import('../shared/desktop').DocumentState
+    > | null
+    onDocumentChange: (
+      listener: (
+        document: Readonly<import('../shared/desktop').DocumentState>,
+      ) => void,
+    ) => () => void
+    registerDocumentFormat: (format: DocumentFormat) => () => void
+    /** Async document export, including registered format renderers and flavor transforms. */
+    renderDocument: (
+      source: string,
+      name: string,
+      documentId?: string,
+    ) => Promise<RenderedMarkdown>
     /** Register or override fenced-code highlighting; restored automatically on addon stop. */
     registerCodeLanguage: (language: CodeLanguage) => () => void
     /** Observe editor keydown/keyup without consuming input. Removed on addon stop. */
@@ -309,6 +352,17 @@ export type Addon = {
 
 /** Native modules are trusted application code, never loaded from a workspace. */
 export type NativeAddonContext = {
+  document: {
+    get: () => import('../shared/desktop').DocumentState
+    /** Current document or a document in the selected workspace, addressed by opaque id. */
+    path: (id?: string) => Promise<string | null>
+    create: (name: string, source: string) => Promise<boolean>
+  }
+  exportFile: (
+    bytes: Uint8Array,
+    suggestedName: string,
+    extension: string,
+  ) => Promise<string | null>
   workspace: {
     id: () => string | null
     snapshot: () => Promise<WorkspaceSnapshot>
@@ -327,7 +381,8 @@ export type NativeAddonContext = {
 
 export type NativeAddon = {
   id: string
-  /** Trusted read-only handlers. Must not mutate files or launch dialogs. */
+  stop?: () => void
+  /** Trusted read-only handlers. No user-file changes or dialogs; private compilation caches are allowed. */
   queries?: Record<
     string,
     (input: unknown, context: NativeAddonContext) => Promise<unknown>

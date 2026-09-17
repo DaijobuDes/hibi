@@ -28,6 +28,7 @@ import {
   relocateDocument,
   renameDocument,
 } from './document'
+import { isDocumentName } from './document-types'
 import { refreshWorkspace, workspaceRoot } from './workspace'
 
 const missing = (error: NodeJS.ErrnoException) => {
@@ -168,7 +169,7 @@ export async function workspaceAction(
       getDocumentPath() === join(base, path)
     const source = await resolveEntry(base, path, draft)
     const folder = draft ? false : (await lstat(source)).isDirectory()
-    if (!folder && !/\.(md|markdown)$/i.test(source))
+    if (!folder && !isDocumentName(source, true))
       throw new Error('choose a markdown file.')
     if (action === 'delete') {
       if (
@@ -183,14 +184,14 @@ export async function workspaceAction(
       if (action === 'rename') {
         validateWorkspaceName(destination)
         let name = destination
-        if (!folder && !extname(name)) name += '.md'
+        if (!folder && !extname(name)) name += extname(source)
         resultPath = join(dirname(source), name)
       } else if (action === 'duplicate') {
         const extension = folder ? '' : extname(source)
         const name = basename(source, extension)
         resultPath = await unique(dirname(source), `${name} copy${extension}`)
       } else resultPath = await resolveEntry(base, destination, true)
-      if (!folder && !/\.(md|markdown)$/i.test(resultPath))
+      if (!folder && !isDocumentName(resultPath, true))
         throw new Error('choose a markdown file name.')
       if (source === resultPath)
         return {

@@ -6,6 +6,7 @@ import {
   StrictMode,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -31,6 +32,10 @@ import { MenuHost } from '../../ui/MenuHost'
 import { ToastProvider, useToasts } from '../../ui/Sonner'
 import type { ToastHandle } from '../../ui/toasts'
 import './styles.css'
+import {
+  documentExtension,
+  isMarkdownDocument,
+} from '../../shared/document-types'
 import type {
   WorkspaceAction,
   WorkspaceActionResult,
@@ -42,6 +47,7 @@ import { addonRegistry } from './addon-registry'
 import { addons, useAddons } from './addons'
 import { CommandPalette, type PaletteCommand } from './CommandPalette'
 import { colorschemes } from './colorschemes'
+import { documentFormats, editorDocument } from './document-formats'
 import { MarkdownEditor, type ViewMode } from './Editor'
 import { loadCursor } from './EditorCursor'
 import { EditorToolbar } from './EditorToolbar'
@@ -136,10 +142,30 @@ function App() {
     [toasts],
   )
   const [document, setDocument] = useState<DocumentState | null>(null)
+  useSyncExternalStore(documentFormats.subscribe, documentFormats.snapshot)
+  const documentFormat = document
+    ? documentFormats.get(document.name)
+    : undefined
+  const markdownDocument = !document || isMarkdownDocument(document.name)
+  useLayoutEffect(() => {
+    editorDocument.publish(document)
+  }, [document])
   const currentDocument = useRef(document)
   currentDocument.current = document
   const acceptDocument = useCallback((next: DocumentState) => {
     const previous = currentDocument.current
+    if (
+      !isMarkdownDocument(next.name) &&
+      (!previous || isMarkdownDocument(previous.name))
+    ) {
+      setMode((mode) =>
+        mode === 'normal'
+          ? documentFormats.get(next.name)
+            ? 'side-by-side'
+            : 'markdown'
+          : mode,
+      )
+    }
     if (
       previous &&
       previous.id !== next.id &&
@@ -350,6 +376,7 @@ function App() {
   }
 
   function openFind() {
+    if (!markdownDocument && mode === 'normal') setMode('side-by-side')
     showTitlebar()
     setPaletteOpen(false)
     if (findOpen) {
@@ -757,6 +784,14 @@ function App() {
     }
   }
 
+  const sourceName =
+    documentFormat?.name ??
+    addonHost.catalog.find((addon) =>
+      addon.manifest.fileExtensions?.includes(
+        documentExtension(document?.name ?? ''),
+      ),
+    )?.manifest.name ??
+    'source'
   const knownFlavors = useMemo(
     () => [
       ...addonHost.catalog.flatMap((addon) =>
@@ -788,7 +823,9 @@ function App() {
     [knownFlavors, flavorSource],
   )
   const unsupportedFlavor = detectedFlavors.some(
-    (flavor) => !chosenFlavors.some((chosen) => chosen.id === flavor.id),
+    (flavor) =>
+      flavor.readOnlyWhenDisabled !== false &&
+      !chosenFlavors.some((chosen) => chosen.id === flavor.id),
   )
   const flavorLabel = [
     (flavorChoice.dialect === 'auto'
@@ -805,6 +842,10 @@ function App() {
     setFlavorOverride({ id: document.id, choice })
   }
   function openFlavors() {
+    if (!markdownDocument) {
+      openSetting('addons')
+      return
+    }
     dialogs.open({
       title: 'markdown flavor',
       description:
@@ -832,11 +873,13 @@ function App() {
       label:
         id === 'settings' && settingsOpen
           ? 'back to editor'
-          : id === 'toggle-titlebar'
-            ? hideTitlebar
-              ? 'keep top bar visible'
-              : 'hide top bar while typing'
-            : label,
+          : id === 'markdown' && !markdownDocument
+            ? 'source only'
+            : id === 'toggle-titlebar'
+              ? hideTitlebar
+                ? 'keep top bar visible'
+                : 'hide top bar while typing'
+              : label,
       shortcut: hotkeys[id],
       run: () => addonHost.app.runAction(id),
     }))
@@ -1217,6 +1260,9 @@ function App() {
         <div className="editor-page">
           {document && (
             <MarkdownEditor
+              document={document}
+              format={documentFormat}
+              formatName={sourceName}
               onAttach={attachMedia}
               onLink={openLink}
               flavors={chosenFlavors}
@@ -1227,7 +1273,7 @@ function App() {
               showLineNumbers={showLineNumbers}
               cursorSettings={cursorSettings}
               markdownExtensions={addonHost.markdownExtensions}
-              key={`${document.revision}-${resetEditor}`}
+              key={`${document.revision}-${resetEditor}-${markdownDocument ? 'markdown' : documentExtension(document.name)}`}
               value={document.markdown}
               onChange={updateMarkdown}
               mode={mode}
@@ -1241,10 +1287,12 @@ function App() {
               items={[
                 {
                   id: 'flavor',
-                  label: flavorLabel,
-                  tooltip: unsupportedFlavor
-                    ? 'some detected syntax is disabled; choose a flavor or enable its extension'
-                    : `${flavorChoice.dialect === 'auto' ? 'detected' : 'selected'} markdown flavor · click to change`,
+                  label: markdownDocument ? flavorLabel : sourceName,
+                  tooltip: !markdownDocument
+                    ? `${sourceName} document · click for addons`
+                    : unsupportedFlavor
+                      ? 'some detected syntax is disabled; choose a flavor or enable its extension'
+                      : `${flavorChoice.dialect === 'auto' ? 'detected' : 'selected'} markdown flavor · click to change`,
                   onClick: openFlavors,
                 },
                 ...addonHost.statusItems.filter(

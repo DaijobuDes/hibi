@@ -137,6 +137,16 @@ test('split panes link scrolling in both directions without feedback or document
         Number.parseFloat(style.marginBottom)
     )
   })
+  await page.evaluate(() =>
+    Promise.all(
+      document
+        .getAnimations()
+        .filter((animation) =>
+          Number.isFinite(animation.effect?.getComputedTiming().iterations),
+        )
+        .map((animation) => animation.finished.catch(() => {})),
+    ),
+  )
   for (const [selector, ratio] of [
     ['.rich-pane', 0.63],
     ['.cm-scroller', 0.22],
@@ -161,7 +171,10 @@ test('split panes link scrolling in both directions without feedback or document
       }
       return samples
     })
-    assert.ok(Math.max(...samples) - Math.min(...samples) < 2)
+    assert.ok(
+      Math.max(...samples) - Math.min(...samples) < 2,
+      `${selector} at ${ratio}: ${samples.join(', ')}`,
+    )
   }
   assert.equal(
     (await page.evaluate(() => window.hibi.getDocument())).markdown,

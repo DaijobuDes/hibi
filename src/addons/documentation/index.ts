@@ -13,15 +13,20 @@ export default defineAddon({
         if (!workspace) return
         const snapshot = await context.workspace.snapshot()
         const styles = new Set<string>()
-        const pages = snapshot.pages.map((page) => {
-          const rendered = context.editor.renderMarkdown(page.markdown, page.id)
+        const pages = []
+        for (const page of snapshot.pages) {
+          const rendered = await context.editor.renderDocument(
+            page.markdown,
+            page.path,
+            page.id,
+          )
           if (rendered.css) styles.add(rendered.css)
-          return {
+          pages.push({
             path: page.path,
             markdown: page.markdown,
             html: rendered.html,
-          }
-        })
+          })
+        }
         const result = await context.native.invoke<ExportResult | null>(
           'export',
           { pages, css: [...styles].join('\n') },

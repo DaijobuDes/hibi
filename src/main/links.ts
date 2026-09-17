@@ -8,6 +8,7 @@ import {
   importDocument,
   loadDocument,
 } from './document'
+import { isDocumentName } from './document-types'
 import { documentMediaPath } from './images'
 
 function webUrl(value: unknown) {
@@ -43,7 +44,7 @@ export async function openDocumentLink(
     return null
   }
   const path = documentMediaPath(href.split('#')[0]!, getDocumentPath())
-  if (!path || !/\.(md|markdown|txt)$/i.test(path))
+  if (!path || !isDocumentName(path))
     throw new Error('only web, email, and markdown links can be opened.')
   if (path === getDocumentPath()) return getDocument()
   if (!(await confirmDiscard(window))) return null
@@ -109,6 +110,6 @@ export async function openRemoteDocument(
     basename(decodeURIComponent(url.pathname))
       .replace(/[<>:"/\\|?*\p{Cc}]/gu, '-')
       .slice(0, 160) || 'remote.md'
-  if (!/\.(md|markdown|txt)$/i.test(name)) name += '.md'
+  if (!isDocumentName(name)) name += '.md'
   return importDocument(window, content, name)
 }

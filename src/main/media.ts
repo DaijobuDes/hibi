@@ -20,6 +20,7 @@ import {
   loadDocument,
   saveDocument,
 } from './document'
+import { isDocumentName } from './document-types'
 import { documentMediaPath, imageMime, readDocumentImage } from './images'
 import { loadWorkspace } from './workspace'
 
@@ -102,7 +103,7 @@ export async function openDroppedFile(window: BrowserWindow, value: unknown) {
   const path = await realpath(filePath(value))
   if ((await lstat(path)).isDirectory())
     return { workspace: await loadWorkspace(path), document: getDocument() }
-  if (!/\.(md|markdown|txt)$/i.test(path))
+  if (!isDocumentName(path))
     throw new Error(
       'drop a markdown file or folder to open it; drop media onto the editor to attach it.',
     )

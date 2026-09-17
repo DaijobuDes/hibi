@@ -860,6 +860,10 @@ button:disabled {
   text-decoration-thickness: 1px;
   text-underline-offset: 3px;
 }
+.format-unavailable {
+  color: var(--muted);
+  font-size: var(--text-ui);
+}
 .tiptap img,
 .tiptap video {
   max-width: 100%;

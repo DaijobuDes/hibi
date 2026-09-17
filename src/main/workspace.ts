@@ -65,7 +65,7 @@ export async function scanWorkspace(base: string): Promise<WorkspaceEntry[]> {
           kind: 'folder',
           children: nested,
         })
-      } else if (child.isFile() && /\.(md|markdown)$/i.test(child.name)) {
+      } else if (child.isFile() && isDocumentName(child.name, true)) {
         result.push({ path, name: child.name, kind: 'file' })
       }
     }
@@ -176,7 +176,7 @@ export async function resolveWorkspaceFile(
     isAbsolute(value) ||
     value.includes('\\') ||
     value.split('/').some((part) => !part || part === '.' || part === '..') ||
-    !/\.(md|markdown)$/i.test(value)
+    !isDocumentName(value, true)
   )
     throw new Error('invalid workspace file.')
   const candidate = join(base, value)
@@ -217,7 +217,9 @@ export async function snapshotWorkspace(): Promise<WorkspaceSnapshot> {
             'export supports up to 2,000 documents and 20 mib of markdown.',
           )
         const images: Record<string, string> = Object.create(null)
-        for (const source of imageSources(markdown)) {
+        for (const source of isMarkdownDocument(item.path)
+          ? imageSources(markdown)
+          : []) {
           const image = await exportDocumentMedia(source, path)
           if (!image) continue
           bytes += Buffer.byteLength(image)
@@ -242,5 +244,7 @@ export async function snapshotWorkspace(): Promise<WorkspaceSnapshot> {
   return { name: basename(selected), pages }
 }
 
+import { isMarkdownDocument } from '../shared/document-types'
+import { isDocumentName } from './document-types'
 import { imageSources } from './images'
 import { exportDocumentMedia } from './media'

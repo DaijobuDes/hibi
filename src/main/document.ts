@@ -19,7 +19,12 @@ import {
 } from 'node:path'
 import { type BrowserWindow, dialog } from 'electron'
 import type { DocumentState } from '../shared/desktop'
+import {
+  isMarkdownDocument,
+  markdownExtensions,
+} from '../shared/document-types'
 import { HISTORY_CHANNELS } from '../shared/history'
+import { documentExtensions, isDocumentName } from './document-types'
 import { readMarkdown, validateMarkdown, writeMarkdown } from './files'
 import { recordVersion } from './history'
 
@@ -113,7 +118,14 @@ export async function saveDocument(
   if (!destination || saveAs) {
     const result = await dialog.showSaveDialog(window, {
       defaultPath: destination ?? defaultPath ?? untitledName,
-      filters: [{ name: 'markdown', extensions: ['md', 'markdown', 'txt'] }],
+      filters: [
+        {
+          name: 'documents',
+          extensions: isMarkdownDocument(destination ?? untitledName)
+            ? markdownExtensions
+            : [extname(destination ?? untitledName).slice(1) || 'md'],
+        },
+      ],
     })
     if (result.canceled || !result.filePath) return null
     destination = result.filePath
@@ -251,9 +263,10 @@ export async function renameDocument(value: unknown): Promise<DocumentState> {
     throw new Error(
       'enter a file name without path separators or reserved characters.',
     )
-  if (!extname(name)) name += '.md'
+  if (!extname(name))
+    name += extname(path ?? pendingPath ?? untitledName) || '.md'
   if (
-    !/\.(md|markdown|txt)$/i.test(name) ||
+    !isDocumentName(name) ||
     Buffer.byteLength(name) > 255 ||
     /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(name)
   )
@@ -317,7 +330,7 @@ export async function openDocument(
   const current = markdown
   const result = await dialog.showOpenDialog(window, {
     properties: ['openFile'],
-    filters: [{ name: 'markdown', extensions: ['md', 'markdown', 'txt'] }],
+    filters: [{ name: 'documents', extensions: documentExtensions() }],
   })
   const selected = result.filePaths[0]
   if (result.canceled || !selected) return null

@@ -41,6 +41,7 @@ import {
   useRef,
   useState,
 } from 'react'
+import type { DocumentFormat } from '../../addons/api'
 import { attachmentMarkdown, type MediaAttachment } from '../../shared/media'
 import { Button, SettingRow } from '../../ui/Controls'
 import { useDialogs } from '../../ui/DialogProvider'
@@ -300,6 +301,8 @@ export function useFormattingToolbar(
   focusedPane: 'rich' | 'source',
   disabled: boolean,
   onAttach: (files: File[] | null) => Promise<MediaAttachment[] | null>,
+  markdownMode = true,
+  format?: DocumentFormat,
 ) {
   const dialogs = useDialogs()
   const toasts = useToasts()
@@ -311,8 +314,19 @@ export function useFormattingToolbar(
     disabled,
     dialogs,
     onAttach,
+    markdownMode,
+    format,
   })
-  latest.current = { editor, mode, focusedPane, disabled, dialogs, onAttach }
+  latest.current = {
+    editor,
+    mode,
+    focusedPane,
+    disabled,
+    dialogs,
+    onAttach,
+    markdownMode,
+    format,
+  }
   const attachFiles = useCallback(
     async (
       files: File[] | null,
@@ -343,8 +357,10 @@ export function useFormattingToolbar(
         let inserted = false
         if (useSource)
           inserted =
-            sourceSelection?.insertMarkdown(attachmentMarkdown(attachments)) ??
-            false
+            sourceSelection?.insertMarkdown(
+              latest.current.format?.insertMedia?.(attachments) ??
+                attachmentMarkdown(attachments),
+            ) ?? false
         else if (
           editor &&
           !editor.isDestroyed &&
@@ -492,7 +508,16 @@ export function useFormattingToolbar(
         handles[index]?.update({
           ...(action.active ? { pressed: state?.pressed ?? false } : {}),
           disabled: disabled || !state || state.disabled,
-          hidden: !!action.table && (useSource || !editor?.isActive('table')),
+          hidden:
+            (!latest.current.markdownMode &&
+              ![
+                'undo',
+                'redo',
+                'indent',
+                'outdent',
+                ...(latest.current.format?.insertMedia ? ['image'] : []),
+              ].includes(action.id)) ||
+            (!!action.table && (useSource || !editor?.isActive('table'))),
         })
       })
     }
@@ -513,7 +538,7 @@ export function useFormattingToolbar(
   // biome-ignore lint/correctness/useExhaustiveDependencies: the refresh function reads the current editor context from a ref.
   useLayoutEffect(() => {
     refresh.current()
-  }, [mode, focusedPane, disabled])
+  }, [mode, focusedPane, disabled, markdownMode, format])
   const previousMode = useRef(mode)
   useLayoutEffect(() => {
     if (previousMode.current === mode) return
@@ -523,7 +548,8 @@ export function useFormattingToolbar(
       (mode === 'side-by-side' && focusedPane === 'source')
     )
       source.current?.focus()
-    else editor?.commands.focus()
+    // Tiptap's focus command defers to a frame and can override a newer click into source.
+    else if (editor && !editor.isDestroyed) editor.view.focus()
   }, [mode, focusedPane, editor])
   return { attachSource, attachFiles }
 }

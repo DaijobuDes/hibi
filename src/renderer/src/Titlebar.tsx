@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { DocumentCommand, DocumentState } from '../../shared/desktop'
+import { isMarkdownDocument } from '../../shared/document-types'
 import { type Hotkeys, shortcutLabels } from '../../shared/hotkeys'
 import { IconButton } from '../../ui/Controls'
 import { ShortcutKeys } from '../../ui/ShortcutKeys'
@@ -181,7 +182,12 @@ export function Titlebar({
         >
           {!settingsOpen &&
             (['normal', 'side-by-side', 'markdown'] as const).map((view) => {
-              const label = view === 'markdown' ? 'markdown only' : view
+              const label =
+                view === 'markdown'
+                  ? document && !isMarkdownDocument(document.name)
+                    ? 'source only'
+                    : 'markdown only'
+                  : view
               return (
                 <IconButton
                   type="button"
