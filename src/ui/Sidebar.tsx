@@ -11,6 +11,7 @@ import {
 } from 'react'
 import './sidebar.css'
 import type { ExplorerDecoration } from '../shared/workspace'
+import { TextInput } from './Controls'
 import { MIN_SIDEBAR_WIDTH } from './useSidebarResize'
 
 export type SidebarItem = {
@@ -71,7 +72,8 @@ function RenameInput({
     element.scrollIntoView({ block: 'nearest' })
   }, [id])
   return (
-    <input
+    <TextInput
+      variant="inline"
       ref={input}
       className="inline-edit sidebar-rename"
       aria-label="rename item"

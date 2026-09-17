@@ -11,7 +11,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react'
-import { Button, IconButton } from './Controls'
+import { Button, IconButton, TextInput } from './Controls'
 import type {
   DialogApi,
   DialogHandle,
@@ -328,7 +328,7 @@ function PromptForm({
       }}
     >
       <label htmlFor={id}>{options.label}</label>
-      <input
+      <TextInput
         ref={input}
         id={id}
         value={value}

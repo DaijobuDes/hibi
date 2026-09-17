@@ -8,7 +8,7 @@ import {
   shortcutError,
   shortcutFromEvent,
 } from '../../shared/hotkeys'
-import { Button, IconButton } from '../../ui/Controls'
+import { Button, IconButton, TextInput } from '../../ui/Controls'
 import { ShortcutKeys } from '../../ui/ShortcutKeys'
 
 export function HotkeySettings({
@@ -77,7 +77,7 @@ export function HotkeySettings({
         choose a shortcut to rebind it. changes save on this device.
       </p>
       <div className="hotkey-tools">
-        <input
+        <TextInput
           type="search"
           aria-label="filter hotkeys"
           placeholder="filter commands…"

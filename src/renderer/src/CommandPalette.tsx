@@ -7,7 +7,7 @@ import {
   X,
 } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { IconButton } from '../../ui/Controls'
+import { IconButton, TextInput } from '../../ui/Controls'
 import { Modal } from '../../ui/Modal'
 import { ShortcutKeys } from '../../ui/ShortcutKeys'
 
@@ -142,7 +142,8 @@ export function CommandPalette({
     >
       <div className="command-search">
         <Search size={16} aria-hidden="true" />
-        <input
+        <TextInput
+          variant="inline"
           ref={input}
           role="combobox"
           aria-label="search commands"

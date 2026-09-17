@@ -2,10 +2,14 @@
 
 export {
   Button,
+  ControlRow,
   IconButton,
+  Panel,
   Select,
   SettingRow,
   Slider,
+  TextArea,
+  TextInput,
   Toggle,
 } from '../ui/Controls'
 export { Modal, type ModalProps } from '../ui/Modal'

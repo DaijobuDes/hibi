@@ -1,5 +1,5 @@
 import { useState, useSyncExternalStore } from 'react'
-import { SettingRow, Toggle } from '../../ui/Controls'
+import { SettingRow, TextInput, Toggle } from '../../ui/Controls'
 import { codeLanguages } from './code-languages'
 
 export function CodeSyntaxSettings() {
@@ -23,7 +23,7 @@ export function CodeSyntaxSettings() {
           label="filter languages"
           description="disabled languages remain readable as plain code."
         >
-          <input
+          <TextInput
             type="search"
             className="settings-filter"
             id="code-syntax-filter"

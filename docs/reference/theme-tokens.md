@@ -78,6 +78,11 @@ generated from `src/ui/tokens.css`. update the source, then run `npm run docs`. 
   --radius-panel: var(--radius-control);
   --radius-pill: var(--radius-control);
   --control-height: 28px;
+  --control-padding-x: var(--space-2);
+  --control-padding-y: var(--space-1);
+  --field-background: var(--background);
+  --field-border: var(--border);
+  --field-placeholder: var(--muted);
   --status-bar-height: 32px;
   --titlebar-edge-inset: 12px;
   --window-corner-radius: var(--radius-control);

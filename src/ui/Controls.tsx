@@ -8,17 +8,70 @@ import {
   useRef,
 } from 'react'
 import { SettingsDiscovery, settingsIndex } from './settings-index'
+import './controls.css'
+
+type FieldStyle = {
+  /** Subtle fields blend into property rows; inline fields sit inside another control. */
+  variant?: 'default' | 'subtle' | 'inline'
+  monospace?: boolean
+}
+
+export function TextInput({
+  className = '',
+  variant = 'default',
+  monospace = false,
+  type = 'text',
+  ...props
+}: ComponentProps<'input'> & FieldStyle) {
+  return (
+    <input
+      {...props}
+      type={type}
+      data-variant={variant}
+      className={`ui-field ui-input${monospace ? ' ui-code-field' : ''} ${className}`}
+    />
+  )
+}
+
+export function TextArea({
+  className = '',
+  variant = 'default',
+  monospace = false,
+  ...props
+}: ComponentProps<'textarea'> & FieldStyle) {
+  return (
+    <textarea
+      {...props}
+      data-variant={variant}
+      className={`ui-field ui-textarea${monospace ? ' ui-code-field' : ''} ${className}`}
+    />
+  )
+}
+
+/** Shared spacing for extension panels and wrapping rows of controls. */
+export function Panel({ className = '', ...props }: ComponentProps<'div'>) {
+  return <div {...props} className={`ui-panel ${className}`} />
+}
+
+export function ControlRow({
+  className = '',
+  ...props
+}: ComponentProps<'div'>) {
+  return <div {...props} className={`ui-control-row ${className}`} />
+}
 
 export function Button({
   className = '',
+  variant = 'default',
   title,
   ...props
-}: ComponentProps<'button'>) {
+}: ComponentProps<'button'> & { variant?: 'default' | 'ghost' | 'row' }) {
   return (
     <button
       type="button"
       data-tooltip={title}
       {...props}
+      data-variant={variant}
       className={`ui-button ${className}`}
     />
   )

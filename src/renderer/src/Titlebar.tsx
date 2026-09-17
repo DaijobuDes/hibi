@@ -14,7 +14,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { DocumentCommand, DocumentState } from '../../shared/desktop'
 import { isMarkdownDocument } from '../../shared/document-types'
 import { type Hotkeys, shortcutLabels } from '../../shared/hotkeys'
-import { IconButton } from '../../ui/Controls'
+import { IconButton, TextInput } from '../../ui/Controls'
 import { ShortcutKeys } from '../../ui/ShortcutKeys'
 import type { ViewMode } from './Editor'
 
@@ -116,7 +116,8 @@ export function Titlebar({
           {settingsOpen ? (
             <span>settings</span>
           ) : renaming ? (
-            <input
+            <TextInput
+              variant="inline"
               ref={input}
               className="inline-edit rename-input"
               aria-label="file name"

@@ -36,11 +36,21 @@ group related rows on one surface with inset separators. each row puts its label
 
 ## reusable components
 
+`src/ui/controls.css` owns shared field and action styling. text-like native inputs and textareas inherit themed defaults, including controls supplied by installed extensions. checkbox, radio, range, file, color, and hidden inputs keep their own semantics. extension css should describe layout and document-specific rendering, not recreate field colors, borders, type, padding, or focus rings.
+
+use `TextInput` and `TextArea` from `src/addons/ui.ts` (or `sdk.ui` in sideloaded extensions). both forward native props and refs. their default is the standard bordered field; `variant="subtle"` blends editable metadata into its row; `variant="inline"` embeds input inside a search control or rename row. use `monospace` for yaml, typst, and other source fields. labels, `aria-describedby`, `aria-invalid`, and disabled state remain native. multiline fields resize vertically unless their layout deliberately fixes their height.
+
+`--field-background`, `--field-border`, and `--field-placeholder` inherit semantic theme colors. `--control-padding-x`, `--control-padding-y`, `--control-height`, and `--radius-control` keep fields and actions aligned. focus, invalid, disabled, placeholder, hover, and reduced-motion states are shared. inline rename keeps its borderless appearance and underline focus cue; find-in-note uses its enclosing search field's focus ring.
+
+`Panel` supplies the compact spacing and typography used by git, graph, and tags. `ControlRow` wraps filter inputs and actions at narrow widths. `Button` supports `variant="ghost"` for quiet inline actions and `variant="row"` for full-width selectable results; rows share hover and selected colors. keep data visualizations and rendered documents in their own layout styles.
+
 - `Sidebar`: settings categories, workspace tree, and exported navigation share row height, selection motion, focus behavior, and resize controls.
 - `SettingRow`: padding, cursor, line-number, window, and addon settings share label/description layout and spacing.
 - `Toggle`: native checkbox semantics with one switch style for all settings.
 - `Button`: bordered text actions, including resets and apply/cancel actions.
 - `Select`: native keyboard/menu behavior with one shared chevron and spacing.
+- `TextInput` and `TextArea`: text fields, filters, source forms, and property values share one theme-aware field style.
+- `Panel` and `ControlRow`: extension panels share spacing, typography, and wrapping controls.
 - `IconButton`: file/view controls, find navigation, workspace actions, palette close, notification close, hotkey actions, and exported navigation share size, radius, and icon stroke.
 - `ShortcutKeys`: every visible shortcut uses the same formatter and keycap styles.
 

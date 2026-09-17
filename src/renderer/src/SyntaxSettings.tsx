@@ -1,5 +1,5 @@
 import { useState, useSyncExternalStore } from 'react'
-import { SettingRow, Toggle } from '../../ui/Controls'
+import { SettingRow, TextInput, Toggle } from '../../ui/Controls'
 import { markdownSyntax } from './markdown-syntax'
 
 export function SyntaxSettings() {
@@ -22,7 +22,7 @@ export function SyntaxSettings() {
           label="filter syntax"
           description="disabled formatting appears as its original markdown. source text stays intact."
         >
-          <input
+          <TextInput
             type="search"
             className="settings-filter"
             id="markdown-syntax-filter"

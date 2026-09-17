@@ -1,6 +1,6 @@
 import { ChevronDown, ChevronUp, Search, X } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { IconButton } from '../../ui/Controls'
+import { IconButton, TextInput } from '../../ui/Controls'
 
 export type FindStatus = { current: number; total: number }
 export type FindMove = { id: number; direction: 'next' | 'previous' }
@@ -43,7 +43,8 @@ export function FindBar({
     <search className="find-bar" aria-label="find in note" hidden={!open}>
       <div className="find-input">
         <Search size={15} aria-hidden="true" />
-        <input
+        <TextInput
+          variant="inline"
           ref={input}
           aria-label="find in note"
           placeholder="find in note"

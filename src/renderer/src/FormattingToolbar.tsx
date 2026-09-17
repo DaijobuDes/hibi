@@ -45,7 +45,7 @@ import {
 } from 'react'
 import type { DocumentFormat } from '../../addons/api'
 import { attachmentMarkdown, type MediaAttachment } from '../../shared/media'
-import { Button, SettingRow } from '../../ui/Controls'
+import { Button, SettingRow, TextInput } from '../../ui/Controls'
 import { useDialogs } from '../../ui/DialogProvider'
 import { useToasts } from '../../ui/Sonner'
 import type { ViewMode } from './Editor'
@@ -286,7 +286,7 @@ function InsertForm({
           label="link destination"
           description="web address, file path, or heading anchor."
         >
-          <input
+          <TextInput
             id="insert-url"
             ref={input}
             required
