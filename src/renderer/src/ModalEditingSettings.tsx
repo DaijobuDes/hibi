@@ -1,12 +1,6 @@
 import { Keyboard } from 'lucide-react'
-import { useEffect, useState } from 'react'
 import type { AddonManifest, AddonState } from '../../addons/api'
-import { Button, PanelMessage, SettingRow, Toggle } from '../../ui/Controls'
-import {
-  automaticModalSwitching,
-  onModalEditingSettings,
-  setAutomaticModalSwitching,
-} from './modal-editing'
+import { Button, PanelMessage } from '../../ui/Controls'
 
 export function ModalEditingSettings({
   manifests,
@@ -17,11 +11,6 @@ export function ModalEditingSettings({
   states: readonly AddonState[]
   openAddons: () => void
 }) {
-  const [automatic, setAutomatic] = useState(automaticModalSwitching)
-  useEffect(
-    () => onModalEditingSettings(() => setAutomatic(automaticModalSwitching())),
-    [],
-  )
   const modalAddons = manifests.filter((manifest) =>
     manifest.capabilities?.includes('modalEditing'),
   )
@@ -31,24 +20,8 @@ export function ModalEditingSettings({
 
   return (
     <>
-      <h1>Modal editing</h1>
-      <div className="settings-group">
-        <SettingRow
-          id="modal-editing-auto-switch"
-          label="Automatically deactivate conflicting modal addons"
-          description="When enabled, enabling a modal addon disables the currently active modal addon without asking."
-        >
-          <Toggle
-            id="modal-editing-auto-switch"
-            checked={automatic}
-            onChange={(event) => {
-              const next = event.target.checked
-              setAutomaticModalSwitching(next)
-              setAutomatic(next)
-            }}
-          />
-        </SettingRow>
-      </div>
+      <h2>Modal editing</h2>
+      <p>Enabling another modal addon asks before disabling the current one.</p>
       {!modalAddons.length ? (
         <PanelMessage
           icon={<Keyboard size={28} />}

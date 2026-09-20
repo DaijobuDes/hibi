@@ -52,7 +52,6 @@ import { explorerDecorations } from './explorer-decorations'
 import { flavors, renderMarkdown, renderMarkdownAsync } from './flavors'
 import { projectMarkdown } from './markdown-projection'
 import { markdownSyntax } from './markdown-syntax'
-import { automaticModalSwitching } from './modal-editing'
 import { registrationBatch } from './registration-batch'
 import { settingsPages } from './settings-pages'
 import { toolbar } from './toolbar'
@@ -1342,11 +1341,7 @@ export function useAddons(
               addon.manifest.capabilities?.includes('modalEditing'),
           )
         })
-        if (
-          requested?.capabilities?.includes('modalEditing') &&
-          current &&
-          !automaticModalSwitching()
-        ) {
+        if (requested?.capabilities?.includes('modalEditing') && current) {
           const currentAddon = catalog.find(
             (addon) => addon.manifest.id === current.id,
           )

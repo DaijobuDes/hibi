@@ -477,16 +477,7 @@ export function SettingsScreen({
                 />
               </SettingRow>
             </div>
-          </section>
-          <section
-            id="settings-modal-editing"
-            role="tabpanel"
-            aria-labelledby="category-modal-editing"
-            aria-label="Modal editing"
-            hidden={category !== 'modal-editing'}
-          >
-            {(discover ||
-              (open && (category === 'modal-editing' || searching))) && (
+            {(discover || (open && (category === 'editor' || searching))) && (
               <ModalEditingSettings
                 manifests={addons.map(({ manifest }) => manifest)}
                 states={addonStates}
