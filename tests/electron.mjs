@@ -8,6 +8,23 @@ export const electron = {
       ...options,
       args: [...options.args, '--hibi-test'],
     })
+    const close = application.close.bind(application)
+    application.close = async () => {
+      let timer
+      try {
+        await Promise.race([
+          close(),
+          new Promise((_, reject) => {
+            timer = setTimeout(() => {
+              application.process().kill('SIGKILL')
+              reject(new Error('Electron test cleanup exceeded 10 seconds'))
+            }, 10000)
+          }),
+        ])
+      } finally {
+        clearTimeout(timer)
+      }
+    }
     if (process.env.GITHUB_ACTIONS === 'true') {
       await application.firstWindow()
       await application.evaluate(({ app, BrowserWindow }) => {
@@ -25,4 +42,24 @@ export const electron = {
     }
     return application
   },
+}
+
+export async function crashAndReload(application) {
+  // Drain pending locator disposal before replacing Playwright's debug target.
+  await (await application.firstWindow()).evaluate(() => undefined)
+  await application.evaluate(async ({ dialog, BrowserWindow }) => {
+    dialog.showMessageBox = async () => ({
+      response: 0,
+      checkboxChecked: false,
+    })
+    const contents = BrowserWindow.getAllWindows()[0].webContents
+    const loaded = new Promise((resolve) =>
+      contents.once('did-finish-load', resolve),
+    )
+    // forcefullyCrashRenderer can hang under Linux's debugger/crash handler.
+    if (process.platform === 'linux')
+      process.kill(contents.getOSProcessId(), 'SIGKILL')
+    else contents.forcefullyCrashRenderer()
+    await loaded
+  })
 }

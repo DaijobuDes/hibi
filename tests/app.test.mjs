@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { electron } from './electron.mjs'
+import { crashAndReload, electron } from './electron.mjs'
 import { clickMenu } from './keyboard.mjs'
 
 test('desktop launch, isolation, offline reload, and recovery', {
@@ -309,22 +309,9 @@ test('desktop launch, isolation, offline reload, and recovery', {
   }
 
   await t.test('renderer crash offers reload and recovers', async () => {
-    const current = await app.firstWindow()
-    // Finish pending locator-handle disposal before crashing the debug target.
-    await current.evaluate(() => undefined)
-    const recovered = await app.evaluate(async ({ dialog, BrowserWindow }) => {
-      dialog.showMessageBox = async () => ({
-        response: 0,
-        checkboxChecked: false,
-      })
+    await crashAndReload(app)
+    const recovered = await app.evaluate(({ BrowserWindow }) => {
       const contents = BrowserWindow.getAllWindows()[0].webContents
-      const reloaded = new Promise((resolve) =>
-        contents.once('did-finish-load', resolve),
-      )
-      if (process.platform === 'linux')
-        process.kill(contents.getOSProcessId(), 'SIGKILL')
-      else contents.forcefullyCrashRenderer()
-      await reloaded
       // Playwright retains its crashed target; inspect the new renderer through Electron.
       return contents.executeJavaScript(
         'new Promise(resolve => { const check = () => document.querySelector(".tiptap") ? window.hibi.getAppInfo().then(info => resolve({ editor: true, version: info.version })) : requestAnimationFrame(check); check() })',

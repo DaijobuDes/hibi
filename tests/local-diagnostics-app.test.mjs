@@ -11,7 +11,7 @@ import {
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { electron } from './electron.mjs'
+import { crashAndReload, electron } from './electron.mjs'
 import { clickMenu } from './keyboard.mjs'
 
 test('an unavailable unsafe log directory leaves editing, saving and user files intact', {
@@ -235,15 +235,7 @@ test('lost diagnostic credit cannot delay save, canceled close or acknowledged r
     JSON.parse(await readFile(join(directory, 'run-state.txt'), 'utf8')).state,
     'active',
   )
-  await app.evaluate(
-    ({ BrowserWindow, dialog }) =>
-      new Promise((resolve) => {
-        const contents = BrowserWindow.getAllWindows()[0].webContents
-        dialog.showMessageBox = async () => ({ response: 0 })
-        contents.once('did-finish-load', resolve)
-        contents.forcefullyCrashRenderer()
-      }),
-  )
+  await crashAndReload(app)
   const recovered = await app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()[0].webContents.executeJavaScript(
       `new Promise(resolve => { const poll = () => { if (!document.querySelector('.tiptap[contenteditable="true"]')) { setTimeout(poll, 20); return; } Promise.resolve(window.hibi.getDocument()).then(resolve) }; poll() })`,

@@ -102,7 +102,14 @@ test('published development docs render linked, highlighted API pages offline at
   timeout: 60000,
 }, async (t) => {
   const directory = await mkdtemp(join(tmpdir(), 'hibi-reference-'))
-  t.after(() => rm(directory, { recursive: true, force: true }))
+  let app
+  t.after(async () => {
+    try {
+      await app?.close()
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
   const output = join(directory, 'index.html')
   await promisify(execFile)(process.execPath, [
     'scripts/export-docs.mjs',
@@ -125,11 +132,10 @@ test('published development docs render linked, highlighted API pages offline at
     (page) => page.path === 'development/addon-api-reference/DialogApi.md',
   )
   assert.match(dialog.html, /hibi-token-keyword/)
-  const app = await electron.launch({
+  app = await electron.launch({
     args: [resolve('.'), `--user-data-dir=${join(directory, 'profile')}`],
     colorScheme: null,
   })
-  t.after(() => app.close())
   await app.firstWindow()
   const next = app.waitForEvent('window')
   await app.evaluate(({ BrowserWindow }, output) => {

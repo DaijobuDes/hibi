@@ -10,7 +10,7 @@ import {
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { electron } from './electron.mjs'
+import { crashAndReload, electron } from './electron.mjs'
 import { clickMenu } from './keyboard.mjs'
 
 test('native file operations preserve drafts and avoid silent overwrites', {
@@ -144,21 +144,9 @@ test('native file operations preserve drafts and avoid silent overwrites', {
     ),
     1,
   )
-  // Finish pending locator-handle disposal before crashing the debug target.
-  await page.evaluate(() => undefined)
-  const recovered = await app.evaluate(async ({ dialog, BrowserWindow }) => {
-    dialog.showMessageBox = async () => ({
-      response: 0,
-      checkboxChecked: false,
-    })
+  await crashAndReload(app)
+  const recovered = await app.evaluate(({ BrowserWindow }) => {
     const contents = BrowserWindow.getAllWindows()[0].webContents
-    const loaded = new Promise((resolve) =>
-      contents.once('did-finish-load', resolve),
-    )
-    if (process.platform === 'linux')
-      process.kill(contents.getOSProcessId(), 'SIGKILL')
-    else contents.forcefullyCrashRenderer()
-    await loaded
     return contents.executeJavaScript('window.hibi.getDocument()')
   })
   assert.equal(recovered.markdown, 'recover this draft')

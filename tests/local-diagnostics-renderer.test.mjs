@@ -11,7 +11,14 @@ test('both renderer profiles preserve native error propagation, safe original lo
   timeout: 30000,
 }, async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'hibi-log-renderer-'))
-  t.after(() => rm(root, { recursive: true, force: true }))
+  let app
+  t.after(async () => {
+    try {
+      await app?.close()
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
   await build({
     configFile: false,
     logLevel: 'silent',
@@ -40,8 +47,7 @@ test('both renderer profiles preserve native error propagation, safe original lo
     join(root, 'main.cjs'),
     `const {app,BrowserWindow}=require('electron');app.setPath('userData',${JSON.stringify(join(root, 'profile'))});if(process.platform==='darwin')app.setActivationPolicy('accessory');app.whenReady().then(()=>{const w=new BrowserWindow({show:false,focusable:false,webPreferences:{sandbox:true,contextIsolation:true,backgroundThrottling:false}});w.loadFile(${JSON.stringify(join(root, 'index.html'))});});`,
   )
-  const app = await electron.launch({ args: [join(root, 'main.cjs')] })
-  t.after(() => app.close())
+  app = await electron.launch({ args: [join(root, 'main.cjs')] })
   const page = await app.firstWindow()
   page.setDefaultTimeout(6000)
   const read = () => page.evaluate(() => window.diagnosticHarness.snapshot())

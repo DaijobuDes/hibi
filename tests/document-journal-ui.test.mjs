@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { electron } from './electron.mjs'
+import { crashAndReload, electron } from './electron.mjs'
 
 test('journal barriers preserve immediate saves, retries, renderer recovery, and native close', {
   timeout: 45000,
@@ -44,14 +44,7 @@ test('journal barriers preserve immediate saves, retries, renderer recovery, and
   assert.equal(await readFile(file, 'utf8'), saved.markdown)
   await editor().fill('recover this unsaved change')
   await page.evaluate(() => window.hibi.flushDocumentChanges())
-  await app.evaluate(
-    ({ BrowserWindow }) =>
-      new Promise((resolve) => {
-        const contents = BrowserWindow.getAllWindows()[0].webContents
-        contents.once('did-finish-load', resolve)
-        contents.forcefullyCrashRenderer()
-      }),
-  )
+  await crashAndReload(app)
   // Playwright keeps crashed targets marked as crashed after Electron reloads them.
   // Inspect the replacement renderer through Electron's live webContents instead.
   const recovered = await app.evaluate(({ BrowserWindow }) =>
