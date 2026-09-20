@@ -1,4 +1,4 @@
-import { Keyboard } from 'lucide-react'
+import { CircleHelp, Keyboard } from 'lucide-react'
 import type { AddonManifest, AddonState } from '../../addons/api'
 import { Button, PanelMessage } from '../../ui/Controls'
 
@@ -17,6 +17,10 @@ export function ModalEditingSettings({
   const active = modalAddons.find((manifest) =>
     states.some((state) => state.id === manifest.id && state.enabled),
   )
+  const warning = 'This setting might not be applied.'
+  const help = (
+    <CircleHelp size={16} aria-label={warning} data-tooltip={warning} />
+  )
 
   return (
     <>
@@ -27,7 +31,7 @@ export function ModalEditingSettings({
           icon={<Keyboard size={28} />}
           title="No modal addon installed"
         >
-          No modal addon installed. This setting might not be applied.
+          No modal addon installed. {help}
           <br />
           <Button onClick={openAddons}>Add a modal addon</Button>
         </PanelMessage>
@@ -36,7 +40,7 @@ export function ModalEditingSettings({
           icon={<Keyboard size={28} />}
           title="No modal addon is currently active"
         >
-          No modal addon is currently active. This setting might not be applied.
+          No modal addon is currently active. {help}
         </PanelMessage>
       ) : (
         <p>Currently active: {active.name}.</p>
