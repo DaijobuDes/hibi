@@ -10,7 +10,7 @@ Save your notes first, because Git reads the files on disk. Select a changed fil
 
 The **Branch** section lets you switch branches, pull, and push. Save your edits and commit or discard any file changes before pulling or switching branches. Hibi only pulls updates that can be applied without merging branches. Use your usual Git client for merges, signed commits, or repositories that require hooks or custom filters.
 
-Authentication uses your SSH setup, or Git's Keychain helper for HTTPS on macOS. Use SSH on other platforms.
+Authentication uses your SSH setup, or Git's Keychain helper for HTTPS on macOS, or Git Credential Manager on Windows. Use SSH on other platforms.
 
 ## Credits
 

@@ -37,7 +37,8 @@ async function repository(context: NativeAddonContext) {
       (name) => `protocol.${name}.allow=always`,
     ),
     'credential.helper=',
-    ...(process.platform === 'darwin' ? ['credential.helper=osxkeychain'] : []),
+    ...(process.platform === 'darwin' ? ['credential.helper=osxkeychain'] :
+      process.platform === 'win32' ? ['credential.helper=manager'] : []),
   ].flatMap((setting) => ['-c', setting])
   const run = async (args: string[], optional = false): Promise<string> => {
     try {
