@@ -131,9 +131,9 @@ export function recommendedNightly(release, repository) {
   }
 }
 
-export function releaseNotes(release, repository, checksums) {
+function releaseAssets(release, repository, checksums) {
   const url = `https://github.com/${repository}`
-  const assets = checksums
+  return checksums
     .trim()
     .split('\n')
     .map((line) => {
@@ -146,6 +146,67 @@ export function releaseNotes(release, repository, checksums) {
         url: `${url}/releases/download/${encodeURIComponent(release.tag)}/${encodeURIComponent(name)}`,
       }
     })
+}
+
+export function nightlyWebhook(release, repository, checksums) {
+  if (!['nightly-green', 'nightly-broken'].includes(release.status))
+    throw new Error('Only classified nightlies can be announced')
+  const green = release.status === 'nightly-green'
+  const role = '1550309423166267432'
+  return {
+    content: `<@&${role}> new nightly released: **${release.tag}**`,
+    allowed_mentions: { parse: [], roles: [role] },
+    embeds: [
+      {
+        title: '🦋',
+        description: [
+          `this nightly is built from [${release.sha.slice(0, 7)}](https://github.com/${repository}/commit/${release.sha}).`,
+          'as usual with all nightlies, please understand that you know what you are doing.',
+          '',
+          '**download links**',
+          ...releaseAssets(release, repository, checksums).map(
+            (asset) => `[${asset.name}](${asset.url})`,
+          ),
+        ].join('\n'),
+        color: green ? 16748945 : 9568176,
+        footer: {
+          text: green
+            ? '🟢 this nightly is tagged green and has passed all checks.'
+            : '🔴 this nightly is tagged red.\n⚠️ this nightly has not passed all checks.',
+        },
+      },
+    ],
+    attachments: [],
+  }
+}
+
+export async function sendNightlyWebhook(webhookUrl, payload) {
+  if (!webhookUrl) {
+    console.log(
+      '::notice::NIGHTLIES_WEBHOOK_URL is unset; skipping announcement.',
+    )
+    return
+  }
+  let response
+  try {
+    const url = new URL(webhookUrl)
+    url.searchParams.set('wait', 'true')
+    response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(30_000),
+    })
+  } catch {
+    throw new Error('Nightly webhook request failed')
+  }
+  if (!response.ok)
+    throw new Error(`Nightly webhook failed: HTTP ${response.status}`)
+}
+
+export function releaseNotes(release, repository, checksums) {
+  const url = `https://github.com/${repository}`
+  const assets = releaseAssets(release, repository, checksums)
   const download = (label, suffix) => {
     const asset = assets.find(({ name }) => name.endsWith(suffix))
     if (!asset) throw new Error(`Missing nightly download: ${label}`)
@@ -242,6 +303,15 @@ if (
     process.stdout.write(
       releaseNotes(release, process.env.GITHUB_REPOSITORY, checksums),
     )
+  } else if (process.argv[2] === 'notify') {
+    await sendNightlyWebhook(
+      process.env.NIGHTLIES_WEBHOOK_URL,
+      nightlyWebhook(
+        JSON.parse(readFileSync('release.json', 'utf8')),
+        process.env.GITHUB_REPOSITORY,
+        readFileSync('installers/SHA256SUMS.txt', 'utf8'),
+      ),
+    )
   } else if (process.argv[2] === 'recommend') {
     const pointer = recommendedNightly(
       JSON.parse(readFileSync('release.json', 'utf8')),
@@ -254,7 +324,7 @@ if (
     )
   } else {
     throw new Error(
-      'Usage: node scripts/nightly.mjs prepare|classify|notes|recommend',
+      'Usage: node scripts/nightly.mjs prepare|classify|notes|notify|recommend',
     )
   }
 }

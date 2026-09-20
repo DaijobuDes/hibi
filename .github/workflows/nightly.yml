@@ -166,6 +166,7 @@ jobs:
         id: classify
         run: node scripts/nightly.mjs classify
       - name: Publish immutable release with commit changelog
+        id: publish
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.classify.outputs.tag }}
@@ -219,3 +220,8 @@ jobs:
         run: |
           echo '::error::Published a nightly-broken debug build. The recommended nightly was not changed.'
           exit 1
+      - name: Announce nightly on Discord
+        if: ${{ !cancelled() && needs.prepare.outputs.channel == 'nightly' && steps.publish.outcome == 'success' }}
+        env:
+          NIGHTLIES_WEBHOOK_URL: ${{ secrets.NIGHTLIES_WEBHOOK_URL }}
+        run: node scripts/nightly.mjs notify

@@ -18,6 +18,8 @@ The rolling [nightly-green release](https://github.com/schmayterling/hibi/releas
 
 Back up your notes before installing a nightly. Broken builds are for debugging and dogfooding, and may lose functionality. Installers and checksums live on the dated release; the rolling release only carries the recommendation.
 
+Set the repository Actions secret `NIGHTLIES_WEBHOOK_URL` to a Discord webhook URL to announce published nightlies. Each message mentions role `1550309423166267432` and includes the tag, source commit, installer links, and one green or red status embed. Download links come from the installer checksum manifest and exclude source archives. Stable releases and failed publications do not send announcements. If the secret is unset, announcements are skipped. Delivery failures fail the notification step without undoing publication or changing the recommendation.
+
 ## Stable releases
 
 Push a `v<version>` tag that exactly matches the non-prerelease version in `package.json`, such as `v0.1.0`. The same workflow runs the full required checks on all four platforms. A failing, skipped, or cancelled check cannot be promoted to a stable release. Compilation and packaging must also succeed everywhere.

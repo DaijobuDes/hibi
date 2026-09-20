@@ -14,9 +14,11 @@ import { parse } from 'yaml'
 import {
   classifyRelease,
   nightly,
+  nightlyWebhook,
   platforms,
   recommendedNightly,
   releaseNotes,
+  sendNightlyWebhook,
 } from '../scripts/nightly.mjs'
 
 test('nightlies build unchanged revisions daily and include real commits since the previous release', (t) => {
@@ -75,6 +77,48 @@ test('nightlies build unchanged revisions daily and include real commits since t
   }))
   const broken = classifyRelease(next, failed)
   assert.match(broken.tag, /^nightly-broken-/)
+  for (const [release, color, footer] of [
+    [
+      green,
+      16748945,
+      '🟢 this nightly is tagged green and has passed all checks.',
+    ],
+    [
+      broken,
+      9568176,
+      '🔴 this nightly is tagged red.\n⚠️ this nightly has not passed all checks.',
+    ],
+  ]) {
+    const payload = nightlyWebhook(release, 'hibigarden/hibi', checksums)
+    assert.equal(
+      payload.content,
+      `<@&1550309423166267432> new nightly released: **${release.tag}**`,
+    )
+    assert.deepEqual(payload.allowed_mentions, {
+      parse: [],
+      roles: ['1550309423166267432'],
+    })
+    assert.deepEqual(payload.attachments, [])
+    assert.equal(payload.embeds.length, 1)
+    const [embed] = payload.embeds
+    assert.equal(embed.title, '🦋')
+    assert.equal(embed.color, color)
+    assert.equal(embed.footer.text, footer)
+    assert.ok(
+      embed.description.startsWith(
+        `this nightly is built from [${release.sha.slice(0, 7)}](https://github.com/hibigarden/hibi/commit/${release.sha}).`,
+      ),
+    )
+    const downloads = embed.description.split('**download links**\n')[1]
+    assert.deepEqual(
+      downloads.split('\n'),
+      names.map(
+        (name) =>
+          `[${name}](https://github.com/hibigarden/hibi/releases/download/${release.tag}/${encodeURIComponent(name)})`,
+      ),
+    )
+    assert.ok(embed.description.length <= 4096)
+  }
   assert.match(
     releaseNotes(broken, 'hibigarden/hibi', checksums),
     /Required checks failed/,
@@ -93,6 +137,11 @@ test('nightlies build unchanged revisions daily and include real commits since t
   const stable = nightly(cwd, date, 'v0.1.0')
   assert.equal(stable.version, '0.1.0')
   assert.equal(stable.channel, 'stable')
+  for (const release of [next, { ...stable, status: 'stable' }])
+    assert.throws(
+      () => nightlyWebhook(release, 'hibigarden/hibi', checksums),
+      /Only classified nightlies/,
+    )
   assert.equal(stable.previous, undefined)
   assert.equal(classifyRelease(stable, reports).status, 'stable')
   assert.throws(
@@ -246,6 +295,35 @@ test('publication fails closed for missing packages, checks and mismatched revis
   )
 })
 
+test('nightly webhook confirms delivery and keeps secrets out of failures', async (t) => {
+  const requests = t.mock.method(globalThis, 'fetch', async () => ({
+    ok: true,
+  }))
+  await sendNightlyWebhook('', {})
+  assert.equal(requests.mock.callCount(), 0)
+  const webhookUrl = 'https://discord.com/api/webhooks/123/secret?thread_id=456'
+  const payload = { content: 'nightly announcement' }
+  await sendNightlyWebhook(webhookUrl, payload)
+  const [url, options] = requests.mock.calls[0].arguments
+  assert.equal(url.searchParams.get('wait'), 'true')
+  assert.equal(url.searchParams.get('thread_id'), '456')
+  assert.equal(options.method, 'POST')
+  assert.equal(options.headers['Content-Type'], 'application/json')
+  assert.deepEqual(JSON.parse(options.body), payload)
+  assert.ok(options.signal instanceof AbortSignal)
+  requests.mock.mockImplementation(async () => ({ ok: false, status: 429 }))
+  await assert.rejects(sendNightlyWebhook(webhookUrl, payload), {
+    message: 'Nightly webhook failed: HTTP 429',
+  })
+  requests.mock.mockImplementation(async () => {
+    throw new Error(`failed to fetch ${webhookUrl}`)
+  })
+  for (const url of [webhookUrl, 'invalid secret url'])
+    await assert.rejects(sendNightlyWebhook(url, payload), {
+      message: 'Nightly webhook request failed',
+    })
+})
+
 test('release workflow always builds nightlies and gates stable publication on the full suite', () => {
   const workflow = parse(readFileSync('.github/workflows/nightly.yml', 'utf8'))
   assert.deepEqual(workflow.on.push.tags, ['v*'])
@@ -290,6 +368,29 @@ test('release workflow always builds nightlies and gates stable publication on t
   )
   assert.equal(promotion.if, "steps.classify.outputs.status == 'nightly-green'")
   assert.match(promotion.run, /node scripts\/nightly.mjs recommend/)
+  const publishSteps = workflow.jobs.publish.steps
+  const announcement = publishSteps.find(
+    (step) => step.name === 'Announce nightly on Discord',
+  )
+  assert.equal(
+    announcement.if,
+    `\${{ !cancelled() && needs.prepare.outputs.channel == 'nightly' && steps.publish.outcome == 'success' }}`,
+  )
+  assert.equal(
+    announcement.env.NIGHTLIES_WEBHOOK_URL,
+    `\${{ secrets.NIGHTLIES_WEBHOOK_URL }}`,
+  )
+  assert.equal(announcement.run, 'node scripts/nightly.mjs notify')
+  assert.ok(
+    publishSteps.findIndex((step) => step.id === 'publish') <
+      publishSteps.indexOf(announcement),
+  )
+  assert.ok(
+    publishSteps.findIndex(
+      (step) => step.name === 'Surface broken nightly checks',
+    ) < publishSteps.indexOf(announcement),
+    'announce published broken nightlies after surfacing their failed checks',
+  )
   const pkg = JSON.parse(readFileSync('package.json', 'utf8'))
   assert.match(pkg.scripts.dist, /^npm run check && /)
 })

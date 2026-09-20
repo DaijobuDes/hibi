@@ -23,7 +23,7 @@ Notes start with the short source SHA, status, platform results, a backup warnin
 
 Packages use `com.ryanaque.hibi`, the icons in `electron-builder.yml`, and the regular app's data profile. Save and back up documents before installing. Windows packages are unsigned. macOS packages use ad-hoc signing without notarization. Trusted distribution signing requires separate credentials.
 
-The workflow uses the repository token; only publication has `contents: write`. No extra secret is required. Test changelogs with `node --test tests/nightly.test.mjs` and check workflow syntax with `actionlint`.
+The workflow uses the repository token; only publication has `contents: write`. Release publication requires no extra secret. Set the Actions secret `NIGHTLIES_WEBHOOK_URL` to enable Discord announcements. Test changelogs and announcements with `node --test tests/nightly.test.mjs` and check workflow syntax with `actionlint`.
 
 Release builds use download caches only. Both nightly and stable channels always compile and run the full suite; a manual `clean` run bypasses download caches too. Stable `v<version>` tags must match `package.json` and require every check to pass before packaging and publication. `npm run dist` also runs the complete checks before creating local distribution packages. Regular pull request and push checks may still use incremental selection.
 
