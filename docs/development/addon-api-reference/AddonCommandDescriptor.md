@@ -2,7 +2,7 @@
 
 # AddonCommandDescriptor
 
-Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L93)
+Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L99)
 
 <details>
 <summary>Declaration</summary>
@@ -29,7 +29,7 @@ type AddonCommandDescriptor = {
 
 ### id
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L94)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L100)
 
 ```typescript
 id: string
@@ -37,7 +37,7 @@ id: string
 
 ### label
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L95)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L101)
 
 ```typescript
 label: string
@@ -45,7 +45,7 @@ label: string
 
 ### keywords
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L96)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L102)
 
 ```typescript
 keywords?: string

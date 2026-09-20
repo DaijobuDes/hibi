@@ -27,6 +27,12 @@ export const settingsCategories = [
   { id: 'hibi', label: 'Hibi', icon: File, category: 'general' },
   { id: 'workspace', label: 'Workspace', icon: Folder, category: 'general' },
   { id: 'editor', label: 'Editor', icon: FileText, category: 'editing' },
+  {
+    id: 'modal-editing',
+    label: 'Modal editing',
+    icon: Keyboard,
+    category: 'editing',
+  },
   { id: 'formats', label: 'Formats', icon: FileText, category: 'editing' },
   { id: 'syntax', label: 'Syntax', icon: TextCursorInput, category: 'editing' },
   {

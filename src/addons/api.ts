@@ -89,7 +89,13 @@ export function compatibleAddonManifest(manifest: {
 }
 
 /** Metadata used to list an addon before its code loads. */
-export type AddonCapability = 'ui' | 'rich' | 'source' | 'markdown'
+export type AddonCapability =
+  | 'ui'
+  | 'rich'
+  | 'source'
+  | 'markdown'
+  /** Only one enabled addon may claim the source editor's modal keybindings. */
+  | 'modalEditing'
 export type AddonCommandDescriptor = {
   id: string
   label: string

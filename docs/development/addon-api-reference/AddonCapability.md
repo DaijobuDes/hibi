@@ -7,5 +7,11 @@ Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addon
 Metadata used to list an addon before its code loads.
 
 ```typescript
-type AddonCapability = 'ui' | 'rich' | 'source' | 'markdown'
+type AddonCapability =
+  | 'ui'
+  | 'rich'
+  | 'source'
+  | 'markdown'
+  /** Only one enabled addon may claim the source editor's modal keybindings. */
+  | 'modalEditing'
 ```

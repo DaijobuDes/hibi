@@ -75,6 +75,7 @@ async function nativeAddon(id: string) {
   return pending
 }
 let enabled: Record<string, boolean> = {}
+let addonStartupNotices: string[] = []
 const manifests = () => [
   ...bundledManifests,
   ...installedAddons().map((addon) => addon.manifest),
@@ -146,6 +147,24 @@ export async function loadAddons(): Promise<void> {
       .filter(({ id }) => typeof stored[id] === 'boolean')
       .map(({ id }) => [id, stored[id] as boolean]),
   )
+  addonStartupNotices = []
+  const modal = manifests().filter((manifest) =>
+    manifest.capabilities?.includes('modalEditing'),
+  )
+  const enabledModal = modal.filter((manifest) => enabled[manifest.id])
+  if (enabledModal.length > 1) {
+    for (const manifest of enabledModal) enabled[manifest.id] = false
+    const path = join(app.getPath('userData'), 'addons.json')
+    await writeFile(`${path}.tmp`, JSON.stringify(enabled), { mode: 0o600 })
+    await rename(`${path}.tmp`, path)
+    addonStartupNotices.push(
+      'Multiple modal addons were enabled. They were disabled to keep regular editing mode safe.',
+    )
+  }
+}
+
+export function getAddonStartupNotices() {
+  return [...addonStartupNotices]
 }
 
 export function getAddonStates(): AddonState[] {
@@ -209,6 +228,15 @@ export async function enableAddon(
 
 async function saveEnabled(id: string, value: boolean): Promise<AddonState[]> {
   const next = { ...enabled, [id]: value }
+  const manifest = manifests().find((entry) => entry.id === id)
+  if (value && manifest?.capabilities?.includes('modalEditing'))
+    for (const other of manifests())
+      if (
+        other.id !== id &&
+        other.capabilities?.includes('modalEditing') &&
+        next[other.id]
+      )
+        next[other.id] = false
   const path = join(app.getPath('userData'), 'addons.json')
   await writeFile(`${path}.tmp`, JSON.stringify(next), { mode: 0o600 })
   await rename(`${path}.tmp`, path)

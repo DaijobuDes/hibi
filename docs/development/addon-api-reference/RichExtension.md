@@ -2,7 +2,7 @@
 
 # RichExtension
 
-Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L162)
+Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L168)
 
 <details>
 <summary>Declaration</summary>
@@ -31,7 +31,7 @@ type RichExtension = {
 
 ### id
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L163)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L169)
 
 ```typescript
 id: string
@@ -41,7 +41,7 @@ id: string
 
 ### attach
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L165)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L171)
 
 Attach editor behavior without rebuilding its schema or undo history.
 

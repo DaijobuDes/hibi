@@ -2,7 +2,7 @@
 
 # MarkdownEditorProps
 
-Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L374)
+Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L380)
 
 <details>
 <summary>Declaration</summary>
@@ -32,7 +32,7 @@ type MarkdownEditorProps = {
 
 ### value
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L375)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L381)
 
 ```typescript
 value: string
@@ -40,7 +40,7 @@ value: string
 
 ### disabled
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L377)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L383)
 
 ```typescript
 disabled: boolean
@@ -50,7 +50,7 @@ disabled: boolean
 
 ### onChange
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L376)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L382)
 
 ```typescript
 onChange: (source: string) => void

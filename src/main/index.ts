@@ -51,6 +51,7 @@ import { WORKSPACE_CHANNELS } from '../shared/workspace'
 import { WORKSPACE_SETTINGS_CHANNELS } from '../shared/workspace-settings'
 import {
   enableAddon,
+  getAddonStartupNotices,
   getAddonStates,
   installAddon,
   invokeAddon,
@@ -740,6 +741,7 @@ if (!app.requestSingleInstanceLock()) {
         () => ({
           states: getAddonStates(),
           packages: installedAddons(),
+          notices: getAddonStartupNotices(),
         }),
         addonsReady,
       )

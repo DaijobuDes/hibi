@@ -52,11 +52,14 @@ import { explorerDecorations } from './explorer-decorations'
 import { flavors, renderMarkdown, renderMarkdownAsync } from './flavors'
 import { projectMarkdown } from './markdown-projection'
 import { markdownSyntax } from './markdown-syntax'
+import { automaticModalSwitching } from './modal-editing'
 import { registrationBatch } from './registration-batch'
 import { settingsPages } from './settings-pages'
 import { toolbar } from './toolbar'
 
 export { addons } from './addon-registry'
+
+const ADDON_ISSUE_URL = 'https://github.com/schmayterling/hibi/issues/new'
 
 export type RegisteredCommand = AddonCommand & { addonId: string }
 type Environment = Omit<
@@ -118,6 +121,10 @@ export function useAddons(
   const [settled, setSettled] = useState<ReadonlyMap<string, boolean>>(
     new Map(),
   )
+  const modalSwitch = useRef<{
+    requested: string
+    previous: string | null
+  } | null>(null)
   const [loadFailed, setLoadFailed] = useState(false)
   const [requested, setRequested] = useState<ReadonlySet<string>>(new Set())
   const relevant = useCallback(
@@ -322,9 +329,11 @@ export function useAddons(
   useEffect(() => {
     void window.hibi.bootstrap
       .addons()
-      .then(({ states, packages: installed }) => {
+      .then(({ states, packages: installed, notices }) => {
         setStates(states)
         addonRegistry.hydrate(installed)
+        for (const message of notices)
+          toastService.api.show({ message, variant: 'error', duration: 0 })
         setLoaded(true)
       })
       .catch((error: unknown) => {
@@ -332,7 +341,7 @@ export function useAddons(
         setLoadFailed(true)
         setLoaded(true)
       })
-  }, [])
+  }, [toastService.api.show])
   useEffect(() => {
     // File metadata must arrive before choosing which format engines block editing.
     if (!loaded || !documentName) return
@@ -1217,6 +1226,8 @@ export function useAddons(
           .then(() => {
             if (!disposed) {
               started.add(id)
+              if (modalSwitch.current?.requested === id)
+                modalSwitch.current = null
               setSettled((current) => new Map(current).set(id, true))
               activation.get(id)?.resolve()
             }
@@ -1226,7 +1237,61 @@ export function useAddons(
             stop()
             if (mounted.current)
               setSettled((current) => new Map(current).set(id, false))
-            latest.current.error(error)
+            const failedSwitch =
+              modalSwitch.current?.requested === id ? modalSwitch.current : null
+            if (!failedSwitch) {
+              latest.current.error(error)
+              return
+            }
+            modalSwitch.current = null
+            void (async () => {
+              try {
+                const disabled = await window.hibi.setAddonEnabled(id, false)
+                setStates(disabled)
+                if (failedSwitch.previous) {
+                  modalSwitch.current = {
+                    requested: failedSwitch.previous,
+                    previous: null,
+                  }
+                  const restored = await window.hibi.setAddonEnabled(
+                    failedSwitch.previous,
+                    true,
+                  )
+                  setStates(restored)
+                  toastService.api.show({
+                    message: `Unable to switch to ${catalog.find((addon) => addon.manifest.id === id)?.manifest.name ?? id} because of an error. The previous modal addon was restored.`,
+                    description: `Report this problem at ${ADDON_ISSUE_URL}.`,
+                    variant: 'error',
+                    duration: 0,
+                  })
+                } else {
+                  toastService.api.show({
+                    message: `Unable to switch to ${catalog.find((addon) => addon.manifest.id === id)?.manifest.name ?? id} because of an error. Regular editing mode was restored.`,
+                    description: `Report this problem at ${ADDON_ISSUE_URL}.`,
+                    variant: 'error',
+                    duration: 0,
+                  })
+                }
+              } catch {
+                modalSwitch.current = null
+                try {
+                  const fallback = await window.hibi.setAddonEnabled(
+                    failedSwitch.previous ?? id,
+                    false,
+                  )
+                  setStates(fallback)
+                } catch {
+                  // Keep the original activation failure visible if persistence also fails.
+                }
+                toastService.api.show({
+                  message:
+                    'An error occurred while switching back to a modal addon. Falling back to regular editing mode.',
+                  description: `Report this problem at ${ADDON_ISSUE_URL}.`,
+                  variant: 'error',
+                  duration: 0,
+                })
+              }
+            })()
           })
       } catch (error) {
         stop()
@@ -1264,6 +1329,39 @@ export function useAddons(
   ])
   async function setEnabled(id: string, enabled: boolean) {
     try {
+      let previousModal: string | null = null
+      if (enabled) {
+        const requested = catalog.find(
+          (addon) => addon.manifest.id === id,
+        )?.manifest
+        const current = states.find((state) => {
+          if (!state.enabled || state.id === id) return false
+          return catalog.some(
+            (addon) =>
+              addon.manifest.id === state.id &&
+              addon.manifest.capabilities?.includes('modalEditing'),
+          )
+        })
+        if (
+          requested?.capabilities?.includes('modalEditing') &&
+          current &&
+          !automaticModalSwitching()
+        ) {
+          const currentAddon = catalog.find(
+            (addon) => addon.manifest.id === current.id,
+          )
+          const confirmed = await dialogService.api.confirm({
+            title: 'Switch modal editor',
+            description: `${currentAddon?.manifest.name ?? current.id} is active. Enabling ${requested.name} will disable it. Continue?`,
+            confirmLabel: 'Switch',
+          })
+          if (!confirmed) return
+        }
+        if (requested?.capabilities?.includes('modalEditing'))
+          previousModal = current?.id ?? null
+      }
+      if (!enabled && modalSwitch.current?.requested === id)
+        modalSwitch.current = null
       if (!enabled)
         setRequested((current) => {
           const next = new Set(current)
@@ -1275,6 +1373,15 @@ export function useAddons(
         next.delete(id)
         return next
       })
+      if (
+        enabled &&
+        catalog.some(
+          (addon) =>
+            addon.manifest.id === id &&
+            addon.manifest.capabilities?.includes('modalEditing'),
+        )
+      )
+        modalSwitch.current = { requested: id, previous: previousModal }
       setStates(await window.hibi.setAddonEnabled(id, enabled))
     } catch (error) {
       latest.current.error(error)

@@ -8,6 +8,8 @@ Use the sidebar button or `Cmd/Ctrl+/` to collapse or expand settings navigation
 
 Use **Editor** for [tabs, default view, and spell check](editing.md). Use **Appearance** to change [colorschemes](colorschemes.md), the toolbar, and cursor style.
 
+Use **Modal editing** to control how modal editor addons switch. Hibi allows only one modal addon at a time. By default, enabling another modal addon asks before disabling the current one; enable **Automatically deactivate conflicting modal addons** to skip that confirmation. Disabling a modal addon never enables another one automatically.
+
 Turn on **Focus outlines** under **Appearance → Focus** if you want borders around focused buttons and navigation. To reduce animations, enable your system's reduced-motion setting.
 
 Hover over a control briefly to see its compact help tooltip, or reach it with keyboard navigation. Moving away, clicking, typing, or hiding the control dismisses the hint.

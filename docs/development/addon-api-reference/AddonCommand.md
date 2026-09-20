@@ -2,7 +2,7 @@
 
 # AddonCommand
 
-Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L249)
+Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L255)
 
 <details>
 <summary>Declaration</summary>
@@ -42,7 +42,7 @@ type AddonCommand = {
 
 ### id
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L251)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L257)
 
 Local id; the host prefixes it with the addon id.
 
@@ -52,7 +52,7 @@ id: string
 
 ### label
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L252)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L258)
 
 ```typescript
 label: string
@@ -60,7 +60,7 @@ label: string
 
 ### keywords
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L254)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L260)
 
 Searchable terms in the command palette, without duplicating the label.
 
@@ -70,7 +70,7 @@ keywords?: string
 
 ### workspace
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L256)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L262)
 
 Also show this command below the workspace tree.
 
@@ -80,7 +80,7 @@ workspace?: boolean
 
 ### slash
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L258)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L264)
 
 Optional whole-note action exposed by the slash-commands addon.
 
@@ -94,7 +94,7 @@ Related: [AddonSlashCommand](AddonSlashCommand.md).
 
 ### run
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L259)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L265)
 
 ```typescript
 run: () => void | Promise<void>

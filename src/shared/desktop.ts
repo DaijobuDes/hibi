@@ -101,6 +101,7 @@ export type DesktopApi = {
     addons: () => Promise<{
       states: AddonState[]
       packages: import('./sideload').InstalledAddon[]
+      notices: string[]
     }>
     recentWorkspaces: () => Promise<import('./workspace').RecentWorkspace[]>
   }
