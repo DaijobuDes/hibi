@@ -1,6 +1,6 @@
-import { CircleHelp, Keyboard } from 'lucide-react'
+import { CircleHelp } from 'lucide-react'
 import type { AddonManifest, AddonState } from '../../addons/api'
-import { Button, PanelMessage } from '../../ui/Controls'
+import { Button, SettingRow } from '../../ui/Controls'
 
 export function ModalEditingSettings({
   manifests,
@@ -25,26 +25,30 @@ export function ModalEditingSettings({
   return (
     <>
       <h2>Modal editing</h2>
-      <p>Enabling another modal addon asks before disabling the current one.</p>
-      {!modalAddons.length ? (
-        <PanelMessage
-          icon={<Keyboard size={28} />}
-          title="No modal addon installed"
+      <div className="settings-group">
+        <SettingRow
+          id="modal-editing-status"
+          label={
+            active ? 'Active modal addon' : 'No modal addon is currently active'
+          }
+          description={
+            active
+              ? 'Enabling another modal addon asks before disabling this one.'
+              : undefined
+          }
         >
-          No modal addon installed. {help}
-          <br />
-          <Button onClick={openAddons}>Add a modal addon</Button>
-        </PanelMessage>
-      ) : !active ? (
-        <PanelMessage
-          icon={<Keyboard size={28} />}
-          title="No modal addon is currently active"
-        >
-          No modal addon is currently active. {help}
-        </PanelMessage>
-      ) : (
-        <p>Currently active: {active.name}.</p>
-      )}
+          {active ? active.name : help}
+        </SettingRow>
+        {!modalAddons.length && (
+          <SettingRow
+            id="modal-editing-add"
+            label="Modal addon"
+            description="Install a modal addon to use modal editing."
+          >
+            <Button onClick={openAddons}>Add a modal addon</Button>
+          </SettingRow>
+        )}
+      </div>
     </>
   )
 }
