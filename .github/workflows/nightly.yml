@@ -45,7 +45,7 @@ jobs:
           if-no-files-found: error
   build:
     needs: prepare
-    timeout-minutes: 45
+    timeout-minutes: 75
     strategy:
       fail-fast: false
       matrix:
@@ -58,10 +58,10 @@ jobs:
             args: --win --x64
           - os: macos-latest
             platform: macos-arm64
-            args: --mac --arm64 -c.mac.identity=-
+            args: --mac --arm64
           - os: macos-15-intel
             platform: macos-x64
-            args: --mac --x64 -c.mac.identity=-
+            args: --mac --x64
     runs-on: ${{ matrix.os }}
     env:
       ELECTRON_CACHE: ${{ github.workspace }}/.cache/electron
@@ -106,7 +106,12 @@ jobs:
       - name: Package installers
         id: package
         env:
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          CSC_LINK: ${{ startsWith(matrix.platform, 'macos-') && secrets.MAC_CSC_LINK || '' }}
+          CSC_KEY_PASSWORD: ${{ startsWith(matrix.platform, 'macos-') && secrets.MAC_CSC_KEY_PASSWORD || '' }}
+          APPLE_API_KEY: ${{ startsWith(matrix.platform, 'macos-') && secrets.APPLE_API_KEY || '' }}
+          APPLE_API_KEY_ID: ${{ startsWith(matrix.platform, 'macos-') && vars.APPLE_API_KEY_ID || '' }}
+          APPLE_API_ISSUER: ${{ startsWith(matrix.platform, 'macos-') && vars.APPLE_API_ISSUER || '' }}
+          APPLE_TEAM_ID: ${{ startsWith(matrix.platform, 'macos-') && vars.APPLE_TEAM_ID || '' }}
           BUILD_ARGS: ${{ matrix.args }}
           RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
         run: |
@@ -115,6 +120,17 @@ jobs:
             -c.extraMetadata.version="$RELEASE_VERSION" \
             -c.buildVersion="${RELEASE_VERSION%%-*}.$GITHUB_RUN_NUMBER" \
             "-c.artifactName=hibi-\${version}-\${os}-\${arch}.\${ext}"
+      - name: Verify signed macOS installers
+        if: startsWith(matrix.platform, 'macos-')
+        env:
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+        run: |
+          app=$(find release -maxdepth 2 -type d -name 'hibi.app' -print -quit)
+          test -n "$app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign --display --verbose=4 "$app" 2>&1 | grep -F "TeamIdentifier=$APPLE_TEAM_ID"
+          spctl --assess --type execute --verbose=4 "$app"
+          xcrun stapler validate release/*.dmg
       - name: Record platform results
         env:
           PLATFORM: ${{ matrix.platform }}
