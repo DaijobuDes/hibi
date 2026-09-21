@@ -326,6 +326,7 @@ button:disabled {
   min-width: 0;
   height: 100%;
   padding-left: var(--space-3);
+  padding-right: var(--space-2);
 }
 .app[data-screen="settings"] .document-toolbar {
   padding-left: var(--space-4);
