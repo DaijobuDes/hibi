@@ -126,6 +126,7 @@
   },
   "dependencies": {
     "@myriaddreamin/typst-ts-node-compiler": "0.7.0",
+    "electron-updater": "6.8.9",
     "entities": "8.1.0",
     "esbuild": "0.28.2",
     "luaparse": "0.3.1",

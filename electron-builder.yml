@@ -23,6 +23,9 @@ extraResources:
   - from: node_modules/geist/LICENSE.txt
     to: licenses/geist.txt
 npmRebuild: false
+publish:
+  provider: generic
+  url: https://github.com/schmayterling/hibi/releases/download/nightly-green/
 electronFuses:
   runAsNode: false
   enableCookieEncryption: true

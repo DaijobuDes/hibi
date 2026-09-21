@@ -187,6 +187,9 @@
   "480347cad7e2": [
     "src/main/sideload.ts"
   ],
+  "8cec94394c0f": [
+    "src/main/updates.ts"
+  ],
   "7809d2e43901": [
     "src/main/analysis.ts"
   ],
@@ -385,6 +388,15 @@
   "b9e81709a10d": [
     "src/renderer/src/DependencySettings.tsx"
   ],
+  "f26f3275e735": [
+    "src/renderer/src/UpdateSettings.tsx"
+  ],
+  "3cad12865151": [
+    "src/main/updates.ts"
+  ],
+  "2937cffb37ab": [
+    "src/renderer/src/UpdateSettings.tsx"
+  ],
   "a03ab618feb8": [
     "src/renderer/src/SettingsScreen.tsx"
   ],
@@ -403,8 +415,12 @@
   "41b0c55f9c04": [
     "src/addons/review/index.tsx"
   ],
+  "497a19986d82": [
+    "src/main/updates.ts"
+  ],
   "ec963ffc911b": [
-    "src/renderer/src/DependencySettings.tsx"
+    "src/renderer/src/DependencySettings.tsx",
+    "src/renderer/src/UpdateSettings.tsx"
   ],
   "7346030400bf": [
     "src/addons/slash-commands/commands.ts",
@@ -493,6 +509,9 @@
   ],
   "4498a0e9706f": [
     "src/main/files.ts"
+  ],
+  "26a5af5d66ea": [
+    "src/shared/updates.ts"
   ],
   "d1eb8cb18d78": [
     "src/main/links.ts"
@@ -760,6 +779,9 @@
   "2062f7592858": [
     "src/main/addons.ts"
   ],
+  "3636e99d3bcf": [
+    "src/main/updates.ts"
+  ],
   "cbf582aa15a3": [
     "src/ui/DialogProvider.tsx"
   ],
@@ -787,6 +809,9 @@
   "a3ef55d8c922": [
     "src/main/links.ts"
   ],
+  "01648c5454ae": [
+    "src/main/updates.ts"
+  ],
   "a7887e68d52e": [
     "src/addons/documentation/ExportDialog.tsx"
   ],
@@ -795,6 +820,9 @@
   ],
   "9a19e86ea92a": [
     "src/addons/_shared/local-format-native.ts"
+  ],
+  "f56d1f9d0955": [
+    "src/main/updates.ts"
   ],
   "349ceed84d07": [
     "src/renderer/src/HibiSettings.tsx"
@@ -816,6 +844,9 @@
   ],
   "5bb069eb3188": [
     "src/renderer/src/main.tsx"
+  ],
+  "56bc9cc28f97": [
+    "src/main/updates.ts"
   ],
   "92f776f168d2": [
     "src/renderer/src/main.tsx"
@@ -1125,11 +1156,23 @@
   "54dde5eafd65": [
     "src/addons/math/PackageSettings.tsx"
   ],
+  "5dd4b9e997ee": [
+    "src/main/updates.ts"
+  ],
+  "dffe083d4d59": [
+    "src/main/updates.ts"
+  ],
+  "4f494b22379b": [
+    "src/renderer/src/UpdateSettings.tsx"
+  ],
   "c807156b8e24": [
     "src/addons/math/PackageSettings.tsx"
   ],
   "f0b0738f75b8": [
     "src/addons/math/PackageSettings.tsx"
+  ],
+  "b99a39070daf": [
+    "src/main/updates.ts"
   ],
   "9c9c27064963": [
     "src/addons/math/PackageSettings.tsx"
@@ -1682,6 +1725,9 @@
   ],
   "cc05d3346ee5": [
     "src/main/workspace.ts"
+  ],
+  "0959de9e21ce": [
+    "src/renderer/src/UpdateSettings.tsx"
   ],
   "87c719d7d306": [
     "src/main/history.ts"
@@ -2412,6 +2458,9 @@
   "115967f77ac6": [
     "src/renderer/src/FindBar.tsx"
   ],
+  "ab6b5a4d586b": [
+    "src/renderer/src/UpdateSettings.tsx"
+  ],
   "c1152a9f9069": [
     "src/renderer/src/main.tsx"
   ],
@@ -2423,6 +2472,9 @@
   ],
   "a3d81b876044": [
     "src/main/analysis.ts"
+  ],
+  "7c271253cc95": [
+    "src/main/updates.ts"
   ],
   "283701594ce8": [
     "src/renderer/src/CommandPalette.tsx"
@@ -2462,6 +2514,9 @@
   ],
   "a9cbcf68a682": [
     "src/renderer/src/ModalEditingSettings.tsx"
+  ],
+  "9bcbbaba55f2": [
+    "src/main/updates.ts"
   ],
   "a092ad6b8be0": [
     "src/addons/graph/Panel.tsx"
@@ -2651,6 +2706,9 @@
   "9fa7894a6b62": [
     "src/site/main.tsx"
   ],
+  "3503cf221e56": [
+    "src/renderer/src/UpdateSettings.tsx"
+  ],
   "cb30b7d97617": [
     "src/main/local-diagnostics/runtime.ts"
   ],
@@ -2666,6 +2724,9 @@
   ],
   "7bcc1921ca42": [
     "src/addons/discord-presence/rpc.ts"
+  ],
+  "5da69b322815": [
+    "src/main/updates.ts"
   ],
   "80cb8a06e27d": [
     "src/addons/git/native.ts"
@@ -2957,6 +3018,12 @@
   "a28622bdb72b": [
     "src/renderer/src/StartupPlaceholder.tsx"
   ],
+  "8bc443715025": [
+    "src/renderer/src/UpdateSettings.tsx"
+  ],
+  "e5e8f93e69c2": [
+    "src/renderer/src/UpdateSettings.tsx"
+  ],
   "80e8dd1a5a05": [
     "src/addons/diagnostics/Settings.tsx"
   ],
@@ -3118,6 +3185,9 @@
   ],
   "243854b4d0c7": [
     "src/ui/Sidebar.tsx"
+  ],
+  "159713231bf6": [
+    "src/renderer/src/UpdateSettings.tsx"
   ],
   "9e0c50a4c600": [
     "src/renderer/src/VersionHistory.tsx"
@@ -3905,6 +3975,27 @@
   "bee50784d023": [
     "src/shared/document-edits.ts"
   ],
+  "d5233922e139": [
+    "src/main/updates.ts"
+  ],
+  "e832fd97f277": [
+    "src/main/updates.ts"
+  ],
+  "2c9095034e70": [
+    "src/shared/updates.ts"
+  ],
+  "fb7eeae135c4": [
+    "src/main/updates.ts"
+  ],
+  "00212361daf3": [
+    "src/shared/updates.ts"
+  ],
+  "a7f5b261c62c": [
+    "src/main/updates.ts"
+  ],
+  "b22c9541adab": [
+    "src/main/updates.ts"
+  ],
   "70ccfc9c9dd2": [
     "src/main/index.ts"
   ],
@@ -4150,6 +4241,9 @@
   "d3a986ab8faa": [
     "src/main/appearance.ts"
   ],
+  "86ea554aa48a": [
+    "src/main/updates.ts"
+  ],
   "cf536ea00613": [
     "src/renderer/src/addon-views.ts",
     "src/renderer/src/addons.ts"
@@ -4329,6 +4423,24 @@
   "d6533641b536": [
     "src/main/index.ts"
   ],
+  "d4fc42307306": [
+    "src/renderer/src/UpdateSettings.tsx"
+  ],
+  "c296b396f03c": [
+    "src/main/updates.ts"
+  ],
+  "1e6bf669df09": [
+    "src/renderer/src/UpdateSettings.tsx"
+  ],
+  "22e2bada8f1c": [
+    "src/renderer/src/UpdateSettings.tsx"
+  ],
+  "29a9d5107833": [
+    "src/main/updates.ts"
+  ],
+  "8a52ed76ddaf": [
+    "src/main/updates.ts"
+  ],
   "0c78f3e5ef4e": [
     "src/renderer/src/DependencySettings.tsx"
   ],
@@ -4408,6 +4520,9 @@
   "3945c0a1fc3c": [
     "src/renderer/src/VersionHistory.tsx"
   ],
+  "562001872cce": [
+    "src/renderer/src/UpdateSettings.tsx"
+  ],
   "dcc839a4015c": [
     "src/main/index.ts"
   ],
@@ -4431,6 +4546,9 @@
   ],
   "b26be0341744": [
     "src/main/dependencies.ts"
+  ],
+  "a7d3310ed7a2": [
+    "src/main/updates.ts"
   ],
   "19734a1b58ca": [
     "src/renderer/src/SettingsScreen.tsx"

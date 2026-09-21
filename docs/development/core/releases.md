@@ -1,5 +1,9 @@
 # Releases and nightly builds
 
+The updater reads `update.json` from the rolling `nightly-green` (recommended) or `nightly` (all nightlies, including broken builds) release. Publication generates SHA-512 hashes and sizes from the packaged installers with `scripts/update-feed.mjs`. The manifest pins downloads to an immutable dated release, which also contains `latest.yml` and `latest-linux.yml` for electron-updater. A failed package job cannot publish either feed. Broken checks advance only the all-nightlies feed.
+
+The main process owns channel preferences, feed requests, verified downloads, and installation. Windows NSIS and Linux AppImage updates use electron-updater. macOS uses a verified DMG download with manual replacement because current builds are ad-hoc signed; automatic replacement requires trusted distribution signing. Restart installation passes through the normal document flush and unsaved-edit confirmation. Nightly ordering uses date and numeric workflow run/attempt, never lexical commit-hash order.
+
 The **nightly and releases** workflow builds Linux x64, Windows x64, macOS Apple Silicon, and macOS Intel installers from one fixed commit. Every release build compiles the app and runs the full required suite on each platform. Download caches can speed up installation; cached builds and previous test results never certify a release.
 
 | Result | Nightly | Stable release |

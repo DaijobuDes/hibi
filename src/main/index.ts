@@ -47,6 +47,7 @@ import { MEDIA_CHANNELS } from '../shared/media'
 import { SIDELOAD_CHANNELS } from '../shared/sideload'
 import { startupMark, startupSpan } from '../shared/startup'
 import { UI_CASE_CHANNEL } from '../shared/ui-case'
+import { UPDATE_CHANNELS } from '../shared/updates'
 import { WORKSPACE_CHANNELS } from '../shared/workspace'
 import { WORKSPACE_SETTINGS_CHANNELS } from '../shared/workspace-settings'
 import {
@@ -110,6 +111,17 @@ import {
 } from './security'
 import { installedAddons, installedAsset, openAddonsFolder } from './sideload'
 import { getUiCase, loadUiCase, saveUiCase } from './ui-case'
+import {
+  cancelUpdateInstall,
+  checkForUpdates,
+  downloadUpdate,
+  finishUpdateInstall,
+  getUpdateState,
+  installUpdate,
+  loadUpdates,
+  setUpdateChannel,
+  startUpdateChecks,
+} from './updates'
 import {
   getWorkspace,
   indexWorkspace,
@@ -421,15 +433,24 @@ function createWindow(): void {
       await flushRenderer()
       await fileOperation?.catch(() => undefined)
       if (await confirmDiscardAll(window)) {
+        const installed = finishUpdateInstall()
+        if (installed === false) {
+          quitting = false
+          return
+        }
         discardChanges()
         allowClose = true
-        if (quitting) app.quit()
-        else window.close()
+        if (!installed) {
+          if (quitting) app.quit()
+          else window.close()
+        }
       } else {
+        cancelUpdateInstall()
         quitting = false
       }
     })()
       .catch((error: unknown) => {
+        cancelUpdateInstall()
         quitting = false
         dialog.showErrorBox(
           'Could not save document',
@@ -672,6 +693,7 @@ if (!app.requestSingleInstanceLock()) {
         'workspace-preferences',
         startupWorkspacePending,
       )
+      const updatesReady = loadUpdates()
       const preferences = Promise.all([
         hotkeysReady,
         addonsReady,
@@ -692,6 +714,15 @@ if (!app.requestSingleInstanceLock()) {
           await ready
           return listener(...args)
         })
+      handle(UPDATE_CHANNELS.get, getUpdateState, updatesReady)
+      handle(
+        UPDATE_CHANNELS.channel,
+        (_event, channel: unknown) => setUpdateChannel(channel),
+        updatesReady,
+      )
+      handle(UPDATE_CHANNELS.check, checkForUpdates, updatesReady)
+      handle(UPDATE_CHANNELS.download, downloadUpdate, updatesReady)
+      handle(UPDATE_CHANNELS.install, installUpdate, updatesReady)
       protocol.handle('app', serveAsset)
       session.defaultSession.setPermissionCheckHandler(() => false)
       session.defaultSession.setPermissionRequestHandler(
@@ -1142,6 +1173,8 @@ if (!app.requestSingleInstanceLock()) {
       createWindow()
       await preferences
       installMenu()
+      await updatesReady
+      startUpdateChecks()
     })
     .catch((error: unknown) => {
       console.error('startup failed:', error)

@@ -70,6 +70,16 @@ export type AppInfo = {
 }
 
 export type DesktopApi = {
+  getUpdateState: () => Promise<import('./updates').UpdateState>
+  setUpdateChannel: (
+    channel: import('./updates').UpdateChannel,
+  ) => Promise<import('./updates').UpdateState>
+  checkForUpdates: () => Promise<import('./updates').UpdateState>
+  downloadUpdate: () => Promise<import('./updates').UpdateState>
+  installUpdate: () => Promise<void>
+  onUpdateChanged: (
+    callback: (state: import('./updates').UpdateState) => void,
+  ) => () => void
   getDependencies: (
     owner?: string,
   ) => Promise<import('./dependencies').DependencyState[]>

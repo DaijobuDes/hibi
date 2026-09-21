@@ -21,6 +21,7 @@ import { DIAGNOSTIC_CHANNEL } from '../shared/local-diagnostics'
 import { MEDIA_CHANNELS } from '../shared/media'
 import { SIDELOAD_CHANNELS } from '../shared/sideload'
 import { UI_CASE_CHANNEL } from '../shared/ui-case'
+import { UPDATE_CHANNELS, type UpdateState } from '../shared/updates'
 import { WORKSPACE_CHANNELS, type WorkspaceState } from '../shared/workspace'
 import { WORKSPACE_SETTINGS_CHANNELS } from '../shared/workspace-settings'
 import { DiagnosticProducer } from './local-diagnostics'
@@ -81,6 +82,22 @@ if (process.isMainFrame) {
   for (const pending of [startupDocument, startupAddons, startupRecent])
     void pending.catch(() => {})
   contextBridge.exposeInMainWorld('hibi', {
+    getUpdateState: () => transport.invoke(UPDATE_CHANNELS.get),
+    setUpdateChannel: (channel) =>
+      transport.invoke(UPDATE_CHANNELS.channel, channel),
+    checkForUpdates: () => transport.invoke(UPDATE_CHANNELS.check),
+    downloadUpdate: () => transport.invoke(UPDATE_CHANNELS.download),
+    installUpdate: () => ipcRenderer.invoke(UPDATE_CHANNELS.install),
+    onUpdateChanged: (callback) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        state: UpdateState,
+      ) => callback(state)
+      transport.on(UPDATE_CHANNELS.changed, listener)
+      return () => {
+        transport.removeListener(UPDATE_CHANNELS.changed, listener)
+      }
+    },
     getDependencies: (owner) =>
       transport.invoke(DEPENDENCY_CHANNELS.list, owner),
     checkDependency: (target) =>

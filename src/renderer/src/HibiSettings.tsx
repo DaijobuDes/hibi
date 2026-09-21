@@ -6,6 +6,7 @@ import { Button, SettingRow } from '../../ui/Controls'
 import { useDialogs } from '../../ui/DialogProvider'
 import { Modal } from '../../ui/Modal'
 import { RecoveryScreen } from './RecoveryScreen'
+import { UpdateSettings } from './UpdateSettings'
 import './hibi-settings.css'
 
 function LicenseText({ id }: { id: string }) {
@@ -104,6 +105,7 @@ export function HibiSettings({ info }: { info: AppInfo | null }) {
           </Button>
         </SettingRow>
       </div>
+      <UpdateSettings />
       <h2>Diagnostics</h2>
       <div className="settings-group">
         <SettingRow

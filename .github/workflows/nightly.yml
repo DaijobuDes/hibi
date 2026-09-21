@@ -165,6 +165,8 @@ jobs:
       - name: Classify complete release
         id: classify
         run: node scripts/nightly.mjs classify
+      - name: Generate verified update feeds
+        run: node scripts/update-feed.mjs
       - name: Publish immutable release with commit changelog
         id: publish
         env:
@@ -214,7 +216,18 @@ jobs:
             gh release create nightly-green --target "$SHA" --title 'Latest recommended nightly' --notes-file recommended-notes.md --prerelease --latest=false
           fi
           gh release upload nightly-green recommended-nightly.json --clobber
+          gh release upload nightly-green installers/update.json --clobber
           gh release edit nightly-green --target "$SHA" --notes-file recommended-notes.md --prerelease --latest=false
+      - name: Update all-nightlies feed
+        if: needs.prepare.outputs.channel == 'nightly'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ needs.prepare.outputs.sha }}
+        run: |
+          if ! gh release view nightly >/dev/null 2>&1; then
+            gh release create nightly --target "$SHA" --title 'Latest nightly (including broken builds)' --notes 'This update channel includes builds with failed checks. Use nightly-green for the recommended nightly.' --prerelease --latest=false
+          fi
+          gh release upload nightly installers/update.json --clobber
       - name: Surface broken nightly checks
         if: steps.classify.outputs.status == 'nightly-broken'
         run: |
