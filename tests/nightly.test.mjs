@@ -381,6 +381,8 @@ test('release workflow always builds nightlies and gates stable publication on t
   for (const command of [
     'security import',
     'security set-key-partition-list',
+    'base64 --decode',
+    'openssl pkey',
     'CSC_KEYCHAIN=',
     'APPLE_API_KEY=',
   ])

@@ -116,7 +116,12 @@ jobs:
           keychain_password=$(openssl rand -base64 32)
 
           printf '%s' "$MAC_CSC_LINK" | base64 --decode -o "$certificate_path"
-          printf '%s' "$APPLE_API_KEY_CONTENT" > "$api_key_path"
+          if [[ "$APPLE_API_KEY_CONTENT" == -----BEGIN* ]]; then
+            printf '%s' "$APPLE_API_KEY_CONTENT" > "$api_key_path"
+          else
+            printf '%s' "$APPLE_API_KEY_CONTENT" | base64 --decode -o "$api_key_path"
+          fi
+          openssl pkey -in "$api_key_path" -noout
           security create-keychain -p "$keychain_password" "$keychain_path"
           security set-keychain-settings -lut 21600 "$keychain_path"
           security unlock-keychain -p "$keychain_password" "$keychain_path"
