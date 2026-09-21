@@ -156,7 +156,7 @@ jobs:
           codesign --verify --deep --strict --verbose=2 "$app"
           codesign --display --verbose=4 "$app" 2>&1 | grep -F "TeamIdentifier=$APPLE_TEAM_ID"
           spctl --assess --type execute --verbose=4 "$app"
-          xcrun stapler validate release/*.dmg
+          xcrun stapler validate "$app"
       - name: Record platform results
         env:
           PLATFORM: ${{ matrix.platform }}
