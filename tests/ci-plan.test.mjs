@@ -85,3 +85,69 @@ test('incremental checks select dependencies and fall back safely for cold, clea
   assert.equal(plan([]).build, true)
   assert.ok(plan([]).tests.includes('tests/desktop.test.mjs'))
 })
+
+test('docs-only checks rebuild bundled help and retain documentation tests without unrelated desktop work', (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'hibi-ci-docs-'))
+  t.after(() => rmSync(root, { recursive: true, force: true }))
+  const files = {
+    'tests/electron.mjs': "import { _electron } from 'playwright'",
+    'tests/desktop.test.mjs': "import './electron.mjs'",
+    'tests/addon-readme.test.mjs': "import './electron.mjs'",
+    'tests/addon-reference.test.mjs': "import './electron.mjs'",
+    'tests/dev-reload.test.mjs': "import './electron.mjs'",
+    'tests/docs-export.test.mjs':
+      "import { execFileSync } from 'node:child_process'",
+  }
+  for (const [file, source] of Object.entries(files)) {
+    mkdirSync(dirname(join(root, file)), { recursive: true })
+    writeFileSync(join(root, file), source)
+  }
+  execFileSync('git', ['init'], { cwd: root, stdio: 'pipe' })
+  execFileSync('git', ['add', '.'], { cwd: root, stdio: 'pipe' })
+  const previousTests = Object.keys(files)
+    .filter((file) => file.endsWith('.test.mjs'))
+    .sort()
+  const plan = (changed, options = {}) =>
+    planChecks(root, { changed, previousTests, ...options })
+  for (const changed of [
+    ['docs/guides/editing.md'],
+    ['docs/images/editor.png'],
+    ['docs/development/addon-api-reference/Sidebar.md', 'docs/README.md'],
+  ]) {
+    const result = plan(changed)
+    assert.equal(result.full, false)
+    assert.equal(result.build, true)
+    assert.deepEqual(result.tests, [
+      'tests/addon-readme.test.mjs',
+      'tests/addon-reference.test.mjs',
+      'tests/dev-reload.test.mjs',
+      'tests/docs-export.test.mjs',
+    ])
+  }
+  for (const changed of [
+    ['docs/licenses/typst-assets.md'],
+    ['src/addons/typst/README.md'],
+    ['docs/guides/editing.md', 'src/shared/one.ts'],
+    ['docs/config.js'],
+    ['tests/fixtures/help.md'],
+  ]) {
+    assert.ok(plan(changed).tests.includes('tests/desktop.test.mjs'))
+  }
+  for (const options of [
+    { force: true },
+    { previousTests: undefined },
+    { outputAvailable: false },
+  ]) {
+    assert.deepEqual(
+      plan(['docs/guides/editing.md'], options).tests,
+      previousTests,
+    )
+  }
+  assert.ok(
+    plan(['docs/guides/editing.md'], {
+      previousTests: previousTests.filter(
+        (file) => file !== 'tests/desktop.test.mjs',
+      ),
+    }).tests.includes('tests/desktop.test.mjs'),
+  )
+})

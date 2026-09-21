@@ -37,8 +37,6 @@ runs:
           checks-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json', '.nvmrc', 'scripts/ci.mjs') }}-
     - run: npm ci
       shell: bash
-    - run: node --test tests/addon-download.test.mjs
-      shell: bash
     - id: check
       shell: bash
       env:

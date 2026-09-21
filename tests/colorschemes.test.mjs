@@ -140,6 +140,26 @@ test('app palettes update all surfaces, preserve editing, and persist native app
   })
   await clickMenu(app, 'Settings')
   await page.getByRole('tab', { name: /^appearance$/i, exact: true }).click()
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.evaluate(() => {
+    const panel = document.createElement('div')
+    panel.id = 'hover-probe'
+    panel.style.cssText =
+      'position:fixed;right:20px;bottom:40px;z-index:99999;display:flex;gap:12px'
+    for (const kind of ['primary', 'legacy', 'row', 'ghost', 'disabled']) {
+      const button = document.createElement('button')
+      button.textContent = kind
+      button.id = `hover-${kind}`
+      button.className = `ui-button ${kind === 'legacy' ? 'dialog-primary' : ''}`
+      button.dataset.variant = kind === 'disabled' ? 'primary' : kind
+      if (['row', 'ghost'].includes(kind))
+        button.setAttribute('aria-pressed', 'true')
+      if (kind === 'disabled') button.disabled = true
+      panel.append(button)
+    }
+    document.body.append(panel)
+  })
+  const hoveredAppearances = new Set()
   for (const scheme of bundledColorschemes) {
     await page
       .getByRole('combobox', { name: /^appearance$/i, exact: true })
@@ -170,7 +190,26 @@ test('app palettes update all surfaces, preserve editing, and persist native app
       (await page.evaluate(() => window.hibi.getDocument())).markdown,
       'keep this note',
     )
+    if (!hoveredAppearances.has(scheme.appearance)) {
+      for (const kind of ['primary', 'legacy', 'row', 'ghost', 'disabled']) {
+        const button = page.locator(`#hover-${kind}`)
+        await page.mouse.move(0, 0)
+        const colors = () =>
+          button.evaluate((element) => {
+            const style = getComputedStyle(element)
+            return {
+              background: style.backgroundColor,
+              foreground: style.color,
+            }
+          })
+        const before = await colors()
+        await button.hover({ force: true })
+        assert.deepEqual(await colors(), before, `${scheme.id}: ${kind}`)
+      }
+      hoveredAppearances.add(scheme.appearance)
+    }
   }
+  await page.locator('#hover-probe').evaluate((element) => element.remove())
   await page
     .getByRole('combobox', { name: /dark colorscheme/i })
     .selectOption('catppuccin-mocha')

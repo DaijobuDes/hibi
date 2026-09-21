@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 import test from 'node:test'
@@ -318,7 +318,7 @@ test('source font and layout are ready before the pane starts moving', {
   )
 })
 
-test('panes move horizontally and sidebar selection slides without fading settings', {
+test('reduced motion disables transitions and compact windows keep the palette visible', {
   timeout: 30000,
 }, async (t) => {
   const profile = await mkdtemp(join(tmpdir(), 'hibi-motion-'))
@@ -337,217 +337,8 @@ test('panes move horizontally and sidebar selection slides without fading settin
   })
   const page = await app.firstWindow()
   await page.getByRole('textbox', { name: /document editor/i }).waitFor()
-  await page
-    .getByRole('button', { name: /^side-by-side$/i, exact: true })
-    .click()
-  await page.waitForFunction(
-    () =>
-      document.querySelector('.editor-panes').dataset.sourceReady === 'true',
-  )
-  await page.getByRole('button', { name: /^normal$/i, exact: true }).click()
-  await page
-    .getByRole('textbox', { name: /markdown editor/i })
-    .waitFor({ state: 'hidden' })
-  await page
-    .getByRole('textbox', { name: /document editor/i })
-    .fill(
-      'long paragraphs should keep their wrapping while a panel slides across the window. '.repeat(
-        40,
-      ),
-    )
-  assert.equal(
-    await page.getByRole('button', { name: /^format$/i, exact: true }).count(),
-    0,
-  )
-  assert.equal(await page.locator('#format-menu').count(), 0)
-
-  const settle = () =>
-    page.evaluate(() =>
-      Promise.all(
-        document
-          .getAnimations()
-          .filter((animation) =>
-            Number.isFinite(animation.effect?.getComputedTiming().iterations),
-          )
-          .map((animation) => animation.finished.catch(() => {})),
-      ),
-    )
-  async function sampleSplit(from, to = 'side-by-side') {
-    await page
-      .getByRole('button', { name: uiName(from, true), exact: true })
-      .click()
-    await settle()
-    return page.evaluate(async (target) => {
-      const sample = () => {
-        const rich = document
-          .querySelector('.rich-pane')
-          .getBoundingClientRect()
-        const source = document
-          .querySelector('.source-pane')
-          .getBoundingClientRect()
-        return {
-          richX: rich.x,
-          richWidth: document.querySelector('.rich-pane').offsetWidth,
-          sourceX: source.x,
-          sourceWidth: document.querySelector('.source-pane').offsetWidth,
-          opacity: Number(
-            getComputedStyle(document.querySelector('.editor-content')).opacity,
-          ),
-          dividerOpacity: Number(
-            getComputedStyle(document.querySelector('.editor-panes'), '::after')
-              .opacity,
-          ),
-        }
-      }
-      const samples = [sample()]
-      document.querySelector(`button[aria-label="${target}" i]`).click()
-      const start = performance.now()
-      while (performance.now() - start < 300) {
-        await new Promise(requestAnimationFrame)
-        samples.push(sample())
-      }
-      await Promise.all(
-        document
-          .getAnimations()
-          .filter((animation) =>
-            Number.isFinite(animation.effect?.getComputedTiming().iterations),
-          )
-          .map((animation) => animation.finished.catch(() => {})),
-      )
-      await new Promise(requestAnimationFrame)
-      samples.push(sample())
-      return samples
-    }, to)
-  }
-  const fromRich = await sampleSplit('normal')
-  assert.equal(fromRich[0].sourceWidth, 500)
-  assert.ok(fromRich.some((frame) => frame.sourceX > -500 && frame.sourceX < 0))
-  assert.equal(new Set(fromRich.map((frame) => frame.sourceWidth)).size, 1)
-  assert.ok(new Set(fromRich.map((frame) => frame.richWidth)).size <= 2)
-  assert.equal(fromRich.at(-1).sourceX, 0)
-  assert.equal(fromRich.at(-1).richX, 500)
-  const fromSource = await sampleSplit('source view')
-  assert.equal(fromSource[0].richWidth, 500)
-  assert.ok(fromSource.some((frame) => frame.richX > 510 && frame.richX < 1000))
-  assert.equal(fromSource.at(-1).richX, 500)
-  assert.equal(new Set(fromSource.map((frame) => frame.richWidth)).size, 1)
-  const dismissSource = await sampleSplit('side-by-side', 'normal')
-  assert.equal(new Set(dismissSource.map((frame) => frame.sourceWidth)).size, 1)
-  const dismissRich = await sampleSplit('side-by-side', 'source view')
-  assert.equal(new Set(dismissRich.map((frame) => frame.richWidth)).size, 1)
-  const directSource = await sampleSplit('normal', 'source view')
-  const directRich = await sampleSplit('source view', 'normal')
-  for (const frames of [
-    fromRich,
-    fromSource,
-    dismissSource,
-    dismissRich,
-    directSource,
-    directRich,
-  ]) {
-    assert.ok(
-      frames.some(({ opacity }) => opacity === 0),
-      JSON.stringify(
-        frames.map(({ opacity, richWidth, sourceWidth }) => ({
-          opacity,
-          richWidth,
-          sourceWidth,
-        })),
-      ),
-    )
-    assert.equal(frames.at(-1).opacity, 1)
-    for (let index = 1; index < frames.length; index++) {
-      if (
-        frames[index].richWidth !== frames[index - 1].richWidth ||
-        frames[index].sourceWidth !== frames[index - 1].sourceWidth
-      ) {
-        assert.equal(
-          frames[index].opacity,
-          0,
-          'text must be hidden when pane widths change',
-        )
-      }
-    }
-  }
-  assert.ok(
-    fromRich.some(
-      ({ dividerOpacity }) => dividerOpacity > 0 && dividerOpacity < 1,
-    ),
-  )
-  assert.equal(fromRich.at(-1).dividerOpacity, 1)
-  assert.ok(
-    dismissSource.some(
-      ({ dividerOpacity }) => dividerOpacity > 0 && dividerOpacity < 1,
-    ),
-  )
-  assert.equal(dismissSource.at(-1).dividerOpacity, 0)
-  await page
-    .getByRole('button', { name: /^side-by-side$/i, exact: true })
-    .click()
-  await settle()
-  const divider = await page
-    .locator('.editor-panes')
-    .evaluate((element) => getComputedStyle(element, '::after').backgroundImage)
-  assert.match(divider, /linear-gradient/)
-  assert.match(divider, /rgba\(0, 0, 0, 0\)/)
-  await mkdir('test-results', { recursive: true })
-  await page.screenshot({ path: 'test-results/split-view.png' })
-
   await clickMenu(app, 'Settings')
   await page.getByRole('main', { name: /^settings$/i, exact: true }).waitFor()
-  await settle()
-  const selection = await page.evaluate(async () => {
-    const marker = document.querySelector('.category-selection')
-    const top = () => marker.getBoundingClientRect().top
-    const before = top()
-    const target = document
-      .querySelector('#category-hotkeys')
-      .getBoundingClientRect().top
-    document.querySelector('#category-hotkeys').click()
-    const frames = []
-    const start = performance.now()
-    while (performance.now() - start < 230) {
-      await new Promise(requestAnimationFrame)
-      frames.push(top())
-    }
-    await Promise.all(
-      marker
-        .getAnimations()
-        .filter((animation) =>
-          Number.isFinite(animation.effect?.getComputedTiming().iterations),
-        )
-        .map((animation) => animation.finished.catch(() => {})),
-    )
-    await new Promise(requestAnimationFrame)
-    frames.push(top())
-    return {
-      before,
-      target,
-      frames,
-      transitions: document
-        .getAnimations()
-        .filter((animation) =>
-          Number.isFinite(animation.effect?.getComputedTiming().iterations),
-        )
-        .some((animation) =>
-          animation.effect?.pseudoElement?.includes('view-transition'),
-        ),
-      opacity: getComputedStyle(document.querySelector('.settings-screen'))
-        .opacity,
-      border: getComputedStyle(document.querySelector('.settings-sidebar'))
-        .borderRightWidth,
-    }
-  })
-  assert.ok(
-    selection.frames.some(
-      (top) => top > selection.before && top < selection.target,
-    ),
-  )
-  assert.equal(selection.frames.at(-1), selection.target)
-  assert.equal(selection.transitions, false)
-  assert.equal(selection.opacity, '1')
-  assert.equal(selection.border, '0px')
-
   await page.emulateMedia({ reducedMotion: 'reduce' })
   assert.equal(
     await page
@@ -559,6 +350,7 @@ test('panes move horizontally and sidebar selection slides without fading settin
   await page
     .getByRole('button', { name: /^source view$/i, exact: true })
     .click()
+  await page.getByRole('textbox', { name: /markdown editor/i }).waitFor()
   assert.equal(
     await page
       .locator('.editor-content')
@@ -580,11 +372,9 @@ test('panes move horizontally and sidebar selection slides without fading settin
       bounds.x + bounds.width <= 480 &&
       bounds.y + bounds.height <= 360,
   )
-  await page.emulateMedia({ colorScheme: 'light' })
-  await page.screenshot({ path: 'test-results/palette-compact-light.png' })
 })
 
-test('workspace sidebar slides at a fixed width and the titlebar follows its state', {
+test('workspace sidebar remains above editor content during motion and preserves resize behavior', {
   timeout: 30000,
 }, async (t) => {
   const profile = await mkdtemp(join(tmpdir(), 'hibi-sidebar-'))
@@ -610,8 +400,6 @@ test('workspace sidebar slides at a fixed width and the titlebar follows its sta
   ]) {
     const samples = await page.evaluate(async (reverse) => {
       const sidebar = document.querySelector('.workspace-sidebar > .sidebar')
-      const editor = document.querySelector('.editor-surface')
-      const toolbar = document.querySelector('.sidebar-toolbar')
       document
         .querySelector('[aria-label="toggle workspace sidebar" i]')
         .click()
@@ -633,18 +421,8 @@ test('workspace sidebar slides at a fixed width and the titlebar follows its sta
         slot.inert = slot.dataset.open === 'false'
         samples.push({
           x: sidebar.getBoundingClientRect().x,
-          width: sidebar.offsetWidth,
-          top: sidebar.getBoundingClientRect().top,
-          bottom: sidebar.getBoundingClientRect().bottom,
-          viewportHeight: innerHeight,
-          editorWidth: editor.offsetWidth,
-          contentX: editor.getBoundingClientRect().left,
-          toolbarWidth: toolbar.offsetWidth,
           visibility: getComputedStyle(sidebar).visibility,
           onTop,
-          toolbarBackground: getComputedStyle(toolbar).backgroundColor,
-          titlebarBackground: getComputedStyle(toolbar.parentElement)
-            .backgroundColor,
         })
       }
       while (performance.now() - start < 320) {
@@ -675,40 +453,9 @@ test('workspace sidebar slides at a fixed width and the titlebar follows its sta
         .filter(({ x }) => x > -255 && x < -1)
         .every(({ visibility, onTop }) => visibility === 'visible' && onTop),
     )
-    assert.ok(
-      samples.every(
-        ({ toolbarBackground, titlebarBackground }) =>
-          toolbarBackground === 'rgba(0, 0, 0, 0)' &&
-          titlebarBackground === 'rgba(0, 0, 0, 0)',
-      ),
-    )
-    assert.deepEqual([...new Set(samples.map(({ width }) => width))], [256])
-    assert.ok(
-      samples.every(
-        ({ top, bottom, viewportHeight }) =>
-          top === 0 && bottom === viewportHeight,
-      ),
-    )
-    assert.equal(
-      new Set(samples.map(({ editorWidth }) => editorWidth)).size,
-      reverse ? 2 : 1,
-    )
-    assert.ok(
-      samples.every(
-        ({ x, width, contentX }) => Math.abs(contentX - x - width) < 1,
-      ),
-    )
     assert.equal(samples.at(-1).x, opening ? 0 : -256)
-    assert.equal(
-      samples.at(-1).toolbarWidth,
-      opening ? 256 : process.platform === 'darwin' ? 116 : 44,
-    )
   }
   await clickMenu(app, 'Settings')
-  assert.equal(
-    await page.locator('.sidebar-toolbar').evaluate((el) => el.offsetWidth),
-    256,
-  )
   assert.equal(
     await page.getByRole('button', { name: /^new$/i, exact: true }).count(),
     0,

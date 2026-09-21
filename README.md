@@ -32,7 +32,7 @@ for build commands, tests, and addon development, see [developer and agent notes
 
 ## contributing guidelines
 
-see this: [CONTRIBUTING.md](/CONTRIBUTING.md)
+see this: [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## ai contribution policy
 

@@ -18,7 +18,7 @@ const git = (root, ...args) =>
   }).trimEnd()
 const paths = (text) => text.split('\0').filter(Boolean)
 const appInput =
-  /^(src\/|build\/|scripts\/|docs\/licenses\/|package(?:-lock)?\.json$|tsconfig.*\.json$|electron[^/]*\.(?:ts|yml)$|\.nvmrc$|\.npmrc$)/
+  /^(src\/|build\/|scripts\/|docs\/|package(?:-lock)?\.json$|tsconfig.*\.json$|electron[^/]*\.(?:ts|yml)$|\.nvmrc$|\.npmrc$)/
 const globalInput =
   /^(\.github\/|package(?:-lock)?\.json$|tsconfig.*\.json$|electron[^/]*\.(?:ts|yml)$|biome\.json$|\.gitattributes$|\.nvmrc$|\.npmrc$|scripts\/ci\.mjs$)/
 
@@ -53,6 +53,13 @@ export function planChecks(
   const changes = new Set(changed ?? [])
   const build =
     full || !outputAvailable || [...changes].some((file) => appInput.test(file))
+  const documentationOnly =
+    changes.size > 0 &&
+    [...changes].every(
+      (file) =>
+        /^docs\/.*\.(md|png|jpe?g|gif|webp|avif|svg)$/.test(file) &&
+        !file.startsWith('docs/licenses/'),
+    )
   const dataChanged = [...changes].some(
     (file) =>
       !file.startsWith('tests/') ||
@@ -115,6 +122,13 @@ export function planChecks(
     ? tests
     : tests.filter((test) => {
         if (!previousTests.includes(test)) return true
+        if (documentationOnly)
+          return [
+            'tests/addon-readme.test.mjs',
+            'tests/addon-reference.test.mjs',
+            'tests/dev-reload.test.mjs',
+            'tests/docs-export.test.mjs',
+          ].includes(test)
         const graph = dependencies(test)
         return (
           [...graph.files].some((file) => changes.has(file)) ||

@@ -120,7 +120,7 @@ test('long documents with HTML and reference syntax stay visually editable throu
   await page
     .getByRole('textbox', { name: 'Markdown editor', exact: true })
     .waitFor()
-  await page.getByRole('button', { name: 'Normal', exact: true }).click()
+  await page.getByRole('button', { name: /^normal$/i, exact: true }).click()
   await editable()
   await page.evaluate(() => window.hibi.saveDocument(false))
   assert.equal(await readFile(file, 'utf8'), edited)

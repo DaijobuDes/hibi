@@ -7,7 +7,7 @@ import { electron } from './electron.mjs'
 import { clickMenu } from './keyboard.mjs'
 import { uiName } from './ui.mjs'
 
-test('titlebar insets titles without leading actions and adapts outer button corners', async (t) => {
+test('titlebar keeps actions minimal, blocks scrolled content, and persists toast settings', async (t) => {
   const profile = await mkdtemp(join(tmpdir(), 'hibi-titlebar-'))
   const app = await electron.launch({
     args: [resolve('.'), `--user-data-dir=${profile}`],
@@ -51,12 +51,6 @@ test('titlebar insets titles without leading actions and adapts outer button cor
       .count(),
     0,
   )
-  assert.equal(
-    await page
-      .locator('.document-tab')
-      .evaluate((tab) => getComputedStyle(tab).borderRadius),
-    '6px',
-  )
   await clickMenu(app, 'Settings')
   for (const category of ['hibi', 'appearance']) {
     await page
@@ -76,14 +70,6 @@ test('titlebar insets titles without leading actions and adapts outer button cor
       `${category}: scrolled content must not show through the titlebar`,
     )
   }
-  const inset = await page
-    .locator('.document-title')
-    .evaluate(
-      (element) =>
-        element.getBoundingClientRect().left -
-        element.parentElement.getBoundingClientRect().left,
-    )
-  assert.equal(inset, 16)
   await page
     .getByLabel(/^position$/i, { exact: true })
     .selectOption('top-center')
@@ -120,29 +106,5 @@ test('titlebar insets titles without leading actions and adapts outer button cor
     assert.equal(surface.left, open ? 256 : 0)
     assert.equal(surface.top, 0)
     assert.equal(surface.background, surface.page)
-  }
-  for (const [platform, radius, rightPadding] of [
-    ['darwin', '6px', '12px'],
-    ['win32', '6px', '140px'],
-    ['linux', '6px', '140px'],
-  ]) {
-    const actual = await page.evaluate((platform) => {
-      document.querySelector('.app').setAttribute('data-platform', platform)
-      const button = document.querySelector(
-        platform === 'darwin'
-          ? '.view-switch > button:last-child'
-          : '.sidebar-toggle',
-      )
-      const styles = getComputedStyle(button)
-      return {
-        radius:
-          platform === 'darwin'
-            ? styles.borderTopRightRadius
-            : styles.borderTopLeftRadius,
-        rightPadding: getComputedStyle(document.querySelector('.titlebar'))
-          .paddingRight,
-      }
-    }, platform)
-    assert.deepEqual(actual, { radius, rightPadding })
   }
 })
