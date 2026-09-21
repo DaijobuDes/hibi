@@ -1,4 +1,4 @@
-import type { Editor } from '@tiptap/core'
+import { type Editor, Extension } from '@tiptap/core'
 import type { Mark, Node } from '@tiptap/pm/model'
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
@@ -9,6 +9,41 @@ const delimiters: Record<string, string> = {
   strike: '~~',
   code: '`',
 }
+
+/** Leave final inline formatting without adding a character to the document. */
+export const MarkdownMarkExit = Extension.create({
+  name: 'markdownMarkExit',
+  priority: 1100,
+  addKeyboardShortcuts() {
+    const move = (forward: boolean) => {
+      const { state, view, isEditable } = this.editor
+      const { selection, storedMarks } = state
+      if (
+        !isEditable ||
+        !(selection instanceof TextSelection) ||
+        !selection.empty ||
+        !selection.eq(TextSelection.atEnd(state.doc)) ||
+        !selection.$from.marks().some((mark) => delimiters[mark.type.name])
+      )
+        return false
+      const marks = storedMarks ?? selection.$from.marks()
+      if (forward) {
+        if (marks.some((mark) => delimiters[mark.type.name]))
+          view.dispatch(
+            state.tr.setStoredMarks(
+              marks.filter((mark) => !delimiters[mark.type.name]),
+            ),
+          )
+        return true
+      }
+      if (!storedMarks || marks.some((mark) => delimiters[mark.type.name]))
+        return false
+      view.dispatch(state.tr.setStoredMarks(null))
+      return true
+    }
+    return { ArrowRight: () => move(true), ArrowLeft: () => move(false) }
+  },
+})
 
 /** Formatting hints use canonical delimiters; they never become document text. */
 export function blockMarkdownMarkers(block: Node, start: number) {
@@ -54,6 +89,7 @@ export function observeMarkdownMarkers(editor: Editor) {
   let document: Node | null = null
   let block: Node | null = null
   let start = -1
+  let outside = -1
   let decorations = DecorationSet.empty
   editor.registerPlugin(
     new Plugin({
@@ -70,31 +106,46 @@ export function observeMarkdownMarkers(editor: Editor) {
             return DecorationSet.empty
           const current = selection.$head.parent
           const position = selection.$head.start()
-          if (document === state.doc && block === current && start === position)
+          const after =
+            selection.empty &&
+            state.storedMarks &&
+            !state.storedMarks.some((mark) => delimiters[mark.type.name])
+              ? selection.head
+              : -1
+          if (
+            document === state.doc &&
+            block === current &&
+            start === position &&
+            outside === after
+          )
             return decorations
           document = state.doc
           block = current
           start = position
+          outside = after
           decorations = DecorationSet.create(
             state.doc,
-            blockMarkdownMarkers(current, position).map(({ pos, text, side }) =>
-              Decoration.widget(
-                pos,
-                (view) => {
-                  const hint = view.dom.ownerDocument.createElement('span')
-                  hint.className = 'markdown-marker'
-                  hint.dataset.marker = text
-                  hint.setAttribute('aria-hidden', 'true')
-                  hint.contentEditable = 'false'
-                  return hint
-                },
-                {
-                  side,
-                  marks: [],
-                  ignoreSelection: true,
-                  key: `${pos}:${side}:${text}`,
-                },
-              ),
+            blockMarkdownMarkers(current, position).map(
+              ({ pos, text, side }) => {
+                if (side === 1 && pos === outside) side = -1
+                return Decoration.widget(
+                  pos,
+                  (view) => {
+                    const hint = view.dom.ownerDocument.createElement('span')
+                    hint.className = 'markdown-marker'
+                    hint.dataset.marker = text
+                    hint.setAttribute('aria-hidden', 'true')
+                    hint.contentEditable = 'false'
+                    return hint
+                  },
+                  {
+                    side,
+                    marks: [],
+                    ignoreSelection: true,
+                    key: `${pos}:${side}:${text}`,
+                  },
+                )
+              },
             ),
           )
           return decorations

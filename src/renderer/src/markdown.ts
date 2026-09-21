@@ -10,6 +10,7 @@ import { CodeHighlight } from './CodeHighlight.ts'
 import { guardNativeInputRules } from './input-rule-guard.ts'
 import { literalMarkdown } from './LiteralMarkdown.ts'
 import { guardNativeListTokenizer } from './list-tokenizer-prefix.ts'
+import { MarkdownMarkExit } from './markdown-markers.ts'
 import { markdownSyntax } from './markdown-syntax.ts'
 import { installSyntaxPreferences } from './syntax-parser.ts'
 
@@ -94,6 +95,7 @@ export function editorExtensions(
     }),
     CodeHighlight,
     BlockExit,
+    MarkdownMarkExit,
     ...addons,
     Placeholder.configure({ placeholder: 'Start typing' }),
   ]

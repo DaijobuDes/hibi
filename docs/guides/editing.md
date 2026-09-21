@@ -30,6 +30,8 @@ In formatted view, the active text block shows subtle Markdown hints for heading
 
 These markers are visual hints, not editable characters or a verbatim view of the original delimiters. They are excluded from copied text, saved Markdown, and exports. Use source view to edit the syntax itself. To hide the hints, turn off **Settings → Editor → Writing → Show Markdown markers**. The setting is on by default and persists on this device.
 
+At the end of a document, press the right arrow key to leave bold, italic, strikethrough, or inline code and continue with plain text. The cursor moves past the closing hint without adding a space or changing your text. This also works when Markdown markers are hidden.
+
 Under **Settings → Appearance → Toolbar → Arrange toolbar actions**, drag actions or use the arrow controls to reorder them. Select an action and choose **Show in toolbar**, **Menu only**, or **Hide**. Menu-only actions always stay in the **More** dropdown, even in a wide window. Hidden actions disappear from both the toolbar and its dropdown; their commands and shortcuts remain available. These choices are saved separately from the order, so **Reset order** keeps each action's placement.
 
 You can also choose how toolbar buttons appear. If the toolbar hides while typing, pause or move the pointer to the top of the window to reveal it.

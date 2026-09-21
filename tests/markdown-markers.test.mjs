@@ -69,6 +69,123 @@ test('heading hints reflect level and code blocks and unformatted paragraphs sta
   )
 })
 
+test('right arrow exits final formatting without changing text or trapping the caret', {
+  timeout: 60000,
+}, async (t) => {
+  const profile = await mkdtemp(join(tmpdir(), 'hibi-markers-eof-'))
+  const note = join(profile, 'eof.md')
+  await writeFile(note, '*hello*')
+  const app = await electron.launch({
+    args: [resolve('.'), `--user-data-dir=${profile}`, note],
+  })
+  t.after(async () => {
+    await app.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => ({ response: 1 })
+    })
+    await app.close()
+    await rm(profile, { recursive: true, force: true })
+  })
+  const page = await app.firstWindow()
+  const rich = page.getByRole('textbox', { name: /document editor/i })
+  await rich.waitFor()
+  for (const html of [
+    '<em>hello</em>',
+    '<strong>hello</strong>',
+    '<s>hello</s>',
+    '<code>hello</code>',
+    '<strong><em>hello</em></strong>',
+  ]) {
+    const original = await rich.evaluate((element, html) => {
+      const editor = element.editor
+      editor.commands.setContent(`<p>${html}</p>`)
+      editor.commands.setTextSelection(6)
+      editor.view.focus()
+      return editor.getJSON()
+    }, html)
+    await rich.press('ArrowRight')
+    const escaped = await rich.evaluate((element) => {
+      const editor = element.editor
+      const marker = element.querySelector('.markdown-marker:last-of-type')
+      return {
+        doc: editor.getJSON(),
+        marks: editor.state.storedMarks?.map((mark) => mark.type.name),
+        afterMarker:
+          editor.view.coordsAtPos(editor.state.selection.from).left >=
+          marker.getBoundingClientRect().right - 1,
+      }
+    })
+    assert.deepEqual(escaped.doc, original, html)
+    assert.deepEqual(escaped.marks, [], html)
+    assert.equal(escaped.afterMarker, true, html)
+    await rich.press('ArrowRight')
+    assert.deepEqual(
+      await rich.evaluate((element) => element.editor.getJSON()),
+      original,
+      'repeated right arrows must not insert spaces',
+    )
+    await rich.press('ArrowLeft')
+    assert.equal(
+      await rich.evaluate((element) => element.editor.state.selection.from),
+      6,
+      'left arrow returns inside the formatted text',
+    )
+    await page.keyboard.insertText('y')
+    assert.deepEqual(
+      await rich.evaluate(
+        (element) => element.editor.getJSON().content[0].content,
+      ),
+      [{ ...original.content[0].content[0], text: 'helloy' }],
+    )
+    await rich.evaluate((element) => element.editor.commands.undo())
+    await rich.press('ArrowRight')
+    await rich.press('ArrowRight')
+    await page.keyboard.insertText('x')
+    const content = await rich.evaluate(
+      (element) => element.editor.getJSON().content[0].content,
+    )
+    assert.deepEqual(content.at(-1), { type: 'text', text: 'x' }, html)
+    await rich.evaluate((element) => element.editor.commands.undo())
+    assert.deepEqual(
+      await rich.evaluate((element) => element.editor.getJSON()),
+      original,
+      'one undo removes only the plain text',
+    )
+  }
+  await rich.evaluate((element) => {
+    const editor = element.editor
+    editor.commands.setContent('<p><em>hello</em></p><p>next</p>')
+    editor.commands.setTextSelection(6)
+    editor.view.focus()
+  })
+  await rich.press('ArrowRight')
+  await page.waitForFunction(
+    () => document.querySelector('.tiptap').editor.state.selection.from === 8,
+  )
+  assert.equal(
+    await rich.evaluate((element) => element.editor.state.selection.from),
+    8,
+    'right arrow still advances to the next paragraph',
+  )
+  await page.evaluate(() => localStorage.setItem('markdown-markers', 'false'))
+  await page.reload()
+  await rich.waitFor()
+  await rich.evaluate((element) => {
+    element.editor.commands.setContent('<p><em>hello</em></p>')
+    element.editor.commands.setTextSelection(6)
+    element.editor.view.focus()
+  })
+  assert.equal(await rich.locator('.markdown-marker').count(), 0)
+  await rich.press('ArrowRight')
+  await page.keyboard.insertText('x')
+  assert.deepEqual(
+    await rich.evaluate((element) =>
+      element.editor.getJSON().content[0].content.at(-1),
+    ),
+    { type: 'text', text: 'x' },
+    'formatting can be exited with markers hidden',
+  )
+})
+
 test('rich markers follow only the focused block, preserve copying and undo, and can be disabled', {
   timeout: 60000,
 }, async (t) => {
