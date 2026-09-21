@@ -368,15 +368,31 @@ test('release workflow always builds nightlies and gates stable publication on t
     undefined,
     'stable checks must succeed before packaging',
   )
-  const packageStep = steps.find((step) => step.id === 'package')
+  const signingCredentials = steps.find(
+    (step) => step.name === 'Install macOS signing credentials',
+  )
+  assert.equal(signingCredentials.if, "startsWith(matrix.platform, 'macos-')")
   for (const name of [
-    'CSC_LINK',
-    'CSC_KEY_PASSWORD',
-    'APPLE_API_KEY',
-    'APPLE_API_KEY_ID',
-    'APPLE_API_ISSUER',
-    'APPLE_TEAM_ID',
+    'MAC_CSC_LINK',
+    'MAC_CSC_KEY_PASSWORD',
+    'APPLE_API_KEY_CONTENT',
   ])
+    assert.match(signingCredentials.env[name], /secrets\./)
+  for (const command of [
+    'security import',
+    'security set-key-partition-list',
+    'CSC_KEYCHAIN=',
+    'APPLE_API_KEY=',
+  ])
+    assert.ok(signingCredentials.run.includes(command))
+  assert.match(
+    signingCredentials.run,
+    /set-key-partition-list[^\n]+-k "\$keychain_password"/,
+  )
+  const packageStep = steps.find((step) => step.id === 'package')
+  for (const name of ['CSC_LINK', 'CSC_KEY_PASSWORD', 'APPLE_API_KEY'])
+    assert.equal(packageStep.env[name], undefined)
+  for (const name of ['APPLE_API_KEY_ID', 'APPLE_API_ISSUER', 'APPLE_TEAM_ID'])
     assert.match(packageStep.env[name], /startsWith\(matrix\.platform/)
   const verifyMac = steps.find(
     (step) => step.name === 'Verify signed macOS installers',
