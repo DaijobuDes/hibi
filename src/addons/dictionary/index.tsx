@@ -215,7 +215,12 @@ export default defineAddon({
       create: async () =>
         (await import('./source')).trackSourceViews(sourceViews),
     })
-    async function target({ selection }: CommandExecutionContext) {
+    async function target(invocation: CommandExecutionContext) {
+      // Palette and shortcut invocations capture the view but not its selection.
+      const view = invocation.view ?? context.editorViews.getActive()
+      const active = view && context.editorViews.getSelection(view)
+      const selection =
+        invocation.selection ?? (active?.ok ? active.value : null)
       if (!selection) return null
       const from = Math.min(selection.anchor, selection.head)
       const to = Math.max(selection.anchor, selection.head)
