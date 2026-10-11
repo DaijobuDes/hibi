@@ -318,7 +318,10 @@ export type MarkdownProjection = {
 export type MarkdownParagraphRule = {
   /** Replace these literal text characters with sentinels during inline rendering. */
   characters?: string
-  /** Replace only sentinels that need escaping; the host restores the rest afterward. */
+  /** Replace only whole sentinels that need escaping; the host restores the rest afterward.
+   * Preserve declared characters, using backslash escapes or HTML entities when needed.
+   * Errors, damaged sentinels, or dropped declared characters abort serialization and saving with the flavor id.
+   */
   escape: (
     source: string,
     ctx: RenderContext & { literals: ReadonlyMap<string, string> },

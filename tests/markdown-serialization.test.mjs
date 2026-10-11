@@ -209,6 +209,86 @@ test('paragraph masking skips code marks and verbatim node output', () => {
     )
 })
 
+test('paragraph rule failures name the flavor and abort serialization', async (t) => {
+  const thrown = new Error('broken rule')
+  for (const [name, transform] of [
+    [
+      'throw',
+      () => {
+        throw thrown
+      },
+    ],
+    ['non-string', () => undefined],
+    [
+      'drop sentinel',
+      (source, { literals }) =>
+        source.replaceAll(literals.keys().next().value, ''),
+    ],
+    ['damage sentinel', (source) => source.replaceAll('\uE001', '')],
+  ]) {
+    await t.test(name, () => {
+      const { core, parser, options } = markdownConfiguration([
+        { id: 'first', paragraphRules: [{ escape: (source) => source }] },
+        {
+          id: 'broken.flavor',
+          paragraphRules: [{ characters: '$', escape: transform }],
+        },
+      ])
+      const schema = getSchema(core)
+      const manager = new MarkdownManager({
+        extensions: core,
+        marked: parser,
+        markedOptions: options,
+      })
+      const doc = schema.nodeFromJSON(manager.parse('a \\$ b'))
+      for (const blockLocal of [true, false])
+        assert.throws(
+          () => markdownSerializer(manager, blockLocal)(doc),
+          (error) => {
+            assert.match(error.message, /broken\.flavor/)
+            if (name === 'throw') assert.equal(error.cause, thrown)
+            return true
+          },
+        )
+    })
+  }
+})
+
+test('paragraph sentinels survive digit rules and support escaped replacements', () => {
+  const { core, parser, options } = markdownConfiguration([
+    {
+      id: 'digits',
+      paragraphRules: [
+        { characters: '$!', escape: (source) => source.replace(/\d/g, '#') },
+        {
+          escape(source, { literals }) {
+            for (const [sentinel, character] of literals)
+              if (character === '!')
+                source = source.replaceAll(sentinel, '&#33;')
+            return source
+          },
+        },
+      ],
+    },
+  ])
+  const schema = getSchema(core)
+  const manager = new MarkdownManager({
+    extensions: core,
+    marked: parser,
+    markedOptions: options,
+  })
+  const doc = schema.nodeFromJSON(manager.parse('a \\$5 ! b'))
+  for (const blockLocal of [true, false]) {
+    const source = markdownSerializer(manager, blockLocal)(doc).source
+    assert.equal(source, 'a $# &#33; b')
+    assert.doesNotMatch(source, /[\uE000-\uF8FF]/)
+    assert.equal(
+      schema.nodeFromJSON(manager.parse(source)).textContent,
+      'a $# ! b',
+    )
+  }
+})
+
 test('paragraph masking skips serialization and copying when no text needs protection', () => {
   const renderParagraph = paragraphEscaper(new Marked(), [
     {

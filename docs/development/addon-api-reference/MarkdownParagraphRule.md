@@ -13,7 +13,10 @@ Escape paragraph Markdown in flavor and rule order, before core block-prefix esc
 type MarkdownParagraphRule = {
   /** Replace these literal text characters with sentinels during inline rendering. */
   characters?: string
-  /** Replace only sentinels that need escaping; the host restores the rest afterward. */
+  /** Replace only whole sentinels that need escaping; the host restores the rest afterward.
+   * Preserve declared characters, using backslash escapes or HTML entities when needed.
+   * Errors, damaged sentinels, or dropped declared characters abort serialization and saving with the flavor id.
+   */
   escape: (
     source: string,
     ctx: RenderContext & { literals: ReadonlyMap<string, string> },
@@ -49,9 +52,11 @@ characters?: string
 
 ### escape
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L322)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L325)
 
-Replace only sentinels that need escaping; the host restores the rest afterward.
+Replace only whole sentinels that need escaping; the host restores the rest afterward.
+Preserve declared characters, using backslash escapes or HTML entities when needed.
+Errors, damaged sentinels, or dropped declared characters abort serialization and saving with the flavor id.
 
 ```typescript
 escape: (
