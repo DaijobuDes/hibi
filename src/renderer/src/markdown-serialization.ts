@@ -9,6 +9,7 @@ import {
 import { ORDERED_LIST_MARKER_PATTERN } from '@tiptap/extension-list'
 import type { MarkdownManager } from '@tiptap/markdown'
 import type { Node } from '@tiptap/pm/model'
+import { encodeHTML } from 'entities'
 import type { Marked } from 'marked'
 import type { MarkdownFlavor, MarkdownParagraphRule } from '../../addons/api'
 import { configureMarkdownEntities } from './markdown-entities.ts'
@@ -82,8 +83,10 @@ export function paragraphEscaper(
     for (const rule of rules) source = rule.escape(source, { ...ctx, literals })
     for (const [sentinel, character] of literals)
       source = source.replaceAll(sentinel, character)
-    if (ctx.parentType === 'table') return source
-    return escapeBlockPrefixes(source, parser)
+    if (ctx.parentType !== 'table') source = escapeBlockPrefixes(source, parser)
+    return source.replace(/^[ \t\u00a0]+|[ \t\u00a0]+$/gm, (space) =>
+      space.replace(/[\t\u00a0]/g, encodeHTML),
+    )
   }
 }
 

@@ -24,15 +24,15 @@ export function richTextToken(token: Token) {
   token.text = (token.raw ?? token.text).replace(/[ \t]*\n[ \t]*/g, ' ')
 }
 
-function encodeInvisibleCharacters(text: string) {
-  return text.replace(/[^\S ]|\p{Cf}/gu, (character) => {
+function encodeLineBreaks(text: string) {
+  return text.replace(/[\n\r]/g, (character) => {
     const encoded = encodeHTML(character)
     return encoded === character ? `&#${character.codePointAt(0)};` : encoded
   })
 }
 
 function encodeLinkAttribute(text: string) {
-  return encodeInvisibleCharacters(text.replace(/[&<>"\\]/g, encodeHTML))
+  return encodeLineBreaks(text.replace(/[&<>"\\]/g, encodeHTML))
 }
 
 export function entityMarkdown(extension: AnyExtension) {
@@ -100,7 +100,22 @@ export function configureMarkdownEntities(manager: MarkdownManager) {
       node.marks?.some((mark) => codec.codeTypes.has(mark.type))
     )
       return encoded
-    return encodeInvisibleCharacters(encoded)
+    let result = encodeLineBreaks(encoded)
+    // Protect marked line-edge whitespace before Tiptap moves it outside marks.
+    if (parent?.type === 'paragraph' && node.marks?.length) {
+      const siblings = parent.content ?? []
+      const index = siblings.indexOf(node)
+      const encode = (space: string) => space.replace(/[\t\u00a0]/g, encodeHTML)
+      if (index === 0 || siblings[index - 1]?.type === 'hardBreak')
+        result = result.replace(/^[ \t\u00a0]+/, encode)
+      if (
+        index >= 0 &&
+        (index === siblings.length - 1 ||
+          siblings[index + 1]?.type === 'hardBreak')
+      )
+        result = result.replace(/[ \t\u00a0]+$/, encode)
+    }
+    return result
   }
   // Empty paragraphs already use blank lines; an intentional nbsp is content.
   codec.isEmptyOutput = (source) => /^[ \t\r\n]*$/.test(source)

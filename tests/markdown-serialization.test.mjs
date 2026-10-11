@@ -266,17 +266,17 @@ test('literal block prefixes survive full and cached serialization', async (t) =
       ),
       '\\#',
       '\\######',
-      ['\\#\theading', '#&Tab;heading'],
-      ['\\#\u00a0heading', '#&nbsp;heading'],
-      ['\\#\u2003heading', '#&emsp;heading'],
+      '\\#\theading',
+      '\\#\u00a0heading',
+      '\\#\u2003heading',
       '1\\. item',
       '0\\) item',
       '999999999\\. item',
       '1234567890\\. item',
       '1\\.',
       '2\\)',
-      ['1\\.\titem', '1.&Tab;item'],
-      ['1\\.\u00a0item', '1.&nbsp;item'],
+      '1\\.\titem',
+      '1\\.\u00a0item',
       'a\\. item',
       'iii\\) item',
       '\\- item',
@@ -407,11 +407,11 @@ test('leading indentation remains paragraph text through entities', async (t) =>
   for (const [source, text, expected = source] of [
     ['&#32;   code', '    code'],
     ['&#32;       code', '        code'],
-    ['&#9;code', '\tcode', '&Tab;code'],
-    ['&#9;\tcode', '\t\tcode', '&Tab;&Tab;code'],
-    ['&#32;\tcode', ' \tcode', ' &Tab;code'],
-    ['&#32; \tcode', '  \tcode', '  &Tab;code'],
-    ['&#32;  \tcode', '   \tcode', '   &Tab;code'],
+    ['&#9;code', '\tcode'],
+    ['&#9;\tcode', '\t\tcode'],
+    ['&#32;\tcode', ' \tcode'],
+    ['&#32; \tcode', '  \tcode'],
+    ['&#32;  \tcode', '   \tcode'],
     [' code', ' code'],
     ['  code', '  code'],
     ['   code', '   code'],
@@ -430,7 +430,7 @@ test('leading indentation remains paragraph text through entities', async (t) =>
     })
   }
   for (const [source, expected = source] of [
-    ['> &#9;code', '> &Tab;code'],
+    ['> &#9;code'],
     ['- &#32;   code'],
   ]) {
     const doc = schema.nodeFromJSON(configured.parse(source))
@@ -441,14 +441,17 @@ test('leading indentation remains paragraph text through entities', async (t) =>
     }
   }
   const renderParagraph = paragraphEscaper(parser, [])
-  for (const source of ['text\n    code', 'text  \n\tcode'])
+  for (const [source, expected] of [
+    ['text\n    code', 'text\n    code'],
+    ['text  \n\tcode', 'text  \n&Tab;code'],
+  ])
     assert.equal(
       renderParagraph(
         { type: 'paragraph' },
         { renderChildren: () => source },
         { index: 0, level: 0, parentType: 'doc' },
       ),
-      source,
+      expected,
     )
 })
 
@@ -760,13 +763,12 @@ test('native HTML entities decode once and survive full and cached serialization
     ['numeric ampersand', '&#38;copy;', '&copy;', '&amp;copy;'],
     ['encoded numeric entity', '&amp;#169;', '&#169;', '&amp;#169;'],
     ['numeric angle entity', '&#38;lt;', '&lt;', '&amp;lt;'],
-    ['nonbreaking space', 'a&nbsp;b', 'a\u00a0b', 'a&nbsp;b'],
+    ['nonbreaking space', 'a&nbsp;b', 'a\u00a0b', 'a\u00a0b'],
     ['lone nonbreaking space', '&nbsp;', '\u00a0', '&nbsp;'],
     ['lone numeric space', '&#160;', '\u00a0', '&nbsp;'],
     ['lone hexadecimal space', '&#xA0;', '\u00a0', '&nbsp;'],
-    ['literal nonbreaking space', '\u00a0', '\u00a0', '&nbsp;'],
     ['lone newline', '&#10;', '\n', '&NewLine;'],
-    ['lone tab', '&Tab;', '\t', '&Tab;'],
+    ['lone tab', '&Tab;', '\t', '&#9;'],
     [
       'edge nonbreaking spaces',
       '&nbsp;text&nbsp;',
@@ -774,17 +776,12 @@ test('native HTML entities decode once and survive full and cached serialization
       '&nbsp;text&nbsp;',
     ],
     ['visible named pair', '&NotEqualTilde;', '\u2242\u0338', '\u2242\u0338'],
-    ['em space', 'a&emsp;b', 'a\u2003b', 'a&emsp;b'],
-    [
-      'zero width space',
-      'a&ZeroWidthSpace;b',
-      'a\u200bb',
-      'a&NegativeMediumSpace;b',
-    ],
-    ['word joiner', 'a&NoBreak;b', 'a\u2060b', 'a&NoBreak;b'],
+    ['em space', 'a&emsp;b', 'a\u2003b', 'a\u2003b'],
+    ['zero width space', 'a&ZeroWidthSpace;b', 'a\u200bb', 'a\u200bb'],
+    ['word joiner', 'a&NoBreak;b', 'a\u2060b', 'a\u2060b'],
     ['numeric newline', 'a&#10;b', 'a\nb', 'a&NewLine;b'],
     ['numeric carriage return', 'a&#13;b', 'a\rb', 'a&#13;b'],
-    ['tab', 'a&Tab;b', 'a\tb', 'a&Tab;b'],
+    ['tab', 'a&Tab;b', 'a\tb', 'a\tb'],
     ['bold nbsp', '**&nbsp;**', '\u00a0', '**&nbsp;**'],
     ['nbsp paragraphs', '&nbsp;\n\n&nbsp;', '\u00a0\u00a0', '&nbsp;\n\n&nbsp;'],
     ['escaped ampersand', '\\&copy;', '&copy;', '&amp;copy;'],
@@ -875,6 +872,49 @@ test('native HTML entities decode once and survive full and cached serialization
         const after = schema.nodeFromJSON(manager.parse(output))
         assert.ok(after.eq(before), output)
         assert.equal(serialize(after).source, output)
+      }
+    })
+  }
+})
+
+test('typed and pasted text keeps literal Unicode and interior whitespace', async (t) => {
+  const { core, parser, options } = markdownConfiguration([])
+  const schema = getSchema(core)
+  const manager = new MarkdownManager({
+    extensions: core,
+    marked: parser,
+    markedOptions: options,
+  })
+  for (const [name, text, expected = text] of [
+    ['emoji joiners', '👨‍👩‍👧 family'],
+    ['ideographic space', '日本\u3000語'],
+    ['interior tab', 'a\tb'],
+    ['interior nonbreaking space', 'a\u00a0b'],
+    ['soft hyphen', 'co\u00adop'],
+    ['right-to-left mark', 'שלום\u200f!'],
+    ['thin space', 'a\u2009b'],
+    ['byte order mark', '\ufeffbom'],
+    ['edge nonbreaking spaces', '\u00a0text\u00a0', '&nbsp;text&nbsp;'],
+    ['trailing tab', 'text\t', 'text&Tab;'],
+    ['nonbreaking space only', '\u00a0', '&nbsp;'],
+  ]) {
+    await t.test(name, () => {
+      for (const paste of [false, true]) {
+        const state = EditorState.create({
+          schema,
+          doc: schema.nodeFromJSON(manager.parse('before')),
+        })
+        const transaction = paste
+          ? state.tr.replaceWith(1, 7, schema.text(text))
+          : state.tr.insertText(text, 1, 7)
+        const doc = state.apply(transaction).doc
+        for (const blockLocal of [false, true]) {
+          const serialize = markdownSerializer(manager, blockLocal)
+          serialize(state.doc)
+          const saved = serialize(doc).source
+          assert.equal(saved, expected)
+          assert.ok(schema.nodeFromJSON(manager.parse(saved)).eq(doc))
+        }
       }
     })
   }
