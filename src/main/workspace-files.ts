@@ -28,6 +28,7 @@ import {
   createExclusiveBytes,
   createExclusiveText,
 } from './workspace-exclusive-create'
+import { renameWithTableLayout } from './workspace-layout'
 import { resolveWorkspaceEntry } from './workspace-paths'
 
 const MAX_BINARY_BYTES = 16 * 1024 * 1024
@@ -693,8 +694,22 @@ function validVersion(value: unknown): value is string {
   return typeof value === 'string' && /^[a-f0-9]{64}$/.test(value)
 }
 
+/** Closed-file move; table sizes follow a move that removed the source. */
+export function renameWorkspaceFile(
+  ...args: Parameters<typeof moveClosedFile>
+): ReturnType<typeof moveClosedFile> {
+  const root = workspaceRoot()
+  return renameWithTableLayout(
+    () => moveClosedFile(...args),
+    (result) =>
+      result.ok && result.value.sourceRemoved
+        ? [root, result.value.path, result.value.destinationPath]
+        : null,
+  )
+}
+
 /** Closed-file move. An exclusive hard link prevents destination overwrite. */
-export async function renameWorkspaceFile(
+async function moveClosedFile(
   target: WorkspaceTarget,
   sourcePath: unknown,
   destinationPath: unknown,
