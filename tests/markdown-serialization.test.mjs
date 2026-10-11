@@ -289,6 +289,41 @@ test('paragraph sentinels survive digit rules and support escaped replacements',
   }
 })
 
+test('paragraph sentinels do not collide with link destinations', () => {
+  const { core, parser, options } = markdownConfiguration([
+    {
+      id: 'dollars',
+      paragraphRules: [
+        {
+          characters: '$',
+          escape(source, { literals }) {
+            for (const [sentinel, character] of literals)
+              source = source.replaceAll(sentinel, `\\${character}`)
+            return source
+          },
+        },
+      ],
+    },
+  ])
+  const schema = getSchema(core)
+  const manager = new MarkdownManager({
+    extensions: core,
+    marked: parser,
+    markedOptions: options,
+  })
+  const href = 'https://example.com/\uE000\uE002\uE001'
+  const doc = schema.nodes.doc.create(null, [
+    schema.nodes.paragraph.create(null, [
+      schema.text('$x$', [schema.marks.link.create({ href })]),
+    ]),
+  ])
+  for (const blockLocal of [true, false])
+    assert.equal(
+      markdownSerializer(manager, blockLocal)(doc).source,
+      `[\\$x\\$](${href})`,
+    )
+})
+
 test('paragraph collision checks scan direct and nested text without stringifying', () => {
   const renderParagraph = paragraphEscaper(new Marked(), [
     {
