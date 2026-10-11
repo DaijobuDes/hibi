@@ -76,9 +76,8 @@ function rebind(before: Node, tracked: Sized[], doc: Node): Sized[] {
     const table = next[index]
     if (!old || !table) return []
     const same =
-      previous.length === next.length
-        ? columnCount(old.node) === columnCount(table.node)
-        : tableKey(index, old.node) === tableKey(index, table.node)
+      tableKey(index, old.node) === tableKey(index, table.node) &&
+      columnCount(old.node) === columnCount(table.node)
     return same ? [{ ...sized, pos: table.pos }] : []
   })
 }
