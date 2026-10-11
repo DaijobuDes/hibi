@@ -417,6 +417,29 @@ test('shared dialogs validate input, trap focus, queue, and clean up by addon ow
   assert.ok(footerBounds.y + footerBounds.height <= 560)
   await footerDialog.getByRole('button', { name: /footer action/i }).click()
   assert.equal(await page.evaluate(() => window.footerDialog.result), 'saved')
+  // Content work stops when dismissal begins, not after the exit animation.
+  await page.evaluate(() => {
+    const { dialogs, createElement } = window.dialogTest
+    window.aborting = dialogs.open({
+      title: 'aborting work',
+      content: ({ signal }) => {
+        window.abortingSignal = signal
+        return createElement('p', null, 'working')
+      },
+    })
+  })
+  await page.getByRole('dialog', { name: /aborting work/i }).waitFor()
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const before = window.abortingSignal.aborted
+      window.aborting.close()
+      return [before, window.abortingSignal.aborted]
+    }),
+    [false, true],
+  )
+  await page
+    .getByRole('dialog', { name: /aborting work/i })
+    .waitFor({ state: 'detached' })
   // A notice shown as a dialog settles must not open inside the removed modal.
   const pageErrors = []
   page.on('pageerror', (error) => pageErrors.push(error.message))

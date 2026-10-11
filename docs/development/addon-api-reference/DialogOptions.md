@@ -13,10 +13,19 @@ type DialogOptions<T> = {
   description?: string
   size?: 'normal' | 'wide' | 'fullscreen'
   closeOnOutsideClick?: boolean
-  /** Use a component for content that needs React hooks. */
-  content: (controls: { close: (value: T | null) => void }) => ReactNode
+  /**
+   * Use a component for content that needs React hooks. `signal` aborts as
+   * soon as the dialog starts closing, before its exit animation.
+   */
+  content: (controls: {
+    close: (value: T | null) => void
+    signal: AbortSignal
+  }) => ReactNode
   /** Optional actions outside the scrolling content. */
-  footer?: (controls: { close: (value: T | null) => void }) => ReactNode
+  footer?: (controls: {
+    close: (value: T | null) => void
+    signal: AbortSignal
+  }) => ReactNode
 }
 ```
 
@@ -74,36 +83,43 @@ closeOnOutsideClick?: boolean
 
 ### content
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/ui/dialogs.ts#L9)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/ui/dialogs.ts#L12)
 
-Use a component for content that needs React hooks.
+Use a component for content that needs React hooks. `signal` aborts as
+soon as the dialog starts closing, before its exit animation.
 
 ```typescript
-content: (controls: { close: (value: T | null) => void }) => ReactNode
+content: (controls: {
+    close: (value: T | null) => void
+    signal: AbortSignal
+  }) => ReactNode
 ```
 
 **Parameters**
 
 | Name | Type |
 | --- | --- |
-| <code>controls</code> | <code>{ close: (value: T &#124; null) =&gt; void }</code> |
+| <code>controls</code> | <code>{ close: (value: T &#124; null) =&gt; void signal: AbortSignal }</code> |
 
 **Returns:** <code>ReactNode</code>
 
 ### footer
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/ui/dialogs.ts#L11)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/ui/dialogs.ts#L17)
 
 Optional actions outside the scrolling content.
 
 ```typescript
-footer?: (controls: { close: (value: T | null) => void }) => ReactNode
+footer?: (controls: {
+    close: (value: T | null) => void
+    signal: AbortSignal
+  }) => ReactNode
 ```
 
 **Parameters**
 
 | Name | Type |
 | --- | --- |
-| <code>controls</code> | <code>{ close: (value: T &#124; null) =&gt; void }</code> |
+| <code>controls</code> | <code>{ close: (value: T &#124; null) =&gt; void signal: AbortSignal }</code> |
 
 **Returns:** <code>ReactNode</code>

@@ -2,7 +2,7 @@
 
 # DialogHandle
 
-Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/ui/dialogs.ts#L14)
+Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/ui/dialogs.ts#L23)
 
 <details>
 <summary>Declaration</summary>
@@ -31,7 +31,7 @@ type DialogHandle<T> = {
 
 ### result
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/ui/dialogs.ts#L16)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/ui/dialogs.ts#L25)
 
 Dismissal and owner shutdown resolve to null.
 
@@ -43,7 +43,7 @@ result: Promise<T | null>
 
 ### close
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/ui/dialogs.ts#L17)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/ui/dialogs.ts#L26)
 
 ```typescript
 close: (value?: T | null) => void

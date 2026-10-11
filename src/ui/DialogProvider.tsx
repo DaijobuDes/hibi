@@ -28,6 +28,7 @@ type Request = {
   options: DialogOptions<unknown>
   closing: boolean
   value: unknown
+  controller: AbortController
   settle: (value: unknown) => void
 }
 
@@ -42,6 +43,7 @@ export function createDialogService() {
   }
   const finish = (request: Request, value: unknown) => {
     if (!requests.includes(request)) return
+    request.controller.abort()
     requests = requests.filter((entry) => entry !== request)
     request.settle(value)
     publish()
@@ -53,6 +55,7 @@ export function createDialogService() {
       return
     }
     request.closing = true
+    request.controller.abort()
     request.value = value
     requests = [...requests]
     publish()
@@ -73,6 +76,7 @@ export function createDialogService() {
           options: options as DialogOptions<unknown>,
           closing: false,
           value: null,
+          controller: new AbortController(),
           settle(value) {
             owned.delete(request)
             settle(value as T | null)
@@ -225,9 +229,10 @@ function DialogContent({
   close: (value: unknown) => void
   footer?: boolean
 }) {
+  const controls = { close, signal: request.controller.signal }
   return footer
-    ? request.options.footer?.({ close })
-    : request.options.content({ close })
+    ? request.options.footer?.(controls)
+    : request.options.content(controls)
 }
 
 function DialogFrame({
