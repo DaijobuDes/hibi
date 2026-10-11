@@ -350,6 +350,7 @@ export class PackStore {
       const path = await this.recover(id)
       if (!(await exists(path))) return []
       const manifest = await manifestAt(path, id)
+      if (changed()) return []
       let verification = this.verified.get(id)
       if (
         verification?.stamp !== manifest.installedAt ||
@@ -368,7 +369,8 @@ export class PackStore {
       }
       await verification.pending
       if (changed()) return []
-      return await this.worker.lookup(id, path, word)
+      const entries = await this.worker.lookup(id, path, word)
+      return changed() ? [] : entries
     } catch (error) {
       if (changed()) return []
       throw error

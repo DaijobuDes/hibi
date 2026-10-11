@@ -134,18 +134,23 @@ export class PackWorker {
       }
     })
   }
-  convert(
+  async convert(
     id: PackId,
     files: string[],
     directory: string,
     signal: AbortSignal,
     onProgress: (entries: number) => void,
   ): Promise<PackStats> {
-    return this.request(
-      { type: 'convert', id, files, directory },
-      signal,
-      onProgress,
-    )
+    try {
+      return await this.request<PackStats>(
+        { type: 'convert', id, files, directory },
+        signal,
+        onProgress,
+      )
+    } catch (error) {
+      await this.stopping
+      throw error
+    }
   }
   lookup(id: PackId, directory: string, word: string): Promise<PackEntry[]> {
     return this.request({ type: 'lookup', id, directory, word })

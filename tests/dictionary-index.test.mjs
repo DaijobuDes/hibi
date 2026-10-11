@@ -44,7 +44,15 @@ await build({
         b.onLoad({ filter: /.*/, namespace: 'fixture' }, () => ({
           contents: `
       import { readFile } from 'node:fs/promises'
+      import { openSync } from 'node:fs'
       export async function* convertEntries(id, paths) {
+        if (paths[0] === 'hold-file') {
+          openSync(paths[1], 'wx')
+          for (let i = 0; i < 1000; i++) yield {
+            word: 'held', keys: [], meanings: [], synonyms: [], antonyms: []
+          }
+          await new Promise(() => {})
+        }
         if (paths[0] === 'wait') await new Promise(() => {})
         if (paths[0] === 'exit') process.exit(0)
         for (const entry of JSON.parse(await readFile(paths[0], 'utf8'))) yield entry
@@ -323,6 +331,34 @@ test('reject symlink files and symlink directory', async (t) => {
   await symlink(dir, link)
   await assert.rejects(index.lookup('en', link, 'cat'))
   await assert.rejects(index.lookup('en', `${link}/`, 'cat'))
+})
+test('conversion cancellation rejects after worker exit and scratch handle release', async (t) => {
+  const worker = new PackWorker(pathToFileURL(join(root, 'worker.mjs')))
+  t.after(() => worker.close())
+  const dir = await directory(t)
+  const controller = new AbortController()
+  let ready
+  const opened = new Promise((resolve) => {
+    ready = resolve
+  })
+  const conversion = worker.convert(
+    'en',
+    ['hold-file', join(dir, 'held-open')],
+    dir,
+    controller.signal,
+    () => ready(),
+  )
+  await opened
+  assert.ok((await readFile(join(dir, 'data.jsonl'))).length > 0)
+  let exited = false
+  worker.worker.once('exit', () => {
+    exited = true
+  })
+  controller.abort()
+  await assert.rejects(conversion, { name: 'AbortError' })
+  assert.equal(exited, true)
+  await rm(dir, { recursive: true })
+  await assert.rejects(readFile(join(dir, 'held-open')), { code: 'ENOENT' })
 })
 test('worker queues conversion/lookup, progress, cancellation/restart, exit and close', async (t) => {
   const worker = new PackWorker(pathToFileURL(join(root, 'worker.mjs')))
