@@ -41,6 +41,7 @@ For installed packages, use the [SideloadFactory](SideloadFactory.md) and the [s
 - [MarkdownExtension](MarkdownExtension.md)
 - [MarkdownFlavor](MarkdownFlavor.md)
 - [MarkdownParagraphRule](MarkdownParagraphRule.md)
+- [MarkdownParagraphRuleContext](MarkdownParagraphRuleContext.md)
 - [MarkdownProjection](MarkdownProjection.md)
 - [Method](Method.md)
 - [MethodKey](MethodKey.md)

@@ -2,7 +2,7 @@
 
 # ViewApi
 
-Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L563)
+Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L567)
 
 <details>
 <summary>Declaration</summary>
@@ -28,7 +28,7 @@ type ViewApi = {
 
 ### register
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L564)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L568)
 
 ```typescript
 register: (view: AddonView) => ViewRegistration
@@ -46,7 +46,7 @@ Related: [AddonView](AddonView.md), [ViewRegistration](ViewRegistration.md).
 
 ### notify
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L566)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L570)
 
 Show a persistent notice below the editor toolbar until disposed.
 

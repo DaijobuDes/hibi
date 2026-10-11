@@ -2,7 +2,7 @@
 
 # MarkdownParagraphRule
 
-Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L318)
+Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L325)
 
 Escape paragraph Markdown in flavor and rule order, before core block-prefix escaping.
 
@@ -17,10 +17,7 @@ type MarkdownParagraphRule = {
    * Preserve declared characters, using backslash escapes or HTML entities when needed.
    * Errors, damaged sentinels, or dropped declared characters abort serialization and saving with the flavor id.
    */
-  escape: (
-    source: string,
-    ctx: RenderContext & { literals: ReadonlyMap<string, string> },
-  ) => string
+  escape: (source: string, ctx: MarkdownParagraphRuleContext) => string
 }
 ```
 
@@ -40,7 +37,7 @@ type MarkdownParagraphRule = {
 
 ### characters
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L320)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L327)
 
 Replace these literal text characters with sentinels during inline rendering.
 
@@ -52,24 +49,27 @@ characters?: string
 
 ### escape
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L325)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L332)
 
 Replace only whole sentinels that need escaping; the host restores the rest afterward.
 Preserve declared characters, using backslash escapes or HTML entities when needed.
 Errors, damaged sentinels, or dropped declared characters abort serialization and saving with the flavor id.
 
 ```typescript
-escape: (
-    source: string,
-    ctx: RenderContext & { literals: ReadonlyMap<string, string> },
-  ) => string
+escape: (source: string, ctx: MarkdownParagraphRuleContext) => string
 ```
+
+Related: [MarkdownParagraphRuleContext](MarkdownParagraphRuleContext.md).
 
 **Parameters**
 
 | Name | Type |
 | --- | --- |
 | <code>source</code> | <code>string</code> |
-| <code>ctx</code> | <code>RenderContext &amp; { literals: ReadonlyMap&lt;string, string&gt; }</code> |
+| <code>ctx</code> | <code><a href="MarkdownParagraphRuleContext.md">MarkdownParagraphRuleContext</a></code> |
 
 **Returns:** <code>string</code>
+
+## Related types
+
+[MarkdownParagraphRuleContext](MarkdownParagraphRuleContext.md).

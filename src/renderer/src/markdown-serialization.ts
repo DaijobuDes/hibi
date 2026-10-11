@@ -82,7 +82,10 @@ export function paragraphEscaper(
     let source = helpers.renderChildren(content)
     for (const { flavor, rule } of rules) {
       try {
-        const next = rule.escape(source, { ...ctx, literals })
+        const next = rule.escape(source, {
+          parentType: ctx.parentType,
+          literals,
+        })
         if (typeof next !== 'string') throw new Error('Expected Markdown text.')
         if (prefix) {
           const restored = restore(next)

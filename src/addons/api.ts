@@ -1,5 +1,5 @@
 import type { Extension } from '@codemirror/state'
-import type { AnyExtension, Editor, RenderContext } from '@tiptap/core'
+import type { AnyExtension, Editor } from '@tiptap/core'
 import type { MarkedExtension } from 'marked'
 import type { ComponentType, CSSProperties } from 'react'
 import type {
@@ -314,6 +314,13 @@ export type MarkdownProjection = {
   serialize: (content: string) => string
   readOnly?: boolean
 }
+/** Host context for a paragraph escaping rule, independent of the editor library. */
+export type MarkdownParagraphRuleContext = {
+  /** Parent node type; table paragraphs receive 'table'. */
+  parentType?: string | null
+  /** Protected literal text, keyed by opaque sentinels. */
+  literals: ReadonlyMap<string, string>
+}
 /** Escape paragraph Markdown in flavor and rule order, before core block-prefix escaping. */
 export type MarkdownParagraphRule = {
   /** Replace these literal text characters with sentinels during inline rendering. */
@@ -322,10 +329,7 @@ export type MarkdownParagraphRule = {
    * Preserve declared characters, using backslash escapes or HTML entities when needed.
    * Errors, damaged sentinels, or dropped declared characters abort serialization and saving with the flavor id.
    */
-  escape: (
-    source: string,
-    ctx: RenderContext & { literals: ReadonlyMap<string, string> },
-  ) => string
+  escape: (source: string, ctx: MarkdownParagraphRuleContext) => string
 }
 /** Composable parser contributions. Declare descriptors on Addon.flavors for discovery. */
 export type MarkdownFlavor = {
