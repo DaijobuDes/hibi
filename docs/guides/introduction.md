@@ -17,10 +17,10 @@ Each choice changes the same setting you can find in [Settings](settings.md), so
 
 Select **Skip** or press Escape to close the introduction at any step. It won't open automatically again.
 
-If you open Hibi with a file or folder the first time, the introduction waits until the next time you open Hibi on its own.
+If you open Hibi with a file the first time, or open a file from another app while the introduction is showing, the introduction waits until the next time you open Hibi on its own. A workspace Hibi reopens at startup doesn't make it wait.
 
 To see it again, open the command palette and choose **Show introduction**, or select **Show introduction** in **Settings → About**.
 
 ## Keyboard and accessibility
 
-Use Tab and Shift+Tab to move between controls, and Enter or Space to choose one. Focus stays inside the introduction until you close it, and screen readers announce each step's title and number. With your system's reduced-motion setting on, steps change without animation.
+Use Tab and Shift+Tab to move between controls, and Enter or Space to choose one. In the appearance and default view choices, use the arrow keys to change the selection. Focus stays inside the introduction until you close it, and screen readers announce each step's title and number. With your system's reduced-motion setting on, steps change without animation.
