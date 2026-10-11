@@ -56,10 +56,16 @@ export async function readWorkspaceText(
     : null
   return current ?? (await readText(root, legacyNames[name])) ?? ''
 }
+export const WORKSPACE_LAYOUT_LIMIT = 1048576
 export async function readWorkspaceLayoutText(root: string) {
-  return (await metadataDirectory(root))
-    ? await readText(root, WORKSPACE_LAYOUT, 1048576)
-    : null
+  if (!(await metadataDirectory(root))) return null
+  const info = await lstat(join(root, WORKSPACE_LAYOUT)).catch(() => null)
+  // Sizes are disposable; an oversized file must not block every later write.
+  if (info?.isFile() && info.size > WORKSPACE_LAYOUT_LIMIT) {
+    console.warn(`${WORKSPACE_LAYOUT} is too large; table sizes were reset.`)
+    return null
+  }
+  return await readText(root, WORKSPACE_LAYOUT, WORKSPACE_LAYOUT_LIMIT)
 }
 export function validateManifest(input: unknown): WorkspaceManifest {
   const value = input as WorkspaceManifest | null

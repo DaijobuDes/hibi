@@ -173,3 +173,38 @@ test('table layout stores a document named __proto__', async (t) => {
   assert.deepEqual(await readTableLayout(root, 'a.md'), [])
   assert.deepEqual(Object.keys((await stored(root)).documents), ['__proto__'])
 })
+
+test('table layout stays under its read limit by dropping old documents', async (t) => {
+  const root = await workspace(t)
+  const names = Array.from({ length: 70 }, (_, index) => `${index}.md`)
+  for (const name of names) await writeFile(join(root, name), '')
+  const tall = (key) => [table(key, [120], Array(1000).fill(48))]
+  for (const name of names) await writeTableLayout(root, name, tall(name))
+  const { size } = await stat(join(root, '.hibi/layout.json'))
+  assert.ok(size <= 1048576)
+  const kept = Object.keys((await stored(root)).documents)
+  assert.ok(kept.length < names.length)
+  assert.deepEqual(kept, names.slice(-kept.length))
+  assert.deepEqual(await readTableLayout(root, '69.md'), tall('69.md'))
+  assert.deepEqual(await readTableLayout(root, '0.md'), [])
+
+  const huge = Array.from({ length: 100 }, (_, index) =>
+    table(`${index}:a`, [120], Array(1000).fill(48)),
+  )
+  await assert.rejects(writeTableLayout(root, 'a.md', huge), /too large/)
+  assert.deepEqual(Object.keys((await stored(root)).documents), kept)
+})
+
+test('table layout recovers from an oversized file', async (t) => {
+  const root = await workspace(t)
+  await mkdir(join(root, '.hibi'))
+  await writeFile(join(root, '.hibi/layout.json'), ' '.repeat(1048577))
+  t.mock.method(console, 'warn', () => {})
+  assert.deepEqual(await readTableLayout(root, 'a.md'), [])
+  await writeTableLayout(root, 'a.md', [table('0:a')])
+  assert.deepEqual(await stored(root), {
+    version: 1,
+    documents: { 'a.md': { tables: [table('0:a')] } },
+  })
+  assert.equal(console.warn.mock.callCount(), 2)
+})
