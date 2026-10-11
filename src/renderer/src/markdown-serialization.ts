@@ -50,9 +50,10 @@ export function paragraphEscaper(
     const literals = new Map<string, string>()
     let prefix = ''
     if (characters.length && content.some(needsMasking)) {
-      const original = JSON.stringify(node)
       prefix = '\uE000'
-      while (original.includes(prefix)) prefix += '\uE000'
+      const hasPrefix = (child: JSONContent): boolean =>
+        !!child.text?.includes(prefix) || !!child.content?.some(hasPrefix)
+      while (content.some(hasPrefix)) prefix += '\uE000'
       const sentinels = new Map(
         characters.map((character, index) => {
           const digits = Array.from(index.toString(36), (digit) =>
@@ -83,7 +84,7 @@ export function paragraphEscaper(
     for (const { flavor, rule } of rules) {
       try {
         const next = rule.escape(source, {
-          parentType: ctx.parentType,
+          parentType: ctx.parentType ?? null,
           literals,
         })
         if (typeof next !== 'string') throw new Error('Expected Markdown text.')
