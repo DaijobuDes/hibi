@@ -5,6 +5,7 @@ import type { Readable } from 'node:stream'
 import { Transform, Writable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { createBrotliDecompress, createGunzip, createInflate } from 'node:zlib'
+import type { AddonManifest } from '../addons/api'
 import type { AddonOwner } from '../shared/foundation-contracts'
 import type { CredentialResult } from '../shared/host-credentials'
 import type {
@@ -92,6 +93,8 @@ type PrivateGrant = Grant & { readonly address: string }
 type Options = {
   /** Both owner and window identity must come from the main process, never IPC payloads. */
   currentOwner: (addonId: string) => AddonOwner | null
+  /** Validated declarations from main-owned manifests, never renderer input. */
+  declaredOrigins?: (addonId: string) => readonly string[]
   isWindowLive: (windowKey: object) => boolean
   grantDestination: (request: Grant, signal: AbortSignal) => Promise<boolean>
   grantPrivateAddress: (
@@ -301,6 +304,50 @@ function localName(hostname: string): boolean {
   )
 }
 
+/** Keep package declarations canonical so request origins can match exactly. */
+export function parseAddonNetwork(
+  value: unknown,
+): NonNullable<AddonManifest['network']> {
+  const invalid = () => {
+    throw new Error('The addon must declare exact public HTTPS origins.')
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    return invalid()
+  const { origins } = value as Record<string, unknown>
+  if (
+    Object.keys(value).some((key) => key !== 'origins') ||
+    !Array.isArray(origins) ||
+    origins.length < 1 ||
+    origins.length > 16 ||
+    new Set(origins).size !== origins.length
+  )
+    return invalid()
+  for (const origin of origins) {
+    if (typeof origin !== 'string' || origin.length > MAX_URL_LENGTH)
+      return invalid()
+    let url: URL
+    try {
+      url = new URL(origin)
+    } catch {
+      return invalid()
+    }
+    if (
+      url.protocol !== 'https:' ||
+      url.origin !== origin ||
+      url.port === '0' ||
+      isIP(url.hostname) ||
+      localName(url.hostname) ||
+      url.hostname === 'home.arpa' ||
+      url.hostname.length > 253 ||
+      !url.hostname
+        .split('.')
+        .every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label))
+    )
+      return invalid()
+  }
+  return { origins: [...origins] }
+}
+
 async function abortable<T>(
   work: () => Promise<T> | T,
   signal: AbortSignal,
@@ -468,14 +515,20 @@ export class HostNetwork {
           ...(credentialKey ? { credentialKey } : {}),
           ...(redirectFrom ? { redirectFrom } : {}),
         }
-        if (
-          !(await this.#call(
-            () => this.#options.grantDestination(grant, controller.signal),
-            controller.signal,
-          ))
-        )
-          fail('permission-denied')
-        live()
+        const declared =
+          !credentialKey &&
+          this.#options.declaredOrigins?.(addonId).includes(url.origin)
+        const askDestination = async () => {
+          if (
+            !(await this.#call(
+              () => this.#options.grantDestination(grant, controller.signal),
+              controller.signal,
+            ))
+          )
+            fail('permission-denied')
+          live()
+        }
+        if (!declared) await askDestination()
         const hostname = url.hostname.replace(/^\[|\]$/g, '')
         const literalFamily = isIP(hostname)
         const addresses = literalFamily
@@ -504,6 +557,7 @@ export class HostNetwork {
         const selected = publicAddress ?? valid[0]
         if (!selected) fail('unavailable')
         if (!publicAddress) {
+          if (declared) await askDestination()
           if (
             !(await this.#call(
               () =>
