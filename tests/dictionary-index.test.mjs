@@ -194,7 +194,7 @@ test('streamed utf8 offsets, hashes, aliases, duplicates, suffixes and exact pri
   assert.deepEqual(await index.lookup('en', dir, 'missing'), [])
   await assert.rejects(index.lookup('en', dir, 'x'.repeat(257)))
 })
-test('bounds records and lookup result count; switching evicts old pack', async (t) => {
+test('bounds records and lookup result count; failed loads leave other packs usable', async (t) => {
   const dir = await directory(t)
   await writePack(
     'tl',
@@ -222,6 +222,44 @@ test('bounds records and lookup result count; switching evicts old pack', async 
     PACK_LIMITS.results,
   )
 })
+test('resident indexes survive language switches and selective unload; byte cap evicts least recently used', async (t) => {
+  const dirs = {}
+  for (const id of ['en', 'tl', 'fr']) {
+    dirs[id] = await directory(t)
+    await writePack(id, entries([entry('word')]), dirs[id])
+  }
+  const probe = new PackIndex()
+  await probe.lookup('en', dirs.en, 'word')
+  const bytes = probe.residentBytes
+  await probe.unload()
+  assert.equal(probe.residentBytes, 0)
+  const index = new PackIndex(bytes * 2)
+  t.after(() => index.unload())
+  for (const id of ['en', 'tl', 'en', 'fr'])
+    assert.equal((await index.lookup(id, dirs[id], 'word'))[0].word, 'word')
+  assert.equal(index.residentBytes, bytes * 2)
+  for (const dir of Object.values(dirs))
+    await writeFile(join(dir, 'index.json'), '{')
+  for (const id of ['en', 'fr'])
+    assert.equal((await index.lookup(id, dirs[id], 'word'))[0].word, 'word')
+  await assert.rejects(index.lookup('tl', dirs.tl, 'word'))
+  await index.unload('en')
+  assert.equal(index.residentBytes, bytes)
+  await assert.rejects(index.lookup('en', dirs.en, 'word'))
+  assert.equal((await index.lookup('fr', dirs.fr, 'word'))[0].word, 'word')
+})
+
+test('oversized resident index answers once without retaining its handle or exceeding the cache cap', async (t) => {
+  const dir = await directory(t)
+  await writePack('en', entries([entry('cat')]), dir)
+  const index = new PackIndex(1)
+  t.after(() => index.unload())
+  assert.equal((await index.lookup('en', dir, 'cat'))[0].word, 'cat')
+  assert.equal(index.residentBytes, 0)
+  await writeFile(join(dir, 'index.json'), '{')
+  await assert.rejects(index.lookup('en', dir, 'cat'))
+})
+
 test('reject corrupt index, traversal offsets, duplicate rows, record boundaries and sparse oversized files', async (t) => {
   const dir = await directory(t)
   await writePack('en', entries([entry('cat')]), dir)
@@ -318,6 +356,46 @@ test('french lowercase aliases preserve exact accents', async (t) => {
   assert.equal((await index.lookup('fr', dir, 'ÉCOLE'))[0].word, 'école')
   assert.deepEqual(await index.lookup('fr', dir, 'ecole'), [])
 })
+test('preloaded prefix search bounds results and normalizes source spelling and reading keys', async (t) => {
+  const index = new PackIndex()
+  t.after(() => index.unload())
+  const en = await directory(t)
+  await writePack(
+    'en',
+    entries([
+      entry("don't"),
+      ...Array.from({ length: 20 }, (_, i) =>
+        entry(`cat${String(i).padStart(2, '0')}`),
+      ),
+    ]),
+    en,
+  )
+  await index.preload('en', en)
+  const resident = index.residentBytes
+  await writeFile(join(en, 'index.json'), '{')
+  assert.equal((await index.complete('en', en, 'CAT')).length, 8)
+  assert.deepEqual(await index.complete('en', en, 'DON’'), ["don't"])
+  assert.deepEqual(await index.complete('en', en, 'cat', 2), ['cat00', 'cat01'])
+  assert.deepEqual(await index.complete('en', en, 'missing'), [])
+  assert.deepEqual(await index.complete('en', en, ''), [])
+  assert.equal(index.residentBytes, resident)
+  for (const limit of [0, -1, 33, 1.5, '8', NaN])
+    await assert.rejects(index.complete('en', en, 'cat', limit))
+  await assert.rejects(index.complete('en', en, 'x'.repeat(257)))
+  await assert.rejects(index.complete('en', en, '\0'))
+  for (const [id, word, aliases, prefix, expected] of [
+    ['fr', 'école', ['écolier'], 'ÉC', ['école', 'écolier']],
+    ['tl', 'bahay', [], 'BA', ['bahay']],
+    ['ja', '猫', ['ねこ'], 'ね', ['ねこ']],
+    ['zh', '猫', ['貓'], '貓', ['貓']],
+    ['yue', '凄切', ['淒切'], '淒', ['淒切']],
+  ]) {
+    const dir = await directory(t)
+    await writePack(id, entries([entry(word, aliases)]), dir)
+    assert.deepEqual(await index.complete(id, dir, prefix), expected)
+  }
+})
+
 test('reject symlink files and symlink directory', async (t) => {
   const dir = await directory(t)
   await writePack('en', entries([entry('cat')]), dir)

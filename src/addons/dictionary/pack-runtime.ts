@@ -1,6 +1,22 @@
 import { Worker } from 'node:worker_threads'
 import type { PackEntry } from './pack-converters'
-import type { PackId, PackStats } from './pack-index'
+import { type PackId, type PackStats, validateId } from './pack-index'
+
+export function completionLimit(value: unknown = 8): number {
+  if (
+    !Number.isSafeInteger(value) ||
+    (value as number) < 1 ||
+    (value as number) > 32
+  )
+    throw new Error('Invalid dictionary completion limit')
+  return value as number
+}
+
+export function completionPrefix(value: unknown): string {
+  if (typeof value !== 'string' || value.length > 128 || /\p{Cc}/u.test(value))
+    throw new Error('Invalid dictionary prefix')
+  return value.trim()
+}
 
 type Pending = {
   resolve: (value: unknown) => void
@@ -78,9 +94,22 @@ export class PackWorker {
     signal?: AbortSignal,
     progress?: ((entries: number) => void) | undefined,
   ): Promise<T> {
-    if (job.type !== 'unload') {
+    if (
+      !['unload', 'convert', 'lookup', 'preload', 'complete'].includes(
+        job.type as string,
+      )
+    )
+      throw new Error('Invalid dictionary operation')
+    if (job.type === 'complete') {
+      job.prefix = completionPrefix(job.prefix)
+      job.limit = completionLimit(job.limit)
+    }
+    if (job.type === 'unload') {
+      if (job.id !== undefined) validateId(job.id)
+    } else {
       if (
         typeof job.directory !== 'string' ||
+        !job.directory ||
         job.directory.length > 4096 ||
         !['en', 'zh', 'yue', 'ja', 'tl', 'fr'].includes(job.id as string)
       )
@@ -155,8 +184,19 @@ export class PackWorker {
   lookup(id: PackId, directory: string, word: string): Promise<PackEntry[]> {
     return this.request({ type: 'lookup', id, directory, word })
   }
-  unload(): Promise<void> {
-    return this.request({ type: 'unload' })
+  preload(id: PackId, directory: string): Promise<void> {
+    return this.request({ type: 'preload', id, directory })
+  }
+  complete(
+    id: PackId,
+    directory: string,
+    prefix: string,
+    limit = 8,
+  ): Promise<string[]> {
+    return this.request({ type: 'complete', id, directory, prefix, limit })
+  }
+  unload(id?: PackId): Promise<void> {
+    return this.request({ type: 'unload', id })
   }
   async close(): Promise<void> {
     this.closed = true
