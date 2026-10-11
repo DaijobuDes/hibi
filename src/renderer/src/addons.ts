@@ -26,7 +26,7 @@ import {
 } from '../../addons/api'
 import {
   addonDependents,
-  requiredAddonDependencies,
+  requiredAddonDependencyMap,
   resolveAddonDependencies,
 } from '../../shared/addon-dependencies'
 import type { AddonHotkeyRegistration } from '../../shared/addon-hotkeys'
@@ -212,6 +212,8 @@ export function useAddons(
   const modalSwitch = useRef<{
     requested: string
     previous: string | null
+    enabled: readonly string[]
+    restoring?: boolean
   } | null>(null)
   const [loadFailed, setLoadFailed] = useState(false)
   const [requested, setRequested] = useState<ReadonlySet<string>>(new Set())
@@ -220,13 +222,7 @@ export function useAddons(
     [catalog],
   )
   const dependencies = useMemo(
-    () =>
-      new Map(
-        manifests.map(({ id }) => [
-          id,
-          requiredAddonDependencies(manifests, id),
-        ]),
-      ),
+    () => requiredAddonDependencyMap(manifests),
     [manifests],
   )
   const resolution = useMemo(
@@ -336,7 +332,7 @@ export function useAddons(
       (state) =>
         state.enabled &&
         required.has(state.id) &&
-        (settled.get(state.id) === false || resolution.blocked.has(state.id)),
+        settled.get(state.id) === false,
     )
   const [commands, setCommands] = useState<RegisteredCommand[]>([])
   const status = useRef(
@@ -385,8 +381,20 @@ export function useAddons(
       }
     >(),
   ).current
-  const currentActivation = useRef({ states, settled, catalog, available })
-  currentActivation.current = { states, settled, catalog, available }
+  const currentActivation = useRef({
+    states,
+    settled,
+    catalog,
+    available,
+    dependencies,
+  })
+  currentActivation.current = {
+    states,
+    settled,
+    catalog,
+    available,
+    dependencies,
+  }
   const activateAddon = useCallback(
     async (owner: string) => {
       if (!currentActivation.current.available.has(owner))
@@ -422,10 +430,8 @@ export function useAddons(
           }
           activation.set(owner, pending)
           void promise.catch(() => {})
-          const requirements = requiredAddonDependencies(
-            currentActivation.current.catalog.map((addon) => addon.manifest),
-            owner,
-          )
+          const requirements =
+            currentActivation.current.dependencies.get(owner) ?? []
           setRequested(
             (current) => new Set([...current, owner, ...requirements]),
           )
@@ -837,6 +843,7 @@ export function useAddons(
         const pendingSwitch = modalSwitch.current
         const failedSwitch =
           pendingSwitch &&
+          !pendingSwitch.restoring &&
           (pendingSwitch.requested === id ||
             dependencies.get(pendingSwitch.requested)?.includes(id))
             ? pendingSwitch
@@ -845,23 +852,41 @@ export function useAddons(
           latest.current.error(error)
           return
         }
-        modalSwitch.current = null
+        failedSwitch.restoring = true
         void (async () => {
+          let transaction = failedSwitch
           try {
-            const disabled = await window.hibi.setAddonEnabled(
-              failedSwitch.requested,
-              false,
+            let restored = currentActivation.current.states
+            for (const enabled of failedSwitch.enabled) {
+              restored = await window.hibi.setAddonEnabled(enabled, false)
+              if (modalSwitch.current !== transaction) return
+            }
+            setStates(restored)
+            if (
+              restored.some(
+                (state) =>
+                  state.id === failedSwitch.requested &&
+                  state.blockedBy?.length,
+              )
             )
-            setStates(disabled)
+              setSettled((current) => {
+                const next = new Map(current)
+                next.delete(failedSwitch.requested)
+                return next
+              })
             if (failedSwitch.previous) {
-              modalSwitch.current = {
+              transaction = {
                 requested: failedSwitch.previous,
                 previous: null,
+                enabled: [failedSwitch.previous],
               }
+              modalSwitch.current = transaction
               const restored = await window.hibi.setAddonEnabled(
                 failedSwitch.previous,
                 true,
               )
+              if (modalSwitch.current !== transaction || transaction.restoring)
+                return
               setStates(restored)
               toastService.api.show({
                 message: `Unable to switch to ${catalog.find((addon) => addon.manifest.id === failedSwitch.requested)?.manifest.name ?? failedSwitch.requested} because of an error. The previous modal addon was restored.`,
@@ -870,6 +895,7 @@ export function useAddons(
                 duration: 0,
               })
             } else {
+              modalSwitch.current = null
               toastService.api.show({
                 message: `Unable to switch to ${catalog.find((addon) => addon.manifest.id === failedSwitch.requested)?.manifest.name ?? failedSwitch.requested} because of an error. Regular editing mode was restored.`,
                 description: `Report this problem at ${ADDON_ISSUE_URL}.`,
@@ -878,16 +904,19 @@ export function useAddons(
               })
             }
           } catch {
-            modalSwitch.current = null
+            if (modalSwitch.current !== transaction) return
             try {
               const fallback = await window.hibi.setAddonEnabled(
                 failedSwitch.previous ?? failedSwitch.requested,
                 false,
               )
+              if (modalSwitch.current !== transaction) return
               setStates(fallback)
             } catch {
               // Keep the original activation failure visible if persistence also fails.
             }
+            if (modalSwitch.current !== transaction) return
+            modalSwitch.current = null
             toastService.api.show({
               message:
                 'An error occurred while switching back to a modal addon. Falling back to regular editing mode.',
@@ -1913,7 +1942,9 @@ export function useAddons(
     const name = manifests.find((manifest) => manifest.id === id)?.name ?? id
     return dialogService.api.confirm({
       title: removing ? 'Remove addon' : 'Disable addon',
-      description: `${names.join(', ')} require ${name} and will stop too. Their enabled settings will be kept. Continue?`,
+      description: removing
+        ? `Removing ${name} will also stop ${names.join(', ')}. Their enabled settings will be kept. Document editing stays available.`
+        : `Disabling ${name} will also stop ${names.join(', ')}. Their enabled settings will be kept. Document editing stays available.`,
       confirmLabel: removing ? 'Remove' : 'Disable',
     })
   }
@@ -1959,28 +1990,24 @@ export function useAddons(
             )
           : []
         if (needed.length || switchModal) {
-          const description = [
-            ...(needed.length
-              ? [
-                  `${name(id)} requires ${needed.map(name).join(', ')}. Enable these addons too?`,
-                ]
-              : []),
-            ...(switchModal
-              ? [
-                  `${name(current.id)} is active. Enabling ${name(nextModal ?? id)} will disable it. Continue?`,
-                  ...(stopped.length
-                    ? [
-                        `${stopped.map(name).join(', ')} also require ${name(current.id)} and will stop.`,
-                      ]
-                    : []),
-                ]
-              : []),
-          ].join('\n\n')
+          const prompt = {
+            description: [
+              needed.length
+                ? `${name(id)} requires ${needed.map(name).join(', ')}. Enable these addons too?`
+                : null,
+              switchModal
+                ? `${name(current.id)} is active. Enabling ${name(nextModal ?? id)} will disable it. Continue?`
+                : null,
+              switchModal && stopped.length
+                ? `Switching will also stop ${stopped.map(name).join(', ')}.`
+                : null,
+            ],
+          }
           const confirmed = await dialogService.api.confirm({
             title: needed.length
               ? 'Enable required addons'
               : 'Switch modal editor',
-            description,
+            description: prompt.description.filter(Boolean).join('\n\n'),
             confirmLabel: needed.length ? 'Enable all' : 'Switch',
           })
           if (!confirmed) return
@@ -1992,13 +2019,25 @@ export function useAddons(
       const transition = { id }
       setTransitioning((current) => new Set([...current, transition]))
       try {
+        const newlyEnabled = [id, ...(dependencies.get(id) ?? [])].filter(
+          (dependency) =>
+            !currentActivation.current.states.some(
+              (state) => state.id === dependency && state.enabled,
+            ),
+        )
+        if (
+          nextModal ||
+          (!enabled &&
+            modalSwitch.current &&
+            (modalSwitch.current.requested === id ||
+              dependencies.get(modalSwitch.current.requested)?.includes(id)))
+        )
+          modalSwitch.current = null
         const next = await window.hibi.setAddonEnabled(
           id,
           enabled,
           includeRequired,
         )
-        if (!enabled && modalSwitch.current?.requested === id)
-          modalSwitch.current = null
         if (!enabled)
           setRequested((current) => {
             const next = new Set(current)
@@ -2014,11 +2053,14 @@ export function useAddons(
             if (next.get(dependent) === false) next.delete(dependent)
           return next
         })
-        if (enabled && nextModal && !started.has(nextModal))
+        if (enabled && nextModal && !started.has(nextModal)) {
           modalSwitch.current = {
-            requested: nextModal,
+            requested: id,
             previous: previousModal,
+            enabled: newlyEnabled,
           }
+          setRequested((current) => new Set([...current, id]))
+        }
         if (
           enabled &&
           catalog.some(

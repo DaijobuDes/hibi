@@ -52,7 +52,7 @@ Use **Syntax** to enable or disable formatting features, and **Code Highlight** 
 
 Enable or disable addons and themes in the alphabetical **Addons** list. Enabling a addon makes its settings and formats available. **Reset all** restores the default enabled addons without removing installed packages.
 
-Enabling an addon can ask to enable its required addons too; disabling a provider stops its consumers, which remain enabled but show **Requires Provider** until you enable that provider again.
+Enabling an addon can ask to enable its required addons too; disabling a provider leaves its consumers enabled but blocked, while documents stay editable under their existing syntax protections.
 
 Choose a category above the list to show only features, formats, themes, or importers. Categories work together with the text filter; choose **All** to see every category. Categories without installed addons are hidden.
 

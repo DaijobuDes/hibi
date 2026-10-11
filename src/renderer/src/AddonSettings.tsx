@@ -247,89 +247,94 @@ export function AddonSettings({
         ))}
       </ControlRow>
       <div className="settings-group addon-list" hidden={!matching.length}>
-        {ordered.map(({ manifest }) => (
-          <SettingRow
-            key={manifest.id}
-            id={`addon-${manifest.id}`}
-            label={manifest.name}
-            details={{
-              label: `${manifest.name} readme`,
-              onOpen: () => {
-                openReadme(manifest)
-              },
-            }}
-            hidden={!shown(manifest)}
-            description={
-              <>
-                {manifest.description}
-                <AddonMetadata manifest={manifest} />
-                {states
-                  .find((state) => state.id === manifest.id)
-                  ?.blockedBy?.map((id) => {
+        {ordered.map(({ manifest }) => {
+          const blockedBy =
+            states.find((state) => state.id === manifest.id)?.blockedBy ?? []
+          const providers = blockedBy.map(
+            (id) => addons.find((addon) => addon.manifest.id === id)?.manifest,
+          )
+          const retry = blockedBy.every(enabled)
+          return (
+            <SettingRow
+              key={manifest.id}
+              id={`addon-${manifest.id}`}
+              label={manifest.name}
+              details={{
+                label: `${manifest.name} readme`,
+                onOpen: () => {
+                  openReadme(manifest)
+                },
+              }}
+              hidden={!shown(manifest)}
+              description={
+                <>
+                  {manifest.description}
+                  <AddonMetadata manifest={manifest} />
+                  {blockedBy.map((id) => {
                     const dependency = addons.find(
                       (addon) => addon.manifest.id === id,
                     )?.manifest
                     return (
-                      <span
-                        className="addon-metadata"
-                        key={id}
-                      >{`Requires ${dependency?.name ?? id}`}</span>
+                      <span className="addon-metadata" key={id}>
+                        {enabled(id)
+                          ? `Could not start ${dependency?.name ?? id}`
+                          : `Requires ${dependency?.name ?? id}`}
+                      </span>
                     )
                   })}
-              </>
-            }
-          >
-            <div className="addon-actions">
-              {states
-                .find((state) => state.id === manifest.id)
-                ?.blockedBy?.map((id) => {
-                  const dependency = addons.find(
-                    (addon) => addon.manifest.id === id,
-                  )?.manifest
-                  return dependency && !enabled(id) ? (
-                    <Button
-                      key={id}
-                      disabled={busy}
-                      onClick={() =>
-                        void run(() => setEnabled(manifest.id, true))
-                      }
-                    >
-                      {`Enable ${dependency.name} too`}
-                    </Button>
-                  ) : null
-                })}
-              {addonRegistry.isInstalled(manifest.id) && (
-                <Button
-                  disabled={busy}
-                  onClick={() => void run(() => remove(manifest.id))}
-                >
-                  Remove
-                </Button>
-              )}
-              {manifest.id === 'markdown' ? (
-                <Toggle
-                  id={`addon-${manifest.id}`}
-                  aria-label={manifest.name}
-                  checked
-                  disabled
-                />
-              ) : (
-                <Toggle
-                  id={`addon-${manifest.id}`}
-                  aria-label={manifest.name}
-                  aria-describedby={`addon-${manifest.id}-description`}
-                  disabled={busy}
-                  checked={enabled(manifest.id)}
-                  onChange={(event) => {
-                    restoreFocus.current = event.target.id
-                    const next = event.target.checked
-                    void run(() => setEnabled(manifest.id, next))
-                  }}
-                />
-              )}
-            </div>
-          </SettingRow>
-        ))}
+                </>
+              }
+            >
+              <div className="addon-actions">
+                {blockedBy.length > 0 && providers.every(Boolean) && (
+                  <Button
+                    disabled={busy}
+                    onClick={() =>
+                      void run(() => setEnabled(manifest.id, true))
+                    }
+                  >
+                    {blockedBy.length === 1
+                      ? retry
+                        ? `Retry ${providers[0]?.name}`
+                        : `Enable ${providers[0]?.name} too`
+                      : retry
+                        ? 'Retry required addons'
+                        : 'Enable required addons'}
+                  </Button>
+                )}
+                {addonRegistry.isInstalled(manifest.id) && (
+                  <Button
+                    disabled={busy}
+                    onClick={() => void run(() => remove(manifest.id))}
+                  >
+                    Remove
+                  </Button>
+                )}
+                {manifest.id === 'markdown' ? (
+                  <Toggle
+                    id={`addon-${manifest.id}`}
+                    aria-label={manifest.name}
+                    checked
+                    disabled
+                  />
+                ) : (
+                  <Toggle
+                    id={`addon-${manifest.id}`}
+                    aria-label={manifest.name}
+                    aria-describedby={`addon-${manifest.id}-description`}
+                    disabled={busy}
+                    checked={enabled(manifest.id)}
+                    onChange={(event) => {
+                      restoreFocus.current = event.target.id
+                      const next = event.target.checked
+                      void run(() => setEnabled(manifest.id, next))
+                    }}
+                  />
+                )}
+              </div>
+            </SettingRow>
+          )
+        })}
       </div>
       {!matching.length && (
         <Panel>

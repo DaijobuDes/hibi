@@ -4,6 +4,7 @@ import {
   addonDependents,
   parseAddonRequirements,
   requiredAddonDependencies,
+  requiredAddonDependencyMap,
   resolveAddonDependencies,
   validateAddonRequirements,
 } from '../src/shared/addon-dependencies.ts'
@@ -396,6 +397,45 @@ test('required closure includes missing ids once in load order', () => {
     'missing',
     'middle',
   ])
+})
+
+test('required dependency map preserves each closure order, missing ids and optional exclusion', () => {
+  const manifests = [
+    addon('top', 'left', 'right', { id: 'optional', optional: true }),
+    addon('left', 'base', 'missing'),
+    addon('right', 'base', 'missing'),
+    addon('base'),
+    addon('optional', 'optional-root'),
+  ]
+  const dependencies = requiredAddonDependencyMap(manifests)
+  assert.deepEqual(
+    dependencies,
+    new Map([
+      ['top', ['base', 'missing', 'left', 'right']],
+      ['left', ['base', 'missing']],
+      ['right', ['base', 'missing']],
+      ['base', []],
+      ['optional', ['optional-root']],
+    ]),
+  )
+  for (const { id } of manifests)
+    assert.deepEqual(
+      dependencies.get(id),
+      requiredAddonDependencies(manifests, id),
+    )
+  assert.deepEqual(requiredAddonDependencyMap([]), new Map())
+  assert.throws(
+    () =>
+      requiredAddonDependencyMap([
+        addon('alpha', 'beta'),
+        addon('beta', 'alpha'),
+      ]),
+    /alpha -> beta -> alpha/,
+  )
+  assert.throws(
+    () => requiredAddonDependencyMap([addon('owner', 'owner')]),
+    /cannot require itself/,
+  )
 })
 
 test('required dependents are transitive in unload order and exclude optional consumers', () => {

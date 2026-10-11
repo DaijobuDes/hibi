@@ -90,6 +90,8 @@ Both methods require the provider's ID in your manifest, including optional prov
 
 When a user enables a consumer with disabled required providers, Hibi shows **Enable required addons** and offers **Enable all**. Cancelling leaves the providers disabled.
 
-Disabling a provider shows **Disable addon** and lists the consumers that will stop. Their contributions are removed, but their enabled preferences remain saved. Settings shows **Requires Provider** with **Enable Provider too** for a consumer whose provider is named Provider. Enabling the required provider again lets the consumer start with the provider's new API. If a consumer needed for editor startup is blocked, Hibi keeps source editing available.
+Disabling a provider shows **Disable addon** and lists the consumers that will stop. Their contributions are removed, but their enabled preferences remain saved. Settings shows **Requires Provider** with **Enable Provider too** for a consumer whose provider is named Provider. Enabling the required provider again lets the consumer start with the provider's new API. A blocked feature stops without disabling document editing. If a document uses markup owned by that addon, Hibi applies the existing [syntax preservation rules](document-formats-and-syntax.md#preserve-source).
+
+If an enabled provider fails startup, its consumers show **Could not start Provider** and offer **Retry Provider**. Use **Retry required addons** when several enabled providers failed. Retrying preserves enabled preferences.
 
 Test cancellation, provider failure, missing exports, optional-provider absence, and disable/re-enable cycles. Check that stopped consumers leave no commands, styles, or listeners behind. See [testing your addon](testing-your-addon.md).
