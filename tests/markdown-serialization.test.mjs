@@ -25,7 +25,10 @@ import {
   markdownSerializer,
   paragraphEscaper,
 } from '../src/renderer/src/markdown-serialization.ts'
-import { preserveRichSource } from '../src/renderer/src/rich-source-preservation.ts'
+import {
+  preserveRichSource,
+  sameRichSourceDocument,
+} from '../src/renderer/src/rich-source-preservation.ts'
 
 const extensions = [
   StarterKit.configure({ trailingNode: false }),
@@ -1315,6 +1318,189 @@ test('typing an exclamation before a link keeps the link', () => {
     const saved = markdownSerializer(manager, blockLocal)(doc).source
     assert.equal(saved, '\\![x](foo)')
     assert.ok(schema.nodeFromJSON(manager.parse(saved)).eq(doc))
+  }
+})
+
+test('rich insertions at normalized delimiters preserve source only with a unique full parse', () => {
+  for (const source of ['_em_', '**bold**', '~~strike~~']) {
+    const original = `${source}\r\n\r\nelsewhere\r\n`
+    const before = schema.nodeFromJSON(manager.parse(original))
+    const state = EditorState.create({ schema, doc: before })
+    for (const atEnd of [false, true]) {
+      const after = state.apply(
+        state.tr.insertText('!', atEnd ? before.firstChild.nodeSize - 1 : 1),
+      ).doc
+      const preserved = preserveRichSource(
+        original,
+        manager.serialize(before.toJSON()),
+        manager.serialize(after.toJSON()),
+        (candidate) => schema.nodeFromJSON(manager.parse(candidate)).eq(after),
+      )
+      const text = before.firstChild.textContent
+      assert.equal(
+        preserved,
+        original.replace(text, atEnd ? `${text}!` : `!${text}`),
+      )
+    }
+  }
+  assert.equal(
+    preserveRichSource('_em_', '*em*', '*em!*', () => false),
+    null,
+  )
+  assert.equal(
+    preserveRichSource('m_*', 'm*', 'm!*', () => true),
+    null,
+    'one-sided anchors must not choose between multiple proven source edits',
+  )
+})
+
+test('normalized delimiter edits find nearby anchors after more than 32 earlier matches', () => {
+  const original = `${'day\n\n'.repeat(40)}_y_\n`
+  const before = schema.nodeFromJSON(manager.parse(original))
+  const state = EditorState.create({ schema, doc: before })
+  const after = state.apply(
+    state.tr.insertText('!', before.content.size - 1),
+  ).doc
+  assert.equal(
+    preserveRichSource(
+      original,
+      manager.serialize(before.toJSON()),
+      manager.serialize(after.toJSON()),
+      (candidate) => schema.nodeFromJSON(manager.parse(candidate)).eq(after),
+    ),
+    original.replace('_y_', '_y!_'),
+  )
+})
+
+test('occurrence order preserves edits after a table shrinks during serialization', () => {
+  const pad = (text) => text + ' '.repeat(60)
+  const table = [
+    `| ${pad('a')} | ${pad('b')} |`,
+    `|${'-'.repeat(62)}|${'-'.repeat(62)}|`,
+    ...Array.from(
+      { length: 300 },
+      (_, index) => `| ${pad(`c${index}`)} | ${pad('d')} |`,
+    ),
+  ].join('\n')
+  const items = Array.from({ length: 20 }, () => '- _y_')
+  const original = `${table}\n\n${items.join('\n')}\n`
+  const before = schema.nodeFromJSON(manager.parse(original))
+  const state = EditorState.create({ schema, doc: before })
+  let occurrence = 0
+  let position = -1
+  before.descendants((node, at) => {
+    if (node.isText && node.text === 'y' && ++occurrence === 10)
+      position = at + 1
+  })
+  assert.notEqual(position, -1)
+  const after = state.apply(state.tr.insertText('!', position)).doc
+  let parses = 0
+  const preserved = preserveRichSource(
+    original,
+    manager.serialize(before.toJSON()),
+    manager.serialize(after.toJSON()),
+    (candidate) => {
+      parses++
+      return schema.nodeFromJSON(manager.parse(candidate)).eq(after)
+    },
+    7,
+  )
+  items[9] = '- _y!_'
+  assert.equal(preserved, `${table}\n\n${items.join('\n')}\n`)
+  assert.ok(parses <= 7, 'one of eight parses is reserved for the baseline')
+})
+
+test('plain CRLF paragraphs preserve exact line endings when q becomes qq', () => {
+  const original = 'p\r\n\r\nq'
+  const before = schema.nodeFromJSON(manager.parse(original))
+  const state = EditorState.create({ schema, doc: before })
+  const after = state.apply(
+    state.tr.insertText('q', before.content.size - 1),
+  ).doc
+  assert.equal(
+    preserveRichSource(
+      original,
+      manager.serialize(before.toJSON()),
+      manager.serialize(after.toJSON()),
+      (candidate) => schema.nodeFromJSON(manager.parse(candidate)).eq(after),
+    ),
+    'p\r\n\r\nqq',
+  )
+})
+
+test('source preservation caps distinct candidate parses including failures', () => {
+  for (const throws of [false, true]) {
+    const candidates = new Set()
+    let parses = 0
+    const result = preserveRichSource(
+      `${'day\n\n'.repeat(40)}_y_\n`,
+      `${'day\n\n'.repeat(40)}*y*`,
+      `${'day\n\n'.repeat(40)}*y!*`,
+      (candidate) => {
+        parses++
+        assert.ok(!candidates.has(candidate), 'candidate parsed more than once')
+        candidates.add(candidate)
+        if (throws) throw new Error('invalid candidate')
+        return false
+      },
+    )
+    assert.equal(result, null)
+    assert.equal(parses, 8)
+  }
+})
+
+test('fenced preview spelling caches never mask semantic or custom-grammar changes', () => {
+  const names = ['typstBlock', 'mermaidBlock', 'customBlock']
+  const schema = getSchema([
+    StarterKit,
+    ...names.map((name) =>
+      Node.create({
+        name,
+        group: 'block',
+        atom: true,
+        addAttributes: () => ({
+          source: { default: '' },
+          raw: { default: '' },
+          semantic: { default: '' },
+        }),
+      }),
+    ),
+  ])
+  const document = (name, attrs, marks = []) =>
+    schema.nodes.doc.create(null, [
+      schema.nodes.paragraph.create(null, schema.text('untouched')),
+      schema.nodes[name].create(attrs, null, marks),
+    ])
+  for (const name of names) {
+    const expected = document(name, { source: 'new', raw: 'old fence' })
+    const parsed = document(name, { source: 'new', raw: 'new fence' })
+    assert.equal(sameRichSourceDocument(parsed, expected, false), false)
+    assert.equal(
+      sameRichSourceDocument(parsed, expected, true),
+      name !== 'customBlock',
+    )
+    assert.equal(
+      sameRichSourceDocument(parsed, document(name, { source: 'new' }), true),
+      name !== 'customBlock',
+      'newly inserted previews have an empty spelling cache',
+    )
+    for (const different of [
+      document(name, { source: 'other', raw: 'new fence' }),
+      document(name, { source: 'new', raw: 'new fence', semantic: 'changed' }),
+      document(name, { source: 'new', raw: 'new fence' }, [
+        schema.marks.bold.create(),
+      ]),
+      document(name === 'typstBlock' ? 'mermaidBlock' : 'typstBlock', {
+        source: 'new',
+        raw: 'new fence',
+      }),
+      schema.nodes.doc.create(null, [
+        schema.nodes.paragraph.create(null, schema.text('changed')),
+        parsed.lastChild,
+      ]),
+      schema.nodes.doc.create(null, [parsed.lastChild]),
+    ])
+      assert.equal(sameRichSourceDocument(different, expected, true), false)
   }
 })
 
