@@ -185,7 +185,12 @@ export function DialogProvider({ children }: { children: ReactNode }) {
   const [service] = useState(createDialogService)
   useLayoutEffect(() => {
     service.start()
-    return () => service.stop()
+    // A reload skips React unmount; dismissal signals must still fire.
+    window.addEventListener('pagehide', service.stop)
+    return () => {
+      window.removeEventListener('pagehide', service.stop)
+      service.stop()
+    }
   }, [service])
   return (
     <DialogContext.Provider value={service}>

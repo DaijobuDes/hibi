@@ -516,4 +516,23 @@ test('shared dialogs validate input, trap focus, queue, and clean up by addon ow
   assert.match(await page.locator('.toast').innerText(), /Other notice/)
   await page.evaluate(() => window.dialogTest.otherToasts.dispose())
   await page.locator('.sonner').waitFor({ state: 'hidden' })
+  // A reload skips React unmount; window teardown must still dismiss dialogs.
+  await page.evaluate(() => {
+    const { dialogs, createElement } = window.dialogTest
+    dialogs.open({
+      title: 'reloading dialog',
+      content: ({ signal }) => {
+        signal.addEventListener('abort', () =>
+          sessionStorage.setItem('dialogAborted', 'yes'),
+        )
+        return createElement('p', null, 'reloading')
+      },
+    })
+  })
+  await page.getByRole('dialog', { name: /reloading dialog/i }).waitFor()
+  await page.reload()
+  assert.equal(
+    await page.evaluate(() => sessionStorage.getItem('dialogAborted')),
+    'yes',
+  )
 })
