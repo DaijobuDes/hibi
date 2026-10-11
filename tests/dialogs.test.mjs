@@ -417,6 +417,44 @@ test('shared dialogs validate input, trap focus, queue, and clean up by addon ow
   assert.ok(footerBounds.y + footerBounds.height <= 560)
   await footerDialog.getByRole('button', { name: /footer action/i }).click()
   assert.equal(await page.evaluate(() => window.footerDialog.result), 'saved')
+  // Addon-scoped actions run once from a click or Enter, then dismiss.
+  await page.evaluate(() => {
+    window.toastRuns = 0
+    window.dialogTest.otherToasts.api.show({
+      message: 'addon finished',
+      duration: 0,
+      action: { label: 'Open result', run: () => window.toastRuns++ },
+    })
+  })
+  const addonToast = page
+    .locator('.toast')
+    .filter({ hasText: /addon finished/i })
+  await addonToast.getByText(/addon finished/i).click()
+  await addonToast.waitFor({ state: 'detached' })
+  assert.equal(await page.evaluate(() => window.toastRuns), 1)
+  await page.evaluate(() =>
+    window.dialogTest.otherToasts.api.show({
+      message: 'addon finished',
+      duration: 0,
+      action: { label: 'Open result', run: () => window.toastRuns++ },
+    }),
+  )
+  await prompt.focus()
+  await page
+    .getByRole('button', { name: 'Addon finished. Open result.', exact: true })
+    .press('Enter')
+  await addonToast.waitFor({ state: 'detached' })
+  assert.equal(await page.evaluate(() => window.toastRuns), 2)
+  await page.evaluate(() =>
+    window.dialogTest.otherToasts.api.show({
+      message: 'addon finished',
+      duration: 0,
+      action: { label: 'Open result', run: () => window.toastRuns++ },
+    }),
+  )
+  await addonToast.getByRole('button', { name: /dismiss notice/i }).click()
+  await addonToast.waitFor({ state: 'detached' })
+  assert.equal(await page.evaluate(() => window.toastRuns), 2)
   await page.evaluate(() => {
     const { toastOwner, otherToasts } = window.dialogTest
     window.staleToast = toastOwner.api.show({

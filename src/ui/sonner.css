@@ -53,7 +53,7 @@
 .toast[data-action="true"]:is(:hover, :has(:focus-visible)) {
   border-color: var(--accent);
 }
-.toast-copy .toast-action {
+.toast-copy button.toast-action {
   display: flex;
   min-height: 0;
   margin: var(--space-1) 0 0 calc(-1 * var(--control-padding-x));
