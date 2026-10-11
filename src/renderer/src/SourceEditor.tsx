@@ -103,7 +103,7 @@ import {
   type SourceReferenceResult,
   type SourceReferenceSyntax,
 } from './source-view'
-import { detectIndentUnit, tabIndent } from './tab-indent'
+import { sourceIndent, tabIndent } from './tab-indent'
 import { textProjection } from './text-projection'
 
 const highlighting = HighlightStyle.define([
@@ -837,10 +837,14 @@ export function SourceEditor({
         return false
       // An open menu declines Tab briefly after appearing; never indent beneath it.
       if (completionStatus(view.state) === 'active') return true
-      const unit = detectIndentUnit(view.state.doc.iterLines())
+      const unit =
+        view.state.field(sourceIndent)?.unit ?? tabIndent.snapshot().unit
       if (view.state.facet(indentUnit) !== unit)
         view.dispatch({
-          effects: indentation.current.reconfigure(indentUnit.of(unit)),
+          effects: indentation.current.reconfigure([
+            sourceIndent,
+            indentUnit.of(unit),
+          ]),
         })
       if (
         command === indentLess ||
@@ -884,7 +888,7 @@ export function SourceEditor({
           language.of(markdown()),
           sourceAnnotationExtension,
           autocompletion({ override: [sourceCompletions] }),
-          indentation.current.of([]),
+          indentation.current.of(sourceIndent),
           keymap.of([
             { key: 'Tab', run: acceptCompletion },
             {

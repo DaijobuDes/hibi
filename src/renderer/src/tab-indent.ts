@@ -1,3 +1,4 @@
+import { StateField, type Text } from '@codemirror/state'
 import { Extension } from '@tiptap/core'
 import { Plugin, TextSelection } from '@tiptap/pm/state'
 
@@ -33,18 +34,50 @@ export const tabIndent = {
   },
 }
 
-/** Use the first indented line's style, or the preferred unit when none is found. */
-export function detectIndentUnit(lines: Iterable<string>) {
-  let checked = 0
-  for (const line of lines) {
-    if (line[0] === '\t') return '\t'
-    const spaces = /^ {2,}/.exec(line)?.[0].length
-    if (spaces && line.length > spaces) return ' '.repeat(Math.min(spaces, 4))
-    // ponytail: only the first lines are sampled so Tab stays cheap in large files.
-    if (++checked === 1000) break
+const indented = /\t| {2,}(?=[^ \n])/y
+/** The first indented line's unit, scanning only as far as that line. */
+export function detectIndentUnit(text: string) {
+  for (let at = 0; ; ) {
+    indented.lastIndex = at
+    const match = indented.exec(text)?.[0]
+    if (match)
+      return match === '\t' ? match : ' '.repeat(Math.min(match.length, 4))
+    at = text.indexOf('\n', at) + 1
+    if (!at) return undefined
   }
-  return preferences.unit
 }
+
+type Indented = { unit: string; from: number; to: number } | null
+const firstIndented = (doc: Text, pos = 0, end = doc.length): Indented => {
+  while (pos <= end) {
+    const line = doc.lineAt(pos)
+    const unit = detectIndentUnit(line.text)
+    if (unit) return { unit, from: line.from, to: line.to }
+    pos = line.to + 1
+  }
+  return null
+}
+/** Source view's first indented line, rescanned only when an edit reaches it. */
+export const sourceIndent = StateField.define<Indented>({
+  create: (state) => firstIndented(state.doc),
+  update(found, { changes, docChanged, newDoc }) {
+    if (!docChanged) return found
+    if (found && changes.touchesRange(found.from, found.to))
+      return firstIndented(newDoc)
+    // Untouched lines keep their indentation, so only edited lines can precede it.
+    let next = found && {
+      ...found,
+      from: changes.mapPos(found.from),
+      to: changes.mapPos(found.to),
+    }
+    changes.iterChangedRanges((_fromA, _toA, from, to) => {
+      next =
+        firstIndented(newDoc, from, next ? Math.min(to, next.from - 1) : to) ??
+        next
+    })
+    return next
+  },
+})
 
 /** Rich-text Tab: lists and tables first, then code indentation, then a mid-line tab. */
 export const TabIndent = Extension.create({
@@ -94,7 +127,7 @@ export const TabIndent = Extension.create({
       if (code) {
         const start = $from.start()
         const text = $from.parent.textContent
-        const unit = detectIndentUnit(text.split('\n'))
+        const unit = detectIndentUnit(text) ?? tabIndent.snapshot().unit
         if (!outdent && from === to) tr.insertText(unit, from)
         else {
           // One replacement for every line: per-line steps would each keep a whole-block copy.

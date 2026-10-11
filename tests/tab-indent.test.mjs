@@ -3,16 +3,40 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { detectIndentUnit } from '../src/renderer/src/tab-indent.ts'
+import { EditorState } from '@codemirror/state'
+import {
+  detectIndentUnit,
+  sourceIndent,
+} from '../src/renderer/src/tab-indent.ts'
 import { electron, waitForDocumentEditor } from './electron.mjs'
 import { clickMenu, replaceSourceText } from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
 
 test('indentation follows the first indented line', () => {
-  assert.equal(detectIndentUnit(['a', '  ', '\tb']), '\t')
-  assert.equal(detectIndentUnit(['a', ' b', '   c']), '   ')
-  assert.equal(detectIndentUnit(['        code']), '    ')
-  assert.equal(detectIndentUnit(['plain']), '\t')
+  assert.equal(detectIndentUnit('a\n  \n\tb'), '\t')
+  assert.equal(detectIndentUnit('a\n b\n   c'), '   ')
+  assert.equal(detectIndentUnit('        code'), '    ')
+  assert.equal(detectIndentUnit('plain\n'), undefined)
+  const late = `${'line\n'.repeat(1499)}    late`
+  assert.equal(detectIndentUnit(late), '    ')
+
+  let state = EditorState.create({ doc: late, extensions: sourceIndent })
+  const unit = () => state.field(sourceIndent)?.unit
+  const edit = (changes) => {
+    state = state.update({ changes }).state
+  }
+  assert.equal(unit(), '    ')
+  edit({ from: 0, insert: '  first\n' })
+  assert.equal(unit(), '  ')
+  edit({ from: 0, to: 2 })
+  assert.equal(unit(), '    ')
+  edit({ from: state.doc.length - 8, insert: 'x' })
+  assert.equal(unit(), undefined)
+  edit({ from: state.doc.length, insert: '\n\tz' })
+  assert.equal(unit(), '\t')
+  edit({ from: 4, insert: '\n\t\t' })
+  assert.equal(unit(), '\t')
+  assert.equal(state.field(sourceIndent).from, 5)
 })
 
 test('Tab indents source and code, keeps lists and tables, and Escape then Tab leaves', {
