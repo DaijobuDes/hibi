@@ -767,6 +767,7 @@ export function MarkdownEditor({
     const capture = (
       trigger: CompletionRequest['trigger'],
       typingContext = false,
+      rangeOnly = false,
     ): CompletionRequest | null => {
       const context = completionContext.current
       if (
@@ -802,8 +803,9 @@ export function MarkdownEditor({
         !(selection instanceof TextSelection) ||
         !selection.empty ||
         !selection.$head.parent.isTextblock ||
-        selection.$head.parent.type.spec.code ||
-        selection.$head.marks().some((mark) => mark.type.spec.code)
+        (!rangeOnly &&
+          (selection.$head.parent.type.spec.code ||
+            selection.$head.marks().some((mark) => mark.type.spec.code)))
       )
         return null
       if (!typingContext && !plainSync.current)
@@ -833,14 +835,16 @@ export function MarkdownEditor({
           (mark) =>
             mark.type.spec.code || /link|math|html/i.test(mark.type.name),
         )
-      parent.forEach((node, start) => {
-        if (!unsafe(node)) return
-        const end = start + node.nodeSize
-        if (start < offset && offset < end) excluded = true
-        if (end <= offset) from = Math.max(from, end)
-        if (start >= offset) to = Math.min(to, start)
-      })
+      if (!rangeOnly && parent.content.size <= 16384)
+        parent.forEach((node, start) => {
+          if (!unsafe(node)) return
+          const end = start + node.nodeSize
+          if (start < offset && offset < end) excluded = true
+          if (end <= offset) from = Math.max(from, end)
+          if (start >= offset) to = Math.min(to, start)
+        })
       const prose =
+        !rangeOnly &&
         !excluded &&
         parent.content.size <= 16384 &&
         !selection.$head
@@ -1093,12 +1097,25 @@ export function MarkdownEditor({
       return !!cancel
     }
     const onKeyDown = (event: KeyboardEvent) => {
-      if (completionBroker.hasTypingListeners() && !event.isComposing && !view.composing && !visible &&
-          !event.ctrlKey && !event.metaKey && !event.altKey && ['Enter', 'Backspace', 'Delete'].includes(event.key)) {
+      if (
+        completionBroker.hasTypingListeners() &&
+        !event.isComposing &&
+        !view.composing &&
+        !visible &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey &&
+        ['Enter', 'Backspace', 'Delete'].includes(event.key)
+      ) {
         inputKind = event.key === 'Enter' ? 'input' : 'delete'
-        inputBefore = capture({kind: 'explicit'}, true)
+        inputBefore = capture({ kind: 'explicit' }, true)
         const kind = inputKind
-        setTimeout(() => {if (inputKind === kind) {inputKind = null; inputBefore = null}}, 0)
+        setTimeout(() => {
+          if (inputKind === kind) {
+            inputKind = null
+            inputBefore = null
+          }
+        }, 0)
       }
       if (!completionBroker.hasProviders()) return
       if (event.isComposing || view.composing) {
@@ -1163,7 +1180,7 @@ export function MarkdownEditor({
     ) => {
       if (!completionBroker.hasTypingListeners() || view.state.doc !== after)
         return
-      const request = capture({ kind: 'explicit' }, true)
+      const request = capture({ kind: 'explicit' }, true, kind === 'replace')
       if (!request || (kind !== 'replace' && !request.prose)) return
       const from = before.content.findDiffStart(after.content)
       const end = before.content.findDiffEnd(after.content)
@@ -1171,9 +1188,14 @@ export function MarkdownEditor({
       const overlap = Math.max(0, from - Math.min(end.a, end.b))
       completionBroker.emitTypingContext({
         ...request,
-        before: kind === 'input' && request.prose?.before === '' && previous?.prose &&
-          before.resolve(previous.selection.head).parent !== view.state.selection.$head.parent
-          ? `${previous.prose.before}\n`.slice(-256) : request.prose?.before ?? '',
+        before:
+          kind === 'input' &&
+          request.prose?.before === '' &&
+          previous?.prose &&
+          before.resolve(previous.selection.head).parent !==
+            view.state.selection.$head.parent
+            ? `${previous.prose.before}\n`.slice(-256)
+            : (request.prose?.before ?? ''),
         after: request.prose?.after ?? '',
         kind,
         change: {
@@ -1197,7 +1219,7 @@ export function MarkdownEditor({
           : ['insertFromPaste', 'insertFromDrop'].includes(event.inputType)
             ? 'replace'
             : null
-      inputBefore = capture({kind: 'explicit'}, true)
+      inputBefore = capture({ kind: 'explicit' }, true)
       const kind = inputKind
       setTimeout(() => {
         if (inputKind === kind) inputKind = null
@@ -1251,7 +1273,8 @@ export function MarkdownEditor({
         | undefined
       if (echo && transaction.docChanged)
         sourceEchoBefore = { version: echo.version, before: transaction.before }
-      const kind = inputKind, previous = inputBefore
+      const kind = inputKind,
+        previous = inputBefore
       inputKind = null
       inputBefore = null
       if (

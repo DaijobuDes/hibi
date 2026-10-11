@@ -17,6 +17,7 @@ import type {
 } from '../../shared/foundation-contracts'
 import { defineAddon } from '../api'
 import { Button, PanelMessage } from '../ui'
+import { createDictionaryApi } from './api'
 import css from './dictionary.css?inline'
 import { detectLangs, type LookupTarget, matchCase, wordAt } from './lookup'
 import manifest from './manifest'
@@ -35,7 +36,6 @@ import {
 import { SideView } from './SideView'
 import { languageNames, readPreferences, readRecentPack } from './settings'
 import sideCss from './side-view.css?inline'
-import { watchSuggestions } from './suggestions'
 
 function richTarget(
   editor: Editor,
@@ -290,10 +290,8 @@ function Results({
   )
 }
 
-let stopSuggestions: (() => void) | undefined
 export default defineAddon({
   manifest,
-  stop: () => stopSuggestions?.(),
   start(context) {
     context.styles.register('dictionary', css)
     queueMicrotask(() => {
@@ -515,6 +513,12 @@ export default defineAddon({
       keywords: 'dictionary thesaurus sidebar panel definition synonyms',
       run: () => side.open(),
     })
-    stopSuggestions = watchSuggestions(context, registry)
+    context.exports.provide(
+      createDictionaryApi(
+        registry,
+        () => detectLangs('word', readPreferences()),
+        () => [],
+      ),
+    )
   },
 })

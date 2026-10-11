@@ -1,18 +1,42 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { createPersonalModel } from '../src/addons/autocomplete/model.ts'
+import {
+  autocompleteCompletions,
+  prefixAt,
+  rankWords,
+} from '../src/addons/autocomplete/suggestions.ts'
+import { createDictionaryApi } from '../src/addons/dictionary/api.ts'
 import {
   datamuseProvider,
   wiktionaryProvider,
 } from '../src/addons/dictionary/online.ts'
 import { createRegistry } from '../src/addons/dictionary/providers.ts'
-import {
-  dictionaryCompletions,
-  prefixAt,
-  rankWords,
-} from '../src/addons/dictionary/suggestions.ts'
 import { CompletionBroker } from '../src/renderer/src/completion-broker.ts'
 
-const settings = { han: 'zh', latin: 'en', suggest: true, tabAccepts: true }
+const settings = {
+  languages: ['en', 'tl', 'fr'],
+  suggest: true,
+  tabAccepts: true,
+  learning: true,
+  excludedDocuments: [],
+  excludedWorkspaces: [],
+}
+const session = { scope: null, documentId: 'document', personal: true }
+function dictionaryCompletions(registry, preferences, languageName) {
+  const model = createPersonalModel()
+  return autocompleteCompletions(
+    createDictionaryApi(
+      registry,
+      () => settings.languages,
+      () => [],
+    ),
+    preferences,
+    { suggest: model.suggest, epoch: () => 0 },
+    () => session,
+    languageName,
+  )
+}
 const request = (before, after = '') => ({
   view: {
     documentId: 'document',
@@ -26,6 +50,7 @@ const request = (before, after = '') => ({
   selection: { anchor: before.length, head: before.length },
   before,
   after,
+  prose: { before, after },
   trigger: { kind: 'input', character: before.at(-1) },
 })
 const signal = () => new AbortController().signal
@@ -136,14 +161,12 @@ test('suggestions come only from installed packs, keep case, and never go online
       ['hapax', 'Hapax', 0, 3, 'fr'],
     ],
   )
-  assert.deepEqual(
-    calls.map(({ lang }) => lang),
-    ['en', 'fr'],
-  )
+  assert.deepEqual(calls.map(({ lang }) => lang).sort(), ['en', 'fr'])
   assert.ok(items.every((item) => item.acceptOnTab === undefined))
+  const keepTabSettings = { ...settings, tabAccepts: false }
   const keepTab = dictionaryCompletions(
     registry({ en: ['happy'] }),
-    () => ({ ...settings, tabAccepts: false }),
+    () => keepTabSettings,
     (lang) => lang,
   )
   assert.equal((await keepTab(request('hap'), signal()))[0].acceptOnTab, false)

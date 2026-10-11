@@ -17,7 +17,7 @@ test('side view follows the caret offline, replaces in one undo step, and pack s
   await writeFile(file, 'The dog is happy')
   await writeFile(
     join(profile, 'addons.json'),
-    JSON.stringify({ dictionary: true }),
+    JSON.stringify({ dictionary: true, autocomplete: true }),
   )
   const app = await electron.launch({
     args: [resolve('.'), `--user-data-dir=${profile}`],
@@ -191,19 +191,18 @@ test('side view follows the caret offline, replaces in one undo step, and pack s
     packs.en.sources[0].url,
   ])
 
-  // Suggestions are off until enabled in the addon's settings.
+  // Suggestions now belong to Autocomplete; the dictionary retains its side view.
   const toggle = async (id, editor) => {
     await clickMenu(app, 'Settings')
-    await page
-      .getByRole('tab', { name: 'Dictionary and thesaurus', exact: true })
-      .click()
+    await page.getByRole('tab', { name: 'Autocomplete', exact: true }).click()
     await page.locator(`#${id}`).click()
     await page.screenshot({ path: `test-results/${id}.png` })
     await page.getByRole('button', { name: /back to app/i }).click()
     await page.locator('.settings-screen').waitFor({ state: 'hidden' })
     await waitForDocumentEditor(app, page, editor)
   }
-  await toggle('dictionary-suggest')
+  await toggle('autocomplete-suggest')
+  await toggle('autocomplete-suggest')
   await page.evaluate(() => {
     window.tabsReachingDocument = 0
     document.addEventListener('keydown', (event) => {
@@ -237,7 +236,7 @@ test('side view follows the caret offline, replaces in one undo step, and pack s
   assert.equal(await menu.isVisible(), false)
 
   // With Tab acceptance off, Tab passes through and Enter still accepts.
-  await toggle('dictionary-tab-accepts')
+  await toggle('autocomplete-tab-accepts')
   await rich.evaluate((element) => element.editor.commands.focus('end'))
   await page.keyboard.type(' hap')
   await menu.getByRole('option', { name: 'happy', exact: true }).waitFor()
@@ -270,7 +269,7 @@ test('side view follows the caret offline, replaces in one undo step, and pack s
   await page.keyboard.press('Tab')
   assert.equal(await tabs(), 3)
   assert.match(await markdown(), / happy hap$/)
-  await toggle('dictionary-tab-accepts', { name: 'Markdown editor' })
+  await toggle('autocomplete-tab-accepts', { name: 'Markdown editor' })
   await typeAtEnd('p')
   await options.filter({ hasText: /^happy$/ }).waitFor()
   await page.keyboard.press('Tab')

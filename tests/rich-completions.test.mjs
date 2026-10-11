@@ -194,44 +194,98 @@ test('rich completions replace exact plain text in one undo step and retract on 
     await rich.evaluate((element, text) => {
       const editor = element.editor
       window.completionSignals = []
-      editor.commands.setContent(text, {contentType: 'markdown'})
+      editor.commands.setContent(text, { contentType: 'markdown' })
       editor.commands.setTextSelection(editor.state.doc.content.size - 1)
       editor.view.focus()
     }, text)
     assert.deepEqual(await page.evaluate(() => window.completionSignals), [])
   }
-  for (const text of ['```\nsecret\n```', '`secret`', '[secret](https://private.example)', 'password: secret', '/heading']) {
+  for (const text of [
+    '```\nsecret\n```',
+    '`secret`',
+    '[secret](https://private.example)',
+    'password: secret',
+    '/heading',
+  ]) {
     await reset(text)
     await page.keyboard.type('x')
-    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(resolve)))
-    assert.deepEqual(await page.evaluate(() => window.completionSignals), [], text)
+    await page.evaluate(
+      () => new Promise((resolve) => requestAnimationFrame(resolve)),
+    )
+    assert.deepEqual(
+      await page.evaluate(() => window.completionSignals),
+      [],
+      text,
+    )
     await page.keyboard.press('Escape')
   }
+  await reset('boundaryword')
+  await page.keyboard.press('Enter')
+  await page.waitForFunction(
+    () => window.completionSignals.at(-1)?.before === 'boundaryword\n',
+  )
   await reset('bro ')
   const cdp = await page.context().newCDPSession(page)
-  await cdp.send('Input.imeSetComposition', {text: '日', selectionStart: 1, selectionEnd: 1})
-  await page.waitForFunction(() => document.querySelector('.rich-pane .tiptap').textContent.includes('日'))
+  await cdp.send('Input.imeSetComposition', {
+    text: '日',
+    selectionStart: 1,
+    selectionEnd: 1,
+  })
+  await page.waitForFunction(() =>
+    document.querySelector('.rich-pane .tiptap').textContent.includes('日'),
+  )
   assert.deepEqual(await page.evaluate(() => window.completionSignals), [])
-  await cdp.send('Input.imeSetComposition', {text: '日本', selectionStart: 2, selectionEnd: 2})
-  await cdp.send('Input.insertText', {text: '日本語'})
-  await page.waitForFunction(() => window.completionSignals.some(event => event.kind === 'composition'))
+  await cdp.send('Input.imeSetComposition', {
+    text: '日本',
+    selectionStart: 2,
+    selectionEnd: 2,
+  })
+  await cdp.send('Input.insertText', { text: '日本語' })
+  await page.waitForFunction(() =>
+    window.completionSignals.some((event) => event.kind === 'composition'),
+  )
   assert.equal(await page.evaluate(() => window.completionSignals.length), 1)
-  assert.equal(await page.evaluate(() => window.completionSignals[0].before), 'bro 日本語')
+  assert.equal(
+    await page.evaluate(() => window.completionSignals[0].before),
+    'bro 日本語',
+  )
   await cdp.detach()
   await reset('hel')
   await page.keyboard.press('Control+Space')
   await menu.getByRole('option', { name: /hello/ }).waitFor()
   await page.keyboard.press('Enter')
-  await menu.waitFor({state: 'hidden'})
-  const acceptedCount = await page.evaluate(() => window.completionAccepted.length)
-  await rich.evaluate(element => {
+  await menu.waitFor({ state: 'hidden' })
+  const acceptedCount = await page.evaluate(
+    () => window.completionAccepted.length,
+  )
+  await rich.evaluate((element) => {
     const editor = element.editor
-    editor.view.dom.dispatchEvent(new InputEvent('beforeinput', {inputType: 'insertFromPaste', bubbles: true}))
-    editor.view.dispatch(editor.state.tr.insertText('private pasted text', 1, 6).setMeta('uiEvent', 'paste'))
+    editor.view.dom.dispatchEvent(
+      new InputEvent('beforeinput', {
+        inputType: 'insertFromPaste',
+        bubbles: true,
+      }),
+    )
+    editor.view.dispatch(
+      editor.state.tr
+        .insertText('private pasted text', 1, 6)
+        .setMeta('uiEvent', 'paste'),
+    )
   })
-  await page.waitForFunction(() => window.completionSignals.at(-1)?.kind === 'replace')
-  assert.deepEqual(await page.evaluate(() => ({before: window.completionSignals.at(-1).before, after: window.completionSignals.at(-1).after})), {before: '', after: ''})
-  assert.equal(await page.evaluate(() => window.completionAccepted.length), acceptedCount)
+  await page.waitForFunction(
+    () => window.completionSignals.at(-1)?.kind === 'replace',
+  )
+  assert.deepEqual(
+    await page.evaluate(() => ({
+      before: window.completionSignals.at(-1).before,
+      after: window.completionSignals.at(-1).after,
+    })),
+    { before: '', after: '' },
+  )
+  assert.equal(
+    await page.evaluate(() => window.completionAccepted.length),
+    acceptedCount,
+  )
   await reset('hel')
   await page.keyboard.press('Control+Space')
   await menu.getByRole('option', { name: /hello/ }).waitFor()

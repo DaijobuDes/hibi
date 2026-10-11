@@ -66,7 +66,7 @@ export function sourceProseAllowed(prefix: string) {
   let fence = ''
   let math = false
   for (let index = frontmatter ? 1 : 0; index < lines.length; index++) {
-    const line = lines[index] ?? ''
+    const line = (lines[index] ?? '').replace(/^(?: {0,3}> ?)+/, '')
     if (frontmatter) {
       if (/^(---|\.\.\.)\s*$/.test(line)) {
         if (index === lines.length - 1) return false
@@ -80,9 +80,10 @@ export function sourceProseAllowed(prefix: string) {
       else if (code[0] === fence[0] && code.length >= fence.length) fence = ''
       continue
     }
-    if (fence) continue
-    if (/^\s*\$\$/.test(line)) {
-      const delimiters = line.match(/(?<!\\)\$\$/g)?.length ?? 0
+    if (fence || (!math && /^(?: {4}|\t)/.test(line))) continue
+    if (line.includes('$$')) {
+      const delimiters =
+        line.replace(/(`+)[\s\S]*?\1/g, '').match(/(?<!\\)\$\$/g)?.length ?? 0
       if (delimiters % 2) math = !math
     }
   }
@@ -112,6 +113,13 @@ export function safeCompletionContext(text: string, offset: number) {
     if (end <= offset) from = Math.max(from, end)
     if (start >= offset) to = Math.min(to, start)
     return true
+  }
+  for (const match of text.matchAll(
+    /<([a-z][\w:-]*)\b[^>]*>(?:[\s\S]*?<\/\1\s*>|[\s\S]*$)|<!--(?:[\s\S]*?-->|[\s\S]*$)/gi,
+  )) {
+    const end = match.index + match[0].length
+    if (!exclude(match.index, end, !/<\/[\w:-]+\s*>$|-->$/.test(match[0])))
+      return null
   }
   for (const match of text.matchAll(
     /(`+|\$\$?)([\s\S]*?)(\1|$)|<[^>]*(?:>|$)|(?:https?:\/\/|www\.)[^\s]*|\b[^\s]{20,}\b/g,

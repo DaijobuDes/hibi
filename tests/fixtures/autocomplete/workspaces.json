@@ -1,0 +1,69 @@
+{
+  "name": "workspaces",
+  "description": "synthetic separate workspaces and changing habits with a 300-day gap",
+  "dictionary": {
+    "en": [
+      "project",
+      "program",
+      "progress",
+      "prototype",
+      "personal",
+      "perform",
+      "permission",
+      "parameter",
+      "party",
+      "partner",
+      "partial",
+      "orange",
+      "orbit",
+      "ordinary",
+      "order"
+    ]
+  },
+  "events": [
+    {
+      "scope": "work",
+      "languages": ["en"],
+      "word": "Proxima",
+      "prefix": "pro",
+      "context": ["ship", "with"],
+      "repeat": 30
+    },
+    {
+      "scope": "home",
+      "languages": ["en"],
+      "word": "partytime",
+      "prefix": "par",
+      "repeat": 30
+    },
+    {
+      "scope": null,
+      "languages": ["en"],
+      "word": "orbital",
+      "prefix": "orb",
+      "repeat": 25
+    },
+    {
+      "scope": "work",
+      "languages": ["en"],
+      "word": "program",
+      "prefix": "pro",
+      "gapMs": 25920000000,
+      "repeat": 25
+    },
+    {
+      "scope": "fresh",
+      "languages": ["en"],
+      "word": "project",
+      "prefix": "pro",
+      "repeat": 10
+    },
+    {
+      "scope": "home",
+      "languages": ["en"],
+      "word": "partner",
+      "prefix": "par",
+      "repeat": 10
+    }
+  ]
+}

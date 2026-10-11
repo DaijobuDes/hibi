@@ -24,11 +24,9 @@ Type any word in **Look up a word** and press Enter to look it up, online if nee
 
 ## Suggestions as you type
 
-Turn on **Suggest words as you type** in the addon's settings to see word completions from installed offline packs while you type. Suggestions appear in the editor's completion list after you type three letters of a word in Latin letters. They use your preferred language first, then the other installed Latin-letter packs. Chinese and Japanese text is not completed because it has no spaces to mark where a word starts.
+Enable the separate [Autocomplete addon](../autocomplete/README.md) for word and phrase suggestions while typing. It uses this addon's installed offline packs and custom words, then learns local word patterns from normal editing. Its settings include suggestion languages, Tab acceptance, learning, exclusions, and clearing learned words. Existing dictionary suggestion and Tab preferences are preserved.
 
-Press Enter to insert the highlighted suggestion, or Escape to dismiss the list. **Accept suggestions with Tab** is on by default, so Tab also inserts the highlighted suggestion. When no suggestions are showing, Tab works as it normally does in the editor. Turn the setting off to keep Tab for the editor even while suggestions are showing.
-
-Suggestions never send anything online. They work in the formatted editor and in Source view. In the formatted editor, suggestions are offered in top-level paragraphs and headings but not inside lists, quotes, or tables.
+The dictionary keeps lookups and the side view. Autocomplete never requests an online lookup or downloads a pack.
 
 ## Languages
 

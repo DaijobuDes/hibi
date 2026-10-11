@@ -1,0 +1,118 @@
+{
+  "name": "casual",
+  "description": "synthetic repeated slang, phrase and correction events; no user text",
+  "dictionary": {
+    "en": [
+      "crack",
+      "crazy",
+      "crayon",
+      "crayfish",
+      "craft",
+      "wild",
+      "wilderness",
+      "will",
+      "wise",
+      "work",
+      "world",
+      "actually",
+      "act",
+      "active",
+      "insane",
+      "inside",
+      "instant",
+      "bro",
+      "brown",
+      "broken",
+      "happen",
+      "happy",
+      "happiness",
+      "happy hour",
+      "Hapsburg"
+    ]
+  },
+  "events": [
+    {
+      "scope": "journal",
+      "languages": ["en"],
+      "word": "craycray",
+      "prefix": "cra",
+      "repeat": 35
+    },
+    {
+      "scope": "journal",
+      "languages": ["en"],
+      "word": "wild",
+      "context": ["that", "was"],
+      "prefix": "",
+      "repeat": 30
+    },
+    {
+      "scope": "journal",
+      "languages": ["en"],
+      "word": "insane",
+      "context": ["was", "actually"],
+      "prefix": "ins",
+      "repeat": 25
+    },
+    {
+      "scope": "journal",
+      "languages": ["en"],
+      "word": "broooo",
+      "prefix": "bro",
+      "repeat": 25
+    },
+    {
+      "scope": "journal",
+      "languages": ["en"],
+      "word": "crazy",
+      "expected": "crack",
+      "prefix": "cra",
+      "kind": "accepted",
+      "repeat": 1
+    },
+    {
+      "scope": "journal",
+      "languages": ["en"],
+      "word": "crazy",
+      "kind": "undo",
+      "repeat": 1
+    },
+    {
+      "scope": "journal",
+      "languages": ["en"],
+      "word": "crazy",
+      "expected": "crack",
+      "prefix": "cra",
+      "kind": "accepted",
+      "repeat": 1
+    },
+    {
+      "scope": "journal",
+      "languages": ["en"],
+      "word": "crazy",
+      "kind": "overwrite",
+      "repeat": 1
+    },
+    {
+      "scope": "journal",
+      "languages": ["en"],
+      "word": "crack",
+      "prefix": "cra",
+      "repeat": 10
+    },
+    {
+      "scope": "journal",
+      "languages": ["en"],
+      "word": "ignoredword",
+      "kind": "ignored",
+      "repeat": 2
+    },
+    {
+      "scope": "journal",
+      "languages": ["en"],
+      "word": "sk_private",
+      "sensitive": true,
+      "repeat": 2
+    }
+  ]
+}

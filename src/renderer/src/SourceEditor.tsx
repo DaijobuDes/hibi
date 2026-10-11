@@ -567,22 +567,29 @@ export function SourceEditor({
       request: CompletionRequest | null
     } | null = null
     let compositionFrame = 0
-    const reportTyping = (kind: TypingContext['kind'], changes: ChangeSet, boundaryBefore?: string) => {
+    const reportTyping = (
+      kind: TypingContext['kind'],
+      changes: ChangeSet,
+      boundaryBefore?: string,
+    ) => {
       if (!completionBroker.hasTypingListeners()) return
       const request = captureCompletion({ kind: 'explicit' })
       if (!request || (kind !== 'replace' && !request.prose)) return
       let from = Infinity,
         to = 0,
         insertedLength = 0
-      changes.iterChangedRanges((fromA, toA, fromB, toB) => {
+      changes.iterChangedRanges((fromA, toA) => {
         from = Math.min(from, fromA)
         to = Math.max(to, toA)
-        insertedLength += toB - fromB
       })
       if (!Number.isFinite(from)) return
+      insertedLength = changes.newLength - changes.length + to - from
       completionBroker.emitTypingContext({
         ...request,
-        before: boundaryBefore === undefined ? request.prose?.before ?? '' : `${boundaryBefore}\n`.slice(-256),
+        before:
+          boundaryBefore === undefined
+            ? (request.prose?.before ?? '')
+            : `${boundaryBefore}\n`.slice(-256),
         after: request.prose?.after ?? '',
         kind,
         change: { from, to, insertedLength },
@@ -1070,9 +1077,14 @@ export function SourceEditor({
                 !transaction.isUserEvent('input.type.compose')
               ) {
                 if (transaction.isUserEvent('input.type'))
-                  reportTyping('input', update.changes,
-                    update.state.doc.lineAt(update.state.selection.main.head).from === update.state.selection.main.head
-                      ? proseAt(update.startState)?.before : undefined)
+                  reportTyping(
+                    'input',
+                    update.changes,
+                    update.state.doc.lineAt(update.state.selection.main.head)
+                      .from === update.state.selection.main.head
+                      ? proseAt(update.startState)?.before
+                      : undefined,
+                  )
                 else if (transaction.isUserEvent('delete'))
                   reportTyping('delete', update.changes)
                 else if (

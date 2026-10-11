@@ -1,0 +1,77 @@
+{
+  "name": "mixed",
+  "description": "synthetic session-tagged code-switching with preserved spelling and case",
+  "dictionary": {
+    "en": [
+      "kumquat",
+      "name",
+      "namesake",
+      "naming",
+      "NaMe",
+      "hola",
+      "hold",
+      "holiday",
+      "coffee",
+      "cooperate",
+      "computer"
+    ],
+    "tl": [
+      "kumusta",
+      "kumustahan",
+      "kumpanya",
+      "kumpas",
+      "salamat",
+      "salamin",
+      "salaysay"
+    ],
+    "fr": ["café", "cafétéria", "cafard"],
+    "zh": ["你好", "你们", "你"],
+    "ja": ["こんにちは", "こんばんは"]
+  },
+  "events": [
+    {
+      "scope": "chat",
+      "languages": ["en", "tl"],
+      "word": "kumustaaa",
+      "prefix": "kum",
+      "context": ["hey", "bro"],
+      "repeat": 30
+    },
+    {
+      "scope": "chat",
+      "languages": ["en", "tl"],
+      "word": "salamat",
+      "prefix": "sal",
+      "context": ["thank", "you"],
+      "repeat": 20
+    },
+    {
+      "scope": "chat",
+      "languages": ["en", "tl"],
+      "word": "NaMe",
+      "prefix": "na",
+      "repeat": 30
+    },
+    {
+      "scope": "chat",
+      "languages": ["en", "fr"],
+      "word": "café",
+      "prefix": "caf",
+      "repeat": 15
+    },
+    {
+      "scope": "chat",
+      "languages": ["zh", "en"],
+      "word": "你好",
+      "prefix": "你",
+      "repeat": 15
+    },
+    {
+      "scope": "chat",
+      "languages": ["ja", "en"],
+      "word": "こんにちは",
+      "prefix": "こん",
+      "repeat": 15
+    }
+  ]
+}

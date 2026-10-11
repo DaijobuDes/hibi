@@ -231,6 +231,11 @@ test('source completions stream, accept in one undo step, and retract on provide
     ),
   )
   await source.press('Escape')
+  await reset('boundaryword')
+  await source.press('Enter')
+  await page.waitForFunction(
+    () => window.completionProbe.events.at(-1)?.before === 'boundaryword\n',
+  )
   await reset('bro ')
   const cdp = await page.context().newCDPSession(page)
   await cdp.send('Input.imeSetComposition', {
