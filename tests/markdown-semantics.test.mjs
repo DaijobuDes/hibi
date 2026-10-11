@@ -15,6 +15,11 @@ import { EditorState } from '@tiptap/pm/state'
 import { Marked } from 'marked'
 import { alertMarkdown } from '../src/addons/markdown/alerts.ts'
 import { GithubAlert } from '../src/addons/markdown/GithubAlert.ts'
+import {
+  ObsidianHighlight,
+  obsidianMarkdown,
+  WikiLink,
+} from '../src/addons/markdown/obsidian.ts'
 import { Subscript, Subtext } from '../src/addons/text-extras/nodes.ts'
 import { textExtrasMarkdown } from '../src/addons/text-extras/syntax.ts'
 import { documentImage } from '../src/renderer/src/DocumentImage.ts'
@@ -24,6 +29,11 @@ import { createMarkdownSemantics } from '../src/renderer/src/markdown-semantics.
 import { markdownSyntax } from '../src/renderer/src/markdown-syntax.ts'
 
 const flavors = [
+  {
+    id: 'markdown.obsidian',
+    richExtensions: [ObsidianHighlight, WikiLink],
+    export: { extensions: [obsidianMarkdown] },
+  },
   {
     id: 'github-markdown.github',
     markedOptions: { gfm: true },
@@ -44,7 +54,12 @@ const flavors = [
 ]
 const context = { before: false, after: false }
 const tokens = (source, taskGrammar = false) => {
-  const parser = new Marked({ gfm: true }, alertMarkdown, textExtrasMarkdown)
+  const parser = new Marked(
+    { gfm: true },
+    alertMarkdown,
+    textExtrasMarkdown,
+    obsidianMarkdown,
+  )
   if (taskGrammar)
     new MarkdownManager({
       marked: parser,
@@ -117,6 +132,8 @@ test('schema-only consumption matches current editor declarations without creati
     '[&copy;](https://example.com/?a=&copy;&b=&amp;copy; "&quot;title&quot;")',
     '<https://example.com/?a=&copy;> and `&copy; &#169;`',
     'https://x.com/?a=1&amp;b=2 and https://x.com/?a=1&b=2',
+    '==&copy;== and [[a|lab&copy;]]',
+    '==&amp;copy;== and [[a|lab&#38;copy;]]',
     '| &copy; | &#38;lt; |\n|---|---|\n| &nbsp; | &#169; |',
   ]) {
     const input = freeze(tokens(source)),

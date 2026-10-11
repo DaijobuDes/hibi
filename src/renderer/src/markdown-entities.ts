@@ -17,6 +17,7 @@ function decodeMarkdownEntities(text: string) {
 }
 
 export function richTextToken(token: Token) {
+  for (const child of token.tokens ?? []) richTextToken(child)
   if (token.type !== 'text' || token.tokens) return
   // Marked already decodes numeric references in text; raw avoids decoding twice.
   // The distinct token also keeps intentional nbsp out of the empty-paragraph path.

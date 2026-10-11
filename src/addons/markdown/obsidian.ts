@@ -1,6 +1,6 @@
 import { Mark, Node } from '@tiptap/core'
 import type { MarkedExtension } from 'marked'
-import { wikiHref } from '../../shared/note-links'
+import { wikiHref } from '../../shared/note-links.ts'
 
 const wiki = /^(!?)\[\[([^\]\r\n]+)\]\]/
 const image = /\.(?:avif|bmp|gif|jpe?g|png|svg|webp)$/i
@@ -78,16 +78,14 @@ export const WikiLink = Mark.create({
       return token(source, false)
     },
   },
-  parseMarkdown: (value, helpers) =>
-    helpers.applyMark(
-      'obsidianWikiLink',
-      helpers.parseInline(value.tokens ?? []),
-      {
-        target: value.target,
-        label: value.text,
-        aliased: value.aliased,
-      },
-    ),
+  parseMarkdown: (value, helpers) => {
+    const content = helpers.parseInline(value.tokens ?? [])
+    return helpers.applyMark('obsidianWikiLink', content, {
+      target: value.target,
+      label: content.map((node) => node.text ?? '').join(''),
+      aliased: value.aliased,
+    })
+  },
   renderMarkdown: (node, helpers) => {
     const target = node.attrs?.target ?? ''
     const text = helpers.renderChildren(node)

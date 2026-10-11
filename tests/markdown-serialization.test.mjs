@@ -15,6 +15,11 @@ import { MarkdownManager } from '@tiptap/markdown'
 import { EditorState } from '@tiptap/pm/state'
 import { StarterKit } from '@tiptap/starter-kit'
 import { Marked } from 'marked'
+import {
+  ObsidianHighlight,
+  obsidianMarkdown,
+  WikiLink,
+} from '../src/addons/markdown/obsidian.ts'
 import { markdownConfiguration } from '../src/renderer/src/markdown.ts'
 import {
   markdownSerializer,
@@ -1066,6 +1071,40 @@ test('native HTML entities decode once and survive full and cached serialization
         assert.equal(serialize(after).source, output)
       }
     })
+  }
+})
+
+test('flavor token children decode entity text and wikilink labels once', () => {
+  const { core, addons, parser, options } = markdownConfiguration([
+    {
+      id: 'markdown.obsidian',
+      richExtensions: [ObsidianHighlight, WikiLink],
+      export: { extensions: [obsidianMarkdown] },
+    },
+  ])
+  const extensions = [...core, ...addons]
+  const schema = getSchema(extensions)
+  const manager = new MarkdownManager({
+    extensions,
+    marked: parser,
+    markedOptions: options,
+  })
+  for (const [source, text, expected] of [
+    ['==&copy;==', '©', '==©=='],
+    ['==&amp;copy;==', '&copy;', '==&amp;copy;=='],
+    ['[[a|lab&copy;]]', 'lab©', '[[a|lab©]]'],
+    ['[[a|lab&#38;copy;]]', 'lab&copy;', '[[a|lab&amp;copy;]]'],
+  ]) {
+    const doc = schema.nodeFromJSON(manager.parse(source))
+    assert.equal(doc.textContent, text)
+    const mark = doc.firstChild.firstChild.marks[0]
+    if (mark.type.name === 'obsidianWikiLink')
+      assert.equal(mark.attrs.label, text)
+    for (const blockLocal of [false, true]) {
+      const saved = markdownSerializer(manager, blockLocal)(doc).source
+      assert.equal(saved, expected)
+      assert.ok(schema.nodeFromJSON(manager.parse(saved)).eq(doc))
+    }
   }
 })
 
