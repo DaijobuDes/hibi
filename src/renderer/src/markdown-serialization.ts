@@ -7,7 +7,7 @@ import { ORDERED_LIST_MARKER_PATTERN } from '@tiptap/extension-list'
 import type { MarkdownManager } from '@tiptap/markdown'
 import type { Node } from '@tiptap/pm/model'
 import type { Marked } from 'marked'
-import type { MarkdownFlavor } from '../../addons/api'
+import type { MarkdownFlavor, MarkdownParagraphRule } from '../../addons/api'
 import { configureMarkdownEntities } from './markdown-entities.ts'
 
 const orderedPrefix = new RegExp(
@@ -19,7 +19,18 @@ export function paragraphEscaper(
   parser: Marked,
   flavors: readonly MarkdownFlavor[],
 ) {
-  const rules = flavors.flatMap((flavor) => flavor.paragraphRules ?? [])
+  const rules: MarkdownParagraphRule[] = [
+    {
+      characters: '!',
+      escape(source, { literals }) {
+        for (const [sentinel, character] of literals)
+          if (character === '!')
+            source = source.replaceAll(`${sentinel}[`, '\\![')
+        return source
+      },
+    },
+    ...flavors.flatMap((flavor) => flavor.paragraphRules ?? []),
+  ]
   const characters = new Set(
     rules.flatMap((rule) => [...(rule.characters ?? '')]),
   )

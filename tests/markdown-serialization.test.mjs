@@ -37,14 +37,14 @@ test('flavor paragraph rules compose before core escaping with render context', 
             return source.replaceAll('?', '\\?')
           },
         },
-        { escape: (source) => source.replaceAll('!', '\\!') },
+        { escape: (source) => source.replaceAll(':', '\\:') },
       ],
     },
     {
       paragraphRules: [
         {
           escape(source) {
-            assert.equal(source, '# why\\?\\!')
+            assert.equal(source, '# why\\?\\:')
             return source
           },
         },
@@ -57,7 +57,7 @@ test('flavor paragraph rules compose before core escaping with render context', 
     marked: parser,
     markedOptions: options,
   })
-  const source = '\\# why\\?\\!\n\n> \\# why\\?\\!'
+  const source = '\\# why\\?\\:\n\n> \\# why\\?\\:'
   const doc = schema.nodeFromJSON(manager.parse(source))
   for (const blockLocal of [true, false]) {
     const saved = markdownSerializer(manager, blockLocal)(doc).source
@@ -65,10 +65,10 @@ test('flavor paragraph rules compose before core escaping with render context', 
     assert.ok(schema.nodeFromJSON(manager.parse(saved)).eq(doc))
   }
   assert.deepEqual(seen, [
-    ['# why?!', 'doc'],
-    ['# why?!', 'blockquote'],
-    ['# why?!', 'doc'],
-    ['# why?!', 'blockquote'],
+    ['# why?:', 'doc'],
+    ['# why?:', 'blockquote'],
+    ['# why?:', 'doc'],
+    ['# why?:', 'blockquote'],
   ])
 })
 
@@ -604,6 +604,7 @@ test('native HTML entities decode once and survive full and cached serialization
     ['decoded indentation', '&#32;&#32;&#32;&#32;x', '    x', '&#32;   x'],
     ['literal image opener', '&excl;[x](foo)', '!x', '\\![x](foo)'],
     ['code image opener', '`!`[x](foo)', '!x', '`!`[x](foo)'],
+    ['code image syntax', '`![x](foo)`', '![x](foo)', '`![x](foo)`'],
     ['ordinary exclamation', 'done&excl;', 'done!', 'done!'],
     ['code nbsp', '`a\u00a0b`', 'a\u00a0b', '`a\u00a0b`'],
     [
