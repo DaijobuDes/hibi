@@ -55,6 +55,7 @@ export function paragraphEscaper(
     for (const rule of rules) source = rule.escape(source, { ...ctx, literals })
     for (const [sentinel, character] of literals)
       source = source.replaceAll(sentinel, character)
+    if (ctx.parentType === 'table') return source
     return escapeBlockPrefixes(source, parser)
   }
 }
