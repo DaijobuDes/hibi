@@ -1902,7 +1902,7 @@
   "106b5be948be": "{mode} colorscheme",
   "acf7f505b27e": "{mode} theme",
   "507e6dce93ec": "{paneSourceName} document · click for format settings",
-  "12823d9e7b10": "{value1} By {value2}{value3} {value4}This addon will stay disabled until you enable it.",
+  "4d6dd9306250": "{value1} By {value2}{value3}{value4} {value5}This addon will stay disabled until you enable it.",
   "229213386c16": "{value1} Markdown flavor · click to change",
   "f82d8c5475b7": "{value1} could not start its rich editor feature.",
   "386c2c478548": "{value1} could not start its source editor feature.",

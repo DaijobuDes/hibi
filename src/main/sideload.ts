@@ -406,7 +406,7 @@ async function installDirectory(
   const verdict = await dialog.showMessageBox(window, {
     type: data.manifest.kind === 'extension' ? 'warning' : 'question',
     message: `Install ${data.manifest.name} ${data.manifest.version}?`,
-    detail: `${data.manifest.description}\n\nBy ${data.manifest.authors?.map((author) => author.displayName).join(', ')}${host ? `\n\nDownloaded from ${host}` : ''}\n\n${data.manifest.kind === 'extension' ? 'Extensions can run code and read or edit documents in Hibi. Only install addons you trust. ' : ''}This addon will stay disabled until you enable it.`,
+    detail: `${data.manifest.description}\n\nBy ${data.manifest.authors?.map((author) => author.displayName).join(', ')}${host ? `\n\nDownloaded from ${host}` : ''}${data.manifest.network ? `\n\nConnects to: ${data.manifest.network.origins.join(', ')}` : ''}\n\n${data.manifest.kind === 'extension' ? 'Extensions can run code and read or edit documents in Hibi. Only install addons you trust. ' : ''}This addon will stay disabled until you enable it.`,
     buttons: [
       'Cancel',
       installed.some((item) => item.manifest.id === data.manifest.id)

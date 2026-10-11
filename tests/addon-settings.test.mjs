@@ -211,7 +211,7 @@ test('compact filters reset preferences, keep addon rows stable, and install rev
   assert.equal(await page.evaluate(() => window.urlFixtureStarted), undefined)
   assert.match(
     (await app.evaluate(() => globalThis.reviewedAddon)).detail,
-    /Downloaded from example.com/,
+    /Downloaded from example.com\n\nConnects to: https:\/\/en\.wiktionary\.org, https:\/\/api\.datamuse\.com:8443/,
   )
   assert.equal(
     JSON.parse(
