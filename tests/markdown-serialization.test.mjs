@@ -673,17 +673,14 @@ test('leading indentation remains paragraph text through numeric entities', asyn
     }
   }
   const renderParagraph = paragraphEscaper(parser, [])
-  for (const [source, expected] of [
-    ['text\n    code', 'text\n    code'],
-    ['text  \n\tcode', 'text  \n&Tab;code'],
-  ])
+  for (const source of ['text\n    code', 'text  \n\tcode'])
     assert.equal(
       renderParagraph(
         { type: 'paragraph' },
         { renderChildren: () => source },
         { index: 0, level: 0, parentType: 'doc' },
       ),
-      expected,
+      source,
     )
 })
 
@@ -1000,7 +997,7 @@ test('native HTML entities decode once and survive full and cached serialization
     ['lone numeric space', '&#160;', '\u00a0', '&nbsp;'],
     ['lone hexadecimal space', '&#xA0;', '\u00a0', '&nbsp;'],
     ['lone newline', '&#10;', '\n', '&NewLine;'],
-    ['lone tab', '&Tab;', '\t', '&#9;'],
+    ['lone tab', '&Tab;', '\t', '&Tab;'],
     [
       'edge nonbreaking spaces',
       '&nbsp;text&nbsp;',
@@ -1106,6 +1103,46 @@ test('native HTML entities decode once and survive full and cached serialization
         assert.equal(serialize(after).source, output)
       }
     })
+  }
+})
+
+test('paragraph edge protection preserves masked marks and leaves code literal', () => {
+  const { core, parser, options } = markdownConfiguration([])
+  const schema = getSchema(core)
+  const manager = new MarkdownManager({
+    extensions: core,
+    marked: parser,
+    markedOptions: options,
+  })
+  const bold = schema.nodes.doc.create(null, [
+    schema.nodes.paragraph.create(
+      null,
+      schema.text('\u00a0!hi\u00a0', [schema.marks.bold.create()]),
+    ),
+  ])
+  const code = schema.nodes.doc.create(null, [
+    schema.nodes.paragraph.create(
+      null,
+      schema.text('a\t\n\tb', [schema.marks.code.create()]),
+    ),
+  ])
+  const lines = schema.nodes.doc.create(null, [
+    schema.nodes.paragraph.create(null, [
+      schema.text('first\t'),
+      schema.nodes.hardBreak.create(),
+      schema.text('\tsecond\u00a0'),
+    ]),
+  ])
+  for (const blockLocal of [false, true]) {
+    const serialize = markdownSerializer(manager, blockLocal)
+    assert.equal(serialize(bold).source, '**&nbsp;!hi&nbsp;**')
+    assert.ok(
+      schema.nodeFromJSON(manager.parse(serialize(bold).source)).eq(bold),
+    )
+    assert.equal(serialize(code).source, '`a\t\n\tb`')
+    assert.ok(
+      schema.nodeFromJSON(manager.parse(serialize(lines).source)).eq(lines),
+    )
   }
 })
 

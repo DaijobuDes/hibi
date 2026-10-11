@@ -96,6 +96,14 @@ type TextCodec = {
   isEmptyOutput: (source: string) => boolean
 }
 
+const textOrigins = new WeakMap<JSONContent, JSONContent>()
+
+export function maskParagraphText(node: JSONContent, text: string) {
+  const masked = { ...node, text }
+  textOrigins.set(masked, node)
+  return masked
+}
+
 const configured = new WeakSet<MarkdownManager>()
 
 export function configureMarkdownEntities(manager: MarkdownManager) {
@@ -113,13 +121,19 @@ export function configureMarkdownEntities(manager: MarkdownManager) {
     )
       return encoded
     let result = encodeLineBreaks(encoded)
-    // Protect marked line-edge whitespace before Tiptap moves it outside marks.
-    if (parent?.type === 'paragraph' && node.marks?.length) {
+    // Encode text at line edges before Tiptap trims whitespace or moves marks.
+    if (parent?.type === 'paragraph' && /[\t\u00a0]/.test(result)) {
       const siblings = parent.content ?? []
-      const index = siblings.indexOf(node)
+      const index = siblings.indexOf(textOrigins.get(node) ?? node)
       const encode = (space: string) => space.replace(/[\t\u00a0]/g, encodeHTML)
-      if (index === 0 || siblings[index - 1]?.type === 'hardBreak')
-        result = result.replace(/^[ \t\u00a0]+/, encode)
+      if (index === 0 || siblings[index - 1]?.type === 'hardBreak') {
+        // The shared paragraph guard already protects unmarked indentation.
+        const leading =
+          index === 0 && !node.marks?.length ? /\u00a0/g : /[\t\u00a0]/g
+        result = result.replace(/^[ \t\u00a0]+/, (space) =>
+          space.replace(leading, encodeHTML),
+        )
+      }
       if (
         index >= 0 &&
         (index === siblings.length - 1 ||

@@ -11,10 +11,12 @@ import {
 import { ORDERED_LIST_MARKER_PATTERN } from '@tiptap/extension-list'
 import type { MarkdownManager } from '@tiptap/markdown'
 import type { Node } from '@tiptap/pm/model'
-import { encodeHTML } from 'entities'
 import type { Marked } from 'marked'
 import type { MarkdownFlavor, MarkdownParagraphRule } from '../../addons/api'
-import { configureMarkdownEntities } from './markdown-entities.ts'
+import {
+  configureMarkdownEntities,
+  maskParagraphText,
+} from './markdown-entities.ts'
 
 const orderedPrefix = new RegExp(
   `^( {0,3}(?:${ORDERED_LIST_MARKER_PATTERN}))([.)])(?=[^\\S\\n])`,
@@ -91,12 +93,12 @@ export function paragraphEscaper(
       )
       content = content.map((child) =>
         needsMasking(child) && child.text
-          ? {
-              ...child,
-              text: [...child.text]
+          ? maskParagraphText(
+              child,
+              [...child.text]
                 .map((character) => sentinels.get(character) ?? character)
                 .join(''),
-            }
+            )
           : child,
       )
     }
@@ -134,10 +136,8 @@ export function paragraphEscaper(
       }
     }
     source = restore(source)
-    if (ctx.parentType !== 'table') source = escapeBlockPrefixes(source, parser)
-    return source.replace(/^[ \t\u00a0]+|[ \t\u00a0]+$/gm, (space) =>
-      space.replace(/[\t\u00a0]/g, encodeHTML),
-    )
+    if (ctx.parentType === 'table') return source
+    return escapeBlockPrefixes(source, parser)
   }
 }
 
