@@ -333,6 +333,7 @@ export class PackIndex {
       throw error
     }
   }
+  // Requires serialized worker jobs so eviction cannot close an active handle.
   private async using<T>(
     id: PackId,
     directory: string,
