@@ -270,7 +270,12 @@ test('linux refresh reassigns the menu as the quick note command registers and d
     initialMenu.items.map(({ label }) => label),
     ['Open Hibi', 'Settings', '', 'Quit'],
   )
-  hotkeys.register({ id, label: 'Capture', token: 'enabled' })
+  hotkeys.register({
+    id,
+    label: 'Capture',
+    token: 'enabled',
+    runnableOnly: true,
+  })
   background.refresh()
   assert.equal(mock.trays.length, 1)
   const enabledMenu = tray.menus.at(-1)
@@ -466,6 +471,133 @@ test('first enable configures its tray before writing but stays off until rename
     mock.trays[0].menus.at(-1).items.map(({ label }) => label),
     ['Open Hibi', 'New quick note', 'Settings', '', 'Quit'],
   )
+})
+
+async function withHotkeys(t) {
+  const root = await mkdtemp(join(tmpdir(), 'hibi-background-hotkeys-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const file = join(root, 'addon-hotkeys.json')
+  const hotkeys = new AddonHotkeys(file, 'darwin', defaultHotkeys('darwin'))
+  await hotkeys.load()
+  return { hotkeys, file }
+}
+
+test('runnable-only commands expose invocation without binding, menu, shortcut, or override', async (t) => {
+  const { hotkeys, file } = await withHotkeys(t)
+  const id = 'quick-note.capture'
+  hotkeys.register({ id, label: 'Capture', token: 'run', runnableOnly: true })
+  assert.deepEqual(hotkeys.command(id), { id, token: 'run', source: 'menu' })
+  assert.deepEqual(hotkeys.bindings(), [])
+  assert.deepEqual(hotkeys.menuContributions(), [])
+  assert.equal(hotkeys.resolve(''), undefined)
+  assert.equal(hotkeys.resolve('meta+shift+j'), undefined)
+  await assert.rejects(hotkeys.setOverride(id, 'meta+shift+j'))
+  await assert.rejects(hotkeys.resetOverride(id))
+  await assert.rejects(readFile(file), { code: 'ENOENT' })
+  assert.deepEqual(hotkeys.bindings(), [])
+  assert.equal(hotkeys.command(id).token, 'run')
+})
+
+test('runnable-only transitions preserve overrides without claiming shortcuts or accepting stale tokens', async (t) => {
+  const { hotkeys, file } = await withHotkeys(t)
+  const id = 'quick-note.capture'
+  hotkeys.register({
+    id,
+    label: 'Capture',
+    token: 'normal',
+    defaultShortcut: 'mod+shift+j',
+  })
+  await hotkeys.setOverride(id, 'meta+shift+p')
+  const saved = await readFile(file, 'utf8')
+  hotkeys.register({ id, label: 'Capture', token: 'run', runnableOnly: true })
+  assert.deepEqual(hotkeys.bindings(), [])
+  assert.equal(hotkeys.resolve('meta+shift+j'), undefined)
+  assert.equal(hotkeys.resolve('meta+shift+p'), undefined)
+  assert.deepEqual(hotkeys.command(id), { id, token: 'run', source: 'menu' })
+  assert.equal(hotkeys.unregister(id, 'normal'), false)
+  await assert.rejects(hotkeys.setOverride(id, 'meta+shift+j'))
+  await assert.rejects(hotkeys.resetOverride(id))
+  assert.equal(await readFile(file, 'utf8'), saved)
+  hotkeys.register({ id: 'demo.other', label: 'Other', token: 'other' })
+  await hotkeys.setOverride('demo.other', 'meta+shift+p')
+  assert.deepEqual(hotkeys.resolve('meta+shift+p'), {
+    id: 'demo.other',
+    token: 'other',
+    source: 'shortcut',
+  })
+  assert.deepEqual(
+    hotkeys.bindings().map(({ id }) => id),
+    ['demo.other'],
+  )
+  assert.equal(hotkeys.unregister('demo.other', 'other'), true)
+  hotkeys.register({
+    id,
+    label: 'Capture',
+    token: 'normal-again',
+    defaultShortcut: 'mod+shift+j',
+  })
+  assert.equal(hotkeys.unregister(id, 'run'), false)
+  assert.deepEqual(hotkeys.command(id), {
+    id,
+    token: 'normal-again',
+    source: 'menu',
+  })
+  assert.deepEqual(hotkeys.resolve('meta+shift+p'), {
+    id,
+    token: 'normal-again',
+    source: 'shortcut',
+  })
+  assert.equal(hotkeys.bindings()[0].overridden, true)
+  hotkeys.register({
+    id,
+    label: 'Capture',
+    token: 'run-again',
+    runnableOnly: true,
+  })
+  assert.equal(hotkeys.unregister(id, 'normal-again'), false)
+  assert.equal(hotkeys.unregister(id, 'run-again'), true)
+  assert.equal(hotkeys.command(id), undefined)
+  assert.equal(hotkeys.resolve('meta+shift+p'), undefined)
+  assert.deepEqual(hotkeys.bindings(), [])
+})
+
+test('runnable-only registration validates strict booleans and excludes shortcut or menu descriptors', () => {
+  const hotkeys = new AddonHotkeys(
+    '/unused/addon-hotkeys.json',
+    'darwin',
+    defaultHotkeys('darwin'),
+  )
+  const registration = {
+    id: 'quick-note.capture',
+    label: 'Capture',
+    token: 'valid',
+    runnableOnly: true,
+  }
+  hotkeys.register(registration)
+  for (const patch of [
+    ...[null, 0, 1, 'true', 'false', {}, []].map((runnableOnly) => ({
+      runnableOnly,
+    })),
+    { defaultShortcut: '' },
+    { defaultShortcut: 'mod+shift+j' },
+    { menu: { location: 'app' } },
+  ]) {
+    assert.throws(() =>
+      hotkeys.register({ ...registration, token: 'invalid', ...patch }),
+    )
+    assert.equal(hotkeys.command(registration.id).token, 'valid')
+    assert.deepEqual(hotkeys.bindings(), [])
+  }
+  hotkeys.register({
+    ...registration,
+    token: 'normal',
+    runnableOnly: false,
+    defaultShortcut: 'mod+shift+j',
+    menu: { location: 'app' },
+  })
+  assert.equal(hotkeys.bindings().length, 1)
+  assert.equal(hotkeys.menuContributions().length, 1)
+  assert.equal(hotkeys.resolve('meta+shift+j').token, 'normal')
 })
 
 test('command lookup returns current token with menu source even without a shortcut or menu contribution', () => {

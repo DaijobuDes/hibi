@@ -35,6 +35,8 @@ export type AddonHotkeyRegistration = {
   id: string
   label: string
   defaultShortcut?: string
+  /** Exposes command invocation without adding a configurable shortcut. */
+  runnableOnly?: boolean
   menu?: AddonMenuContribution
   /** Identifies one addon activation so an old disposer cannot remove its replacement. */
   token: string

@@ -34,7 +34,7 @@ function compareIds(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0
 }
 
-/** Main-owned in-app bindings. Only registration changes affect the dispatch map. */
+/** Main-owned commands and in-app bindings, tied to each renderer registration. */
 export class AddonHotkeys {
   private readonly file: string
   private readonly platform: string
@@ -104,7 +104,11 @@ export class AddonHotkeys {
       !value.token ||
       value.token.length > 128 ||
       (value.defaultShortcut !== undefined &&
-        typeof value.defaultShortcut !== 'string')
+        typeof value.defaultShortcut !== 'string') ||
+      (value.runnableOnly !== undefined &&
+        typeof value.runnableOnly !== 'boolean') ||
+      (value.runnableOnly &&
+        (value.defaultShortcut !== undefined || value.menu !== undefined))
     )
       throw new Error('Could not register this addon shortcut.')
     if (
@@ -126,6 +130,7 @@ export class AddonHotkeys {
       label: value.label,
       token: value.token,
       defaultShortcut,
+      ...(value.runnableOnly ? { runnableOnly: true } : {}),
       ...(value.menu ? { menu: { ...value.menu } } : {}),
     })
     this.rebuild()
@@ -189,7 +194,7 @@ export class AddonHotkeys {
     shortcut: string,
   ): Promise<AddonHotkeyBinding[]> {
     if (!this.loaded) throw new Error('Could not read addon shortcut settings.')
-    if (!this.registrations.has(id))
+    if (!this.registrations.has(id) || this.registrations.get(id)?.runnableOnly)
       throw new Error('This addon command is not available.')
     validShortcut(shortcut, this.platform)
     return this.queueWrite(async () => {
@@ -207,7 +212,7 @@ export class AddonHotkeys {
 
   async resetOverride(id: string): Promise<AddonHotkeyBinding[]> {
     if (!this.loaded) throw new Error('Could not read addon shortcut settings.')
-    if (!this.registrations.has(id))
+    if (!this.registrations.has(id) || this.registrations.get(id)?.runnableOnly)
       throw new Error('This addon command is not available.')
     return this.queueWrite(async () => {
       if (!this.overrides.has(id)) return this.bindings()
@@ -232,6 +237,7 @@ export class AddonHotkeys {
       compareIds(a.id, b.id),
     )) {
       if (
+        !registration.runnableOnly &&
         registration.id !== id &&
         (this.overrides.get(registration.id) ??
           registration.defaultShortcut) === shortcut
@@ -256,6 +262,7 @@ export class AddonHotkeys {
       return rank || compareIds(a.id, b.id)
     })
     for (const registration of ordered) {
+      if (registration.runnableOnly) continue
       const defaultShortcut = registration.defaultShortcut ?? ''
       const shortcut = this.overrides.get(registration.id) ?? defaultShortcut
       const conflictWith = shortcut ? occupied.get(shortcut) : undefined
