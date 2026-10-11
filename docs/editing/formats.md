@@ -36,13 +36,9 @@ If a source language fails to load, choose **Retry language** in its notice. Ret
 
 ## Equations in Markdown
 
-With the LaTeX addon enabled, use `$x$` for inline math. Start a line with `$$x$$` for a centered display equation, or put the expression between separate `$$` lines. The opening delimiter can have up to three leading spaces; the closing delimiter must end its line apart from spaces or tabs. Inside lists and blockquotes, this applies after the list or quote prefix.
-
-Double dollars inside a paragraph, such as `text $$x$$` or `text $$x$$ more`, stay literal text. Switching between source and visual views preserves their original bytes without inserting line breaks.
+With the LaTeX addon enabled, use `$x$` for inline math. See [Equations in Markdown](../../src/addons/math/README.md#equations-in-markdown) for display math and literal dollar signs.
 
 If an existing document used line-final `text $$x$$` for display math, move `$$x$$` onto its own line.
-
-Use `\$x$` or `\$$x$$` to write literal dollar-delimited text. Visual edits keep that text literal when saving; the placement of backslashes can change. Currency such as `$5 and $10` stays unchanged.
 
 ## Install required tools
 
