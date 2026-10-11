@@ -1,4 +1,5 @@
 import {
+  type AnyExtension,
   callOrReturn,
   flattenExtensions,
   getExtensionField,
@@ -73,6 +74,37 @@ export function paragraphEscaper(
     if (ctx.parentType === 'table') return source
     return escapeBlockPrefixes(source, parser)
   }
+}
+
+/** Keep native table layout while routing every cell paragraph through its renderer. */
+export function renderTableParagraphs(extension: AnyExtension): AnyExtension {
+  if (extension.name === 'table')
+    return extension.extend({
+      renderMarkdown(node, helpers, ctx) {
+        return (
+          this.parent?.(
+            node,
+            {
+              ...helpers,
+              renderChildren: (children, separator) =>
+                helpers.renderChildren(
+                  !Array.isArray(children) && children.type === 'paragraph'
+                    ? [children]
+                    : children,
+                  separator,
+                ),
+            },
+            ctx,
+          ) ?? ''
+        )
+      },
+    })
+  if (!getExtensionField(extension, 'addExtensions')) return extension
+  return extension.extend({
+    addExtensions() {
+      return this.parent?.().map(renderTableParagraphs) ?? []
+    },
+  })
 }
 
 /** Finish inline escaping with the syntax that only has meaning at block starts. */
