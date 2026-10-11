@@ -136,6 +136,34 @@ test('the update notice opens About at the update status by click or keyboard', 
       ?.contains(document.activeElement),
   )
 
+  // A removed origin falls back to its nearest connected focusable ancestor.
+  await page.evaluate(() => {
+    const parent = document.createElement('div')
+    parent.tabIndex = -1
+    parent.id = 'focus-origin-parent'
+    parent.append(document.createElement('button'))
+    document.body.append(parent)
+    parent.querySelector('button').focus()
+  })
+  await notify()
+  await toast.waitFor()
+  await pressShortcut(app, focus)
+  await page.waitForFunction(() =>
+    document.activeElement?.classList.contains('toast-action'),
+  )
+  await page.evaluate(() =>
+    document.querySelector('#focus-origin-parent button').remove(),
+  )
+  await page.keyboard.press('Escape')
+  await toast.waitFor({ state: 'detached' })
+  assert.equal(
+    await page.evaluate(() => document.activeElement?.id),
+    'focus-origin-parent',
+  )
+  await page.evaluate(() =>
+    document.querySelector('#focus-origin-parent').remove(),
+  )
+
   if (shots) {
     await mkdir(shots, { recursive: true })
     for (const scheme of ['light', 'dark']) {

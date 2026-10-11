@@ -75,16 +75,31 @@ export function Sonner() {
     service.snapshot,
   )
   const element = useRef<HTMLElement>(null)
-  // Escape and finished actions return focus to where keyboard users came from.
-  const returnFocus = useRef<Element | null>(null)
+  // Escape and finished actions return focus to where keyboard users came from:
+  // that element, else its nearest connected focusable ancestor, else the open
+  // dialog's first control or the active editor.
+  const returnFocus = useRef<Element[]>([])
   const restoreFocus = () => {
-    const previous = returnFocus.current
-    if (
-      element.current?.contains(document.activeElement) &&
-      previous instanceof HTMLElement &&
-      previous.isConnected
-    )
-      previous.focus()
+    const stack = element.current
+    if (!stack?.contains(document.activeElement)) return
+    const fallback = container
+      ? [
+          ...container.querySelectorAll(
+            'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [href], [tabindex]:not([tabindex="-1"])',
+          ),
+        ].find((control) => !stack.contains(control))
+      : document.querySelector(
+          '.editor-panes .rich-pane:not([inert]) [contenteditable="true"], .editor-panes .source-pane:not([inert]) [contenteditable="true"]',
+        )
+    for (const target of [...returnFocus.current, fallback]) {
+      if (
+        target instanceof HTMLElement &&
+        target.isConnected &&
+        !target.closest('[hidden], [inert]')
+      )
+        target.focus({ preventScroll: true })
+      if (!stack.contains(document.activeElement)) return
+    }
   }
   // biome-ignore lint/correctness/useExhaustiveDependencies: changing the portal container creates a new popover element.
   useLayoutEffect(() => {
@@ -101,8 +116,14 @@ export function Sonner() {
       data-position={preferences.position}
       aria-label="Notifications"
       onFocus={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget))
-          returnFocus.current = event.relatedTarget
+        if (event.currentTarget.contains(event.relatedTarget)) return
+        returnFocus.current = []
+        for (
+          let target = event.relatedTarget as Element | null;
+          target && target !== document.body;
+          target = target.parentElement
+        )
+          returnFocus.current.push(target)
       }}
       // Buttons stay out of the Tab order; once Focus notifications enters the
       // stack, arrows cycle its buttons and Tab past either end returns focus.
