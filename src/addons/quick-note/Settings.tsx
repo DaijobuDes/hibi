@@ -76,7 +76,7 @@ export function Settings() {
         label="Workspace"
         description="Choose the current workspace or one of your recent workspaces."
       >
-        <div className="quick-note-target">
+        <div className="setting-controls">
           <Select
             id="quick-note-workspace"
             value={value.workspaceId}
@@ -151,23 +151,27 @@ export function Settings() {
         label="Default title"
         description="Used automatically, or offered when Hibi asks for a title. Repeated titles get a number."
       >
-        <TextInput
-          id="quick-note-default-title"
-          value={value.defaultTitle}
-          onChange={(event) => change({ defaultTitle: event.target.value })}
-        />
+        <div className="setting-controls">
+          <TextInput
+            id="quick-note-default-title"
+            value={value.defaultTitle}
+            onChange={(event) => change({ defaultTitle: event.target.value })}
+          />
+        </div>
       </SettingRow>
       <SettingRow
         id="quick-note-shortcut"
         label="Global shortcut"
         description="Use an Electron accelerator such as CommandOrControl+Alt+N. Clear it to disable the shortcut."
       >
-        <TextInput
-          id="quick-note-shortcut"
-          value={value.shortcut}
-          onChange={(event) => change({ shortcut: event.target.value })}
-          monospace
-        />
+        <div className="setting-controls">
+          <TextInput
+            id="quick-note-shortcut"
+            value={value.shortcut}
+            onChange={(event) => change({ shortcut: event.target.value })}
+            monospace
+          />
+        </div>
       </SettingRow>
       {error && <p role="alert">{error}</p>}
       {saved && <p role="status">Quick note settings saved.</p>}
