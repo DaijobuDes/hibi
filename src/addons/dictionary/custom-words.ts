@@ -123,6 +123,19 @@ export function updateCustomWords(
 export const sameCustomWord = (left: CustomWord, right: CustomWord) =>
   key(left) === key(right)
 
+/**
+ * Applies `change` to the saved entry for `original` when its turn comes, so
+ * queued edits to different fields of one word all keep.
+ */
+export function editCustomWord(
+  original: CustomWord,
+  change: (current: CustomWord) => CustomWord,
+) {
+  return updateCustomWords((current) =>
+    current.map((item) => (sameCustomWord(item, original) ? change(item) : item)),
+  )
+}
+
 /** `incoming` words replace matching ones in place; the rest are added at the end. */
 export function mergeCustomWords(
   current: readonly CustomWord[],

@@ -4,6 +4,7 @@ import {
   addCustomWord,
   customWords,
   customWordsProvider,
+  editCustomWord,
   exportCustomWords,
   importCustomWords,
   listCustomWords,
@@ -122,6 +123,21 @@ test('custom words load, save, follow other windows, and clear on stop', async (
   assert.deepEqual(listCustomWords(), [])
   assert.ok(changes >= 5)
   stopListening()
+})
+
+test('queued field edits apply to the word as it is saved', async () => {
+  const { context } = storage([{ word: 'kilig', note: 'old' }])
+  const close = await openCustomWords(context)
+  const [item] = listCustomWords()
+  // A note blur, then a language change before the note is saved.
+  await Promise.all([
+    editCustomWord(item, ({ note: _old, ...rest }) => ({ ...rest, note: 'new' })),
+    editCustomWord(item, (current) => ({ ...current, lang: 'tl' })),
+  ])
+  assert.deepEqual(listCustomWords(), [
+    { word: 'kilig', note: 'new', lang: 'tl' },
+  ])
+  close()
 })
 
 test('custom words keep a newer revision over a late save reply or notification', async () => {
