@@ -2,7 +2,7 @@
 
 # MarkdownParagraphRule
 
-Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L325)
+Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L327)
 
 Escape paragraph Markdown in flavor and rule order, before core block-prefix escaping.
 
@@ -37,7 +37,7 @@ type MarkdownParagraphRule = {
 
 ### characters
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L327)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L329)
 
 Replace these literal text characters with sentinels during inline rendering.
 
@@ -49,7 +49,7 @@ characters?: string
 
 ### escape
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L332)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L334)
 
 Replace only whole sentinels that need escaping; the host restores the rest afterward.
 Preserve declared characters, using backslash escapes or HTML entities when needed.

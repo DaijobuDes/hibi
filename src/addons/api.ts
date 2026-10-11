@@ -149,6 +149,8 @@ export type AddonManifest = {
   syntax?: readonly AddonSyntaxDescriptor[]
   /** Self-contained ES module exporting analyze(projection). Runs without app, filesystem, or network access. */
   analysis?: { entry: string }
+  /** Inert HTTPS origins shown before enabling. Approves credential-free host GETs to public addresses. */
+  network?: { origins: readonly string[] }
   /** Required addon release version, separate from the host API version. */
   version: string
   /** Additional source-file extensions, without dots. Files remain openable when disabled. */

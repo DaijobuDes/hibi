@@ -34,6 +34,8 @@ type AddonManifest = {
   syntax?: readonly AddonSyntaxDescriptor[]
   /** Self-contained ES module exporting analyze(projection). Runs without app, filesystem, or network access. */
   analysis?: { entry: string }
+  /** Inert HTTPS origins shown before enabling. Approves credential-free host GETs to public addresses. */
+  network?: { origins: readonly string[] }
   /** Required addon release version, separate from the host API version. */
   version: string
   /** Additional source-file extensions, without dots. Files remain openable when disabled. */
@@ -72,6 +74,7 @@ type AddonManifest = {
 - [commands](#commands)
 - [syntax](#syntax)
 - [analysis](#analysis)
+- [network](#network)
 - [version](#version)
 - [fileExtensions](#fileextensions)
 - [settings](#settings)
@@ -213,9 +216,19 @@ Self-contained ES module exporting analyze(projection). Runs without app, filesy
 analysis?: { entry: string }
 ```
 
+### network
+
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L153)
+
+Inert HTTPS origins shown before enabling. Approves credential-free host GETs to public addresses.
+
+```typescript
+network?: { origins: readonly string[] }
+```
+
 ### version
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L153)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L155)
 
 Required addon release version, separate from the host API version.
 
@@ -225,7 +238,7 @@ version: string
 
 ### fileExtensions
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L155)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L157)
 
 Additional source-file extensions, without dots. Files remain openable when disabled.
 
@@ -235,7 +248,7 @@ fileExtensions?: readonly string[]
 
 ### settings
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L157)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L159)
 
 Placement and Lucide icon name for the addon's default settings page.
 
@@ -245,7 +258,7 @@ settings?: { category?: string; icon?: string }
 
 ### dependencies
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L159)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L161)
 
 External CLI requirements. The host checks and installs these without executing addon-supplied shell commands.
 
@@ -257,7 +270,7 @@ Related: [AddonDependency](AddonDependency.md).
 
 ### authors
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L160)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L162)
 
 ```typescript
 authors?: readonly AddonAuthor[]
@@ -267,7 +280,7 @@ Related: [AddonAuthor](AddonAuthor.md).
 
 ### licenses
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L162)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L164)
 
 Shipped third-party notices, shown under hibi's open source licenses.
 

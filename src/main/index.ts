@@ -74,6 +74,7 @@ import {
   currentAddonOwner,
   enableAddon,
   getAddonActivationGeneration,
+  getAddonManifests,
   getAddonStartupNotices,
   getAddonStates,
   installAddon,
@@ -383,6 +384,10 @@ async function askNetworkGrant(
 }
 const hostNetwork = new HostNetwork({
   currentOwner: currentAddonOwner,
+  declaredOrigins: (id) =>
+    getAddonManifests().find((manifest) => manifest.id === id)?.network
+      ?.origins ?? [],
+  userAgent: `Hibi/${app.getVersion()} (https://github.com/schmayterling/hibi)`,
   isWindowLive: (key) =>
     key === networkWindowKey &&
     !!mainWindow &&
