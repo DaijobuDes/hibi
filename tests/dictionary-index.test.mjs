@@ -377,6 +377,26 @@ test('lookup and completion accept nfd french and voiced kana', async (t) => {
   }
 })
 
+test('completion skips case aliases without consuming limit slots', async (t) => {
+  const dir = await directory(t)
+  await writePack(
+    'fr',
+    entries([
+      entry('Paris', ['paris']),
+      entry('paris', [], 'another sense'),
+      entry('partir'),
+    ]),
+    dir,
+  )
+  const index = new PackIndex()
+  t.after(() => index.unload())
+  assert.deepEqual(await index.complete('fr', dir, 'pa', 2), [
+    'Paris',
+    'partir',
+  ])
+  assert.deepEqual(await index.complete('fr', dir, 'PA', 1), ['Paris'])
+})
+
 test('preloaded prefix search bounds results and normalizes source spelling and reading keys', async (t) => {
   const index = new PackIndex()
   t.after(() => index.unload())

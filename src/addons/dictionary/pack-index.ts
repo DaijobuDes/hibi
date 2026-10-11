@@ -381,12 +381,16 @@ export class PackIndex {
       const keys = loaded.normalized?.keys ?? loaded.keys
       const query = normalize(id, prefix)
       const results: string[] = []
+      let previous: string | undefined
       for (
         let i = lowerBound(keys, query);
         i < keys.length && keys[i]!.startsWith(query) && results.length < limit;
         i++
-      )
+      ) {
+        if (keys[i] === previous) continue
         results.push(loaded.keys[loaded.normalized?.rows[i] ?? i]!)
+        previous = keys[i]
+      }
       return results
     })
   }
