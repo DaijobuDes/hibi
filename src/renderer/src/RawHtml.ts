@@ -4,12 +4,15 @@ import {
   type JSONContent,
   Node,
 } from '@tiptap/core'
-import { DOMSerializer } from '@tiptap/pm/model'
+import { DOMParser } from '@tiptap/pm/model'
 import { Plugin } from '@tiptap/pm/state'
 import type { Token } from 'marked'
 import { markdownSyntax } from './markdown-syntax.ts'
 
-const clipboardSession = crypto.randomUUID()
+let lastCopiedHtml = ''
+const trustedClipboardElements = new WeakSet<Element>()
+const clipboardHtml = (html: string) =>
+  html.replace(/^<meta charset=['"]utf-8['"]>/i, '')
 const htmlBreak = /^<br\s*\/?>$/i
 
 const voidTags = new Set(
@@ -66,8 +69,7 @@ export function preserveHtml(extension: AnyExtension) {
           default: null,
           parseHTML: (element: HTMLElement) => {
             const source = element.getAttribute('data-raw-html-break')
-            return element.getAttribute('data-raw-html-session') ===
-              clipboardSession &&
+            return trustedClipboardElements.has(element) &&
               source &&
               htmlBreak.test(source)
               ? source
@@ -115,7 +117,7 @@ export const rawHtml = (['inline', 'block'] as const).map((level) => {
         tag: `[data-raw-html="${level}"]`,
         priority: 100,
         getAttrs: (element) =>
-          element.getAttribute('data-raw-html-session') === clipboardSession
+          trustedClipboardElements.has(element)
             ? { source: element.textContent ?? '' }
             : false,
       },
@@ -132,20 +134,51 @@ export const rawHtml = (['inline', 'block'] as const).map((level) => {
     renderText: ({ node }) => node.attrs.source,
     addProseMirrorPlugins() {
       if (level !== 'inline') return []
-      const serializer = DOMSerializer.fromSchema(this.editor.schema)
-      const clipboardSerializer = new DOMSerializer(
-        serializer.nodes,
-        serializer.marks,
-      )
-      clipboardSerializer.serializeFragment = (...args) => {
-        const fragment = serializer.serializeFragment(...args)
-        for (const element of fragment.querySelectorAll(
-          '[data-raw-html], [data-raw-html-break]',
-        ))
-          element.setAttribute('data-raw-html-session', clipboardSession)
-        return fragment
+      let internalPaste = false
+      const parser = DOMParser.fromSchema(this.editor.schema)
+      const clipboardParser = new DOMParser(parser.schema, parser.rules)
+      clipboardParser.parseSlice = (dom, options) => {
+        if (internalPaste)
+          for (const element of (dom as HTMLElement).querySelectorAll(
+            '[data-raw-html], [data-raw-html-break]',
+          ))
+            trustedClipboardElements.add(element)
+        internalPaste = false
+        return parser.parseSlice(dom, options)
       }
-      return [new Plugin({ props: { clipboardSerializer } })]
+      return [
+        new Plugin({
+          props: {
+            clipboardParser,
+            transformPastedHTML(html) {
+              internalPaste =
+                !!lastCopiedHtml && clipboardHtml(html) === lastCopiedHtml
+              return html
+            },
+          },
+          view(view) {
+            // Read the final payload after ProseMirror's copy/cut/drag handler.
+            const remember = (event: Event) => {
+              if (!view.dom.contains(event.target as globalThis.Node)) return
+              const data =
+                (event as ClipboardEvent).clipboardData ??
+                (event as DragEvent).dataTransfer
+              if (data)
+                lastCopiedHtml = clipboardHtml(data.getData('text/html'))
+            }
+            const events = ['copy', 'cut', 'dragstart']
+            const document = view.dom.ownerDocument
+            for (const event of events)
+              document.addEventListener(event, remember)
+            return {
+              destroy() {
+                for (const event of events)
+                  document.removeEventListener(event, remember)
+              },
+            }
+          },
+        }),
+      ]
     },
     markdownTokenName: level === 'block' ? 'html' : name,
     parseMarkdown: (token, helpers) => {
