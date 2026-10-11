@@ -172,7 +172,7 @@ test('custom words refuse to go over capacity without saving part of a change', 
   await addCustomWord({ word: 'kilig', note: 'giddy' })
   assert.equal(listCustomWords().at(-1).note, 'giddy')
   assert.equal(
-    importCustomWords(full.map(({ word }) => word).join('\n') + '\nx').length,
+    importCustomWords(`${full.map(({ word }) => word).join('\n')}\nx`).length,
     5000,
   )
   close()
