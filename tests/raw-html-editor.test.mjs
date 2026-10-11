@@ -40,6 +40,7 @@ test('raw HTML stays inert and exact through rich edits, atom deletion, undo, an
     div,
     comment,
     details,
+    'break a<BR />b',
     'last paragraph',
   ].join('\n\n')
   await writeFile(file, original)
@@ -301,6 +302,23 @@ test('raw HTML stays inert and exact through rich edits, atom deletion, undo, an
       assert.equal(await serialize(), sourceEdited)
       await inert()
     }
+  })
+
+  await t.test('internal copy/paste keeps html break spelling', async () => {
+    const before = await rich.evaluate((element) => {
+      const { editor } = element
+      editor.state.doc.descendants((node, pos) => {
+        if (node.type.name === 'hardBreak')
+          editor.commands.setTextSelection({ from: pos - 1, to: pos + 2 })
+      })
+      return editor.getJSON()
+    })
+    await paste(await copy())
+    assert.deepEqual(
+      await rich.evaluate((element) => element.editor.getJSON()),
+      before,
+    )
+    assert.equal(await serialize(), sourceEdited)
   })
 
   await t.test('external html pastes as escaped text', async () => {

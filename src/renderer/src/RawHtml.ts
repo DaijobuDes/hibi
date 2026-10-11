@@ -10,6 +10,7 @@ import type { Token } from 'marked'
 import { markdownSyntax } from './markdown-syntax.ts'
 
 const clipboardSession = crypto.randomUUID()
+const htmlBreak = /^<br\s*\/?>$/i
 
 const voidTags = new Set(
   'area base br col embed hr img input link meta param source track wbr'.split(
@@ -60,7 +61,22 @@ export function preserveInlineHtml(tokens: Token[]) {
 export function preserveHtml(extension: AnyExtension) {
   if (extension.name === 'hardBreak')
     return extension.extend({
-      addAttributes: () => ({ rawHtml: { default: null, rendered: false } }),
+      addAttributes: () => ({
+        rawHtml: {
+          default: null,
+          parseHTML: (element: HTMLElement) => {
+            const source = element.getAttribute('data-raw-html-break')
+            return element.getAttribute('data-raw-html-session') ===
+              clipboardSession &&
+              source &&
+              htmlBreak.test(source)
+              ? source
+              : null
+          },
+          renderHTML: (attrs: { rawHtml: string | null }) =>
+            attrs.rawHtml ? { 'data-raw-html-break': attrs.rawHtml } : {},
+        },
+      }),
       renderMarkdown: (node: JSONContent) => node.attrs?.rawHtml ?? '  \n',
     })
   if (
@@ -123,7 +139,9 @@ export const rawHtml = (['inline', 'block'] as const).map((level) => {
       )
       clipboardSerializer.serializeFragment = (...args) => {
         const fragment = serializer.serializeFragment(...args)
-        for (const element of fragment.querySelectorAll('[data-raw-html]'))
+        for (const element of fragment.querySelectorAll(
+          '[data-raw-html], [data-raw-html-break]',
+        ))
           element.setAttribute('data-raw-html-session', clipboardSession)
         return fragment
       }
@@ -137,7 +155,7 @@ export const rawHtml = (['inline', 'block'] as const).map((level) => {
           : (token.raw ?? '')
       if (
         level === 'inline' &&
-        /^<br\s*\/?>$/i.test(source) &&
+        htmlBreak.test(source) &&
         markdownSyntax.enabled('core.line-breaks')
       )
         return helpers.createNode('hardBreak', { rawHtml: source })

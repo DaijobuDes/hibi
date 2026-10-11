@@ -112,6 +112,21 @@ test('block html excludes trailing newlines and list edits keep original spacing
   )
 })
 
+test('external break attributes cannot inject raw markdown', () => {
+  const rule = schema.nodes.hardBreak.spec.parseDOM.find(
+    (rule) => rule.tag === 'br',
+  )
+  for (const session of [null, 'external']) {
+    const attrs = rule.getAttrs({
+      getAttribute: (name) =>
+        name === 'data-raw-html-session'
+          ? session
+          : '<script>alert(1)</script>',
+    })
+    assert.equal(schema.nodes.hardBreak.create(attrs).attrs.rawHtml, null)
+  }
+})
+
 test('html br becomes an opaque chip when line breaks are disabled', () => {
   markdownSyntax.setEnabled('core.line-breaks', false)
   try {
