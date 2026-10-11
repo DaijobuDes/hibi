@@ -28,6 +28,7 @@ Start with [editing](guides/editing.md), or choose a topic below.
 - [Slash commands](guides/slash-commands.md)
 - [Vim editing](guides/vim.md)
 - [Keyboard sounds](guides/keybeats.md)
+- [Offline dictionary packs](features/dictionary-packs.md)
 - [Discord Rich Presence](features/discord-presence.md)
 - [MCP Server for AI tools](features/mcp-server.md)
 

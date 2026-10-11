@@ -22,3 +22,54 @@ The Free Dictionary API is a free service with no account or key. It does not pu
 Datamuse allows up to 100,000 requests per day without a key. Its [API page](https://www.datamuse.com/api/) says it will require an API key for every request starting in early 2027. Synonym lookups may stop working at that point until Hibi supports a key. Thanks to Datamuse for providing the API.
 
 If a service cannot be reached, is limiting requests, or has no entry for the word, the results explain what happened. Choose **Try again** after reconnecting or waiting a minute. Only English words are supported.
+
+## Offline packs
+
+Open the addon's settings, or run **Dictionary: install offline pack**, and choose **Install pack** beside a language. English, Mandarin in both scripts, Cantonese, Japanese, Filipino (Tagalog), and French are available. Each row shows its download size, hosts, sources, and licenses before installation. Hibi downloads directly from those publishers; packs are not bundled or hosted by Hibi.
+
+Keep the app open while a pack downloads and prepares. You can cancel either stage. **Update** fetches the current source again and keeps the installed pack until the replacement is ready. **Uninstall** removes that pack's local data. Update regularly to receive corrections, particularly for the daily CC-CEDICT and JMdict sources.
+
+Installed packs are preferred across the candidate languages. A local answer requires no lookup request. If no installed pack has an answer, the online providers may be used through the usual network permission prompt. Pack installation contacts the displayed publishers but never sends the word you are looking up.
+
+English uses WordNet definitions, synonym groups, antonyms, and explicit inflected forms, with conservative suffix matching when the exact form is absent. Chinese pairs connect simplified and traditional headwords; Japanese entries connect kanji spellings and kana readings. Filipino and French also match lowercase headwords. Readings appear with the definitions.
+
+CC-CEDICT, CC-Canto, and JMdict do not supply a general thesaurus. Their packs therefore provide definitions and readings; synonym results depend on available source relations or the online fallback. Filipino and French retain Wiktionary synonym and antonym fields. No extra thesaurus dataset is bundled.
+
+See [offline pack help](../../../docs/features/dictionary-packs.md) and the [pack implementation and measurements](../../../docs/development/addons/dictionary-packs.md).
+
+## Offline dictionary sources
+
+The English pack uses [Open English WordNet 2025](https://en-word.net/downloads), released on 31 December 2025. It is licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), with [Princeton WordNet notices](https://github.com/globalwordnet/english-wordnet/blob/2025-edition/LICENSE.md) retained. Attribution is given to the Open English WordNet team and Princeton University WordNet. The 2025 edition covers lexical words; the separate 2025+ edition also includes curated proper names.
+
+The Mandarin pack uses [CC-CEDICT, published by MDBG](https://www.mdbg.net/chinese/dictionary?page=cedict), under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). The current download header confirms this licence; the older CC-CEDICT wiki still mentions version 3.0. CC-CEDICT is maintained by its community and includes material from CEDICT, copyright 1997 and 1998 Paul Andrew Denisowski.
+
+The Cantonese pack combines [CC-Canto and CC-CEDICT Cantonese Readings](https://cantonese.org/download.html) with CC-CEDICT definitions. CC-Canto is version 2017-02-02, copyright 2015–17 Pleco Inc.; the Cantonese readings are version 2015-09-23, copyright 2015 Pleco Software Incorporated. Both Pleco datasets use [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/). The current CC-CEDICT definitions retain their separate CC BY-SA 4.0 attribution.
+
+The Japanese pack uses the English-gloss [JMdict_e](https://www.edrdg.org/jmdict/j_jmdict.html), copyright James William Breen and the Electronic Dictionary Research and Development Group. It uses [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). The [upstream licence statement](https://www.edrdg.org/edrdg/licence.html) requires accessible acknowledgement and a procedure for regular dictionary updates.
+
+The Tagalog pack uses [English Wiktionary data extracted by Wiktextract and distributed through Kaikki.org](https://kaikki.org/dictionary/Tagalog/). Dictionary text is by Wiktionary contributors. [Wiktionary's copyright statement](https://en.wiktionary.org/wiki/Wiktionary:Copyrights) offers CC BY-SA 4.0 and GFDL 1.1 or later; this pack uses the [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) option. The current language-specific postprocessed download is marked deprecated by Kaikki. Its maintained [raw-data alternative](https://kaikki.org/dictionary/rawdata.html) contains all languages and would need Tagalog filtering during pack preparation. The Wiktextract program's MIT licence does not replace the dictionary data licence.
+
+Hibi converts these upstream files into local lookup indexes. The conversion extracts definitions, spellings, readings, forms, synonyms and antonyms where the source provides them, and combines separately attributed sources for Cantonese. Installed pack metadata records the download source, date and hash. Source licence notices remain available through the addon's registered licences.
+
+### Verified download snapshots
+
+These are observed sizes, not permanent sizes for rolling downloads. Verified on 12 October 2026 in Asia/Manila; download responses were dated 11 October UTC.
+
+| Source | Official HTTPS download | Download bytes | Expanded bytes | Version or date | Format |
+| --- | --- | ---: | ---: | --- | --- |
+| Open English WordNet | [english-wordnet-2025.xml.gz](https://en-word.net/downloads/english-wordnet-2025.xml.gz) | 11,363,503 | 89,237,271 | 2025; released 2025-12-31 | gzip, UTF-8 WN-LMF 1.3 XML |
+| CC-CEDICT | [cedict_1_0_ts_utf-8_mdbg.txt.gz](https://www.mdbg.net/chinese/export/cedict/cedict_1_0_ts_utf-8_mdbg.txt.gz) | 3,980,329 | 9,863,447 | v1.0; 2026-10-11T08:29:27Z | gzip, UTF-8 CEDICT text; 125,262 entries |
+| CC-Canto | [cccanto-170202.zip](https://cantonese.org/cccanto-170202.zip) | 1,282,537 | 3,446,667 | 2017-02-02 | ZIP; cccanto-webdist.txt |
+| Cantonese readings | [cccedict-canto-readings-150923.zip](https://cantonese.org/cccedict-canto-readings-150923.zip) | 1,874,027 | 5,328,574 | 2015-09-23 | ZIP; cccedict-canto-readings-150923.txt |
+| JMdict_e | [JMdict_e.gz](https://www.edrdg.org/pub/Nihongo/JMdict_e.gz) | 10,583,340 | 63,164,141 | created 2026-10-11 | gzip, UTF-8 XML with internal DTD/entities |
+| Tagalog Wiktionary | [kaikki.org-dictionary-Tagalog.jsonl](https://kaikki.org/dictionary/Tagalog/kaikki.org-dictionary-Tagalog.jsonl) | 130,506,107 | 130,506,107 | extracted 2026-10-03 from dump 2026-09-02 | uncompressed UTF-8 JSON Lines |
+
+WordNet XML supplies 4,473 explicit inflected forms. Its optional [WNDB archive](https://en-word.net/downloads/english-wordnet-2025.zip) is 9,616,299 bytes and supplies noun, verb, adjective and adverb exception lists. [Princeton's Morphy documentation](https://wordnet.princeton.edu/documentation/morphy7wn) describes POS-specific suffix rules with dictionary membership checks. Forms and exception lists support irregular lookup; suffix rules can extend regular inflection coverage.
+
+The CEDICT export has traditional and simplified spellings, numbered Pinyin and slash-separated definitions. Cantonese files add Jyutping inside braces; the readings file has no definitions and must be joined to CC-CEDICT. JMdict has kanji spellings, kana readings and restricted senses; its internal DTD defines named POS entities. Kaikki JSON Lines has one entry object per line, including `word`, `lang_code`, `pos`, `senses`, `forms` and optional lexical relation objects. [Wiktextract's upstream documentation](https://github.com/tatuylonen/wiktextract) describes its fields.
+
+### French
+
+The French pack uses the [French extract of English Wiktionary from Kaikki](https://kaikki.org/dictionary/French/), under the same [Wiktionary CC BY-SA 4.0 / GFDL terms](https://en.wiktionary.org/wiki/Wiktionary:Copyrights) as Tagalog. Hibi uses the CC BY-SA 4.0 option. [The official JSON Lines download](https://kaikki.org/dictionary/French/kaikki.org-dictionary-French.jsonl) was 583,677,104 bytes, uncompressed, when verified on 12 October 2026. It was extracted on 3 October 2026 from the 2 September English Wiktionary dump.
+
+Like Tagalog's language-specific feed, this endpoint is deprecated upstream but remains available. Hibi streams it and keeps only French entries. The maintained all-language raw alternative is much larger and is not downloaded by this pack. Both Wiktionary packs preserve links to original entries for attribution.

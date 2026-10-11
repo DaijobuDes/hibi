@@ -17,7 +17,9 @@ import { Button, PanelMessage } from '../ui'
 import css from './dictionary.css?inline'
 import { detectLangs, type LookupTarget, matchCase, wordAt } from './lookup'
 import manifest from './manifest'
+import { createOfflineProviders } from './offline'
 import { datamuseProvider, wiktionaryProvider } from './online'
+import { PackSettings } from './PackSettings'
 import {
   createRegistry,
   type Entry,
@@ -265,6 +267,20 @@ export default defineAddon({
     const registry = createRegistry()
     registry.register(wiktionaryProvider(context.host.network.getText))
     registry.register(datamuseProvider(context.host.network.getText))
+    for (const provider of createOfflineProviders(context.native))
+      registry.register(provider)
+    context.commands.register({
+      id: INSTALL_PACK_COMMAND,
+      label: 'Dictionary: install offline pack',
+      keywords: 'dictionary language download offline',
+      run: () => {
+        context.dialogs.open({
+          title: 'Offline language packs',
+          size: 'wide',
+          content: () => <PackSettings />,
+        })
+      },
+    })
     const richEditors = new Set<Editor>()
     const sourceViews = new Set<EditorView>()
     context.editor.registerRich({

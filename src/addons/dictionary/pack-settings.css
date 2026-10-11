@@ -1,0 +1,21 @@
+.dictionary-pack-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-1);
+  min-width: 0;
+  max-width: 100%;
+}
+.dictionary-pack-controls .ui-control-row {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.dictionary-pack-controls progress {
+  max-width: 100%;
+  accent-color: var(--accent);
+}
+.dictionary-pack-controls [role="status"],
+.dictionary-pack-controls [role="alert"] {
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
