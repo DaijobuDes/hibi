@@ -22,18 +22,19 @@ export function codeSpans(text: string): readonly CodeSpan[] {
   const spans: CodeSpan[] = []
   for (let index = 0; index < runs.length; index++) {
     const run = runs[index]
+    if (!run) break
     const from = run.start + Number(run.escaped)
     const length = run.length - Number(run.escaped)
     if (!length) continue
-    const close = runs.findIndex(
+    const closer = runs.find(
       (other, later) => later > index && other.length === length,
     )
-    if (close === -1) {
+    if (!closer) {
       spans.push({ from, to: text.length, closed: false })
       break
     }
-    spans.push({ from, to: runs[close].start + length, closed: true })
-    index = close
+    spans.push({ from, to: closer.start + length, closed: true })
+    index = runs.indexOf(closer)
   }
   return spans
 }
