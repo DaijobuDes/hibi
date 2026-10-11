@@ -4969,6 +4969,9 @@
   "b29376d8e035": [
     "src/main/links.ts"
   ],
+  "6db0ac5a60ac": [
+    "src/main/addon-windows.ts"
+  ],
   "d560cd1db8eb": [
     "src/renderer/src/addon-global-shortcuts.ts"
   ],
@@ -5065,11 +5068,20 @@
   "f59f73db914f": [
     "src/renderer/src/settings-pages.ts"
   ],
+  "6783f24ab2c9": [
+    "src/main/addon-windows.ts"
+  ],
   "5eebb144c45a": [
     "src/main/sideload.ts"
   ],
   "2d715c5a75aa": [
     "src/main/addons.ts"
+  ],
+  "6f81d1a9cd1d": [
+    "src/main/addon-windows.ts"
+  ],
+  "b4992c4271a6": [
+    "src/renderer/src/addon-window.tsx"
   ],
   "a7742e0a996e": [
     "src/renderer/src/addon-registry.ts"
@@ -5949,6 +5961,7 @@
     "src/addons/keybeats/manifest.ts"
   ],
   "55ea09e5715d": [
+    "src/main/addon-windows.ts",
     "src/preload/analysis.ts"
   ],
   "a6375ee99716": [
@@ -6032,6 +6045,7 @@
     "src/main/local-diagnostics/sink.ts"
   ],
   "7a30651bca5a": [
+    "src/main/addon-windows.ts",
     "src/main/index.ts"
   ],
   "4c94485e0c21": [

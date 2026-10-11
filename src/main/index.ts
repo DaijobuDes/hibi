@@ -26,6 +26,7 @@ import {
   type AddonHotkeyRegistration,
 } from '../shared/addon-hotkeys'
 import { ADDON_STORAGE_CHANNELS } from '../shared/addon-storage'
+import { ADDON_WINDOW_CHANNELS } from '../shared/addon-windows'
 import { ANALYSIS_CHANNELS } from '../shared/analysis'
 import { APPEARANCE_CHANNEL } from '../shared/colorschemes'
 import { DEPENDENCY_CHANNELS } from '../shared/dependencies'
@@ -71,6 +72,14 @@ import { WORKSPACE_SETTINGS_CHANNELS } from '../shared/workspace-settings'
 import { AddonHotkeys } from './addon-hotkeys'
 import { createAddonStorage } from './addon-storage'
 import {
+  addonWindowSender,
+  closeAddonWindow,
+  closeAddonWindows,
+  focusAddonWindow,
+  onAddonWindowClosed,
+  openAddonWindow,
+} from './addon-windows'
+import {
   currentAddonOwner,
   enableAddon,
   getAddonActivationGeneration,
@@ -84,7 +93,9 @@ import {
   loadAddons,
   readAddonDocumentation,
   removeAddon,
+  runNativeGlobalShortcut,
   setAddonDeactivationHandler,
+  windowAddonName,
 } from './addons'
 import { analysisService } from './analysis'
 import { appearanceColors, loadAppearance, saveAppearance } from './appearance'
@@ -433,6 +444,7 @@ setAddonDeactivationHandler(async (id, generation) => {
   hostCredentials.stopOwner(owner)
   selectedText.revokeAddon(id)
   selectedIo.revokeAddon(id)
+  closeAddonWindows(id)
   await addonStorage.clearSession(id)
 })
 addonStorage.subscribe((change) => {
@@ -506,7 +518,20 @@ if (process.env.NODE_ENV_ELECTRON_VITE === 'development')
   })
 app.on('will-quit', () => globalShortcuts.clear())
 
+const openOwnedAddonWindow = (addonId: string, options: unknown) =>
+  openAddonWindow(addonId, windowAddonName(addonId), options)
+
 function invokeGlobalShortcut(invocation: GlobalShortcutInvocation) {
+  // Native handlers can open their own window, so the main window stays put.
+  void runNativeGlobalShortcut(invocation.id, openOwnedAddonWindow).then(
+    (handled) => {
+      if (!handled) showGlobalShortcut(invocation)
+    },
+    (error: unknown) => console.error('global shortcut failed:', error),
+  )
+}
+
+function showGlobalShortcut(invocation: GlobalShortcutInvocation) {
   const { id, token } = invocation
   const openingWindow = !mainWindow
   if (openingWindow) {
@@ -567,7 +592,13 @@ function runFileOperation<T>(
   event: IpcMainInvokeEvent,
   operation: (window: BrowserWindow) => Promise<T>,
 ) {
-  const window = trustedWindow(event)
+  return lockFileOperation(trustedWindow(event), operation)
+}
+
+function lockFileOperation<T>(
+  window: BrowserWindow,
+  operation: (window: BrowserWindow) => Promise<T>,
+) {
   if (fileOperation)
     throw new Error(
       'Another file operation is in progress. Wait for it to finish, then try again.',
@@ -582,8 +613,8 @@ function runFileOperation<T>(
 async function readAfterFileOperation<T>(
   event: IpcMainInvokeEvent,
   read: (window: BrowserWindow) => Promise<T>,
+  window = trustedWindow(event),
 ) {
-  const window = trustedWindow(event)
   while (fileOperation) await fileOperation.catch(() => undefined)
   return read(window)
 }
@@ -1445,6 +1476,46 @@ if (!app.requestSingleInstanceLock()) {
           readAfterFileOperation(event, (window) =>
             invokeAddon(window, id, method, input, true),
           ),
+      )
+      handle(
+        ADDON_WINDOW_CHANNELS.open,
+        (_event, addonId: unknown, options: unknown) =>
+          openAddonWindow(addonId as string, windowAddonName(addonId), options),
+      )
+      handle(ADDON_WINDOW_CHANNELS.focus, (_event, addonId: unknown, id) => {
+        windowAddonName(addonId)
+        focusAddonWindow(addonId as string, id)
+      })
+      handle(ADDON_WINDOW_CHANNELS.close, (_event, addonId: unknown, id) => {
+        if (typeof addonId === 'string') closeAddonWindow(addonId, id)
+      })
+      onAddonWindowClosed((addonId, id) =>
+        mainWindow?.webContents.send(ADDON_WINDOW_CHANNELS.closed, addonId, id),
+      )
+      // Addon windows reach only their owner's native handlers.
+      ipcMain.handle(ADDON_WINDOW_CHANNELS.context, (event) => {
+        const { addonId, id, input } = addonWindowSender(event)
+        return { addonId, id, input }
+      })
+      ipcMain.handle(
+        ADDON_WINDOW_CHANNELS.query,
+        (event, method: unknown, input: unknown) => {
+          const { window, addonId } = addonWindowSender(event)
+          return readAfterFileOperation(
+            event,
+            () => invokeAddon(window, addonId, method, input, true),
+            window,
+          )
+        },
+      )
+      ipcMain.handle(
+        ADDON_WINDOW_CHANNELS.invoke,
+        (event, method: unknown, input: unknown) => {
+          const { window, addonId } = addonWindowSender(event)
+          return lockFileOperation(window, () =>
+            invokeAddon(window, addonId, method, input),
+          )
+        },
       )
       handle(HOTKEY_CHANNELS.get, (event) => {
         trustedWindow(event)
