@@ -1,11 +1,18 @@
 import { useState } from 'react'
-import { Select, SettingRow } from '../ui'
+import { Select, SettingRow, Toggle } from '../ui'
 import type { LanguagePreferences } from './lookup'
 import { PackSettings } from './PackSettings'
 import { languageNames, readPreferences, writePreferences } from './settings'
+import { readTyping, type TypingPreferences, writeTyping } from './suggestions'
 
 export function Settings() {
   const [value, setValue] = useState(readPreferences)
+  const [typing, setTyping] = useState(readTyping)
+  const changeTyping = (next: Partial<TypingPreferences>) => {
+    const preferences = { ...typing, ...next }
+    setTyping(preferences)
+    writeTyping(preferences)
+  }
   const change = (next: Partial<LanguagePreferences>) => {
     const preferences = { ...value, ...next }
     setValue(preferences)
@@ -52,6 +59,31 @@ export function Settings() {
             </option>
           ))}
         </Select>
+      </SettingRow>
+      <SettingRow
+        id="dictionary-suggest"
+        label="Suggest words as you type"
+        description="Offers completions for the word you are typing from installed offline packs. Nothing is sent online."
+      >
+        <Toggle
+          id="dictionary-suggest"
+          checked={typing.suggest}
+          onChange={(event) => changeTyping({ suggest: event.target.checked })}
+        />
+      </SettingRow>
+      <SettingRow
+        id="dictionary-tab-accepts"
+        label="Accept suggestions with Tab"
+        description="When suggestions are showing, Tab inserts the highlighted word. Enter always does. Without suggestions, Tab works as usual."
+      >
+        <Toggle
+          id="dictionary-tab-accepts"
+          checked={typing.suggest && typing.tabAccepts}
+          disabled={!typing.suggest}
+          onChange={(event) =>
+            changeTyping({ tabAccepts: event.target.checked })
+          }
+        />
       </SettingRow>
       <PackSettings />
     </>

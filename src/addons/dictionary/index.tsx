@@ -35,6 +35,7 @@ import {
 import { SideView } from './SideView'
 import { languageNames, readPreferences, readRecentPack } from './settings'
 import sideCss from './side-view.css?inline'
+import { watchSuggestions } from './suggestions'
 
 function richTarget(
   editor: Editor,
@@ -273,8 +274,10 @@ function Results({
   )
 }
 
+let stopSuggestions: (() => void) | undefined
 export default defineAddon({
   manifest,
+  stop: () => stopSuggestions?.(),
   start(context) {
     context.styles.register('dictionary', css)
     queueMicrotask(() => {
@@ -485,5 +488,6 @@ export default defineAddon({
       keywords: 'dictionary thesaurus sidebar panel definition synonyms',
       run: () => side.open(),
     })
+    stopSuggestions = watchSuggestions(context, registry)
   },
 })

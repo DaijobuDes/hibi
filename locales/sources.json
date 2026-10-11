@@ -106,6 +106,9 @@
   "c913ac4eb666": [
     "src/renderer/src/DependencySettings.tsx"
   ],
+  "aa2717f75ddd": [
+    "src/addons/dictionary/Settings.tsx"
+  ],
   "9a911b08feb9": [
     "src/addons/mcp-server/Settings.tsx"
   ],
@@ -3304,6 +3307,9 @@
   "2cb4007f6fbe": [
     "src/addons/diagnostics/Settings.tsx"
   ],
+  "ceb52199496b": [
+    "src/addons/dictionary/Settings.tsx"
+  ],
   "97472a48bbea": [
     "src/addons/dictionary/PackSettings.tsx",
     "src/addons/dictionary/index.tsx"
@@ -4568,6 +4574,9 @@
   ],
   "c88a0b907419": [
     "src/addons/ui-preview/index.tsx"
+  ],
+  "e7aff57d9332": [
+    "src/addons/dictionary/Settings.tsx"
   ],
   "02c46c832ed5": [
     "src/renderer/src/HibiSettings.tsx"
@@ -5844,6 +5853,9 @@
   ],
   "e981ddae45d8": [
     "src/addons/ui-preview/index.tsx"
+  ],
+  "782bde2e8ff7": [
+    "src/addons/dictionary/Settings.tsx"
   ],
   "39965152019f": [
     "src/addons/markdown/flavor-info.ts"
