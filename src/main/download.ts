@@ -14,6 +14,8 @@ export async function download(
     fetch?: typeof fetch
     /** Maximum inactivity before headers or between nonempty body chunks. */
     stallTimeoutMs?: number
+    /** Expected source size for a 50 KiB/s deadline plus one minute of margin. */
+    expectedBytes?: number
     parseUrl?: (value: string) => URL
   },
 ) {
@@ -47,6 +49,15 @@ export async function download(
   }
   signal.throwIfAborted()
   reset()
+  const deadline =
+    options.expectedBytes !== undefined || options.stallTimeoutMs !== undefined
+      ? setTimeout(
+          () =>
+            stalled.abort(new Error('The download is incomplete. Try again.')),
+          ((options.expectedBytes ?? options.maxBytes) / (50 * 1024)) * 1000 +
+            60_000,
+        )
+      : undefined
   try {
     for (let redirects = 0; redirects <= 5; redirects++) {
       if (
@@ -130,5 +141,6 @@ export async function download(
     throw new Error('Could not download the file. Try again.')
   } finally {
     clearTimeout(timer)
+    clearTimeout(deadline)
   }
 }

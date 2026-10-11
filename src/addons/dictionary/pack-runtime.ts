@@ -15,7 +15,7 @@ export function completionLimit(value: unknown = 8): number {
 export function completionPrefix(value: unknown): string {
   if (typeof value !== 'string' || value.length > 128 || /\p{Cc}/u.test(value))
     throw new Error('Invalid dictionary prefix')
-  return value.trim()
+  return value.trim().normalize('NFC')
 }
 
 type Pending = {

@@ -139,6 +139,130 @@ test('download inactivity aborts stalled headers and bodies', async (t) => {
   }
 })
 
+test('download deadlines scale by expected size and stop slow-drip bodies', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  for (const expectedBytes of [50 * 1024, 100 * 1024]) {
+    let body
+    let signal
+    let canceled = false
+    let writes = 0
+    const pending = download('https://example.test/file', {
+      maxBytes: 1024 * 1024,
+      expectedBytes,
+      stallTimeoutMs: 60_000,
+      signal: new AbortController().signal,
+      fetch: async (_url, options) => {
+        signal = options.signal
+        return new Response(
+          new ReadableStream({
+            start(controller) {
+              body = controller
+            },
+            cancel() {
+              canceled = true
+            },
+          }),
+        )
+      },
+      write: () => writes++,
+    })
+    const rejection = assert.rejects(pending, /download is incomplete/)
+    await setImmediate()
+    for (let i = 0; i < 6; i++) {
+      t.mock.timers.tick(10_000)
+      body.enqueue(new Uint8Array([1]))
+      await setImmediate()
+    }
+    const allowance = (expectedBytes / (50 * 1024)) * 1000
+    t.mock.timers.tick(allowance - 1)
+    await setImmediate()
+    assert.equal(signal.aborted, false)
+    assert.equal(writes, 6)
+    t.mock.timers.tick(1)
+    await rejection
+    assert.equal(signal.aborted, true)
+    assert.equal(canceled, true)
+  }
+})
+
+test('larger sources can finish after a minute while data keeps flowing', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  let body
+  const pending = download('https://example.test/file', {
+    maxBytes: 1024 * 1024,
+    expectedBytes: 1024 * 1024,
+    stallTimeoutMs: 60_000,
+    signal: new AbortController().signal,
+    fetch: async () =>
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            body = controller
+          },
+        }),
+      ),
+    write: () => {},
+  })
+  await setImmediate()
+  for (let i = 0; i < 7; i++) {
+    t.mock.timers.tick(10_000)
+    body.enqueue(new Uint8Array([1]))
+    await setImmediate()
+  }
+  body.close()
+  assert.equal((await pending).bytes, 7)
+})
+
+test('download deadline includes redirects and pending headers', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  let requests = 0
+  let signal
+  const pending = download('https://example.test/file', {
+    maxBytes: 1024 * 1024,
+    expectedBytes: 50 * 1024,
+    signal: new AbortController().signal,
+    write: () => assert.fail('unexpected write'),
+    fetch: async (_url, options) => {
+      signal = options.signal
+      requests++
+      if (requests === 1) {
+        t.mock.timers.tick(30_000)
+        return new Response(null, {
+          status: 302,
+          headers: { location: '/redirect' },
+        })
+      }
+      return new Promise(() => {})
+    },
+  })
+  const rejection = assert.rejects(pending, /download is incomplete/)
+  await setImmediate()
+  assert.equal(requests, 2)
+  t.mock.timers.tick(30_999)
+  assert.equal(signal.aborted, false)
+  t.mock.timers.tick(1)
+  await rejection
+  assert.equal(signal.aborted, true)
+})
+
+test('completed downloads clear deadline and stall timers', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  let signal
+  await download('https://example.test/file', {
+    maxBytes: 8,
+    expectedBytes: 50 * 1024,
+    stallTimeoutMs: 60_000,
+    signal: new AbortController().signal,
+    fetch: async (_url, options) => {
+      signal = options.signal
+      return new Response('word')
+    },
+    write: () => {},
+  })
+  t.mock.timers.tick(120_000)
+  assert.equal(signal.aborted, false)
+})
+
 test('cancellation aborts pending headers and body reads without a timeout', async () => {
   for (const headers of [true, false]) {
     const controller = new AbortController()
