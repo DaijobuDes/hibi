@@ -44,6 +44,7 @@ import { performanceDiagnostics } from '../../ui/diagnostics'
 import { menus } from '../../ui/menu-store'
 import { useToastService } from '../../ui/Sonner'
 import { createTooltipScope } from '../../ui/tooltip-store'
+import { createAddonExchange } from './addon-exchange'
 import { createAddonGlobalShortcuts } from './addon-global-shortcuts'
 import { createAddonOverrides } from './addon-overrides'
 import { addonRegistry } from './addon-registry'
@@ -148,6 +149,8 @@ type Environment = Omit<
   | 'storage'
   | 'dependencies'
   | 'globalShortcuts'
+  | 'addons'
+  | 'exports'
 > & {
   openDependencySettings: () => void
   workspace: Pick<
@@ -304,6 +307,7 @@ export function useAddons(
     },
     [hotkeyQueue],
   )
+  const exchange = useRef(createAddonExchange()).current
   const started = useRef(new Set<string>()).current
   const activation = useRef(
     new Map<
@@ -317,12 +321,8 @@ export function useAddons(
   ).current
   const currentActivation = useRef({ states, settled, catalog })
   currentActivation.current = { states, settled, catalog }
-  const executeCommand = useCallback(
-    async (
-      owner: string,
-      commandId: string,
-      context: CommandExecutionContext = captureCommandContext('api'),
-    ) => {
+  const activateAddon = useCallback(
+    async (owner: string) => {
       if (
         !currentActivation.current.states.some(
           (state) => state.id === owner && state.enabled,
@@ -364,6 +364,16 @@ export function useAddons(
         }
         await pending.promise
       }
+    },
+    [activation, started],
+  )
+  const executeCommand = useCallback(
+    async (
+      owner: string,
+      commandId: string,
+      context: CommandExecutionContext = captureCommandContext('api'),
+    ) => {
+      await activateAddon(owner)
       const command = registered.get(`${owner}.${commandId}`)
       if (
         !command ||
@@ -379,7 +389,7 @@ export function useAddons(
         throw new Error('The command target is no longer available.')
       await command.run(context)
     },
-    [activation, captureCommandContext, registered, started],
+    [activateAddon, captureCommandContext, registered],
   )
   useEffect(
     () =>
@@ -500,6 +510,7 @@ export function useAddons(
         () => !disposed,
         window.hibi,
       )
+      const exchangeScope = exchange.scope(addon.manifest, activateAddon)
       const overrides = createAddonOverrides(id)
       const dialogScope = dialogService.scope()
       const toastScope = toastService.scope()
@@ -690,6 +701,7 @@ export function useAddons(
           })
           .catch((error) => latest.current.error(error))
         storageScope.dispose()
+        exchangeScope.dispose()
         started.delete(id)
         activation
           .get(id)
@@ -756,6 +768,8 @@ export function useAddons(
         running.set(id, { addon, stop })
         const start = () =>
           addon.start({
+            addons: exchangeScope.addons,
+            exports: exchangeScope.exports,
             storage: storageScope.api,
             documents: {
               listOpen: targetEditScope.listOpen,
@@ -1675,6 +1689,7 @@ export function useAddons(
         void starting
           .then(() => {
             if (!disposed) {
+              exchangeScope.commit()
               started.add(id)
               if (modalSwitch.current?.requested === id)
                 modalSwitch.current = null
@@ -1758,6 +1773,8 @@ export function useAddons(
     activation,
     started,
     executeCommand,
+    activateAddon,
+    exchange,
     captureCommandContext,
     loaded,
     documentName,

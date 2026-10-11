@@ -150,6 +150,12 @@
   "25bd3377df88": [
     "src/addons/diagnostics/Settings.tsx"
   ],
+  "c636e5aa5bf0": [
+    "src/shared/addon-dependencies.ts"
+  ],
+  "4011c051ca2c": [
+    "src/shared/addon-dependencies.ts"
+  ],
   "c59e9dc04941": [
     "src/renderer/src/AddonSettings.tsx",
     "src/renderer/src/FormatsSettings.tsx",
@@ -167,6 +173,9 @@
   ],
   "4b392ad897a3": [
     "src/renderer/src/AddonHotkeySettings.tsx"
+  ],
+  "1dda1ac8e844": [
+    "src/shared/addon-dependencies.ts"
   ],
   "9939894c9461": [
     "src/main/sideload.ts"
@@ -236,6 +245,9 @@
   ],
   "6e1bc14eb426": [
     "src/renderer/src/addons.ts"
+  ],
+  "4fa498ec92db": [
+    "src/renderer/src/addon-exchange.ts"
   ],
   "bcd26bd0c90a": [
     "src/main/import-files.ts"
@@ -1524,6 +1536,9 @@
   ],
   "02cdaabfca80": [
     "src/renderer/src/workspace-menu.ts"
+  ],
+  "ea1d475a8439": [
+    "src/shared/addon-dependencies.ts"
   ],
   "59ff98e399dd": [
     "src/renderer/src/registration-batch.ts"
@@ -4843,6 +4858,9 @@
   "3a58d36bd2a4": [
     "src/renderer/src/addon-registry.ts"
   ],
+  "ef1a419b566d": [
+    "src/renderer/src/addon-exchange.ts"
+  ],
   "ea84903d5e12": [
     "src/renderer/src/addons.ts"
   ],
@@ -4887,6 +4905,7 @@
     "src/renderer/src/addon-registry.ts"
   ],
   "0d3f68fa85cf": [
+    "src/renderer/src/addon-exchange.ts",
     "src/renderer/src/addon-global-shortcuts.ts",
     "src/renderer/src/addons.ts",
     "src/renderer/src/document-edits.ts",
