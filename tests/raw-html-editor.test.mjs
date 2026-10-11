@@ -321,32 +321,51 @@ test('raw HTML stays inert and exact through rich edits, atom deletion, undo, an
     assert.equal(await serialize(), sourceEdited)
   })
 
-  await t.test('external html pastes as escaped text', async () => {
+  await t.test('external html falls back to escaped text or code', async () => {
     const text = '<script>alert(1)</script>'
     const escaped = '&lt;script&gt;alert(1)&lt;/script&gt;'
-    const expected = sourceEdited.replace('last paragraph', escaped)
-    for (const [tag, level] of [
-      ['span', 'inline'],
-      ['div', 'block'],
+    for (const [tag, level, code, markdown] of [
+      ['span', 'inline', false, escaped],
+      ['div', 'block', false, escaped],
+      ['span', 'inline', true, `\`${text}\``],
+      ['pre', 'block', true, `\`\`\`\n${text}\n\`\`\``],
     ]) {
+      const expected = sourceEdited.replace('last paragraph', markdown)
       for (const session of ['', ' data-raw-html-session="external"']) {
         await rich.evaluate((element) => {
           const { editor } = element
           const { doc } = editor.state
-          editor.commands.setTextSelection({
-            from: doc.content.size - doc.lastChild.nodeSize + 1,
-            to: doc.content.size - 1,
-          })
+          const from = doc.content.size - doc.lastChild.nodeSize
+          editor.commands.insertContentAt(
+            { from, to: doc.content.size },
+            { type: 'paragraph' },
+          )
+          editor.commands.setTextSelection(from + 1)
         })
         await paste({
-          html: `<${tag} data-raw-html="${level}"${session}>${escaped}</${tag}>`,
+          html: `<${tag} data-raw-html="${level}"${session}>${code ? `<code>${escaped}</code>` : escaped}</${tag}>`,
           text,
         })
         assert.deepEqual(
           await rich.evaluate((element) =>
             element.editor.state.doc.lastChild.toJSON(),
           ),
-          { type: 'paragraph', content: [{ type: 'text', text }] },
+          tag === 'pre'
+            ? {
+                type: 'codeBlock',
+                attrs: { language: null },
+                content: [{ type: 'text', text }],
+              }
+            : {
+                type: 'paragraph',
+                content: [
+                  {
+                    type: 'text',
+                    ...(code ? { marks: [{ type: 'code' }] } : {}),
+                    text,
+                  },
+                ],
+              },
         )
         await waitForAsync(
           page,
