@@ -40,6 +40,8 @@ With the LaTeX addon enabled, use `$x$` for inline math. Start a line with `$$x$
 
 Double dollars inside a paragraph, such as `text $$x$$` or `text $$x$$ more`, stay literal text. Switching between source and visual views preserves their original bytes without inserting line breaks.
 
+If an existing document used line-final `text $$x$$` for display math, move `$$x$$` onto its own line.
+
 Use `\$x$` or `\$$x$$` to write literal dollar-delimited text. Visual edits keep that text literal when saving; the placement of backslashes can change. Currency such as `$5 and $10` stays unchanged.
 
 ## Install required tools
