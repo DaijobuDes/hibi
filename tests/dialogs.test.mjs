@@ -417,6 +417,58 @@ test('shared dialogs validate input, trap focus, queue, and clean up by addon ow
   assert.ok(footerBounds.y + footerBounds.height <= 560)
   await footerDialog.getByRole('button', { name: /footer action/i }).click()
   assert.equal(await page.evaluate(() => window.footerDialog.result), 'saved')
+  // Content work stops when dismissal begins, not after the exit animation.
+  await page.evaluate(() => {
+    const { dialogs, createElement } = window.dialogTest
+    window.aborting = dialogs.open({
+      title: 'aborting work',
+      content: ({ signal }) => {
+        window.abortingSignal = signal
+        return createElement('p', null, 'working')
+      },
+    })
+  })
+  await page.getByRole('dialog', { name: /aborting work/i }).waitFor()
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const before = window.abortingSignal.aborted
+      window.aborting.close()
+      return [before, window.abortingSignal.aborted]
+    }),
+    [false, true],
+  )
+  await page
+    .getByRole('dialog', { name: /aborting work/i })
+    .waitFor({ state: 'detached' })
+  // A notice shown as a dialog settles must not open inside the removed modal.
+  const pageErrors = []
+  page.on('pageerror', (error) => pageErrors.push(error.message))
+  await page.evaluate(() => {
+    const { dialogs, toasts, createElement } = window.dialogTest
+    const closing = dialogs.open({
+      title: 'closing notice',
+      content: () => createElement('p', null, 'closing'),
+    })
+    void closing.result.then(() => {
+      window.lateNotice = toasts.show({ message: 'late notice', duration: 0 })
+    })
+    closing.close()
+  })
+  const lateNotice = page.locator('.toast').filter({ hasText: /late notice/i })
+  await lateNotice.waitFor()
+  assert.equal(
+    await page
+      .locator('.sonner')
+      .evaluate(
+        (element) =>
+          element.parentElement === document.body &&
+          element.matches(':popover-open'),
+      ),
+    true,
+  )
+  assert.deepEqual(pageErrors, [])
+  await page.evaluate(() => window.lateNotice.dismiss())
+  await lateNotice.waitFor({ state: 'detached' })
   await page.evaluate(() => {
     const { toastOwner, otherToasts } = window.dialogTest
     window.staleToast = toastOwner.api.show({
