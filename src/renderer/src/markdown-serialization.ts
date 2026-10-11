@@ -83,7 +83,7 @@ export function paragraphEscaper(
     for (const { flavor, rule } of rules) {
       try {
         const next = rule.escape(source, {
-          parentType: ctx.parentType,
+          parentType: ctx.parentType ?? null,
           literals,
         })
         if (typeof next !== 'string') throw new Error('Expected Markdown text.')
