@@ -43,8 +43,8 @@ Measured full packs on 12 October 2026; MB below means 1,000,000 bytes. Download
 | Mandarin | CC-CEDICT, CC BY-SA 4.0 | `www.mdbg.net` | 3.98 | 35.54 |
 | Cantonese | CC-Canto/readings, CC BY-SA 3.0; CC-CEDICT, CC BY-SA 4.0 | `cantonese.org`, `www.mdbg.net` | 7.14 | 38.02 |
 | Japanese | JMdict_e, CC BY-SA 4.0 | `www.edrdg.org` | 10.58 | 89.52 |
-| Filipino | Wiktionary via Kaikki, CC BY-SA 4.0 / GFDL | `kaikki.org` | 130.51 | 11.86 |
-| French | Wiktionary via Kaikki, CC BY-SA 4.0 / GFDL | `kaikki.org` | 583.68 | 103.53 |
+| Filipino | Wiktionary via Kaikki, CC BY-SA 4.0 / GFDL | `kaikki.org` | 16.28 | 11.86 |
+| French | Wiktionary via Kaikki, CC BY-SA 4.0 / GFDL | `kaikki.org` | 58.23 | 103.53 |
 
 Keep the app open while a pack downloads and prepares. You can cancel either stage. **Update** fetches the current source again and keeps the installed pack until the replacement is ready. **Uninstall** removes that pack's local data. Update regularly to receive corrections, particularly for the daily CC-CEDICT and JMdict sources.
 
@@ -72,7 +72,7 @@ Hibi converts these upstream files into local lookup indexes. The conversion ext
 
 #### Verified download snapshots
 
-These are observed sizes, not permanent sizes for rolling downloads. Verified on 12 October 2026 in Asia/Manila; download responses were dated 11 October UTC.
+These are observed sizes, not permanent sizes for rolling downloads. Verified on 12 October 2026 in Asia/Manila. French and Tagalog gzip endpoints returned HTTP 200 to HEAD requests and full downloads; their Last-Modified dates were 3 October 2026.
 
 | Source | Official HTTPS download | Download bytes | Expanded bytes | Version or date | Format |
 | --- | --- | ---: | ---: | --- | --- |
@@ -81,7 +81,7 @@ These are observed sizes, not permanent sizes for rolling downloads. Verified on
 | CC-Canto | [cccanto-170202.zip](https://cantonese.org/cccanto-170202.zip) | 1,282,537 | 3,446,667 | 2017-02-02 | ZIP; cccanto-webdist.txt |
 | Cantonese readings | [cccedict-canto-readings-150923.zip](https://cantonese.org/cccedict-canto-readings-150923.zip) | 1,874,027 | 5,328,574 | 2015-09-23 | ZIP; cccedict-canto-readings-150923.txt |
 | JMdict_e | [JMdict_e.gz](https://www.edrdg.org/pub/Nihongo/JMdict_e.gz) | 10,583,340 | 63,164,141 | created 2026-10-11 | gzip, UTF-8 XML with internal DTD/entities |
-| Tagalog Wiktionary | [kaikki.org-dictionary-Tagalog.jsonl](https://kaikki.org/dictionary/Tagalog/kaikki.org-dictionary-Tagalog.jsonl) | 130,506,107 | 130,506,107 | extracted 2026-10-03 from dump 2026-09-02 | uncompressed UTF-8 JSON Lines |
+| Tagalog Wiktionary | [kaikki.org-dictionary-Tagalog.jsonl.gz](https://kaikki.org/dictionary/Tagalog/kaikki.org-dictionary-Tagalog.jsonl.gz) | 16,281,409 | 130,506,107 | extracted 2026-10-03 from dump 2026-09-02 | gzip, UTF-8 JSON Lines |
 
 WordNet XML supplies 4,473 explicit inflected forms. Its optional [WNDB archive](https://en-word.net/downloads/english-wordnet-2025.zip) is 9,616,299 bytes and supplies noun, verb, adjective and adverb exception lists. [Princeton's Morphy documentation](https://wordnet.princeton.edu/documentation/morphy7wn) describes POS-specific suffix rules with dictionary membership checks. Forms and exception lists support irregular lookup; suffix rules can extend regular inflection coverage.
 
@@ -89,6 +89,6 @@ The CEDICT export has traditional and simplified spellings, numbered Pinyin and 
 
 #### French
 
-The French pack uses the [French extract of English Wiktionary from Kaikki](https://kaikki.org/dictionary/French/), under the same [Wiktionary CC BY-SA 4.0 / GFDL terms](https://en.wiktionary.org/wiki/Wiktionary:Copyrights) as Tagalog. Hibi uses the CC BY-SA 4.0 option. [The official JSON Lines download](https://kaikki.org/dictionary/French/kaikki.org-dictionary-French.jsonl) was 583,677,104 bytes, uncompressed, when verified on 12 October 2026. It was extracted on 3 October 2026 from the 2 September English Wiktionary dump.
+The French pack uses the [French extract of English Wiktionary from Kaikki](https://kaikki.org/dictionary/French/), under the same [Wiktionary CC BY-SA 4.0 / GFDL terms](https://en.wiktionary.org/wiki/Wiktionary:Copyrights) as Tagalog. Hibi uses the CC BY-SA 4.0 option. [The official compressed JSON Lines download](https://kaikki.org/dictionary/French/kaikki.org-dictionary-French.jsonl.gz) was 58,232,930 bytes (583,677,104 bytes expanded) when verified by HEAD and a complete download on 12 October 2026. It was extracted on 3 October 2026 from the 2 September English Wiktionary dump.
 
 Like Tagalog's language-specific feed, this endpoint is deprecated upstream but remains available. Hibi streams it and keeps only French entries. The maintained all-language raw alternative is much larger and is not downloaded by this pack. Both Wiktionary packs preserve links to original entries for attribution.
