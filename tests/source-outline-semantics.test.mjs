@@ -7,7 +7,12 @@ import { MarkdownManager } from '@tiptap/markdown'
 import { Marked } from 'marked'
 import { alertMarkdown } from '../src/addons/markdown/alerts.ts'
 import { GithubAlert } from '../src/addons/markdown/GithubAlert.ts'
-import { blockMath, inlineMath, mathTokens } from '../src/addons/math/syntax.ts'
+import {
+  blockMath,
+  blockMathStart,
+  inlineMath,
+  mathTokens,
+} from '../src/addons/math/syntax.ts'
 import { Subscript, Subtext } from '../src/addons/text-extras/nodes.ts'
 import { textExtrasMarkdown } from '../src/addons/text-extras/syntax.ts'
 import { documentImage } from '../src/renderer/src/DocumentImage.ts'
@@ -46,7 +51,7 @@ const mathFlavor = {
       markdownTokenizer: {
         name: 'blockMath',
         level: 'block',
-        start: (source) => source.indexOf('$$'),
+        start: blockMathStart,
         tokenize: blockMath,
       },
     }),
