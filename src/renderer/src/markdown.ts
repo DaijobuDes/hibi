@@ -14,6 +14,10 @@ import {
   parseEmptyTaskItems,
 } from './list-tokenizer-prefix.ts'
 import { MarkdownMarkExit } from './markdown-markers.ts'
+import {
+  paragraphEscaper,
+  renderTableParagraphs,
+} from './markdown-serialization.ts'
 import { markdownSyntax } from './markdown-syntax.ts'
 import { installSyntaxPreferences } from './syntax-parser.ts'
 
@@ -60,6 +64,7 @@ export function markdownConfiguration(
         flavor.richExtensions?.some((extension) => extension.name === name),
       ),
   )
+  const escapeParagraph = paragraphEscaper(parser, flavors)
   const NativeStarterKit = StarterKit.extend({
     addExtensions() {
       return (
@@ -67,8 +72,7 @@ export function markdownConfiguration(
           .map((extension) =>
             extension.name === 'paragraph'
               ? extension.extend({
-                  renderMarkdown: (node, helpers) =>
-                    helpers.renderChildren(node.content ?? []),
+                  renderMarkdown: escapeParagraph,
                 })
               : extension,
           )
@@ -104,6 +108,7 @@ export function markdownConfiguration(
   const addons = flavors
     .flatMap((flavor) => flavor.richExtensions ?? [])
     .filter((extension) => markdownSyntax.extensionEnabled(extension.name))
+    .map(renderTableParagraphs)
     .map((extension) =>
       taskItems ? parseEmptyTaskItems(extension) : extension,
     )

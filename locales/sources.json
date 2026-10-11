@@ -1519,6 +1519,9 @@
   "3ec6ee9e87d8": [
     "src/renderer/src/main.tsx"
   ],
+  "ca114cdd27c2": [
+    "src/renderer/src/markdown-serialization.ts"
+  ],
   "02cdaabfca80": [
     "src/renderer/src/workspace-menu.ts"
   ],
@@ -1811,6 +1814,9 @@
   ],
   "6b0ceb1d091c": [
     "src/addons/frontmatter/Settings.tsx"
+  ],
+  "32dbf91fa8e4": [
+    "src/renderer/src/markdown-serialization.ts"
   ],
   "3dc9f569422d": [
     "src/addons/vim/Settings.tsx"
@@ -2807,6 +2813,9 @@
   ],
   "6cb9762ada13": [
     "src/shared/markdown-source-model.ts"
+  ],
+  "7719f6c0f5d8": [
+    "src/renderer/src/markdown-serialization.ts"
   ],
   "07fea37695a6": [
     "src/ui/ColorschemeSettings.tsx"
@@ -5390,6 +5399,9 @@
   ],
   "fdc9b79d6691": [
     "src/renderer/src/WorkspacesSidebar.tsx"
+  ],
+  "61ca68c66e7a": [
+    "src/renderer/src/markdown-serialization.ts"
   ],
   "a710c2b90913": [
     "src/renderer/src/DocumentTabs.tsx",

@@ -2,7 +2,7 @@
 
 # ViewNotification
 
-Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L538)
+Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L557)
 
 <details>
 <summary>Declaration</summary>
@@ -34,7 +34,7 @@ type ViewNotification = {
 
 ### title
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L539)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L558)
 
 ```typescript
 title: string
@@ -42,7 +42,7 @@ title: string
 
 ### message
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L540)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L559)
 
 ```typescript
 message?: string
@@ -50,7 +50,7 @@ message?: string
 
 ### variant
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L541)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L560)
 
 ```typescript
 variant?: 'default' | 'warning'
@@ -58,7 +58,7 @@ variant?: 'default' | 'warning'
 
 ### className
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L543)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L562)
 
 Optional addon class and inline styles for custom appearance.
 
@@ -68,7 +68,7 @@ className?: string
 
 ### style
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L544)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L563)
 
 ```typescript
 style?: CSSProperties
