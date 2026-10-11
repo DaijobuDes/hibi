@@ -47,9 +47,10 @@ const stored = (page) =>
 async function tabTo(page, name) {
   for (let presses = 0; presses < 20; presses += 1) {
     await page.keyboard.press('Tab')
-    const focused = await page.evaluate(() =>
-      document.activeElement?.textContent?.trim(),
-    )
+    const focused = await page.evaluate(() => {
+      const element = document.activeElement
+      return (element?.closest('label') ?? element)?.textContent?.trim()
+    })
     if (focused === name) return
   }
   throw new Error(`Tab never reached ${name}`)
@@ -109,8 +110,10 @@ test('keyboard-only completion applies the appearance and default view', {
   await tabTo(page, 'Continue')
   await page.keyboard.press('Enter')
   await dialog.getByRole('heading', { name: 'Make it yours' }).waitFor()
-  await tabTo(page, 'Dark')
-  await page.keyboard.press('Enter')
+  // Tab enters each choice group on its selection; arrow keys move it.
+  await tabTo(page, 'System')
+  await page.keyboard.press('ArrowRight')
+  await page.keyboard.press('ArrowRight')
   await waitForAppState(
     page,
     () =>
@@ -118,20 +121,19 @@ test('keyboard-only completion applies the appearance and default view', {
       'dark',
   )
   assert.equal(
-    await dialog
-      .getByRole('button', { name: 'Dark' })
-      .getAttribute('aria-pressed'),
-    'true',
+    await dialog.getByRole('radio', { name: 'Dark' }).isChecked(),
+    true,
   )
 
   await tabTo(page, 'Continue')
   await page.keyboard.press('Enter')
   await dialog.getByRole('heading', { name: 'How you write' }).waitFor()
-  await tabTo(page, 'Source view')
-  await page.keyboard.press('Enter')
-  assert.equal(
-    await page.evaluate(() => localStorage.getItem('default-view')),
-    'markdown',
+  await tabTo(page, 'Normal')
+  await page.keyboard.press('ArrowRight')
+  await page.keyboard.press('ArrowRight')
+  await waitForAppState(
+    page,
+    () => localStorage.getItem('default-view') === 'markdown',
   )
 
   for (const title of ['Your files', 'Addons', 'Essentials']) {

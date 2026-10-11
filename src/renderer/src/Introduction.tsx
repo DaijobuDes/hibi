@@ -169,12 +169,13 @@ export function Introduction({
                 ['dark', 'Dark'],
               ] as const
             ).map(([mode, label]) => (
-              <Button
-                key={mode}
-                className="introduction-choice"
-                aria-pressed={theme.preferences.mode === mode}
-                onClick={() => colorschemes.set({ mode })}
-              >
+              <label key={mode} className="introduction-choice">
+                <input
+                  type="radio"
+                  name="introduction-appearance"
+                  checked={theme.preferences.mode === mode}
+                  onChange={() => colorschemes.set({ mode })}
+                />
                 <span
                   className="introduction-window"
                   data-appearance={mode}
@@ -196,7 +197,7 @@ export function Introduction({
                   ))}
                 </span>
                 {label}
-              </Button>
+              </label>
             ))}
           </fieldset>
           <div className="settings-group">
@@ -237,12 +238,13 @@ export function Introduction({
           <fieldset className="introduction-choices">
             <legend className="introduction-legend">Default view</legend>
             {views.map(({ view, label }) => (
-              <Button
-                key={view}
-                className="introduction-choice"
-                aria-pressed={defaultView === view}
-                onClick={() => onDefaultView(view)}
-              >
+              <label key={view} className="introduction-choice">
+                <input
+                  type="radio"
+                  name="introduction-view"
+                  checked={defaultView === view}
+                  onChange={() => onDefaultView(view)}
+                />
                 <span
                   className="introduction-window"
                   data-view={view}
@@ -266,7 +268,7 @@ export function Introduction({
                   )}
                 </span>
                 {label}
-              </Button>
+              </label>
             ))}
           </fieldset>
           <div className="settings-group">
