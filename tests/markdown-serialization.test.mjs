@@ -289,6 +289,38 @@ test('paragraph sentinels survive digit rules and support escaped replacements',
   }
 })
 
+test('paragraph collision checks scan direct and nested text without stringifying', () => {
+  const renderParagraph = paragraphEscaper(new Marked(), [
+    {
+      id: 'literal',
+      paragraphRules: [{ characters: '$', escape: (source) => source }],
+    },
+  ])
+  const text = '$ \uE000\uE002\uE001 '
+  const nested = '\uE000\uE000\uE002\uE001'
+  const node = {
+    type: 'paragraph',
+    content: [
+      { type: 'text', text },
+      { type: 'verbatim', content: [{ type: 'text', text: nested }] },
+    ],
+    toJSON() {
+      assert.fail('collision checks must not stringify the paragraph')
+    },
+  }
+  assert.equal(
+    renderParagraph(
+      node,
+      {
+        renderChildren: (children) =>
+          children.map((child) => child.text ?? child.content[0].text).join(''),
+      },
+      { index: 0, level: 0, parentType: 'doc' },
+    ),
+    text + nested,
+  )
+})
+
 test('paragraph masking skips serialization and copying when no text needs protection', () => {
   const renderParagraph = paragraphEscaper(new Marked(), [
     {
