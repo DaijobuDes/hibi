@@ -195,8 +195,14 @@ export class CompletionBroker {
   #visible: Session | null = null
   #disposed = false
   readonly #typing = new Set<(context: TypingContext) => void>()
-  #accepted: { request: CompletionRequest; from: number; to: number } | null =
-    null
+  #accepted: {
+    request: CompletionRequest
+    registration: Registration
+    from: number
+    to: number
+    version: number
+    at: number
+  } | null = null
 
   onTypingContext(listener: (context: TypingContext) => void): Dispose {
     if (this.#disposed) return () => {}
@@ -224,17 +230,37 @@ export class CompletionBroker {
       insertedLength < 0
     )
       return
-    if (context.kind === 'replace') {
-      const accepted = this.#accepted
-      if (
-        !accepted ||
-        !sameView(accepted.request, request) ||
-        from >= accepted.to ||
-        to <= accepted.from
-      )
-        return
+    let accepted = this.#accepted
+    if (
+      accepted &&
+      (!sameView(accepted.request, request) ||
+        this.#registrations.get(accepted.registration.id) !==
+          accepted.registration ||
+        performance.now() - accepted.at > 10000 ||
+        (request.contentVersion !== accepted.version + 1 &&
+          !(
+            context.kind === 'composition' &&
+            request.contentVersion > accepted.version
+          )))
+    )
+      accepted = null
+    const overlaps =
+      !!accepted &&
+      ((from < accepted.to && to > accepted.from) ||
+        (from === to &&
+          from >= accepted.from &&
+          from < accepted.to &&
+          insertedLength > 0))
+    if (accepted && !overlaps) {
+      const delta = insertedLength - (to - from)
+      if (to <= accepted.from) {
+        accepted.from += delta
+        accepted.to += delta
+      }
+      accepted.version = request.contentVersion
     }
-    this.#accepted = null
+    this.#accepted = overlaps ? null : accepted
+    if (context.kind === 'replace' && !overlaps) return
     const { trigger: _trigger, prose: _prose, ...bounded } = request
     const event = Object.freeze({
       ...bounded,
@@ -279,8 +305,11 @@ export class CompletionBroker {
       session.accepted = true
       this.#accepted = {
         request: session.request,
+        registration,
         from: item.from,
         to: item.from + item.insertText.length,
+        version: session.request.contentVersion + 1,
+        at: performance.now(),
       }
       try {
         registration.onAccepted?.(session.request, item)

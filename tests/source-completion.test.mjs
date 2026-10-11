@@ -25,7 +25,7 @@ test('source completions stream, accept in one undo step, and retract on provide
       apiVersion: 2,
       version: '1.0.0',
       startup: 'background',
-      capabilities: [],
+      capabilities: ['source'],
       entry: 'index.js',
     }),
   )
@@ -236,6 +236,10 @@ test('source completions stream, accept in one undo step, and retract on provide
   await page.waitForFunction(
     () => window.completionProbe.events.at(-1)?.before === 'boundaryword\n',
   )
+  assert.deepEqual(
+    await page.evaluate(() => window.completionProbe.events.at(-1).change),
+    { from: 12, to: 12, insertedLength: 1 },
+  )
   await reset('bro ')
   const cdp = await page.context().newCDPSession(page)
   await cdp.send('Input.imeSetComposition', {
@@ -264,7 +268,85 @@ test('source completions stream, accept in one undo step, and retract on provide
     await page.evaluate(() => window.completionProbe.events[0].before),
     'bro 日本語',
   )
+  await reset('aa tail')
+  await page.evaluate(() => {
+    const view =
+      window.completionProbe.sdk.codeMirror.view.EditorView.findFromDOM(
+        document.querySelector('.cm-content'),
+      )
+    view.dispatch({ selection: { anchor: 1 } })
+    view.focus()
+  })
+  await cdp.send('Input.imeSetComposition', {
+    text: 'a',
+    selectionStart: 1,
+    selectionEnd: 1,
+  })
+  await page.waitForFunction(
+    () => document.querySelector('.cm-content').textContent === 'aaa tail',
+  )
+  await cdp.send('Input.insertText', { text: 'aa' })
+  await page.waitForFunction(() =>
+    window.completionProbe.events.some((event) => event.kind === 'composition'),
+  )
+  assert.equal(
+    await page.evaluate(() => window.completionProbe.events.length),
+    1,
+  )
+  assert.deepEqual(
+    await page.evaluate(() => window.completionProbe.events[0].change),
+    { from: 1, to: 1, insertedLength: 2 },
+  )
   await cdp.detach()
+  await reset('ab')
+  await source.press('Control+Space')
+  await page
+    .locator('.cm-tooltip-autocomplete .cm-completionLabel', {
+      hasText: 'beta',
+    })
+    .click()
+  await page.waitForFunction(
+    async () => (await window.hibi.getDocument()).markdown === 'abeta',
+  )
+  const acceptedCount = await page.evaluate(
+    () => window.completionProbe.accepted.length,
+  )
+  await page.keyboard.type(' ')
+  await page.waitForFunction(
+    () => window.completionProbe.events.at(-1)?.before === 'abeta ',
+  )
+  await source.press('Escape')
+  await page.evaluate(() => {
+    const view =
+      window.completionProbe.sdk.codeMirror.view.EditorView.findFromDOM(
+        document.querySelector('.cm-content'),
+      )
+    view.dispatch({ selection: { anchor: 1, head: 5 } })
+    view.focus()
+    const data = new DataTransfer()
+    data.setData('text/plain', 'password: secret')
+    view.contentDOM.dispatchEvent(
+      new ClipboardEvent('paste', {
+        clipboardData: data,
+        bubbles: true,
+        cancelable: true,
+      }),
+    )
+  })
+  await page.waitForFunction(
+    () => window.completionProbe.events.at(-1)?.kind === 'replace',
+  )
+  assert.deepEqual(
+    await page.evaluate(() => ({
+      before: window.completionProbe.events.at(-1).before,
+      after: window.completionProbe.events.at(-1).after,
+    })),
+    { before: '', after: '' },
+  )
+  assert.equal(
+    await page.evaluate(() => window.completionProbe.accepted.length),
+    acceptedCount,
+  )
   await reset('ab')
   await source.press('Control+Space')
   await page

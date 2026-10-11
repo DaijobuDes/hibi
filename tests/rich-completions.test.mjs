@@ -220,9 +220,39 @@ test('rich completions replace exact plain text in one undo step and retract on 
     await page.keyboard.press('Escape')
   }
   await reset('boundaryword')
+  await rich.evaluate((element) => {
+    window.boundaryTransactions = []
+    element.editor.on('transaction', ({ transaction }) =>
+      window.boundaryTransactions.push({
+        changed: transaction.docChanged,
+        steps: transaction.steps.map((step) => step.toJSON()),
+        meta: Object.keys(transaction.meta),
+        head: transaction.selection.head,
+      }),
+    )
+  })
   await page.keyboard.press('Enter')
-  await page.waitForFunction(
-    () => window.completionSignals.at(-1)?.before === 'boundaryword\n',
+  await page
+    .waitForFunction(
+      () => window.completionSignals.at(-1)?.before === 'boundaryword\n',
+    )
+    .catch(async (error) => {
+      const diagnostic = await rich.evaluate((element) => ({
+        signals: window.completionSignals,
+        transactions: window.boundaryTransactions.slice(-4),
+        doc: element.editor.state.doc.toJSON(),
+        focused: element.editor.view.hasFocus(),
+        editable: element.editor.isEditable,
+        errors: [...document.querySelectorAll('[role="alert"]')].map(
+          (element) => element.textContent,
+        ),
+      }))
+      process.stdout.write(JSON.stringify(diagnostic) + '\n')
+      throw error
+    })
+  assert.deepEqual(
+    await page.evaluate(() => window.completionSignals.at(-1).change),
+    { from: 13, to: 13, insertedLength: 2 },
   )
   await reset('bro ')
   const cdp = await page.context().newCDPSession(page)
@@ -249,6 +279,29 @@ test('rich completions replace exact plain text in one undo step and retract on 
     await page.evaluate(() => window.completionSignals[0].before),
     'bro 日本語',
   )
+  await reset('aa tail')
+  await rich.evaluate((element) => {
+    element.editor.commands.setTextSelection(2)
+    element.editor.view.focus()
+  })
+  await cdp.send('Input.imeSetComposition', {
+    text: 'a',
+    selectionStart: 1,
+    selectionEnd: 1,
+  })
+  await page.waitForFunction(
+    () =>
+      document.querySelector('.rich-pane .tiptap').textContent === 'aaa tail',
+  )
+  await cdp.send('Input.insertText', { text: 'aa' })
+  await page.waitForFunction(() =>
+    window.completionSignals.some((event) => event.kind === 'composition'),
+  )
+  assert.equal(await page.evaluate(() => window.completionSignals.length), 1)
+  assert.deepEqual(
+    await page.evaluate(() => window.completionSignals[0].change),
+    { from: 2, to: 2, insertedLength: 2 },
+  )
   await cdp.detach()
   await reset('hel')
   await page.keyboard.press('Control+Space')
@@ -257,6 +310,10 @@ test('rich completions replace exact plain text in one undo step and retract on 
   await menu.waitFor({ state: 'hidden' })
   const acceptedCount = await page.evaluate(
     () => window.completionAccepted.length,
+  )
+  await page.keyboard.type(' ')
+  await page.waitForFunction(
+    () => window.completionSignals.at(-1)?.before === 'hello ',
   )
   await rich.evaluate((element) => {
     const editor = element.editor

@@ -567,6 +567,7 @@ export function SourceEditor({
       request: CompletionRequest | null
     } | null = null
     let compositionFrame = 0
+    let newlineInput = false
     const reportTyping = (
       kind: TypingContext['kind'],
       changes: ChangeSet,
@@ -1065,6 +1066,8 @@ export function SourceEditor({
             spellcheck: 'false',
           }),
           EditorView.updateListener.of((update) => {
+            const newline = update.docChanged && newlineInput
+            if (update.docChanged) newlineInput = false
             if (update.docChanged && completionBroker.hasTypingListeners()) {
               const transaction =
                 update.transactions.length === 1 ? update.transactions[0] : null
@@ -1077,12 +1080,17 @@ export function SourceEditor({
                 !update.view.composing &&
                 !transaction.isUserEvent('input.type.compose')
               ) {
-                if (transaction.isUserEvent('input.type'))
+                if (
+                  transaction.isUserEvent('input.type') ||
+                  (newline &&
+                    transaction.annotation(Transaction.userEvent) === 'input')
+                )
                   reportTyping(
                     'input',
                     update.changes,
-                    update.state.doc.lineAt(update.state.selection.main.head)
-                      .from === update.state.selection.main.head
+                    newline ||
+                      update.state.doc.lineAt(update.state.selection.main.head)
+                        .from === update.state.selection.main.head
                       ? proseAt(update.startState)?.before
                       : undefined,
                   )
@@ -1185,6 +1193,22 @@ export function SourceEditor({
         ChangeSet.of(changes, previousLength),
       )
     })
+    const onTypingCommand = (event: KeyboardEvent) => {
+      if (
+        event.key !== 'Enter' ||
+        event.isComposing ||
+        editor.composing ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.altKey
+      )
+        return
+      newlineInput = true
+      setTimeout(() => {
+        newlineInput = false
+      }, 0)
+    }
+    editor.contentDOM.addEventListener('keydown', onTypingCommand, true)
     const startCompositionSignal = () => {
       cancelAnimationFrame(compositionFrame)
       compositionSignal = completionBroker.hasTypingListeners()
@@ -1538,6 +1562,7 @@ export function SourceEditor({
       .then(finishFont, finishFont)
     return () => {
       cancelAnimationFrame(compositionFrame)
+      editor.contentDOM.removeEventListener('keydown', onTypingCommand, true)
       editor.contentDOM.removeEventListener(
         'compositionstart',
         startCompositionSignal,

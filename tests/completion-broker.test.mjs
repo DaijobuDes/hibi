@@ -120,7 +120,7 @@ test('paste replacement emits only range data for an immediate overlapping accep
   broker.onTypingContext((event) => events.push(event))
   broker.register(owner('provider'), () => [item('word')])
   const context = {
-    ...request({ contentVersion: 4, before: 'private pasted text' }),
+    ...request({ contentVersion: 6, before: 'private pasted text' }),
     kind: 'replace',
     change: { from: 0, to: 4, insertedLength: 19 },
   }
@@ -130,6 +130,7 @@ test('paste replacement emits only range data for an immediate overlapping accep
   broker.prepareAcceptance(shown.request, shown.items[0])()
   broker.emitTypingContext({
     ...context,
+    contentVersion: 5,
     change: { from: 5, to: 6, insertedLength: 1 },
   })
   assert.deepEqual(events, [])
@@ -139,6 +140,88 @@ test('paste replacement emits only range data for an immediate overlapping accep
   assert.equal(events[0].after, '')
   broker.emitTypingContext(context)
   assert.equal(events.length, 1)
+})
+
+test('space after acceptance keeps range-only feedback for a subsequent unsafe overwrite', async () => {
+  const broker = new CompletionBroker()
+  const events = []
+  broker.onTypingContext((event) => events.push(event))
+  broker.register(owner('provider'), () => [item('word')])
+  const shown = await collect(broker).final
+  broker.prepareAcceptance(shown.request, shown.items[0])()
+  broker.emitTypingContext({
+    ...request({
+      contentVersion: 5,
+      documentLength: 8,
+      selection: { anchor: 5, head: 5 },
+      before: 'word ',
+    }),
+    kind: 'input',
+    change: { from: 4, to: 4, insertedLength: 1 },
+  })
+  broker.emitTypingContext({
+    ...request({
+      contentVersion: 6,
+      documentLength: 23,
+      before: 'private pasted text',
+    }),
+    kind: 'replace',
+    change: { from: 0, to: 4, insertedLength: 19 },
+  })
+  assert.deepEqual(
+    events.map((event) => event.kind),
+    ['input', 'replace'],
+  )
+  assert.equal(events[1].before, '')
+  assert.equal(events[1].after, '')
+})
+
+test('receipt follows preceding typing and allows replacement inside the accepted range', async () => {
+  const broker = new CompletionBroker()
+  const events = []
+  broker.onTypingContext((event) => events.push(event))
+  broker.register(owner('provider'), () => [
+    { ...item('word'), from: 2, to: 3 },
+  ])
+  const shown = await collect(broker).final
+  broker.prepareAcceptance(shown.request, shown.items[0])()
+  broker.emitTypingContext({
+    ...request({ contentVersion: 5, documentLength: 10, before: 'x' }),
+    kind: 'input',
+    change: { from: 0, to: 0, insertedLength: 1 },
+  })
+  broker.emitTypingContext({
+    ...request({ contentVersion: 6, documentLength: 11, before: 'private' }),
+    kind: 'replace',
+    change: { from: 4, to: 4, insertedLength: 1 },
+  })
+  assert.deepEqual(
+    events.map((event) => event.kind),
+    ['input', 'replace'],
+  )
+  assert.equal(events[1].before, '')
+})
+
+test('range feedback discards changed views, unseen content versions, and stopped owners', async () => {
+  for (const action of ['view', 'version', 'stop']) {
+    const broker = new CompletionBroker()
+    const events = []
+    const registered = owner('provider')
+    broker.onTypingContext((event) => events.push(event))
+    broker.register(registered, () => [item('word')])
+    const shown = await collect(broker).final
+    broker.prepareAcceptance(shown.request, shown.items[0])()
+    const context = {
+      ...request({ contentVersion: 5, before: 'private' }),
+      kind: 'replace',
+      change: { from: 0, to: 4, insertedLength: 7 },
+    }
+    if (action === 'view') context.view = { ...context.view, viewGeneration: 2 }
+    if (action === 'version') context.contentVersion = 6
+    if (action === 'stop') broker.stopOwner(registered)
+    broker.emitTypingContext(context)
+    assert.deepEqual(events, [], action)
+  }
 })
 
 test('safe prose is bounded separately from legacy completion context', async () => {

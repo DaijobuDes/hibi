@@ -1327,8 +1327,10 @@ export function MarkdownEditor({
       }
       const kind = inputKind,
         previous = inputBefore
-      inputKind = null
-      inputBefore = null
+      if (transaction.docChanged) {
+        inputKind = null
+        inputBefore = null
+      }
       if (
         transaction.docChanged &&
         kind &&
