@@ -12,8 +12,66 @@ import {
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
+import { setTimeout } from 'node:timers/promises'
 import { electron } from './electron.mjs'
 import { clickMenu } from './keyboard.mjs'
+
+const captureUrl = /\/quick-note\.html$/
+
+async function captureWindow(app) {
+  const deadline = performance.now() + 10000
+  for (;;) {
+    const page = app.windows().find((item) => captureUrl.test(item.url()))
+    if (page) {
+      await page.getByRole('textbox', { name: 'Note' }).waitFor()
+      return page
+    }
+    if (performance.now() > deadline)
+      throw new Error('The quick note window did not open.')
+    await setTimeout(30)
+  }
+}
+
+async function openCapture(app, page) {
+  await clickMenu(app, 'Command palette')
+  await page
+    .getByRole('combobox', { name: /search commands/i })
+    .fill('Quick note: capture')
+  await page.getByRole('option', { name: /Quick note: capture/i }).click()
+  return captureWindow(app)
+}
+
+async function saveCapture(capture, name) {
+  const closed = capture.waitForEvent('close')
+  await capture.getByRole('button', { name: 'Save note' }).click()
+  await capture.getByRole('status').getByText(`Saved ${name}.`).waitFor()
+  await closed
+}
+
+const appWindows = (app) =>
+  app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()
+      .map((window) => window.webContents.getURL())
+      .filter((url) => !url.startsWith('hibi-analysis:')),
+  )
+
+// Count every call that could raise or focus the main window.
+const watchMainWindow = (app) =>
+  app.evaluate(({ BrowserWindow }) => {
+    const main = BrowserWindow.getAllWindows().find(
+      (window) => window.webContents.getURL() === 'app://hibi/',
+    )
+    globalThis.mainWindowRaised = 0
+    for (const name of ['show', 'focus', 'restore', 'moveTop']) {
+      const original = main[name].bind(main)
+      main[name] = (...args) => {
+        globalThis.mainWindowRaised++
+        return original(...args)
+      }
+    }
+  })
+const mainWindowRaised = (app) =>
+  app.evaluate(() => globalThis.mainWindowRaised)
 
 test('quick note captures to a chosen folder without replacing files', {
   timeout: 45000,
@@ -44,25 +102,25 @@ test('quick note captures to a chosen folder without replacing files', {
   const page = await app.firstWindow()
   await page.getByRole('textbox', { name: /document editor/i }).waitFor()
   await page.evaluate(() => window.hibi.openWorkspace())
-  await clickMenu(app, 'Command palette')
-  await page
-    .getByRole('combobox', { name: /search commands/i })
-    .fill('Quick note: capture')
-  await page.getByRole('option', { name: /Quick note: capture/i }).click()
-  const defaultDialog = page.getByRole('dialog', { name: 'Quick note' })
+  await watchMainWindow(app)
+  const defaultCapture = await openCapture(app, page)
+  const urls = await appWindows(app)
+  assert.equal(urls.length, 2)
+  assert.equal(urls.filter((url) => captureUrl.test(url)).length, 1)
   assert.equal(
-    await defaultDialog.getByRole('textbox', { name: 'Title' }).count(),
+    await defaultCapture.getByRole('textbox', { name: 'Title' }).count(),
     0,
   )
-  await defaultDialog
+  await defaultCapture
     .getByRole('textbox', { name: 'Note' })
     .fill('Default thought')
-  await defaultDialog.getByRole('button', { name: 'Save note' }).click()
-  await defaultDialog.waitFor({ state: 'hidden' })
+  await saveCapture(defaultCapture, 'Quick note.md')
   assert.equal(
     await readFile(join(workspace, 'Quick note.md'), 'utf8'),
     'Default thought',
   )
+  assert.equal(await mainWindowRaised(app), 0)
+  assert.deepEqual(await appWindows(app), ['app://hibi/'])
   await clickMenu(app, 'Command palette')
   await page
     .getByRole('combobox', { name: /search commands/i })
@@ -77,16 +135,10 @@ test('quick note captures to a chosen folder without replacing files', {
     .getByRole('status')
     .getByText('Quick note settings saved.')
     .waitFor()
-  await clickMenu(app, 'Command palette')
-  await page
-    .getByRole('combobox', { name: /search commands/i })
-    .fill('Quick note: capture')
-  await page.getByRole('option', { name: /Quick note: capture/i }).click()
-  const dialog = page.getByRole('dialog', { name: 'Quick note' })
+  const dialog = await openCapture(app, page)
   await dialog.getByRole('textbox', { name: 'Title' }).fill('Daily')
   await dialog.getByRole('textbox', { name: 'Note' }).fill('First thought')
-  await dialog.getByRole('button', { name: 'Save note' }).click()
-  await dialog.waitFor({ state: 'hidden' })
+  await saveCapture(dialog, 'Daily.md')
   assert.equal(
     await readFile(join(folder, 'Daily.md'), 'utf8'),
     'First thought',
@@ -152,18 +204,12 @@ test('quick note captures to a chosen folder without replacing files', {
   )
   await settings.getByLabel('Folder', { exact: true }).selectOption('Inbox')
   await page.getByRole('button', { name: 'Save settings' }).click()
-  await clickMenu(app, 'Command palette')
-  await page
-    .getByRole('combobox', { name: /search commands/i })
-    .fill('Quick note: capture')
-  await page.getByRole('option', { name: /Quick note: capture/i }).click()
-  const secondDialog = page.getByRole('dialog', { name: 'Quick note' })
+  const secondDialog = await openCapture(app, page)
   await secondDialog.getByRole('textbox', { name: 'Title' }).fill('Elsewhere')
   await secondDialog
     .getByRole('textbox', { name: 'Note' })
     .fill('Another workspace')
-  await secondDialog.getByRole('button', { name: 'Save note' }).click()
-  await secondDialog.waitFor({ state: 'hidden' })
+  await saveCapture(secondDialog, 'Elsewhere.md')
   assert.equal(
     await readFile(join(other, 'Inbox', 'Elsewhere.md'), 'utf8'),
     'Another workspace',
@@ -179,12 +225,8 @@ test('quick note captures to a chosen folder without replacing files', {
     .getByLabel('Workspace', { exact: true })
     .selectOption('')
   await page.getByRole('button', { name: 'Save settings' }).click()
-  await clickMenu(app, 'Command palette')
-  await page
-    .getByRole('combobox', { name: /search commands/i })
-    .fill('Quick note: capture')
-  await page.getByRole('option', { name: /Quick note: capture/i }).click()
-  const pinnedDialog = page.getByRole('dialog', { name: 'Quick note' })
+  const pinnedDialog = await openCapture(app, page)
+  await pinnedDialog.getByText(`Save to ${await realpath(workspace)}`).waitFor()
   await pinnedDialog.getByRole('textbox', { name: 'Title' }).fill('Pinned')
   await pinnedDialog
     .getByRole('textbox', { name: 'Note' })
@@ -197,8 +239,7 @@ test('quick note captures to a chosen folder without replacing files', {
   }, other)
   const switched = await page.evaluate(() => window.hibi.openWorkspace())
   assert.equal(switched?.id, otherId)
-  await pinnedDialog.getByRole('button', { name: 'Save note' }).click()
-  await pinnedDialog.waitFor({ state: 'hidden' })
+  await saveCapture(pinnedDialog, 'Pinned.md')
   assert.equal(
     await readFile(join(workspace, 'Pinned.md'), 'utf8'),
     'Pinned to original workspace',
@@ -262,17 +303,11 @@ test('quick note captures to a chosen folder without replacing files', {
     originalPath,
   )
   await page.getByRole('button', { name: 'Back to app' }).click()
-  await clickMenu(app, 'Command palette')
-  await page
-    .getByRole('combobox', { name: /search commands/i })
-    .fill('Quick note: capture')
-  await page.getByRole('option', { name: /Quick note: capture/i }).click()
-  const oldDialog = page.getByRole('dialog', { name: 'Quick note' })
-  assert.ok((await oldDialog.innerText()).includes(originalPath))
+  const oldDialog = await openCapture(app, page)
+  await oldDialog.getByText(`Save to ${originalPath}`).waitFor()
   await oldDialog.getByRole('textbox', { name: 'Title' }).fill('Older')
   await oldDialog.getByRole('textbox', { name: 'Note' }).fill('Still selected')
-  await oldDialog.getByRole('button', { name: 'Save note' }).click()
-  await oldDialog.waitFor({ state: 'hidden' })
+  await saveCapture(oldDialog, 'Older.md')
   assert.equal(
     await readFile(join(workspace, 'Older.md'), 'utf8'),
     'Still selected',
@@ -335,4 +370,168 @@ test('quick note captures to a chosen folder without replacing files', {
     readFile(join(replacement, 'Notes', 'Ancestor escape.md'), 'utf8'),
     { code: 'ENOENT' },
   )
+})
+
+test('quick note shortcut opens one capture window without raising Hibi', {
+  timeout: 45000,
+}, async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'hibi-quick-note-window-'))
+  const workspace = join(root, 'workspace')
+  const profile = join(root, 'profile')
+  await mkdir(workspace, { recursive: true })
+  await mkdir(profile)
+  await writeFile(
+    join(profile, 'addons.json'),
+    JSON.stringify({ 'quick-note': true }),
+  )
+  const app = await electron.launch({
+    args: [resolve('.'), `--user-data-dir=${profile}`],
+  })
+  t.after(async () => {
+    await app.close()
+    await rm(root, { recursive: true, force: true })
+  })
+  await app.evaluate(({ dialog }, destination) => {
+    dialog.showOpenDialog = async () => ({
+      canceled: false,
+      filePaths: [destination],
+    })
+  }, workspace)
+  const page = await app.firstWindow()
+  await page.getByRole('textbox', { name: /document editor/i }).waitFor()
+  const workspaceId = (await page.evaluate(() => window.hibi.openWorkspace()))
+    .id
+  // Record the OS callback so the test can press the shortcut without the OS.
+  await app.evaluate(({ globalShortcut }) => {
+    globalThis.quickNoteShortcuts = new Map()
+    globalShortcut.register = (accelerator, callback) => {
+      globalThis.quickNoteShortcuts.set(accelerator, callback)
+      return true
+    }
+    globalShortcut.unregister = (accelerator) =>
+      globalThis.quickNoteShortcuts.delete(accelerator)
+  })
+  const shortcut = 'Control+Alt+Shift+F7'
+  await page.evaluate(
+    ({ shortcut, workspaceId }) => {
+      localStorage.setItem(
+        'hibi:quick-note',
+        JSON.stringify({ shortcut, workspaceId }),
+      )
+      window.dispatchEvent(new Event('hibi:quick-note-settings'))
+    },
+    { shortcut, workspaceId },
+  )
+  const press = async () => {
+    for (;;) {
+      const pressed = await app.evaluate((_electron, accelerator) => {
+        const callback = globalThis.quickNoteShortcuts.get(accelerator)
+        callback?.()
+        return !!callback
+      }, shortcut)
+      if (pressed) return
+      await setTimeout(30)
+    }
+  }
+  await watchMainWindow(app)
+  await app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()
+      .find((window) => window.webContents.getURL() === 'app://hibi/')
+      .hide(),
+  )
+
+  await press()
+  const capture = await captureWindow(app)
+  await capture.getByRole('textbox', { name: 'Note' }).fill('Keep this')
+  const id = await app.evaluate(
+    ({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows().find((window) =>
+        window.webContents.getURL().endsWith('quick-note.html'),
+      ).webContents.id,
+  )
+  await press()
+  assert.equal(
+    (await appWindows(app)).filter((url) => captureUrl.test(url)).length,
+    1,
+  )
+  assert.equal(
+    await app.evaluate(
+      ({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows().find((window) =>
+          window.webContents.getURL().endsWith('quick-note.html'),
+        ).webContents.id,
+    ),
+    id,
+  )
+
+  // Escape closes the window and keeps the unsaved text as a draft. The page
+  // can close before Playwright releases the key, so only the close is awaited.
+  let closed = capture.waitForEvent('close')
+  await capture.keyboard.press('Escape').catch(() => {})
+  await closed
+  await press()
+  const reopened = await captureWindow(app)
+  assert.equal(
+    await reopened.getByRole('textbox', { name: 'Note' }).inputValue(),
+    'Keep this',
+  )
+  closed = reopened.waitForEvent('close')
+  await reopened.keyboard.press('ControlOrMeta+w').catch(() => {})
+  await closed
+
+  await press()
+  const saving = await captureWindow(app)
+  assert.equal(
+    await saving.getByRole('textbox', { name: 'Note' }).inputValue(),
+    'Keep this',
+  )
+  await saving
+    .getByRole('textbox', { name: 'Note' })
+    .press('ControlOrMeta+Enter')
+  await saving.getByRole('status').getByText('Saved Quick note.md.').waitFor()
+  await saving.waitForEvent('close')
+  assert.equal(
+    await readFile(join(workspace, 'Quick note.md'), 'utf8'),
+    'Keep this',
+  )
+  assert.equal(await mainWindowRaised(app), 0)
+  assert.equal(
+    await app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()
+        .find((window) => window.webContents.getURL() === 'app://hibi/')
+        .isVisible(),
+    ),
+    false,
+  )
+
+  await press()
+  const empty = await captureWindow(app)
+  assert.equal(
+    await empty.getByRole('textbox', { name: 'Note' }).inputValue(),
+    '',
+  )
+  closed = empty.waitForEvent('close')
+  await empty.keyboard.press('Escape').catch(() => {})
+  await closed
+
+  if (process.platform !== 'darwin') return
+  // macOS keeps Hibi and its shortcut running after the last window closes.
+  await app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()
+      .find((window) => window.webContents.getURL() === 'app://hibi/')
+      .close(),
+  )
+  for (;;) {
+    if ((await appWindows(app)).length === 0) break
+    await setTimeout(30)
+  }
+  await press()
+  const windowless = await captureWindow(app)
+  await windowless.getByRole('textbox', { name: 'Note' }).fill('No main window')
+  await saveCapture(windowless, 'Quick note 2.md')
+  assert.equal(
+    await readFile(join(workspace, 'Quick note 2.md'), 'utf8'),
+    'No main window',
+  )
+  assert.deepEqual(await appWindows(app), [])
 })
