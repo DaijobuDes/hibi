@@ -50,9 +50,8 @@ export function queryLatest<T>(
   signal: AbortSignal,
 ): Promise<T> {
   signal.throwIfAborted()
-  let lane = lanes.get(native)
-  if (!lane) lanes.set(native, (lane = { live: false }))
-  const current = lane
+  const current = lanes.get(native) ?? { live: false }
+  lanes.set(native, current)
   const start = () => {
     current.live = true
     const reply = native.query<T>(method, input)
