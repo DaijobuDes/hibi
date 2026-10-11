@@ -210,6 +210,18 @@ test('full and cached math serialization preserve literal dollars and equations'
   }
 })
 
+test('table cells keep literal double dollars without display math escapes', () => {
+  const { manager, schema } = mathParser(true)
+  const doc = schema.nodeFromJSON(
+    manager.parse('| \\$$x$$ |\n| --- |\n| $x$ |'),
+  )
+  for (const blockLocal of [false, true]) {
+    const saved = markdownSerializer(manager, blockLocal)(doc).source
+    assert.ok(saved.includes('| $$x$$ |'), saved)
+    assert.ok(schema.nodeFromJSON(manager.parse(saved)).eq(doc), saved)
+  }
+})
+
 test('math-disabled serialization leaves dollar signs unchanged', () => {
   const { core, parser, options } = markdownConfiguration([])
   const manager = new MarkdownManager({

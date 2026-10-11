@@ -23,7 +23,7 @@ export function blockMath(source: string) {
 }
 export const mathParagraphRule: MarkdownParagraphRule = {
   characters: '$',
-  escape(source, { literals }) {
+  escape(source, { literals, parentType }) {
     const marker = [...literals].find(([, value]) => value === '$')?.[0]
     if (!marker || !source.includes(marker)) return source
     // Added escapes can expose another match; each pass consumes a marker.
@@ -40,6 +40,7 @@ export const mathParagraphRule: MarkdownParagraphRule = {
         if (restored[index] === '\n') lineStart = index + 1
         if (restored[index] !== '$') continue
         const block =
+          parentType !== 'table' &&
           index - lineStart <= 3 &&
           /^ *$/.test(restored.slice(lineStart, index))
             ? blockMath(restored.slice(index))
