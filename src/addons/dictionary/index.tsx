@@ -89,7 +89,7 @@ const failures = {
     icon: <Ban size={28} />,
     title: 'Lookup not allowed',
     message:
-      'Nothing was sent. Run the command again and allow the request to look up this word.',
+      'The blocked request was not sent. Run the command again and allow it to look up this word.',
   },
   'not-installed': {
     icon: <Download size={28} />,

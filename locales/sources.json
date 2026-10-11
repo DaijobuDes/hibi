@@ -3154,9 +3154,6 @@
   "f55642ddb45f": [
     "src/addons/dictionary/index.tsx"
   ],
-  "6840a8ce6fb5": [
-    "src/addons/dictionary/index.tsx"
-  ],
   "6887944c3369": [
     "src/renderer/src/NotificationSettings.tsx"
   ],
@@ -4622,6 +4619,9 @@
   ],
   "96c5ae0b5065": [
     "src/renderer/src/SettingsScreen.tsx"
+  ],
+  "72498ff535eb": [
+    "src/addons/dictionary/index.tsx"
   ],
   "2ea18168d79b": [
     "src/renderer/src/addons.ts"
