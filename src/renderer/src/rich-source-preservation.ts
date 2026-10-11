@@ -30,17 +30,28 @@ export function preserveRichSource(
       before.length - suffix,
       before.length - suffix + width,
     )
-    const needle = left + removed + right
-    if (!needle) continue
-    const positions: number[] = []
-    let count = 0
-    for (
-      let at = original.indexOf(needle);
-      at !== -1 && count < 32;
-      at = original.indexOf(needle, at + 1)
-    ) {
-      count++
-      positions.push(at + left.length)
+    // Normalized delimiters can hide one adjacent source character. Consider
+    // both one-sided anchors together so ambiguous insertion sites still fail.
+    const contexts: [string, string][] =
+      !width && !removed
+        ? [
+            [before[prefix - 1] ?? '', ''],
+            ['', before[before.length - suffix] ?? ''],
+          ]
+        : [[left, right]]
+    const positions = new Set<number>()
+    for (const [contextBefore, contextAfter] of contexts) {
+      const needle = contextBefore + removed + contextAfter
+      if (!needle) continue
+      let count = 0
+      for (
+        let at = original.indexOf(needle);
+        at !== -1 && count < 32;
+        at = original.indexOf(needle, at + 1)
+      ) {
+        count++
+        positions.add(at + contextBefore.length)
+      }
     }
     for (const replacement of replacements) {
       const proven = new Set<string>()

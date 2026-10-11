@@ -185,6 +185,39 @@ test('rich soft breaks render as spaces and retain their source after an unrelat
   )
 })
 
+test('rich insertions at normalized delimiters preserve source only with a unique full parse', () => {
+  for (const source of ['_em_', '**bold**', '~~strike~~']) {
+    const original = `${source}\r\n\r\nelsewhere\r\n`
+    const before = schema.nodeFromJSON(manager.parse(original))
+    const state = EditorState.create({ schema, doc: before })
+    for (const atEnd of [false, true]) {
+      const after = state.apply(
+        state.tr.insertText('!', atEnd ? before.firstChild.nodeSize - 1 : 1),
+      ).doc
+      const preserved = preserveRichSource(
+        original,
+        manager.serialize(before.toJSON()),
+        manager.serialize(after.toJSON()),
+        (candidate) => schema.nodeFromJSON(manager.parse(candidate)).eq(after),
+      )
+      const text = before.firstChild.textContent
+      assert.equal(
+        preserved,
+        original.replace(text, atEnd ? `${text}!` : `!${text}`),
+      )
+    }
+  }
+  assert.equal(
+    preserveRichSource('_em_', '*em*', '*em!*', () => false),
+    null,
+  )
+  assert.equal(
+    preserveRichSource('m_*', 'm*', 'm!*', () => true),
+    null,
+    'one-sided anchors must not choose between multiple proven source edits',
+  )
+})
+
 test('undeclared serializers retain the full-document path and custom document joining', () => {
   let generation = 0
   const CustomDocument = Node.create({
