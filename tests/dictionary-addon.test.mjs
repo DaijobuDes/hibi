@@ -46,9 +46,11 @@ test('dictionary looks up the caret word and replaces it with one undo step in b
   // Replace the network bridge so tests never reach the live services.
   await app.evaluate(({ ipcMain }, responses) => {
     globalThis.dictionaryRequests = []
+    globalThis.dictionaryHolds = {}
     ipcMain.removeHandler('host-network:get-text')
-    ipcMain.handle('host-network:get-text', (_event, owner, request) => {
+    ipcMain.handle('host-network:get-text', async (_event, owner, request) => {
       globalThis.dictionaryRequests.push(`${owner} ${request.url}`)
+      await globalThis.dictionaryHolds[request.url]
       const text = responses[request.url]
       return text === undefined
         ? { ok: false, code: 'http-status', status: 404 }
@@ -126,6 +128,42 @@ test('dictionary looks up the caret word and replaces it with one undo step in b
       (await window.hibi.getDocument()).markdown === 'I am Happy today',
   )
 
+  // Dismissal stops the lookup before the exit animation ends.
+  const todaySynonyms = 'https://api.datamuse.com/words?rel_syn=today&max=24'
+  await app.evaluate((_electron, url) => {
+    globalThis.dictionaryHolds[url] = new Promise((resolve) => {
+      globalThis.releaseHold = resolve
+    })
+  }, todaySynonyms)
+  await rich.evaluate((element) => element.editor.commands.focus(13))
+  await pressShortcut(app, 'Shift+F7')
+  const today = page.getByRole('dialog', { name: 'Synonyms for “today”' })
+  await today.waitFor()
+  await waitForAsync(
+    app,
+    (_electron, url) =>
+      globalThis.dictionaryRequests.at(-1) === `dictionary ${url}`,
+    todaySynonyms,
+  )
+  await page.keyboard.press('Escape')
+  await app.evaluate(() => globalThis.releaseHold())
+  await today.waitFor({ state: 'detached' })
+  // A later lookup's request proves the closed one sent nothing after it.
+  await rich.evaluate((element) => element.editor.commands.focus(13))
+  await clickMenu(app, 'Command palette')
+  await page
+    .getByRole('combobox', { name: /search commands/i })
+    .fill('Define word')
+  await page.getByRole('option', { name: /Define word/ }).click()
+  const defineToday = page.getByRole('dialog', { name: 'Define “today”' })
+  await defineToday.getByText('No definitions found').waitFor()
+  assert.deepEqual((await requests()).slice(-2), [
+    `dictionary ${todaySynonyms}`,
+    'dictionary https://en.wiktionary.org/api/rest_v1/page/definition/today',
+  ])
+  await page.keyboard.press('Escape')
+  await defineToday.waitFor({ state: 'detached' })
+
   await page.getByRole('button', { name: 'Source view', exact: true }).click()
   await waitForDocumentEditor(app, page, { name: 'Markdown editor' })
   const source = page.getByRole('textbox', {
@@ -149,7 +187,7 @@ test('dictionary looks up the caret word and replaces it with one undo step in b
     async () =>
       (await window.hibi.getDocument()).markdown === 'I am Content today',
   )
-  assert.equal((await requests()).length, 3, 'cached words are not re-sent')
+  assert.equal((await requests()).length, 5, 'cached words are not re-sent')
   await source.press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z')
   await waitForAsync(
     page,

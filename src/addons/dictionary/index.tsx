@@ -145,24 +145,28 @@ function Results({
   load,
   choose,
   install,
+  dismissed,
 }: {
   word: string
   kind: 'define' | 'synonyms'
   load: (signal: AbortSignal) => Promise<Outcome>
   choose: (word: string) => void
   install: () => void
+  dismissed: AbortSignal
 }) {
   const [attempt, setAttempt] = useState(0)
   const [result, setResult] = useState<Outcome | null>(null)
   // biome-ignore lint/correctness/useExhaustiveDependencies: attempt reruns the lookup.
   useEffect(() => {
     const controller = new AbortController()
+    // Dismissal aborts before the exit animation unmounts the results.
+    const signal = AbortSignal.any([controller.signal, dismissed])
     setResult(null)
-    void load(controller.signal).then((value) => {
-      if (!controller.signal.aborted) setResult(value)
+    void load(signal).then((value) => {
+      if (!signal.aborted) setResult(value)
     })
     return () => controller.abort()
-  }, [load, attempt])
+  }, [load, attempt, dismissed])
   if (!result)
     return (
       <PanelMessage
@@ -390,11 +394,12 @@ export default defineAddon({
       const choice = await context.dialogs.open<string>({
         title:
           kind === 'define' ? `Define “${word}”` : `Synonyms for “${word}”`,
-        content: ({ close }) => (
+        content: ({ close, signal }) => (
           <Results
             word={word}
             kind={kind}
             load={load}
+            dismissed={signal}
             choose={close}
             install={() => {
               close(null)
