@@ -249,26 +249,29 @@ export function useAddons(
       }),
     [states, resolution],
   )
+  const triggered = useCallback(
+    (manifest: AddonManifest) =>
+      requested.has(manifest.id) ||
+      (manifest.activation === 'command'
+        ? false
+        : manifest.activation === 'source'
+          ? activeView !== 'normal'
+          : manifest.activation === 'rich'
+            ? activeView !== 'markdown'
+            : true),
+    [activeView, requested],
+  )
   const relevantIds = useMemo(() => {
     const ids = new Set<string>()
     for (const manifest of manifests) {
       if (!states.some((state) => state.id === manifest.id && state.enabled))
         continue
-      const triggered =
-        requested.has(manifest.id) ||
-        (manifest.activation === 'command'
-          ? false
-          : manifest.activation === 'source'
-            ? activeView !== 'normal'
-            : manifest.activation === 'rich'
-              ? activeView !== 'markdown'
-              : true)
-      if (!triggered) continue
+      if (!triggered(manifest)) continue
       ids.add(manifest.id)
       for (const id of dependencies.get(manifest.id) ?? []) ids.add(id)
     }
     return ids
-  }, [activeView, requested, manifests, states, dependencies])
+  }, [triggered, manifests, states, dependencies])
   const relevant = useCallback(
     (manifest: AddonManifest) => relevantIds.has(manifest.id),
     [relevantIds],
@@ -278,7 +281,7 @@ export function useAddons(
       new Set(
         catalog
           .filter((addon) => {
-            if (!relevant(addon.manifest)) return false
+            if (!triggered(addon.manifest)) return false
             if (
               addon.manifest.startup === 'background' ||
               addon.manifest.activation === 'command'
@@ -295,10 +298,14 @@ export function useAddons(
           })
           .flatMap((addon) => [
             addon.manifest.id,
-            ...(dependencies.get(addon.manifest.id) ?? []),
+            ...(states.some(
+              (state) => state.id === addon.manifest.id && state.enabled,
+            )
+              ? (dependencies.get(addon.manifest.id) ?? [])
+              : []),
           ]),
       ),
-    [catalog, documentName, relevant, dependencies],
+    [catalog, documentName, triggered, dependencies, states],
   )
   const enabledStates = states.filter(
     (state) => state.enabled && available.has(state.id),

@@ -446,9 +446,7 @@ export async function invokeAddon(
     throw new Error('Enable this addon in Settings → Addons first.')
   const generation = getAddonActivationGeneration(id)
   if (generation === null)
-    throw new Error(
-      'Enable this addon and its required addons in Settings → Addons first.',
-    )
+    throw new Error('Enable this addon in Settings → Addons first.')
   const addon = await nativeAddon(id)
   if (!isAddonActivationCurrent(id, generation))
     throw new Error(
