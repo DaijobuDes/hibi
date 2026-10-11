@@ -1724,9 +1724,6 @@
   "bc9110896c5b": [
     "src/renderer/src/addons.ts"
   ],
-  "6fdc3f8d0bcc": [
-    "src/main/addons.ts"
-  ],
   "004013250aa1": [
     "src/main/analysis.ts"
   ],

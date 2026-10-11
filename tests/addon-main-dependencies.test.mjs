@@ -19,6 +19,8 @@ const details = (id, extra = {}) => ({
   ...extra,
 })
 const requires = (...ids) => ({ addons: ids.map((id) => ({ id })) })
+const hostImporter = /[\\/](addons|sideload)\.ts$/
+const hostModule = /[\\/]main[\\/]addons\.ts$/
 
 async function fixture(root, manifest, installed = false) {
   const folder = join(root, manifest.id)
@@ -59,9 +61,9 @@ async function host(t, builtins = [details('markdown')]) {
       };
       export const shell = {trashItem:async path=>{if(state.failTrash)throw new Error('trash failed');await rm(path,{recursive:true,force:true})}};
     `,
-    'node:fs/promises': `import * as fs from 'node:fs/promises';import {state} from 'electron';
+    'node:fs/promises': `import * as fs from 'node:fs/promises';import {basename} from 'node:path';import {state} from 'electron';
       export const {lstat,readFile,realpath,writeFile,mkdir,mkdtemp,readdir,rm}=fs;
-      export const rename=async(from,to)=>{if(state.failRename&&from.includes('/.staging-'))throw new Error('replace failed');return fs.rename(from,to)};
+      export const rename=async(from,to)=>{if(state.failRename&&basename(from).startsWith('.staging-'))throw new Error('replace failed');return fs.rename(from,to)};
     `,
     './appearance': 'export const exportedAppearance=()=>({})',
     './document': `export const clearDocument=()=>{},getDocument=()=>({}),getDocumentPath=()=>null,hasUnsavedDocuments=()=>false,loadDocument=()=>{},newDocument=()=>{},renameDocument=()=>{},updateDocument=()=>{}`,
@@ -90,31 +92,28 @@ async function host(t, builtins = [details('markdown')]) {
           bundle.onResolve({ filter: /.*/ }, ({ path, importer }) => {
             if (
               path in stubs &&
-              (path === 'electron' || /\/(addons|sideload)\.ts$/.test(importer))
+              (path === 'electron' || hostImporter.test(importer))
             )
               return { path, namespace: 'host' }
           })
           bundle.onLoad({ filter: /.*/, namespace: 'host' }, ({ path }) => ({
             contents: stubs[path],
           }))
-          bundle.onLoad(
-            { filter: /\/main\/addons\.ts$/ },
-            async ({ path }) => ({
-              contents:
-                "import {state as hostState} from 'electron';\n" +
-                (await readFile(path, 'utf8'))
-                  .replace(
-                    /const manifestModules =[\s\S]*?(?=const bundledManifests)/,
-                    'const manifestModules = hostState.manifests\n',
-                  )
-                  .replace(
-                    /const nativeModules =[\s\S]*?(?=const nativeLoaders)/,
-                    'const nativeModules = hostState.nativeModules\n',
-                  ),
-              loader: 'ts',
-              resolveDir: dirname(path),
-            }),
-          )
+          bundle.onLoad({ filter: hostModule }, async ({ path }) => ({
+            contents:
+              "import {state as hostState} from 'electron';\n" +
+              (await readFile(path, 'utf8'))
+                .replace(
+                  /const manifestModules =[\s\S]*?(?=const bundledManifests)/,
+                  'const manifestModules = hostState.manifests\n',
+                )
+                .replace(
+                  /const nativeModules =[\s\S]*?(?=const nativeLoaders)/,
+                  'const nativeModules = hostState.nativeModules\n',
+                ),
+            loader: 'ts',
+            resolveDir: dirname(path),
+          }))
         },
       },
     ],
@@ -123,6 +122,23 @@ async function host(t, builtins = [details('markdown')]) {
   await writeFile(module, outputFiles[0].contents)
   return import(pathToFileURL(module).href)
 }
+
+test('main host path guards match Windows and POSIX module paths', () => {
+  for (const path of [
+    '/repo/src/main/addons.ts',
+    'C:\\repo\\src\\main\\addons.ts',
+  ]) {
+    assert.equal(hostImporter.test(path), true)
+    assert.equal(hostModule.test(path), true)
+  }
+  for (const path of [
+    '/repo/src/main/sideload.ts',
+    'C:\\repo\\src\\main\\sideload.ts',
+  ]) {
+    assert.equal(hostImporter.test(path), true)
+    assert.equal(hostModule.test(path), false)
+  }
+})
 
 const stateOf = (host, id) =>
   host.getAddonStates().find((state) => state.id === id)
@@ -159,6 +175,9 @@ test('main admission blocks transitive consumers without changing enabled prefer
   for (const value of [null, 'true', 1, {}])
     await assert.rejects(h.enableAddon('leaf', true, value), /Could not change/)
   assert.equal(stateOf(h, 'provider').enabled, false)
+  await assert.rejects(h.invokeAddon({}, 'consumer', 'probe', null), {
+    message: 'Enable this addon in Settings → Addons first.',
+  })
   await h.enableAddon('leaf', true, true)
   await h.enableAddon('optional', true)
   const owner = h.currentAddonOwner('consumer')
@@ -186,10 +205,9 @@ test('main admission blocks transitive consumers without changing enabled prefer
   )
   assert.equal(h.getImporters().length, 0)
   assert.equal(stateOf(h, 'optional').blockedBy, undefined)
-  await assert.rejects(
-    h.invokeAddon({}, 'consumer', 'probe', null),
-    /Enable this addon/,
-  )
+  await assert.rejects(h.invokeAddon({}, 'consumer', 'probe', null), {
+    message: 'Enable this addon in Settings → Addons first.',
+  })
   await assert.rejects(h.convertImport('consumer', []), /Enable this importer/)
   await h.enableAddon('provider', true)
   assert.equal(stateOf(h, 'consumer').blockedBy, undefined)

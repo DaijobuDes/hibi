@@ -478,3 +478,85 @@ test('optional readiness settles when a pending consumer loses its required prov
     undefined,
   )
 })
+
+test('a background consumer does not make its source-activated provider block rich editing', {
+  timeout: 30000,
+}, async (t) => {
+  const profile = await mkdtemp(
+    join(tmpdir(), 'hibi-addon-dependency-background-'),
+  )
+  await writeInstalledFixture(
+    profile,
+    'fixture-source-provider',
+    { activation: 'source', capabilities: ['source'] },
+    `export default () => ({ async start(context) {
+      await new Promise(resolve => { window.releaseSourceProvider = resolve; });
+      context.exports.provide({version:1,greet:()=> 'Source provider ready'});
+    } });`,
+  )
+  await writeInstalledFixture(
+    profile,
+    'fixture-background-consumer',
+    {
+      startup: 'background',
+      requires: { addons: [{ id: 'fixture-source-provider' }] },
+    },
+    `export default () => ({ start(context) {
+      window.backgroundConsumerGreeting = context.addons.get('fixture-source-provider').greet();
+      window.backgroundConsumerStarted = true;
+    } });`,
+  )
+  await writeInstalledFixture(
+    profile,
+    'fixture-disabled-consumer',
+    { requires: { addons: [{ id: 'fixture-source-provider' }] } },
+    `export default () => ({ start() { window.disabledConsumerStarted = true; } });`,
+  )
+  await writeFile(
+    join(profile, 'addons.json'),
+    JSON.stringify({
+      'fixture-source-provider': true,
+      'fixture-background-consumer': true,
+      'fixture-disabled-consumer': false,
+    }),
+  )
+  const app = await electron.launch({
+    args: [resolve('.'), `--user-data-dir=${profile}`],
+  })
+  t.after(async () => {
+    await app.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => ({ response: 1 })
+    })
+    await app.close()
+    await rm(profile, { recursive: true, force: true })
+  })
+  const page = await app.firstWindow()
+  await waitForDocumentEditor(app, page, { timeout: 5000 })
+  await page.waitForFunction(() => !!window.releaseSourceProvider)
+  assert.equal(
+    await page.evaluate(() => window.backgroundConsumerStarted),
+    undefined,
+  )
+  assert.equal(
+    await page
+      .getByRole('textbox', { name: 'Document editor', exact: true })
+      .isVisible(),
+    true,
+  )
+  assert.equal(
+    await page.evaluate(() => window.disabledConsumerStarted),
+    undefined,
+  )
+  await page.evaluate(() => window.releaseSourceProvider())
+  await page.waitForFunction(() => window.backgroundConsumerStarted)
+  assert.equal(
+    await page.evaluate(() => window.backgroundConsumerGreeting),
+    'Source provider ready',
+  )
+  assert.equal(
+    await page
+      .getByRole('textbox', { name: 'Document editor', exact: true })
+      .isVisible(),
+    true,
+  )
+})
