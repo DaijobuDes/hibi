@@ -76,7 +76,7 @@ export function Introduction({
   onClose: (reason: 'start' | 'skip') => void
 }) {
   const [step, setStep] = useState(0)
-  const [opening, setOpening] = useState(false)
+  const [pending, setPending] = useState(false)
   const heading = useRef<HTMLHeadingElement>(null)
   const countId = useId()
   const theme = useSyncExternalStore(
@@ -90,13 +90,18 @@ export function Introduction({
   // biome-ignore lint/correctness/useExhaustiveDependencies: passive effects run after Modal opens the dialog, so each step title takes focus.
   useEffect(() => heading.current?.focus(), [step])
 
-  async function open(action: () => Promise<boolean>) {
-    setOpening(true)
+  // One request at a time; navigation waits so a finished open advances from its own step.
+  async function run<T>(action: () => Promise<T>) {
+    if (pending) return
+    setPending(true)
     try {
-      if (await action()) setStep((current) => current + 1)
+      return await action()
     } finally {
-      setOpening(false)
+      setPending(false)
     }
+  }
+  async function open(action: () => Promise<boolean>) {
+    if (await run(action)) setStep((current) => current + 1)
   }
 
   const scheme = (appearance: 'light' | 'dark') =>
@@ -319,7 +324,7 @@ export function Introduction({
           <div className="introduction-actions">
             <Button
               variant="row"
-              disabled={opening || tabsBusy}
+              disabled={pending || tabsBusy}
               onClick={() => void open(onOpenWorkspace)}
             >
               <FolderOpen aria-hidden="true" />
@@ -334,7 +339,7 @@ export function Introduction({
             </Button>
             <Button
               variant="row"
-              disabled={opening || tabsBusy}
+              disabled={pending || tabsBusy}
               onClick={() => void open(onOpenFile)}
             >
               <FileText aria-hidden="true" />
@@ -445,12 +450,17 @@ export function Introduction({
       </div>
       <div className="dialog-footer">
         {step > 0 && (
-          <Button variant="ghost" onClick={() => setStep(step - 1)}>
+          <Button
+            variant="ghost"
+            disabled={pending}
+            onClick={() => setStep(step - 1)}
+          >
             Back
           </Button>
         )}
         <Button
           variant="primary"
+          disabled={pending}
           onClick={() => (last ? onClose('start') : setStep(step + 1))}
         >
           {last ? 'Start writing' : 'Continue'}

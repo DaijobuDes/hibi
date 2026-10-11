@@ -183,3 +183,41 @@ test('the command palette and About settings reopen the introduction', {
   await page.getByRole('button', { name: 'Show introduction' }).click()
   await dialog.getByRole('heading', { name: 'Welcome to Hibi' }).waitFor()
 })
+
+test('navigation waits for a pending open and then advances from its own step', {
+  timeout: 45000,
+}, async (t) => {
+  const session = await setup(t, 'hibi-introduction-open-')
+  const file = join(session.temp, 'note.md')
+  await writeFile(file, '# Note\n')
+  await session.launch()
+  const { app, page } = await session.launch('--hibi-introduction')
+  const dialog = introduction(page)
+  for (const title of ['Make it yours', 'How you write', 'Your files']) {
+    await dialog.getByRole('button', { name: 'Continue' }).click()
+    await dialog.getByRole('heading', { name: title }).waitFor()
+  }
+  await app.evaluate(({ dialog }, path) => {
+    dialog.showOpenDialog = () =>
+      new Promise((resolve) => {
+        globalThis.releaseOpen = () =>
+          resolve({ canceled: false, filePaths: [path] })
+      })
+  }, file)
+  await dialog.getByRole('button', { name: /Open a file/ }).click()
+  await waitForAppState(page, () =>
+    [...document.querySelectorAll('.introduction .dialog-footer button')].every(
+      (button) => button.disabled,
+    ),
+  )
+  await waitForAppState(app, () => typeof globalThis.releaseOpen === 'function')
+  await app.evaluate(() => globalThis.releaseOpen())
+  await dialog.getByRole('heading', { name: 'Addons' }).waitFor()
+  await waitForAppState(page, async () =>
+    /# Note/.test((await window.hibi.getDocument()).markdown),
+  )
+  assert.equal(
+    await dialog.getByRole('button', { name: 'Continue' }).isDisabled(),
+    false,
+  )
+})
