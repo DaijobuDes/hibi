@@ -19,6 +19,9 @@ test('raw HTML stays inert and exact through rich edits, atom deletion, undo, an
     '  <script id="raw-html-script">window.__rawHtmlExecuted = true</script>',
     '  <img id="raw-html-img" src="data:image/png;base64,broken" onerror="window.__rawHtmlExecuted = true">',
     '  <svg id="raw-html-svg" onload="window.__rawHtmlExecuted = true"></svg>',
+    '  <img src=x onerror=alert(1)>',
+    '  <iframe id="raw-html-iframe" srcdoc="<script>parent.__rawHtmlExecuted = true</script>"></iframe>',
+    '  <style id="raw-html-style">.tiptap { display: none !important }</style>',
     '</div>',
   ].join('\n')
   const comment = '<!--  keep <b>literal</b> &amp;  -->'
@@ -55,6 +58,9 @@ test('raw HTML stays inert and exact through rich edits, atom deletion, undo, an
   // Install probes before opening workspace markup, including detached DOM parsing.
   await page.evaluate(() => {
     window.__rawHtmlExecuted = false
+    window.alert = () => {
+      window.__rawHtmlExecuted = true
+    }
     window.__rawHtmlCreated = []
     const record = (root) => {
       if (root.matches?.('[id^="raw-html-"]'))
@@ -92,7 +98,7 @@ test('raw HTML stays inert and exact through rich edits, atom deletion, undo, an
     assert.equal(
       await rich
         .locator(
-          'kbd, details, summary, script, img, svg, iframe, object, embed, input, [id^="raw-html-"]',
+          'kbd, details, summary, script, style, img, svg, iframe, object, embed, input, [id^="raw-html-"]',
         )
         .count(),
       0,

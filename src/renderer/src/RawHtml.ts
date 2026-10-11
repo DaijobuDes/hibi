@@ -15,7 +15,7 @@ const voidTags = new Set(
 
 /** Keep paired inline HTML together without sending workspace markup to a DOM parser. */
 export function preserveInlineHtml(tokens: Token[]) {
-  if (!tokens.some((token) => token.type === 'html' && !token.block))
+  if (!tokens.some((token) => token?.type === 'html' && !token.block))
     return tokens
   const stack: { name: string; index: number }[] = []
   const ends = new Map<number, number>()
