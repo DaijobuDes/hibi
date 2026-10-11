@@ -157,7 +157,8 @@ export function wiktionaryProvider(getText: GetText): DictionaryProvider {
         stopIfAborted(signal)
         const sections = await page(title)
         stopIfAborted(signal)
-        if (sections) return wiktionaryEntries(sections, title, lang)
+        const entries = sections ? wiktionaryEntries(sections, title, lang) : []
+        if (entries.length) return entries
       }
       return []
     },

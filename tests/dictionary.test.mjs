@@ -346,3 +346,20 @@ test('dictionary retries malformed answers instead of caching them', async () =>
   )
   assert.equal(requests.length, 5)
 })
+
+test('dictionary tries the capitalized page when the lowercase one lacks the language', async () => {
+  const requests = []
+  const responses = {
+    'https://en.wiktionary.org/api/rest_v1/page/definition/paris':
+      '{"en":[{"partOfSpeech":"Noun","definitions":[{"definition":"plaster"}]}]}',
+    'https://en.wiktionary.org/api/rest_v1/page/definition/Paris':
+      '{"fr":[{"partOfSpeech":"Proper noun","definitions":[{"definition":"Paris"}]}]}',
+  }
+  const wiktionary = wiktionaryProvider(async (request) => {
+    requests.push(request.url)
+    return { ok: true, value: { text: responses[request.url] } }
+  })
+  const [entry] = await wiktionary.lookup('Paris', 'fr', signal)
+  assert.equal(entry.partOfSpeech, 'proper noun')
+  assert.equal(requests.length, 2)
+})
