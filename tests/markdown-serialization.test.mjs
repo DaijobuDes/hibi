@@ -1068,6 +1068,13 @@ test('native HTML entities decode once and survive full and cached serialization
       'https://example.com/©/©',
     ],
     [
+      'tab in link URL',
+      '[link](https://example.com/a&#9;b)',
+      'link',
+      '[link](https://example.com/a&Tab;b)',
+      'https://example.com/a\tb',
+    ],
+    [
       'link URL delimiters',
       '[link](https://example.com/a&#32;b&#41;c)',
       'link',

@@ -73,7 +73,7 @@ export function entityMarkdown(extension: AnyExtension) {
       },
       renderMarkdown: (node: JSONContent, helpers: MarkdownRendererHelpers) => {
         const href = encodeLinkAttribute(node.attrs?.href ?? '').replace(
-          /[() ]/g,
+          /[() \t]/g,
           (character) => (character === ' ' ? '&#32;' : encodeHTML(character)),
         )
         const title = encodeLinkAttribute(node.attrs?.title ?? '')
