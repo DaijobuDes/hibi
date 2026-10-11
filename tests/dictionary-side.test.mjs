@@ -112,3 +112,27 @@ test('cache-only related words send nothing when a pending request fails meanwhi
     'https://api.datamuse.com/words?rel_ant=happy&max=24',
   ])
 })
+
+test('side view offers every missing pack even when an online source covers the language', async () => {
+  const registry = online(async () => {
+    throw new Error('network stubbed')
+  })
+  for (const lang of ['en', 'tl'])
+    registry.register({
+      id: `offline-${lang}`,
+      label: lang,
+      kind: 'offline',
+      languages: [lang],
+      installed: () => false,
+      lookup: async () => [],
+    })
+  const result = await lookUpSide(
+    registry,
+    'happy',
+    ['en', 'tl'],
+    false,
+    signal,
+  )
+  assert.deepEqual(result.definitions.installable, ['en', 'tl'])
+  assert.deepEqual(result.thesaurus.installable, ['en', 'tl'])
+})

@@ -70,13 +70,6 @@ test('side view follows the caret offline, replaces in one undo step, and pack s
   const markdown = async () =>
     (await page.evaluate(() => window.hibi.getDocument())).markdown
 
-  await page.evaluate(() =>
-    window.hibi.invokeAddon('dictionary', 'installPack', 'en'),
-  )
-  await waitForAsync(page, async () => {
-    const states = await window.hibi.queryAddon('dictionary', 'packs')
-    return states.find((state) => state.id === 'en')?.phase === 'installed'
-  })
   await clickMenu(app, 'Open…')
   await waitForAsync(
     page,
@@ -99,6 +92,23 @@ test('side view follows the caret offline, replaces in one undo step, and pack s
   await openSide()
   const side = page.getByRole('complementary', { name: 'Dictionary' })
   await side.getByRole('heading', { name: 'happy', exact: true }).waitFor()
+
+  // An empty profile offers the English pack even though Wiktionary covers
+  // English online, and the view looks up again once the pack dialog closes.
+  await side
+    .getByRole('button', { name: 'Install English pack' })
+    .first()
+    .click()
+  const packDialog = page.getByRole('dialog', {
+    name: 'Offline language packs',
+  })
+  await packDialog.getByRole('button', { name: 'Install English pack' }).click()
+  await waitForAsync(page, async () => {
+    const states = await window.hibi.queryAddon('dictionary', 'packs')
+    return states.find((state) => state.id === 'en')?.phase === 'installed'
+  })
+  await page.keyboard.press('Escape')
+  await packDialog.waitFor({ state: 'hidden' })
   await side
     .getByText('enjoying or showing or marked by joy or pleasure')
     .waitFor()
