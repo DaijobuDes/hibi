@@ -51,6 +51,23 @@ test('cold start preserves actual dictionary order, phrases, languages and case'
   assert.deepEqual(model.snapshot(), { version: 1, entries: [] })
 })
 
+test('cold start keeps accent-folded pack matches in their baseline order', () => {
+  const model = createPersonalModel()
+  const baseline = rankWords('cafe', [
+    { lang: 'fr', words: ['café'] },
+    { lang: 'en', words: ['cafeteria'] },
+  ])
+  assert.deepEqual(
+    words(model, {
+      ...session,
+      languages: ['fr', 'en'],
+      prefix: 'cafe',
+      baseline,
+    }),
+    ['cafeteria', 'café'],
+  )
+})
+
 test('custom vocabulary outranks ordinary baseline, strong history outranks custom', () => {
   const model = createPersonalModel()
   const request = {

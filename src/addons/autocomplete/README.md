@@ -2,9 +2,9 @@
 
 Enable **Autocomplete** in **Settings → Addons**. It requires **Dictionary and thesaurus**. Installed offline dictionary packs supply suggestions before anything has been learned; autocomplete never downloads packs or sends network requests. Dictionary lookups and pack installation remain separate actions in the dictionary addon.
 
-Type at least three Latin letters to see word suggestions. After a space, learned word patterns can suggest the next word: repeatedly writing “bro that was wild” makes “wild” more likely after “that was”. English, French, and Filipino can be used together. Choose the languages in Autocomplete settings. Chinese and Japanese word segmentation is not supported yet.
+Type at least three Latin letters to see word suggestions. After a space, learned word patterns can suggest the next word: repeatedly writing “bro that was wild” makes “wild” more likely after “that was”. English, French, German, and Filipino can be used together. Choose the languages in Autocomplete settings. Chinese and Japanese word segmentation is not supported yet.
 
-Use the arrow keys to choose a suggestion, Enter to accept it, and Escape to dismiss it. **Accept suggestions with Tab** is on by default. Turn it off to leave Tab to the editor while suggestions are visible. With no suggestion list, Tab behaves normally. Accepting a suggestion makes one undo step. The dictionary's previous suggestion and Tab preferences are kept.
+Use the arrow keys to choose a suggestion, Enter to accept it, and Escape to dismiss it. **Accept suggestions with Tab** is on by default. Turn it off to leave Tab to the editor while suggestions are visible. With no suggestion list, Tab behaves normally. Accepting a suggestion makes one undo step. The dictionary's previous suggestion, language, and Tab preferences move to Autocomplete on first use.
 
 ## Learning and privacy
 
@@ -28,4 +28,4 @@ Clearing removes the selected counts from memory and writes the cleared data to 
 
 Suggestions use the existing completion list in both editors. The formatted editor currently inserts completions in top-level paragraphs and headings. Source view conservatively checks the first 16,384 characters for safe prose; later text does not contribute to autocomplete until that syntax proof can be maintained incrementally. Very long formatted textblocks have the same proof limit. Suggestions may be absent around unsupported or incomplete syntax.
 
-The starting dictionary ranking favors the preferred language, then single words, lowercase headwords, and short words. Packs supply a limited prefix list without frequency information, so the most common word is not always present. Personal ranking improves with repeated use; it does not attempt sentence generation.
+The starting dictionary ranking favors exact accent matches and single words, then languages in the order you enabled them and shorter words. Lowercase headwords rank ahead of names unless you type a capital; German nouns keep their normal capitalization. Packs supply a limited prefix list without frequency information, so the most common word is not always present. Personal ranking improves with repeated use; it does not attempt sentence generation.

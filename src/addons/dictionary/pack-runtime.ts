@@ -111,7 +111,7 @@ export class PackWorker {
         typeof job.directory !== 'string' ||
         !job.directory ||
         job.directory.length > 4096 ||
-        !['en', 'zh', 'yue', 'ja', 'tl', 'fr'].includes(job.id as string)
+        !['en', 'zh', 'yue', 'ja', 'tl', 'fr', 'de'].includes(job.id as string)
       )
         throw new Error('Invalid dictionary request')
       if (

@@ -377,6 +377,29 @@ test('lookup and completion accept nfd french and voiced kana', async (t) => {
   }
 })
 
+test('german exact-case entries win and canonical accents remain significant', async (t) => {
+  const dir = await directory(t)
+  await writePack(
+    'de',
+    entries([
+      entry('Haus', ['haus'], 'house'),
+      entry('haus', [], 'imperative of hausen'),
+      entry('schön'),
+      entry('Straße'),
+    ]),
+    dir,
+  )
+  const index = new PackIndex()
+  t.after(() => index.unload())
+  assert.equal((await index.lookup('de', dir, 'Haus')).length, 1)
+  assert.equal((await index.lookup('de', dir, 'haus')).length, 2)
+  assert.equal((await index.lookup('de', dir, 'HAUS')).length, 2)
+  assert.equal((await index.lookup('de', dir, 'schön'))[0].word, 'schön')
+  assert.deepEqual(await index.lookup('de', dir, 'schon'), [])
+  assert.deepEqual(await index.lookup('de', dir, 'Strasse'), [])
+  assert.deepEqual(await index.complete('de', dir, 'ha'), ['Haus'])
+})
+
 test('completion skips case aliases without consuming limit slots', async (t) => {
   const dir = await directory(t)
   await writePack(
@@ -426,6 +449,7 @@ test('preloaded prefix search bounds results and normalizes source spelling and 
   await assert.rejects(index.complete('en', en, '\0'))
   for (const [id, word, aliases, prefix, expected] of [
     ['fr', 'école', ['écolier'], 'ÉC', ['école', 'écolier']],
+    ['de', 'Straße', ['straße'], 'STR', ['Straße']],
     ['tl', 'bahay', [], 'BA', ['bahay']],
     ['ja', '猫', ['ねこ'], 'ね', ['ねこ']],
     ['zh', '猫', ['貓'], '貓', ['貓']],

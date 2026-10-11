@@ -1,16 +1,16 @@
 # Offline dictionary packs
 
-Enable **Dictionary and thesaurus** in **Settings → Addons**, then open its settings. Choose **Install pack** for English, Chinese (Mandarin), Cantonese, Japanese, Filipino (Tagalog), or French. You can also run **Dictionary: install offline pack** from the command palette.
+Enable **Dictionary and thesaurus** in **Settings → Addons**, then open its settings. Choose **Install pack** for English, Chinese (Mandarin), Cantonese, Japanese, Filipino (Tagalog), French, or German. You can also run **Dictionary: install offline pack** from the command palette.
 
 Each pack shows its approximate download size, publisher hosts, sources, and licenses before installation. Mandarin includes both simplified and traditional spellings. Japanese includes kanji and kana readings. Definitions are in English.
 
-Leave Hibi open while the pack downloads and prepares. Progress appears beside the pack, and **Cancel** stops the operation. French downloads about 58 MB and Filipino about 16 MB. Slow downloads stop after a minute without data. Each source also has a total time limit based on its expected size at 50 KiB/s, plus one minute of extra time; occasional bytes do not extend this limit. Other installed languages remain available while a pack downloads or prepares.
+Leave Hibi open while the pack downloads and prepares. Progress appears beside the pack, and **Cancel** stops the operation. French downloads about 58 MB, Filipino about 16 MB, and German about 98 MB. Slow downloads stop after a minute without data. Each source also has a total time limit based on its expected size at 50 KiB/s, plus one minute of extra time; occasional bytes do not extend this limit. Other installed languages remain available while a pack downloads or prepares.
 
-Once installed, place the cursor in a word or select it, then run **Define word** or **Find synonyms**. Hibi checks installed packs first. If they contain an answer, the lookup needs no network request. If they do not, Hibi may offer an online lookup through its usual permission prompt.
+Once installed, place the cursor in a word or select it, then run **Define word** or **Find synonyms**. Hibi checks installed packs first. If they contain an answer, the lookup needs no network request. If they do not, Hibi can look up the word online. Enabling the addon allows requests to its listed public hosts without another prompt; the addon manager shows those hosts before you enable it.
 
-Installed packs also power the [dictionary side view](../../src/addons/dictionary/README.md#side-view) while it follows the cursor and the separate [Autocomplete addon](../../src/addons/autocomplete/README.md). Autocomplete combines offline vocabulary with word patterns learned on this device. Neither feature sends anything online while you type.
+Installed packs also power the [dictionary side view](../../src/addons/dictionary/README.md#side-view) while it follows the cursor and the separate [Autocomplete addon](../../src/addons/autocomplete/README.md). Autocomplete combines offline vocabulary and [custom words](../../src/addons/dictionary/README.md#custom-words) with word patterns learned on this device. Neither feature sends anything online while you type.
 
-Definitions and readings are more complete than thesaurus data for Chinese and Japanese. Filipino and French use the synonyms and antonyms available in Wiktionary.
+Definitions and readings are more complete than thesaurus data for Chinese and Japanese. Filipino, French, and German use the synonyms and antonyms available in Wiktionary.
 
 Choose **Update** to download the latest source again. The old pack stays installed until its replacement is ready, including when a download fails or is canceled. Update regularly for source corrections. **Uninstall** removes the pack; disabling the addon keeps installed packs for later.
 

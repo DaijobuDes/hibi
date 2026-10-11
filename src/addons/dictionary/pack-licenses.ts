@@ -1,5 +1,20 @@
 export const packLicenses = [
   {
+    id: 'dictionary-german-wiktionary',
+    name: 'German Wiktionary / Kaikki',
+    license: 'CC BY-SA 4.0 / GFDL 1.1 or later',
+    text: `German dictionary text by Wiktionary contributors, extracted by Wiktextract and distributed by Kaikki.org.
+Source: https://kaikki.org/dictionary/German/
+Original entries and contributor histories: https://en.wiktionary.org/
+Copyright statement: https://en.wiktionary.org/wiki/Wiktionary:Copyrights
+CC license: https://creativecommons.org/licenses/by-sa/4.0/
+CC license text: https://creativecommons.org/licenses/by-sa/4.0/legalcode.en
+Alternative GFDL licence: https://www.gnu.org/licenses/old-licenses/fdl-1.1.html
+Hibi uses the CC BY-SA 4.0 option for this text.
+Changes: Hibi converts the German JSON Lines extract into an offline lookup index, retaining definitions and lexical relations.
+The verified extraction was produced on 2026-10-03 from the English Wiktionary dump dated 2026-09-02. Installed download metadata identifies each fetched snapshot.`,
+  },
+  {
     id: 'dictionary-french-wiktionary',
     name: 'French Wiktionary / Kaikki',
     license: 'CC BY-SA 4.0 / GFDL 1.1 or later',

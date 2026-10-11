@@ -47,3 +47,38 @@
   color: var(--muted);
   font-size: var(--text-sm);
 }
+.dictionary-suggest-languages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.dictionary-suggest-languages label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.dictionary-custom-words ul {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: var(--space-3) 0;
+  padding: 0;
+  list-style: none;
+}
+.dictionary-custom-words li {
+  display: grid;
+  grid-template-columns: minmax(6em, 1fr) auto minmax(8em, 2fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+}
+.dictionary-custom-word {
+  overflow-wrap: anywhere;
+  font-weight: 500;
+}
+.dictionary-custom-words textarea {
+  width: 100%;
+}

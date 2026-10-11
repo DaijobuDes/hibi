@@ -171,6 +171,37 @@ test('rich completions replace exact plain text in one undo step and retract on 
     (await page.evaluate(() => window.hibi.getDocument())).markdown.trim(),
     'hel',
   )
+  // An open slash menu keeps its keys; completions stay closed.
+  const slash = page.getByRole('listbox', { name: 'Slash commands' })
+  await rich.evaluate((element) => {
+    const editor = element.editor
+    editor.commands.setContent('<p>/he</p>')
+    editor.commands.setTextSelection(4)
+    editor.commands.focus()
+  })
+  const slashCalls = await page.evaluate(() => window.completionCalls)
+  await page.keyboard.type('l')
+  await slash.waitFor()
+  await page.evaluate(
+    () =>
+      new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve)),
+      ),
+  )
+  assert.equal(await menu.isVisible(), false)
+  assert.equal(await page.evaluate(() => window.completionCalls), slashCalls)
+  await page.keyboard.press('Escape')
+  await slash.waitFor({ state: 'hidden' })
+  await rich.evaluate((element) => {
+    const editor = element.editor
+    editor.commands.setContent('<p>hel</p>')
+    editor.commands.setTextSelection(4)
+    editor.commands.focus()
+  })
+  await waitForAsync(
+    page,
+    async () => (await window.hibi.getDocument()).markdown.trim() === 'hel',
+  )
   const beforeUnsafe = await page.evaluate(() => {
     window.completionUnsafeRange = true
     return window.completionCalls

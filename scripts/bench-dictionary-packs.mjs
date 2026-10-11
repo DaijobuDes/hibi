@@ -146,22 +146,15 @@ try {
       words: ['香港', '人', '一世人', '凄切'],
     },
     { id: 'ja', files: ['ja.gz'], words: ['猫', '犬', 'ねこ', '水', '学校'] },
-    {
-      id: 'tl',
-      files: [await jsonl('tl')],
-      words: ['bahay', 'tao', 'BAHAY', 'tubig', 'maganda'],
-    },
   ]
-  if (
-    await jsonl('fr')
-      .then(() => true)
-      .catch(() => false)
-  )
-    packs.push({
-      id: 'fr',
-      files: [await jsonl('fr')],
-      words: ['maison', 'chat', 'MAISON', 'chien', 'eau'],
-    })
+  for (const [id, words] of [
+    ['tl', ['bahay', 'tao', 'BAHAY', 'tubig', 'maganda']],
+    ['fr', ['maison', 'chat', 'MAISON', 'chien', 'eau']],
+    ['de', ['Haus', 'haus', 'schön', 'Straße', 'gehen']],
+  ]) {
+    const file = await jsonl(id).catch(() => undefined)
+    if (file) packs.push({ id, files: [file], words })
+  }
   const requested = process.argv[4]?.startsWith('--')
     ? undefined
     : process.argv[4]?.split(',')

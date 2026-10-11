@@ -281,6 +281,7 @@ test('source proof excludes frontmatter and code/math fences within bounded work
     '~~~\nsecret',
     '$$\nsecret\n\ntext',
     '---\nsecret: value\n---',
+    '---\nvalue: |\n  > ---\n  confidential words',
   ]) {
     assert.equal(sourceProseAllowed(text), false, text)
   }

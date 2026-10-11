@@ -69,7 +69,7 @@ test.after(() => rm(buildRoot, { recursive: true, force: true }))
 const fixture = (name) =>
   readFile(new URL(`./fixtures/dictionary-packs/${name}`, import.meta.url))
 const payloads = new Map()
-for (const id of ['en', 'zh', 'yue', 'ja', 'tl', 'fr']) {
+for (const id of ['en', 'zh', 'yue', 'ja', 'tl', 'fr', 'de']) {
   const names =
     id === 'yue'
       ? ['yue.txt', 'yue-readings.txt', 'zh.txt']
@@ -80,6 +80,7 @@ for (const id of ['en', 'zh', 'yue', 'ja', 'tl', 'fr']) {
             ja: 'ja.xml',
             tl: 'tl.jsonl',
             fr: 'fr.jsonl',
+            de: 'de.jsonl',
           }[id],
         ]
   for (const [i, source] of packs[id].sources.entries()) {
@@ -151,6 +152,7 @@ for (const [id, query, word, count] of [
   ['ja', 'ねこ', '猫', 2],
   ['tl', 'MAY', 'may', 2],
   ['fr', 'pr', 'Pr', 2],
+  ['de', 'HAUS', 'Haus', 3],
 ])
   test(`${id} installs official sources through real worker and persists offline lookup`, async (t) => {
     const ctx = await setup(t)
@@ -375,6 +377,25 @@ test('completion and preload share verification, bounds and lifecycle guards', a
   await assert.rejects(ctx.store.complete('en', 'ch'), /closed/)
 })
 
+test('one completion request asks several packs and skips missing or failing ones', async (t) => {
+  const ctx = await setup(t)
+  await install(ctx.store, 'en')
+  await install(ctx.store, 'zh')
+  const path = join(ctx.root, 'zh', 'data.jsonl')
+  const bytes = await readFile(path)
+  bytes[0] ^= 1
+  await writeFile(path, bytes)
+  const found = await ctx.store.completeAll(['zh', 'fr', 'en', 'en'], 'ch', 8)
+  assert.deepEqual(
+    found.map(({ id }) => id),
+    ['en'],
+  )
+  assert.ok(found[0].words.includes('children'))
+  for (const ids of ['en', ['../en'], Array(8).fill('en')])
+    await assert.rejects(ctx.store.completeAll(ids, 'ch'))
+  await assert.rejects(ctx.store.completeAll(['en'], 'ch', 33), /limit/)
+})
+
 test('idle preload starts once, loads sequentially and close cancels remaining languages', async (t) => {
   const { store } = await setup(t)
   const loaded = []
@@ -407,7 +428,7 @@ test('idle preload validates, deduplicates and loads only supplied preferred and
   t.mock.method(store, 'preload', async (id) => {
     loaded.push(id)
   })
-  for (const input of [undefined, null, 'en', ['../en'], Array(7).fill('en')])
+  for (const input of [undefined, null, 'en', ['../en'], Array(8).fill('en')])
     assert.throws(() => store.preloadInstalled(input))
   store.preloadInstalled(['fr', 'ja', 'en', 'fr'])
   await waitForAsync(

@@ -352,7 +352,11 @@ export function createPersonalModel(options: PersonalModelOptions = {}) {
           typeof item.word === 'string' &&
           item.word.length <= 64 &&
           !/[\r\n]/.test(item.word) &&
-          item.word.toLowerCase().startsWith(prefix) &&
+          item.word
+            .normalize('NFD')
+            .replace(/\p{M}/gu, '')
+            .toLowerCase()
+            .startsWith(prefix.normalize('NFD').replace(/\p{M}/gu, '')) &&
           item.word.toLowerCase() !== prefix,
       )
     for (const [i, item] of baseline.entries()) {

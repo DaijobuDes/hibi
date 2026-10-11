@@ -1,4 +1,4 @@
-export const packIds = ['en', 'zh', 'yue', 'ja', 'tl', 'fr'] as const
+export const packIds = ['en', 'zh', 'yue', 'ja', 'tl', 'fr', 'de'] as const
 export type PackId = (typeof packIds)[number]
 export type PackSource = {
   name: string
@@ -84,6 +84,20 @@ export const packs: Record<PackId, { label: string; sources: PackSource[] }> = {
         version: 'rolling',
         bytes: 58232930,
         maxBytes: 96 * mib,
+      },
+    ],
+  },
+  de: {
+    label: 'German',
+    sources: [
+      {
+        name: 'German Wiktionary via Kaikki',
+        url: 'https://kaikki.org/dictionary/German/kaikki.org-dictionary-German.jsonl.gz',
+        license: 'CC BY-SA 4.0 / GFDL',
+        licenseUrl: 'https://kaikki.org/dictionary/German/',
+        version: 'rolling',
+        bytes: 98333861,
+        maxBytes: 128 * mib,
       },
     ],
   },

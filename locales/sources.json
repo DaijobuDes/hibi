@@ -126,11 +126,17 @@
   "38da1505ca83": [
     "src/addons/discord-presence/Settings.tsx"
   ],
+  "9fd728c66c9a": [
+    "src/addons/dictionary/CustomWords.tsx"
+  ],
   "a81ace5bbd8a": [
     "src/addons/discord-presence/rpc.ts"
   ],
   "8f6ef239c5ff": [
     "src/renderer/src/ModalEditingSettings.tsx"
+  ],
+  "84c03fba0dd6": [
+    "src/addons/dictionary/CustomWords.tsx"
   ],
   "d3629db00997": [
     "src/addons/frontmatter/index.ts"
@@ -149,6 +155,16 @@
   ],
   "62d8dc44bd26": [
     "src/addons/mcp-server/Settings.tsx"
+  ],
+  "b0f5bc4d9982": [
+    "src/addons/dictionary/SideView.tsx",
+    "src/addons/dictionary/index.tsx"
+  ],
+  "9c830cc7200a": [
+    "src/addons/dictionary/index.tsx"
+  ],
+  "022c1a6073fb": [
+    "src/addons/dictionary/custom-words.ts"
   ],
   "25bd3377df88": [
     "src/addons/diagnostics/Settings.tsx"
@@ -302,6 +318,9 @@
   "b3f05ba1d906": [
     "src/addons/dictionary/SideView.tsx",
     "src/addons/dictionary/index.tsx"
+  ],
+  "fb3b2acda004": [
+    "src/addons/dictionary/CustomWords.tsx"
   ],
   "3907fa7f8072": [
     "src/addons/documentation/ExportDialog.tsx",
@@ -790,6 +809,9 @@
   "126adc7247bf": [
     "src/renderer/src/FormatsSettings.tsx"
   ],
+  "0544ec2ff3a3": [
+    "src/addons/dictionary/pack-store.ts"
+  ],
   "07902ddee35e": [
     "src/renderer/src/DependencySettings.tsx"
   ],
@@ -1066,6 +1088,9 @@
     "src/addons/mcp-server/Settings.tsx",
     "src/renderer/src/RecoveryScreen.tsx"
   ],
+  "47e713045383": [
+    "src/addons/dictionary/CustomWords.tsx"
+  ],
   "e21f935f11d7": [
     "src/addons/mcp-server/Settings.tsx"
   ],
@@ -1259,6 +1284,10 @@
   "2a30abd5f2ce": [
     "src/main/dependencies.ts"
   ],
+  "98bdb8dbc149": [
+    "src/addons/dictionary/custom-words.ts",
+    "src/addons/dictionary/index.tsx"
+  ],
   "b8d93c6a0c27": [
     "src/addons/autocomplete/learning.ts"
   ],
@@ -1321,6 +1350,15 @@
   ],
   "910025c38938": [
     "src/addons/ui-preview/index.tsx"
+  ],
+  "f454b68dc829": [
+    "src/addons/dictionary/CustomWords.tsx"
+  ],
+  "998de821a17d": [
+    "src/addons/dictionary/CustomWords.tsx"
+  ],
+  "b27f46ebffcf": [
+    "src/addons/dictionary/custom-words.ts"
   ],
   "020405ad0651": [
     "src/addons/documentation/manifest.ts"
@@ -1909,6 +1947,9 @@
   "1a23abfde3ec": [
     "src/renderer/src/FormattingToolbar.tsx"
   ],
+  "19bf67ef45f4": [
+    "src/addons/dictionary/custom-words.ts"
+  ],
   "085061880926": [
     "src/main/links.ts"
   ],
@@ -1994,6 +2035,9 @@
   ],
   "94b16a7c8bcf": [
     "src/addons/typst/Block.tsx"
+  ],
+  "f7b99930dd65": [
+    "src/addons/dictionary/CustomWords.tsx"
   ],
   "a5c1b2b5e1d5": [
     "src/main/addons.ts"
@@ -2220,6 +2264,10 @@
   "c7a8f9cd36ee": [
     "src/addons/frontmatter/Properties.tsx"
   ],
+  "a659b60d246d": [
+    "src/addons/dictionary/packs.ts",
+    "src/addons/dictionary/settings.ts"
+  ],
   "b949c922b6ef": [
     "src/addons/git/index.tsx",
     "src/addons/git/manifest.ts"
@@ -2438,8 +2486,17 @@
   "980f3f274dd0": [
     "src/addons/vim/Settings.tsx"
   ],
+  "7c866d7e7c04": [
+    "src/addons/dictionary/CustomWords.tsx"
+  ],
   "321f179c80ba": [
     "src/renderer/src/ImportDialog.tsx"
+  ],
+  "938687e1fee8": [
+    "src/addons/dictionary/CustomWords.tsx"
+  ],
+  "610a5d14e9aa": [
+    "src/addons/dictionary/CustomWords.tsx"
   ],
   "79cf4fcf85ad": [
     "src/renderer/src/ImportDialog.tsx"
@@ -2842,6 +2899,9 @@
   "52a6b0babfd5": [
     "src/addons/math/PackageSettings.tsx"
   ],
+  "4bf9b30e4096": [
+    "src/addons/dictionary/CustomWords.tsx"
+  ],
   "318655cea4bd": [
     "src/renderer/src/CodeSyntaxSettings.tsx"
   ],
@@ -2970,10 +3030,13 @@
   "d19db88aa963": [
     "src/addons/dictionary/SideView.tsx"
   ],
-  "301c3462f6a7": [
+  "ead1f4ffc27e": [
     "src/addons/dictionary/manifest.ts"
   ],
   "0c4dc0d6a354": [
+    "src/addons/dictionary/SideView.tsx"
+  ],
+  "aa14fc2ee020": [
     "src/addons/dictionary/SideView.tsx"
   ],
   "21cf16f7bef3": [
@@ -2983,9 +3046,11 @@
   "50edf5185a89": [
     "src/addons/dictionary/index.tsx"
   ],
-  "c857005ffa81": [
-    "src/addons/dictionary/SideView.tsx",
+  "f65c00fbf6c5": [
     "src/addons/dictionary/index.tsx"
+  ],
+  "c857005ffa81": [
+    "src/addons/dictionary/SideView.tsx"
   ],
   "9f4024faec10": [
     "src/renderer/src/HibiSettings.tsx"
@@ -3188,6 +3253,9 @@
   "d1c0f3a50006": [
     "src/addons/typst/index.tsx"
   ],
+  "b8c91b3a2892": [
+    "src/addons/dictionary/CustomWords.tsx"
+  ],
   "1b2684405463": [
     "src/shared/hotkeys.ts"
   ],
@@ -3246,6 +3314,12 @@
   ],
   "283701594ce8": [
     "src/renderer/src/CommandPalette.tsx"
+  ],
+  "8d67ff5a4d34": [
+    "src/addons/dictionary/CustomWords.tsx"
+  ],
+  "e790c8d28322": [
+    "src/addons/dictionary/SideView.tsx"
   ],
   "7930b28a10a9": [
     "src/addons/dictionary/index.tsx"
@@ -3322,6 +3396,9 @@
   "1ec3de776207": [
     "src/addons/dictionary/index.tsx"
   ],
+  "d98449ea4aea": [
+    "src/addons/dictionary/SideView.tsx"
+  ],
   "b57d852b14d2": [
     "src/addons/tags/Panel.tsx"
   ],
@@ -3333,6 +3410,9 @@
   ],
   "5e67bf447384": [
     "src/addons/dictionary/SideView.tsx"
+  ],
+  "2d529fe708e1": [
+    "src/addons/dictionary/CustomWords.tsx"
   ],
   "50d5797e87c0": [
     "src/addons/graph/Panel.tsx",
@@ -3362,6 +3442,12 @@
   ],
   "d8da2c49df39": [
     "src/addons/quick-note/CaptureDialog.tsx"
+  ],
+  "93d42bd40fc0": [
+    "src/addons/dictionary/CustomWords.tsx"
+  ],
+  "c72183682f41": [
+    "src/addons/dictionary/CustomWords.tsx"
   ],
   "8ec5e108fc99": [
     "src/addons/tags/Panel.tsx"
@@ -3420,6 +3506,9 @@
   ],
   "6d3141557161": [
     "src/renderer/src/WorkspaceSettings.tsx"
+  ],
+  "b4e65f048650": [
+    "src/addons/dictionary/CustomWords.tsx"
   ],
   "2fae0ec5804c": [
     "src/main/addon-documentation.ts"
@@ -3983,6 +4072,7 @@
     "src/addons/autocomplete/Settings.tsx"
   ],
   "c3812fc4acb8": [
+    "src/addons/dictionary/CustomWords.tsx",
     "src/renderer/src/AddonSettings.tsx",
     "src/renderer/src/addons.ts"
   ],
@@ -4007,6 +4097,9 @@
   ],
   "0ab4d0cee3a1": [
     "src/renderer/src/main.tsx"
+  ],
+  "139c1c54bff5": [
+    "src/addons/dictionary/CustomWords.tsx"
   ],
   "78487e18eec0": [
     "src/addons/autocomplete/Settings.tsx"
@@ -4062,6 +4155,9 @@
   ],
   "6beb76e49302": [
     "src/main/document.ts"
+  ],
+  "90826115501d": [
+    "src/addons/dictionary/SideView.tsx"
   ],
   "cff651bb978f": [
     "src/main/workspace-files.ts"
@@ -4344,6 +4440,9 @@
   ],
   "d67c7a8d7229": [
     "src/addons/tags/Panel.tsx"
+  ],
+  "d00076041fb8": [
+    "src/addons/dictionary/CustomWords.tsx"
   ],
   "298ea20df97c": [
     "src/renderer/src/source-session.ts"
@@ -5670,6 +5769,9 @@
   "3d678d549c61": [
     "src/renderer/src/SettingsScreen.tsx"
   ],
+  "7586b13894e7": [
+    "src/addons/dictionary/custom-words.ts"
+  ],
   "9a928ba210da": [
     "src/addons/markdown/index.tsx"
   ],
@@ -6031,6 +6133,9 @@
   "c61f9932e721": [
     "src/addons/dictionary/Settings.tsx"
   ],
+  "b72d28e6c08c": [
+    "src/addons/dictionary/CustomWords.tsx"
+  ],
   "95a0dabb7bc7": [
     "src/addons/git/Panel.tsx"
   ],
@@ -6147,6 +6252,12 @@
   ],
   "05093a331f0b": [
     "src/main/local-diagnostics/runtime.ts"
+  ],
+  "6e3f417d897c": [
+    "src/addons/dictionary/custom-words.ts"
+  ],
+  "0dca9caa88b9": [
+    "src/addons/dictionary/custom-words.ts"
   ],
   "bc344ccd6540": [
     "src/renderer/src/ImportDialog.tsx"

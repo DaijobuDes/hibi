@@ -57,7 +57,7 @@ export function Settings() {
           onChange={(event) => change({ tabAccepts: event.target.checked })}
         />
       </SettingRow>
-      {(['en', 'fr', 'tl'] as const).map((lang) => (
+      {(['en', 'fr', 'de', 'tl'] as const).map((lang) => (
         <SettingRow
           key={lang}
           id={`autocomplete-language-${lang}`}

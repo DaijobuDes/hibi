@@ -1,6 +1,5 @@
-import { detectLangs } from '../dictionary/lookup.ts'
-import { LANGS, type Lang } from '../dictionary/providers.ts'
-import { readPreferences as readDictionaryPreferences } from '../dictionary/settings.ts'
+import { latinLangs } from '../dictionary/lookup.ts'
+import type { Lang } from '../dictionary/providers.ts'
 
 export type AutocompletePreferences = {
   suggest: boolean
@@ -15,14 +14,14 @@ const key = 'hibi:autocomplete'
 const listeners = new Set<() => void>()
 let cached: AutocompletePreferences | undefined
 
-function saved(key: string): Record<string, unknown> {
+function saved(key: string): Record<string, unknown> | undefined {
   try {
-    const value: unknown = JSON.parse(localStorage.getItem(key) ?? '{}')
+    const value: unknown = JSON.parse(localStorage.getItem(key) ?? 'null')
     return value && typeof value === 'object' && !Array.isArray(value)
       ? (value as Record<string, unknown>)
-      : {}
+      : undefined
   } catch {
-    return {}
+    return undefined
   }
 }
 
@@ -38,7 +37,8 @@ const ids = (value: unknown) =>
 export function readPreferences(): AutocompletePreferences {
   if (cached) return cached
   const previous = saved('hibi:dictionary:typing')
-  const value = { ...previous, ...saved(key) }
+  const current = saved(key)
+  const value = current ?? previous ?? {}
   cached = {
     suggest: value.suggest !== false,
     tabAccepts: value.tabAccepts !== false,
@@ -47,13 +47,21 @@ export function readPreferences(): AutocompletePreferences {
       ? [
           ...new Set(
             value.languages.filter((lang): lang is Lang =>
-              LANGS.includes(lang),
+              latinLangs.includes(lang),
             ),
           ),
         ]
-      : detectLangs('word', readDictionaryPreferences()),
+      : ['en'],
     excludedDocuments: ids(value.excludedDocuments),
     excludedWorkspaces: ids(value.excludedWorkspaces),
+  }
+  if (previous) {
+    try {
+      if (!current) localStorage.setItem(key, JSON.stringify(cached))
+      localStorage.removeItem('hibi:dictionary:typing')
+    } catch {
+      // Keep the previous settings until a saved copy exists.
+    }
   }
   return cached
 }

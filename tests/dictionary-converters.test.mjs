@@ -203,6 +203,20 @@ test('converter stores nfc headwords and aliases from decomposed french and kana
   assert.deepEqual(ja[1].keys, ['が'])
 })
 
+test('german keeps noun spelling, umlauts, sharp s and wiktionary synonyms', async () => {
+  const entries = await collect('de', [fixture('de.jsonl')])
+  const byWord = new Map(entries.map((entry) => [entry.word, entry]))
+  assert.equal(entries.length, 3)
+  assert.deepEqual(byWord.get('Haus').keys, ['Haus', 'haus'])
+  assert.ok(byWord.get('Haus').synonyms.includes('Zuhause'))
+  assert.ok(byWord.get('Haus').synonyms.includes('Heimat'))
+  assert.deepEqual(byWord.get('Straße').keys, ['Straße', 'straße'])
+  assert.match(
+    byWord.get('schön').meanings[0].definitions[0].definition,
+    /beautiful/,
+  )
+})
+
 test('tagalog collects entry and sense synonyms/antonyms, skips empty and foreign senses', async (t) => {
   const path = await temporary(
     t,
@@ -240,6 +254,7 @@ for (const [id, name] of [
   ['ja', 'ja.xml'],
   ['tl', 'tl.jsonl'],
   ['fr', 'fr.jsonl'],
+  ['de', 'de.jsonl'],
 ]) {
   test(`${id} detects gzip by magic in an opaque downloaded filename`, async (t) => {
     const input = await readFile(fixture(name))

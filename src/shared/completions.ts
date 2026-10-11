@@ -66,7 +66,7 @@ export function sourceProseAllowed(prefix: string) {
   let fence = ''
   let math = false
   for (let index = frontmatter ? 1 : 0; index < lines.length; index++) {
-    const line = (lines[index] ?? '').replace(/^(?: {0,3}> ?)+/, '')
+    let line = lines[index] ?? ''
     if (frontmatter) {
       if (/^(---|\.\.\.)\s*$/.test(line)) {
         if (index === lines.length - 1) return false
@@ -74,6 +74,7 @@ export function sourceProseAllowed(prefix: string) {
       }
       continue
     }
+    line = line.replace(/^(?: {0,3}> ?)+/, '')
     const code = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1]
     if (code && !math) {
       if (!fence) fence = code

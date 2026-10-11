@@ -1,7 +1,9 @@
-import type { DictionaryRegistry, Lang } from './providers.ts'
+import type { AddonContext } from '../api'
+import type { CustomWord } from './custom-words.ts'
+import { completeAll } from './offline.ts'
+import type { Lang } from './providers.ts'
 
 export type DictionaryWords = { lang: Lang; words: readonly string[] }
-export type CustomWord = { word: string; lang: Lang }
 
 /** Local vocabulary only. Explicit dictionary lookups are a separate feature. */
 export interface DictionaryApi {
@@ -17,7 +19,7 @@ export interface DictionaryApi {
 }
 
 export function createDictionaryApi(
-  registry: DictionaryRegistry,
+  native: AddonContext['native'],
   suggestionLanguages: DictionaryApi['suggestionLanguages'],
   customWords: DictionaryApi['customWords'],
 ): DictionaryApi {
@@ -35,20 +37,7 @@ export function createDictionaryApi(
       if (!prefix.trim() || prefix.length > 64 || !Number.isFinite(limit))
         return []
       const count = Math.max(1, Math.min(64, Math.floor(limit)))
-      return Promise.all(
-        [...new Set(langs)].map(async (lang) => {
-          const providers = await registry.providers(lang, 'lookup')
-          signal.throwIfAborted()
-          const provider = providers.find(
-            (item) => item.kind === 'offline' && item.complete,
-          )
-          const words = provider?.complete
-            ? await provider.complete(prefix, lang, signal, count)
-            : []
-          signal.throwIfAborted()
-          return { lang, words }
-        }),
-      )
+      return completeAll(native, [...new Set(langs)], prefix, signal, count)
     },
   }
 }

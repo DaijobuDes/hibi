@@ -1,55 +1,33 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createDictionaryApi } from '../src/addons/dictionary/api.ts'
-import { createRegistry } from '../src/addons/dictionary/providers.ts'
 
-test('exported vocabulary calls only installed offline completions', async () => {
-  const registry = createRegistry()
+test('exported vocabulary uses one offline pack request and follows custom word changes', async () => {
   const calls = []
-  const network = () => {
-    assert.fail('vocabulary must never request network access')
-  }
-  registry.register({
-    id: 'online',
-    label: 'online',
-    kind: 'online',
-    languages: ['en', 'fr'],
-    lookup: network,
-    complete: network,
-  })
-  registry.register({
-    id: 'offline-en',
-    label: 'English',
-    kind: 'offline',
-    languages: ['en'],
-    installed: () => true,
-    lookup: network,
-    complete: async (prefix, lang, _signal, limit) => {
-      calls.push({ prefix, lang, limit })
-      return ['happy']
+  let custom = []
+  const native = {
+    query: async (method, input) => {
+      assert.equal(method, 'packCompleteAll')
+      calls.push(input)
+      return [{ id: 'en', words: ['happy'] }]
     },
-  })
-  registry.register({
-    id: 'offline-fr',
-    label: 'French',
-    kind: 'offline',
-    languages: ['fr'],
-    installed: () => false,
-    lookup: network,
-    complete: network,
-  })
+  }
   const api = createDictionaryApi(
-    registry,
+    native,
     () => ['en', 'fr'],
-    () => [],
+    () => custom,
   )
   assert.equal(api.version, 1)
-  assert.deepEqual(await api.complete('hap', api.suggestionLanguages(), 24), [
+  assert.deepEqual(await api.complete('hap', ['en', 'fr', 'en'], 24), [
     { lang: 'en', words: ['happy'] },
-    { lang: 'fr', words: [] },
   ])
-  assert.deepEqual(calls, [{ prefix: 'hap', lang: 'en', limit: 24 }])
+  assert.deepEqual(calls, [{ ids: ['en', 'fr'], prefix: 'hap', limit: 24 }])
+  custom = [{ word: 'Hibiland' }, { word: 'kilig', lang: 'tl' }]
+  assert.equal(api.customWords(), custom)
+  custom = []
+  assert.deepEqual(api.customWords(), [])
   assert.deepEqual(await api.complete('', ['en'], 24), [])
+  assert.deepEqual(await api.complete('hap', [], 24), [])
   assert.deepEqual(await api.complete('hap', ['en'], NaN), [])
   const controller = new AbortController()
   controller.abort()

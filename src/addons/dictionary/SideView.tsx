@@ -1,4 +1,11 @@
-import { BookOpen, Download, Globe, LocateFixed, SearchX } from 'lucide-react'
+import {
+  BookOpen,
+  BookPlus,
+  Download,
+  Globe,
+  LocateFixed,
+  SearchX,
+} from 'lucide-react'
 import {
   type KeyboardEvent,
   type ReactNode,
@@ -9,6 +16,7 @@ import {
 import type { ViewTarget } from '../../shared/foundation-contracts'
 import type { AddonContext } from '../api'
 import { Button, IconButton, Panel, PanelMessage, TextInput } from '../ui'
+import { addCustomWord } from './custom-words'
 import { detectLangs, type LookupTarget, matchCase } from './lookup'
 import type {
   DictionaryFailure,
@@ -42,12 +50,13 @@ function rove(event: KeyboardEvent<HTMLElement>) {
 function Chips({
   label,
   words,
-  action,
+  replacing,
   choose,
 }: {
   label: string
   words: readonly string[]
-  action: (word: string) => string
+  /** Choosing replaces the caret word instead of looking the choice up. */
+  replacing: boolean
   choose: (word: string) => unknown
 }) {
   const [all, setAll] = useState(false)
@@ -60,7 +69,9 @@ function Chips({
         <Button
           key={word}
           variant="ghost"
-          aria-label={action(word)}
+          aria-label={
+            replacing ? `Replace with “${word}”` : `Look up “${word}”`
+          }
           onClick={() => choose(word)}
         >
           {word}
@@ -83,7 +94,11 @@ function Credit({ sources }: { sources: readonly Source[] }) {
   ]
   return (
     <p className="dictionary-source">
-      {unique.map((source) => `${source.name} · ${source.license}`).join('; ')}
+      {unique
+        .map((source) =>
+          [source.name, source.license].filter(Boolean).join(' · '),
+        )
+        .join('; ')}
     </p>
   )
 }
@@ -186,10 +201,10 @@ export function SideView({
       context.notify('The document changed. Look up the word again.')
     found.focus()
   }
-  const action = (choice: string) =>
-    found ? `Replace with “${choice}”` : `Look up “${choice}”`
-
-  const missing = (gathered: Gathered<unknown>, none: string) => {
+  const missing = (
+    gathered: Gathered<unknown>,
+    { emptyText: none, add = false }: { emptyText: string; add?: boolean },
+  ) => {
     if (gathered.found.length) return null
     const failure = gathered.failure && failures[gathered.failure]
     const [installable] = gathered.installable
@@ -220,6 +235,24 @@ export function SideView({
           )}
           {failure && gathered.failure !== 'denied' && (
             <Button onClick={() => setAttempt(attempt + 1)}>Try again</Button>
+          )}
+          {add && word && (
+            <Button
+              onClick={() =>
+                addCustomWord({ word })
+                  .then(() => setAttempt((count) => count + 1))
+                  .catch((error) =>
+                    context.notify(
+                      error instanceof Error
+                        ? error.message
+                        : 'Could not save custom words.',
+                    ),
+                  )
+              }
+            >
+              <BookPlus size={14} aria-hidden="true" />
+              Add to dictionary
+            </Button>
           )}
         </div>
       </div>
@@ -285,7 +318,10 @@ export function SideView({
             <p>{follow ? 'At the cursor' : 'Search result'}</p>
           </header>
           <Section title="Definition">
-            {missing(value.definitions, 'No definition found.') ??
+            {missing(value.definitions, {
+              emptyText: 'No definition found.',
+              add: true,
+            }) ??
               value.definitions.found.map(({ lang, value: items }) => (
                 <div key={lang} className="dictionary-side-language">
                   {value.definitions.found.length > 1 && (
@@ -323,7 +359,7 @@ export function SideView({
               ))}
           </Section>
           <Section title="Thesaurus">
-            {missing(value.thesaurus, 'No synonyms found.') ??
+            {missing(value.thesaurus, { emptyText: 'No synonyms found.' }) ??
               value.thesaurus.found.map(({ lang, value: related }) => (
                 <div key={lang} className="dictionary-side-language">
                   {value.thesaurus.found.length > 1 && (
@@ -332,13 +368,13 @@ export function SideView({
                   <Chips
                     label="Synonyms"
                     words={related.synonyms}
-                    action={action}
+                    replacing={!!found}
                     choose={choose}
                   />
                   <Chips
                     label="Antonyms"
                     words={related.antonyms}
-                    action={action}
+                    replacing={!!found}
                     choose={choose}
                   />
                   <Credit sources={[related.source]} />
@@ -352,7 +388,7 @@ export function SideView({
                   key={group.label}
                   label={group.label}
                   words={group.words}
-                  action={action}
+                  replacing={!!found}
                   choose={choose}
                 />
               ))}
