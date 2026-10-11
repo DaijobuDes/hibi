@@ -269,6 +269,11 @@ test('table layout recovers from an oversized file', async (t) => {
     version: 1,
     documents: { 'a.md': { tables: [table('0:a')] } },
   })
+  // Reported once, then again only after the file changes.
+  assert.equal(console.warn.mock.callCount(), 1)
+  await writeFile(join(root, '.hibi/layout.json'), ' '.repeat(1048578))
+  assert.deepEqual(await readTableLayout(root, 'a.md'), [])
+  assert.deepEqual(await readTableLayout(root, 'a.md'), [])
   assert.equal(console.warn.mock.callCount(), 2)
 })
 

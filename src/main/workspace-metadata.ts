@@ -57,12 +57,18 @@ export async function readWorkspaceText(
   return current ?? (await readText(root, legacyNames[name])) ?? ''
 }
 export const WORKSPACE_LAYOUT_LIMIT = 1048576
+// Oversized layout files already reported, by path, until they change.
+const oversized = new Map<string, string>()
 export async function readWorkspaceLayoutText(root: string) {
   if (!(await metadataDirectory(root))) return null
-  const info = await lstat(join(root, WORKSPACE_LAYOUT)).catch(() => null)
+  const path = join(root, WORKSPACE_LAYOUT)
+  const info = await lstat(path).catch(() => null)
   // Sizes are disposable; an oversized file must not block every later write.
   if (info?.isFile() && info.size > WORKSPACE_LAYOUT_LIMIT) {
-    console.warn(`${WORKSPACE_LAYOUT} is too large; table sizes were reset.`)
+    const version = `${info.size}:${info.mtimeMs}`
+    if (oversized.get(path) !== version)
+      console.warn(`${WORKSPACE_LAYOUT} is too large; table sizes were reset.`)
+    oversized.set(path, version)
     return null
   }
   return await readText(root, WORKSPACE_LAYOUT, WORKSPACE_LAYOUT_LIMIT)
