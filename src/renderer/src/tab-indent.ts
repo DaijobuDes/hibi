@@ -46,28 +46,33 @@ export function detectIndentUnit(lines: Iterable<string>) {
   return preferences.unit
 }
 
-/** Lets the next Tab within two seconds of Escape move focus instead. */
-export function tabEscape() {
-  let until = 0
-  return (event: KeyboardEvent) => {
-    const armed = event.key === 'Tab' && Date.now() <= until
-    if (event.key === 'Escape') until = Date.now() + 2000
-    else if (!['Shift', 'Control', 'Alt', 'Meta'].includes(event.key)) until = 0
-    return armed
-  }
-}
-
 /** Rich-text Tab: lists and tables first, then code indentation, then a mid-line tab. */
 export const TabIndent = Extension.create({
   name: 'tabIndent',
   // After list and table keymaps, which keep their own Tab behavior.
   priority: 50,
   addProseMirrorPlugins() {
-    const escaped = tabEscape()
+    // Like CodeMirror: an Escape no menu used lets the next Tab within two seconds move focus.
+    let until = 0
     return [
       new Plugin({
         props: {
-          handleDOMEvents: { keydown: (_view, event) => escaped(event) },
+          handleKeyDown: (_view, event) => {
+            if (event.key === 'Escape') until = Date.now() + 2000
+            return false
+          },
+          handleDOMEvents: {
+            keydown: (_view, event) => {
+              const escaped = event.key === 'Tab' && Date.now() <= until
+              if (
+                !['Escape', 'Shift', 'Control', 'Alt', 'Meta'].includes(
+                  event.key,
+                )
+              )
+                until = 0
+              return escaped
+            },
+          },
         },
       }),
     ]
