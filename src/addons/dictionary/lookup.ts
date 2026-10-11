@@ -95,18 +95,56 @@ export function matchCase(original: string, replacement: string) {
     : replacement
 }
 
-// Quoted attribute values may contain `>`. Breaks and blocks separate words.
-const tag = /<!--[\s\S]*?-->|<\/?([a-z][\w-]*)(?:[^>"']|"[^"]*"|'[^']*')*>/gi
+const tagName = /\/?([a-z][\w-]*)/iy
 const separates =
   /^(?:br|p|div|li|dd|dt|tr|td|th|h[1-6]|ul|ol|dl|table|blockquote|hr|section)$/i
 
-/** Plain text from a Wiktionary HTML fragment; results are rendered as text, never HTML. */
+/**
+ * Plain text from a Wiktionary HTML fragment; results are rendered as text,
+ * never HTML. One forward pass, so malformed markup cannot make it slow.
+ */
 export function plainText(html: string) {
-  return decodeHTML(
-    html.replace(tag, (_tag, name?: string) =>
-      name && separates.test(name) ? ' ' : '',
-    ),
-  )
+  let text = ''
+  let copied = 0
+  let commentCanEnd = true
+  let at = html.indexOf('<')
+  while (at >= 0) {
+    let end = -1
+    let resume = at + 1
+    let separator = ''
+    if (html.startsWith('<!--', at)) {
+      const close = commentCanEnd ? html.indexOf('-->', at + 4) : -1
+      commentCanEnd = close >= 0
+      if (commentCanEnd) end = close + 3
+    } else {
+      tagName.lastIndex = at + 1
+      const name = tagName.exec(html)?.[1]
+      if (name) {
+        // Quoted attribute values may contain `>`.
+        let index = tagName.lastIndex
+        while (index < html.length && html[index] !== '>') {
+          const quote = html[index]
+          if (quote === '"' || quote === "'") {
+            const close = html.indexOf(quote, index + 1)
+            if (close < 0) break
+            index = close
+          }
+          index++
+        }
+        if (html[index] === '>') end = index + 1
+        // A later `<` inside an unterminated tag stops at the same place.
+        else resume = index
+        // Breaks and blocks separate words.
+        if (separates.test(name)) separator = ' '
+      }
+    }
+    if (end >= 0) {
+      text += html.slice(copied, at) + separator
+      copied = resume = end
+    }
+    at = html.indexOf('<', resume)
+  }
+  return decodeHTML(text + html.slice(copied))
     .replace(/\s+/g, ' ')
     .trim()
 }

@@ -99,6 +99,21 @@ test('dictionary parses captured Wiktionary and Datamuse responses', async () =>
   assert.equal(plainText('<a title="x > y">word</a>s'), 'words')
   assert.equal(plainText("<p>one</p><p data-x='>'>two</p>"), 'one two')
   assert.equal(plainText('&lt;b&gt;<!-- <i> -->x'), '<b>x')
+  assert.equal(plainText('a < b <!-- x <i>y</i>'), 'a < b <!-- x y')
+  assert.equal(plainText('<a "x> <b>y</b>'), '<a "x> y')
+})
+
+test('dictionary strips malformed markup in linear time', () => {
+  for (const html of [
+    `<${'a'.repeat(64000)}`,
+    '<a '.repeat(21000),
+    '<!--'.repeat(16000),
+    `<a ${'"x" <'.repeat(12000)}`,
+  ]) {
+    const started = performance.now()
+    assert.equal(plainText(html), html.replace(/\s+/g, ' ').trim())
+    assert.ok(performance.now() - started < 50, `${html.slice(0, 8)}…`)
+  }
 })
 
 test('dictionary finds the caret word with the right segmenter and language', () => {
