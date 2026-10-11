@@ -46,6 +46,8 @@ Set `serialization: 'block-local'` only when each top-level block can serialize 
 
 Hibi primes the cache before editing and reuses unchanged blocks during typing. Structural edits may invalidate more blocks. Test cached output against the full Markdown manager across edits, mark boundaries, empty paragraphs, and custom nodes before opting in.
 
+Rich edits preserve untouched source even when a custom codec serializes the whole document. Only the proven edited region receives the codec's spelling, so a saved file can mix styles: editing `hello` to `hellos` may save `&#104;ellos` beside an untouched `steady words`. Do not rely on an unrelated edit to normalize every paragraph. This changes codec behavior without changing its registration API.
+
 ### Preserve source
 
 Declare `preservation` with a `level` and a contract `version`. `semantic` allows equivalent Markdown serialization. `verbatim` keeps source bytes: a flavor with this level uses source editing, while a projection can keep an exact prefix and suffix around its editable body. Hibi validates a verbatim projection's `sourceOffset` and reconstructs those regions itself. If the projection cannot prove an unchanged body, rich view stays read-only.

@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { electron, waitForDocumentEditor } from './electron.mjs'
 import { clickMenu, pressShortcut } from './keyboard.mjs'
+import { waitForAsync } from './poll.mjs'
 
 test('Mermaid and BBCode edit, preview, and export without executing content', {
   timeout: 90000,
@@ -186,7 +187,9 @@ test('Mermaid and BBCode edit, preview, and export without executing content', {
   await open('images.bbcode', '[img]image.png[/img]', 'BBCode')
   await page.locator('.bbcode-content img[src^="data:image/png"]').waitFor()
   await page.getByRole('button', { name: /^bold$/i, exact: true }).waitFor()
-  await open('notes.md', '```mermaid\nflowchart LR\n  A --> B\n```', 'Markdown')
+  const original =
+    '_keep_\n\n```mermaid\nflowchart LR\n  A --> B\n```\n\nuntouched _tail_\n'
+  await open('notes.md', original, 'Markdown')
   await page.getByRole('button', { name: /^normal$/i }).click()
   const inlineDiagram = page.locator('.mermaid-block img')
   await inlineDiagram.waitFor()
@@ -200,17 +203,32 @@ test('Mermaid and BBCode edit, preview, and export without executing content', {
       .toLowerCase()
       .includes(lightSurface.toLowerCase()),
   )
-  await page.getByRole('button', { name: /Edit Mermaid diagram/i }).click()
-  await page
-    .getByLabel('Mermaid source', { exact: true })
-    .fill('sequenceDiagram\n  Alice->>Bob: Hello')
-  await page.getByRole('button', { name: /^Apply$/i }).click()
-  await page.locator('.mermaid-block img').waitFor()
+  for (const message of ['Hello', 'Again']) {
+    await page.getByRole('button', { name: /Edit Mermaid diagram/i }).click()
+    const source = `sequenceDiagram\n  Alice->>Bob: ${message}`
+    await page.getByLabel('Mermaid source', { exact: true }).fill(source)
+    await page.getByRole('button', { name: /^Apply$/i }).click()
+    const expected = original.replace('flowchart LR\n  A --> B', source)
+    await waitForAsync(
+      page,
+      async (expected) =>
+        (await window.hibi.getDocument()).markdown === expected,
+      expected,
+    )
+    await clickMenu(app, 'Save')
+    await waitForAsync(
+      page,
+      async () => !(await window.hibi.getDocument()).dirty,
+    )
+    assert.equal(await readFile(join(temp, 'notes.md'), 'utf8'), expected)
+    await waitForDocumentEditor(app, page)
+    await page.locator('.mermaid-block img').waitFor()
+  }
   await page
     .getByRole('button', { name: /^source view$/i, exact: true })
     .click()
   assert.match(
     await page.locator('.cm-content').innerText(),
-    /Alice->>Bob: Hello/,
+    /Alice->>Bob: Again/,
   )
 })

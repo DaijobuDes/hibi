@@ -74,7 +74,7 @@ test('flavors auto-detect, persist overrides, render/edit math, and export it of
   await pressShortcut(app, `${mod}+Shift+]`)
   const source = page.getByRole('textbox', { name: /markdown editor/i })
   const initial =
-    '# math\n\ninline $x^2$\n\n$$\n\\frac{1}{2}\n$$\n\n`$literal$`\n\n```javascript\nconst answer = 42\n```'
+    '# math\n\ninline $x^2$\n\ntext $$x$$\n\ntext $$x$$ more\n\n$$\n\\frac{1}{2}\n$$\n\n`$literal$`\n\n```javascript\nconst answer = 42\n```'
   const hiddenText = await page.locator('.tiptap').textContent()
   await source.fill(initial)
   await page
@@ -98,6 +98,14 @@ test('flavors auto-detect, persist overrides, render/edit math, and export it of
     () => document.querySelectorAll('.tiptap .katex').length === 2,
   )
   assert.equal(await page.locator('.tiptap .katex-display').count(), 1)
+  for (const text of ['text $$x$$', 'text $$x$$ more'])
+    assert.equal(
+      await page
+        .locator('.tiptap p')
+        .getByText(text, { exact: true })
+        .textContent(),
+      text,
+    )
   assert.equal(
     await page.locator('[data-type="inline-math"] .katex-display').count(),
     0,
@@ -148,6 +156,7 @@ test('flavors auto-detect, persist overrides, render/edit math, and export it of
     true,
   )
   const saved = await readFile(file, 'utf8')
+  assert.equal(saved, initial.replace('$x^2$', '$x^3$'))
   await pressShortcut(app, `${mod}+Shift+o`)
   await page.getByRole('button', { name: /new workspace file/i }).waitFor()
   await choose('export workspace to html')
@@ -241,6 +250,91 @@ test('flavors auto-detect, persist overrides, render/edit math, and export it of
       },
     )
   }
+})
+
+test('math source bytes survive source and visual view round trips and saving', {
+  timeout: 45000,
+}, async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'hibi-math-source-'))
+  const file = join(root, 'math.md')
+  const original =
+    'anchor\n\ntext $$x$$\n\ntext $$x$$ more\n\n\\$$x$$\n\n$$z$$\n\n   $$y$$\n\n$$\nx\n$$\n'.replaceAll(
+      '\n',
+      '\r\n',
+    )
+  await writeFile(file, original)
+  const app = await electron.launch({
+    args: [resolve('.'), `--user-data-dir=${join(root, 'profile')}`, file],
+  })
+  t.after(async () => {
+    await app.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => ({ response: 1 })
+    })
+    await app.close()
+    await rm(root, { recursive: true, force: true })
+  })
+  const page = await app.firstWindow()
+  page.setDefaultTimeout(7000)
+  const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
+  await waitForDocumentEditor(app, page)
+  await pressShortcut(app, `${mod}+k`)
+  const input = page.getByRole('combobox', { name: /search commands/i })
+  await input.fill('enable latex')
+  await page.getByRole('option').first().waitFor()
+  await input.press('Enter')
+  await page
+    .getByRole('dialog', { name: /command palette/i })
+    .waitFor({ state: 'hidden' })
+  await page.waitForFunction(
+    () => document.querySelectorAll('.tiptap .katex-display').length === 3,
+  )
+  assert.equal(
+    (await page.evaluate(() => window.hibi.getDocument())).markdown,
+    original,
+  )
+  const rich = page.locator('.tiptap')
+  await pressShortcut(app, `${mod}+Shift+]`)
+  await page.getByRole('textbox', { name: /markdown editor/i }).waitFor()
+  await pressShortcut(app, `${mod}+Shift+[`)
+  await page.waitForFunction(
+    () => document.querySelectorAll('.tiptap .katex-display').length === 3,
+  )
+  assert.equal(
+    await rich.getByText('$$x$$', { exact: true }).textContent(),
+    '$$x$$',
+  )
+  assert.equal(
+    (await page.evaluate(() => window.hibi.getDocument())).markdown,
+    original,
+  )
+  await pressShortcut(app, `${mod}+s`)
+  await waitForAsync(page, async () => !(await window.hibi.getDocument()).dirty)
+  assert.equal(await readFile(file, 'utf8'), original)
+
+  await rich.locator('[data-type="block-math"]').first().click()
+  const dialog = page.getByRole('dialog', { name: /^math$/i, exact: true })
+  await dialog.getByLabel(/^latex$/i, { exact: true }).fill('z+1')
+  await dialog.getByRole('button', { name: /^apply$/i, exact: true }).click()
+  await waitForAsync(page, async () =>
+    (await window.hibi.getDocument()).markdown.includes('z+1'),
+  )
+  await pressShortcut(app, `${mod}+s`)
+  await waitForAsync(page, async () => !(await window.hibi.getDocument()).dirty)
+  const saved = await readFile(file, 'utf8')
+  assert.equal(
+    saved,
+    (await page.evaluate(() => window.hibi.getDocument())).markdown,
+  )
+  await pressShortcut(app, `${mod}+Shift+]`)
+  await page.getByRole('textbox', { name: /markdown editor/i }).waitFor()
+  await pressShortcut(app, `${mod}+Shift+[`)
+  await page.waitForFunction(
+    () => document.querySelectorAll('.tiptap .katex-display').length === 3,
+  )
+  assert.equal(
+    await rich.getByText('$$x$$', { exact: true }).textContent(),
+    '$$x$$',
+  )
 })
 
 test('split focus preserves each file flavor', {

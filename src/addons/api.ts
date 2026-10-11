@@ -149,6 +149,8 @@ export type AddonManifest = {
   syntax?: readonly AddonSyntaxDescriptor[]
   /** Self-contained ES module exporting analyze(projection). Runs without app, filesystem, or network access. */
   analysis?: { entry: string }
+  /** Inert HTTPS origins shown before enabling. Approves credential-free host GETs to public addresses. */
+  network?: { origins: readonly string[] }
   /** Required addon release version, separate from the host API version. */
   version: string
   /** Additional source-file extensions, without dots. Files remain openable when disabled. */
@@ -314,6 +316,23 @@ export type MarkdownProjection = {
   serialize: (content: string) => string
   readOnly?: boolean
 }
+/** Host context for a paragraph escaping rule, independent of the editor library. */
+export type MarkdownParagraphRuleContext = {
+  /** Parent node type; table paragraphs receive 'table'. */
+  parentType?: string | null
+  /** Protected literal text, keyed by opaque sentinels. */
+  literals: ReadonlyMap<string, string>
+}
+/** Escape paragraph Markdown in flavor and rule order, before core block-prefix escaping. */
+export type MarkdownParagraphRule = {
+  /** Replace these literal text characters with sentinels during inline rendering. */
+  characters?: string
+  /** Replace only whole sentinels that need escaping; the host restores the rest afterward.
+   * Preserve declared characters, using backslash escapes or HTML entities when needed.
+   * Errors, damaged sentinels, or dropped declared characters abort serialization and saving with the flavor id.
+   */
+  escape: (source: string, ctx: MarkdownParagraphRuleContext) => string
+}
 /** Composable parser contributions. Declare descriptors on Addon.flavors for discovery. */
 export type MarkdownFlavor = {
   id: string
@@ -326,6 +345,8 @@ export type MarkdownFlavor = {
   readOnlyWhenDisabled?: boolean
   markedOptions?: { gfm?: boolean; breaks?: boolean }
   richExtensions?: readonly AnyExtension[]
+  /** Rules receive rendered Markdown with declared text characters protected by ctx.literals (sentinel to character), including in tables; preserve node markup. */
+  paragraphRules?: readonly MarkdownParagraphRule[]
   /** Verbatim flavors require source editing. Literal fallback is for semantic syntax only. */
   preservation?: SourcePreservation & { fallback: 'source' | 'literal' }
   /** Opt in only when top-level blocks serialize independently with standard blank-line joining.
