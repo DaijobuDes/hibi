@@ -28,6 +28,7 @@ import {
   workspaceRoot,
 } from './workspace'
 import { copyEntry, moveEntry } from './workspace-entry-transfer'
+import { moveTableLayout } from './workspace-layout'
 import { resolveWorkspaceEntry, validateWorkspaceName } from './workspace-paths'
 
 export { validateWorkspaceName } from './workspace-paths'
@@ -214,6 +215,13 @@ export async function workspaceAction(
           )
         }
         relocateDocument(source, resultPath)
+        await moveTableLayout(
+          base,
+          relative(base, source).split(sep).join('/'),
+          relative(base, resultPath).split(sep).join('/'),
+        ).catch((error: unknown) =>
+          console.error('table layout move failed:', error),
+        )
       }
       treeChanged = !draft
     }
