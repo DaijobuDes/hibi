@@ -14,6 +14,7 @@ import {
   parseEmptyTaskItems,
 } from './list-tokenizer-prefix.ts'
 import { MarkdownMarkExit } from './markdown-markers.ts'
+import { escapeParagraphMarkdown } from './markdown-serialization.ts'
 import { markdownSyntax } from './markdown-syntax.ts'
 import { installSyntaxPreferences } from './syntax-parser.ts'
 
@@ -68,7 +69,10 @@ export function markdownConfiguration(
             extension.name === 'paragraph'
               ? extension.extend({
                   renderMarkdown: (node, helpers) =>
-                    helpers.renderChildren(node.content ?? []),
+                    escapeParagraphMarkdown(
+                      helpers.renderChildren(node.content ?? []),
+                      parser,
+                    ),
                 })
               : extension,
           )

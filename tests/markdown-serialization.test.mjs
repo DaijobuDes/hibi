@@ -25,6 +25,34 @@ const manager = new MarkdownManager({
   markedOptions: { gfm: true },
 })
 
+test('literal block prefixes survive full and cached serialization', () => {
+  const { core, parser, options } = markdownConfiguration([])
+  const schema = getSchema(core)
+  const manager = new MarkdownManager({
+    extensions: core,
+    marked: parser,
+    markedOptions: options,
+  })
+  for (const [source, expected] of [
+    ['\\# heading', '\\# heading'],
+    ['1\\. item', '1\\. item'],
+    ['2\\) item', '2\\) item'],
+    ['\\- item', '\\- item'],
+    ['\\+ item', '\\+ item'],
+    ['\\---', '\\---'],
+    ['#hashtag', '#hashtag'],
+    ['1.5', '1.5'],
+    ['text # heading and 1. item', 'text # heading and 1. item'],
+  ]) {
+    const doc = schema.nodeFromJSON(manager.parse(source))
+    for (const blockLocal of [true, false]) {
+      const saved = markdownSerializer(manager, blockLocal)(doc).source
+      assert.equal(saved, expected, source)
+      assert.ok(schema.nodeFromJSON(manager.parse(saved)).eq(doc), source)
+    }
+  }
+})
+
 test('cached serialization matches the full manager through contextual blocks and 160 edits', () => {
   const source =
     '# Heading\n\nWords **bold** and *italic*, [link](https://example.com). 😀 é\n\n> quote\n>\n> - nested\n> - list\n\n1. numbered\n2. item\n\n- [ ] task\n- [x] done\n\n| a | b |\n|---|---|\n| c | d |\n\n```js\nconst value = "code"\n```\n\n![alt](photo.png)\n\nlast paragraph'
