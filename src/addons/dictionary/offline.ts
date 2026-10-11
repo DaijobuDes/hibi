@@ -30,7 +30,10 @@ async function ask<T>(
   }
 }
 
-type Lane = { live: boolean; waiting?: { run: () => void; drop: () => void } }
+type Lane = {
+  live: boolean
+  waiting?: { run: () => void; drop: () => void } | undefined
+}
 const lanes = new WeakMap<Native, Lane>()
 
 /**
