@@ -297,10 +297,12 @@ async function writeInstalledFixture(profile, id, manifest, source) {
   )
 }
 
-test('a blocked startup consumer falls back to source editing without losing its draft', {
+test('a blocked feature consumer keeps rich editing and its draft through disable and reload', {
   timeout: 30000,
 }, async (t) => {
-  const profile = await mkdtemp(join(tmpdir(), 'hibi-addon-dependency-source-'))
+  const profile = await mkdtemp(
+    join(tmpdir(), 'hibi-addon-dependency-feature-'),
+  )
   for (const [id, name, extra, source] of [
     [
       'fixture-provider',
@@ -359,10 +361,10 @@ test('a blocked startup consumer falls back to source editing without losing its
   await page.waitForFunction(() => window.startupConsumerStopped)
   assert.equal(await page.locator('#addon-fixture-dependent').isChecked(), true)
   await page.getByRole('button', { name: /^back to app$/i }).click()
-  await waitForDocumentEditor(app, page, { name: 'Markdown editor' })
+  await waitForDocumentEditor(app, page)
   assert.equal(
     await page
-      .getByRole('textbox', { name: 'Document editor', exact: true })
+      .getByRole('textbox', { name: 'Markdown editor', exact: true })
       .count(),
     0,
   )
@@ -371,8 +373,18 @@ test('a blocked startup consumer falls back to source editing without losing its
     draft,
   )
 
+  const editedDraft = `${draft} while provider is disabled`
+  await page
+    .getByRole('textbox', { name: 'Document editor', exact: true })
+    .fill(editedDraft)
+  await waitForAsync(
+    page,
+    async (expected) => (await window.hibi.getDocument()).markdown === expected,
+    editedDraft,
+  )
+
   await page.reload()
-  await waitForDocumentEditor(app, page, { name: 'Markdown editor' })
+  await waitForDocumentEditor(app, page)
   assert.equal(
     await page.evaluate(() => window.startupConsumerStarts),
     undefined,
@@ -388,7 +400,7 @@ test('a blocked startup consumer falls back to source editing without losing its
   )
   assert.equal(
     (await page.evaluate(() => window.hibi.getDocument())).markdown,
-    draft,
+    editedDraft,
   )
 })
 
@@ -470,7 +482,8 @@ test('optional readiness settles when a pending consumer loses its required prov
     undefined,
   )
   await page.evaluate(() => window.failPendingProvider())
-  await waitForDocumentEditor(app, page, { timeout: 5000 })
+  await waitForAsync(page, () => window.optionalReadySettled)
+  await waitForDocumentEditor(app, page)
   assert.equal(await page.evaluate(() => window.optionalReadySettled), true)
   assert.equal(await page.evaluate(() => window.optionalReadyUnavailable), true)
   assert.equal(
@@ -531,7 +544,7 @@ test('a background consumer does not make its source-activated provider block ri
     await rm(profile, { recursive: true, force: true })
   })
   const page = await app.firstWindow()
-  await waitForDocumentEditor(app, page, { timeout: 5000 })
+  await waitForDocumentEditor(app, page)
   await page.waitForFunction(() => !!window.releaseSourceProvider)
   assert.equal(
     await page.evaluate(() => window.backgroundConsumerStarted),

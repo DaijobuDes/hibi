@@ -1357,6 +1357,9 @@
   "0d4d22d625f8": [
     "src/addons/ui-preview/index.tsx"
   ],
+  "5696c78780e7": [
+    "src/renderer/src/addons.ts"
+  ],
   "855e169eae01": [
     "src/addons/discord-presence/manifest.ts"
   ],
@@ -3747,6 +3750,9 @@
   "0ab4d0cee3a1": [
     "src/renderer/src/main.tsx"
   ],
+  "298b2b23d1af": [
+    "src/renderer/src/addons.ts"
+  ],
   "3064d79a295c": [
     "src/renderer/src/workspace-menu.ts"
   ],
@@ -6024,9 +6030,6 @@
   "e544c8790998": [
     "src/renderer/src/AddonSettings.tsx",
     "src/renderer/src/SettingsScreen.tsx"
-  ],
-  "34fed8b3ba5f": [
-    "src/renderer/src/addons.ts"
   ],
   "6fd89f885213": [
     "src/renderer/src/NotificationSettings.tsx"

@@ -336,7 +336,7 @@ export function useAddons(
       (state) =>
         state.enabled &&
         required.has(state.id) &&
-        (settled.get(state.id) === false || resolution.blocked.has(state.id)),
+        settled.get(state.id) === false,
     )
   const [commands, setCommands] = useState<RegisteredCommand[]>([])
   const status = useRef(
@@ -1886,7 +1886,9 @@ export function useAddons(
     const name = manifests.find((manifest) => manifest.id === id)?.name ?? id
     return dialogService.api.confirm({
       title: removing ? 'Remove addon' : 'Disable addon',
-      description: `${names.join(', ')} require ${name} and will stop too. Their enabled settings will be kept. Continue?`,
+      description: removing
+        ? `Removing ${name} will also stop ${names.join(', ')}. Their enabled settings will be kept. Document editing stays available.`
+        : `Disabling ${name} will also stop ${names.join(', ')}. Their enabled settings will be kept. Document editing stays available.`,
       confirmLabel: removing ? 'Remove' : 'Disable',
     })
   }
