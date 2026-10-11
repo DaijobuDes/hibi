@@ -47,11 +47,31 @@ const ASK = 24
 const partial =
   /(?:^|[^\p{L}\p{M}'’-])(\p{Script=Latin}[\p{Script=Latin}\p{M}'’-]*)$/u
 
-/** The Latin-script word being typed at the end of `before`, if it is long enough. */
+// Only quotes, brackets, and emphasis may open a prose word; anything else
+// starts a slash command, mention, tag, emoji, escape, entity, path, or url.
+const opening = /^(?:[("'“‘*_~]|\[(?!\[))*$/u
+
+/** True inside inline code or a fenced block that opens within `before`. */
+function inCode(before: string, line: string) {
+  return (
+    (line.match(/`+/g)?.length ?? 0) % 2 === 1 ||
+    (before.match(/^ {0,3}(?:```|~~~)/gm)?.length ?? 0) % 2 === 1
+  )
+}
+
+/**
+ * The Latin-script prose word being typed at the end of `before`, if it is
+ * long enough. Commands, code, links, and urls get no word suggestions.
+ */
 export function prefixAt(before: string, after: string) {
   if (/^[\p{L}\p{M}]/u.test(after)) return null
   const word = partial.exec(before)?.[1]
-  return word && word.length >= MIN_PREFIX && word.length <= 64 ? word : null
+  if (!word || word.length < MIN_PREFIX || word.length > 64) return null
+  const line = before.slice(before.lastIndexOf('\n') + 1)
+  const token = /\S*$/u.exec(line)?.[0] ?? ''
+  return opening.test(token.slice(0, -word.length)) && !inCode(before, line)
+    ? word
+    : null
 }
 
 /**
