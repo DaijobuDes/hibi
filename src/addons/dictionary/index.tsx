@@ -375,15 +375,17 @@ export default defineAddon({
       }
       const load = (signal: AbortSignal): Promise<Outcome> =>
         kind === 'define'
-          ? gather(registry, langs, 'lookup', (provider, lang) =>
-              provider.lookup(word, lang, signal),
+          ? gather(registry, langs, 'lookup', (provider, lang, cachedOnly) =>
+              provider.lookup(word, lang, signal, cachedOnly),
             )
           : gather(
               registry,
               langs,
               'related',
-              (provider, lang) =>
-                provider.related?.(word, lang, signal) ?? Promise.resolve(null),
+              async (provider, lang, cachedOnly) =>
+                cachedOnly
+                  ? null
+                  : (provider.related?.(word, lang, signal) ?? null),
             )
       const choice = await context.dialogs.open<string>({
         title:

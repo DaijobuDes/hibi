@@ -40,8 +40,16 @@ export interface DictionaryProvider {
   readonly languages: readonly Lang[]
   /** Offline packs return false until installed. Omit when always usable. */
   installed?(): boolean | Promise<boolean>
-  /** An empty array means the provider has no entry for the term. */
-  lookup(term: string, lang: Lang, signal: AbortSignal): Promise<Entry[]>
+  /**
+   * An empty array means the provider has no entry for the term. With
+   * `cachedOnly`, answer only from data already fetched and send nothing.
+   */
+  lookup(
+    term: string,
+    lang: Lang,
+    signal: AbortSignal,
+    cachedOnly?: boolean,
+  ): Promise<Entry[]>
   /** Null means no related words were found. */
   related?(
     term: string,
@@ -105,13 +113,18 @@ export type Gathered<T> = {
 
 /**
  * Asks installed offline packs for every language first. Online providers run
- * only when no pack answers, in language order, stopping at the first answer.
+ * only when no pack answers, in language order. After the first online answer,
+ * later languages are asked with `cachedOnly`, so nothing more is sent.
  */
 export async function gather<T>(
   registry: DictionaryRegistry,
   langs: readonly Lang[],
   need: 'lookup' | 'related',
-  ask: (provider: DictionaryProvider, lang: Lang) => Promise<T | null>,
+  ask: (
+    provider: DictionaryProvider,
+    lang: Lang,
+    cachedOnly: boolean,
+  ) => Promise<T | null>,
 ): Promise<Gathered<T>> {
   const result: Gathered<T> = { found: [], installable: [] }
   const candidates = []
@@ -123,10 +136,11 @@ export async function gather<T>(
   }
   for (const kind of ['offline', 'online'] as const) {
     for (const { lang, providers } of candidates) {
+      const cachedOnly = kind === 'online' && result.found.length > 0
       for (const provider of providers) {
         if (provider.kind !== kind) continue
         try {
-          const value = await ask(provider, lang)
+          const value = await ask(provider, lang, cachedOnly)
           if (value === null || (Array.isArray(value) && !value.length))
             continue
           result.found.push({ lang, value })
@@ -136,7 +150,6 @@ export async function gather<T>(
             error instanceof DictionaryError ? error.reason : 'unavailable'
         }
       }
-      if (kind === 'online' && result.found.length) break
     }
     if (result.found.length) {
       delete result.failure

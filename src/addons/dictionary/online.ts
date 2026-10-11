@@ -51,7 +51,7 @@ function parsed<T>(parse: () => T) {
 /** Successful answers are kept for the session; failures are retried. */
 function remember<T>(load: (key: string) => Promise<T>) {
   const cache = new Map<string, Promise<T>>()
-  return (key: string) => {
+  const get = (key: string) => {
     let value = cache.get(key)
     if (!value) {
       value = load(key)
@@ -60,6 +60,8 @@ function remember<T>(load: (key: string) => Promise<T>) {
     }
     return value
   }
+  /** True once `key` was requested, even if the answer is still pending. */
+  return Object.assign(get, { has: (key: string) => cache.has(key) })
 }
 
 const wiktionarySection: Record<Lang, readonly string[]> = {
@@ -150,10 +152,11 @@ export function wiktionaryProvider(getText: GetText): DictionaryProvider {
     label: 'Wiktionary',
     kind: 'online',
     languages: ['en', 'zh', 'yue', 'ja', 'tl', 'fr'],
-    async lookup(term, lang, signal) {
+    async lookup(term, lang, signal, cachedOnly) {
       // Page titles are case-sensitive; a capital is usually sentence case.
       const lower = term.toLowerCase()
       for (const title of lower === term ? [term] : [lower, term]) {
+        if (cachedOnly && !page.has(title)) continue
         stopIfAborted(signal)
         const sections = await page(title)
         stopIfAborted(signal)

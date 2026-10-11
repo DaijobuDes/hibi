@@ -8,7 +8,7 @@ Place the cursor in a word or select a word or phrase, then choose **Define word
 
 ## Languages
 
-Hibi chooses the language from the word's script. Words with kana are looked up in Japanese. Words written only in Chinese characters use the language chosen under **Settings → Dictionary and thesaurus → Words in Chinese characters**, then the other Chinese-character languages. Words in Latin letters use the language chosen under **Words in Latin letters**, then English, French, and Filipino. Korean and other scripts are not supported yet.
+Hibi chooses the language from the word's script. Words with kana are looked up in Japanese. Words written only in Chinese characters use the language chosen under **Settings → Dictionary and thesaurus → Words in Chinese characters**, then the other Chinese-character languages. Words in Latin letters use the language chosen under **Words in Latin letters**, then English, Filipino, and French. When the Wiktionary page for a word has entries in several of these languages, **Define word** shows all of them, the first language that has an entry on top, without sending another request. Korean and other scripts are not supported yet.
 
 Chinese and Japanese text has no spaces between words, so Hibi finds the word at the cursor using the system's word boundaries. If it picks too few or too many characters, select the exact word first. Cantonese definitions come from Wiktionary's Chinese entries, which also cover Mandarin.
 

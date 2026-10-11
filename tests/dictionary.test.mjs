@@ -248,8 +248,8 @@ test('dictionary sends nothing online when an installed offline pack answers', a
     label: id,
     kind,
     languages,
-    lookup: async (term, lang) => {
-      calls.push(`${id}:${lang}`)
+    lookup: async (term, lang, _signal, cachedOnly) => {
+      calls.push(`${id}:${lang}${cachedOnly ? ' cached' : ''}`)
       return answers.includes(lang)
         ? [
             {
@@ -271,7 +271,8 @@ test('dictionary sends nothing online when an installed offline pack answers', a
     ),
   )
   registry.register(provider('pack', 'offline', ['zh', 'en'], ['zh']))
-  const ask = (item, lang) => item.lookup('x', lang, signal)
+  const ask = (item, lang, cachedOnly) =>
+    item.lookup('x', lang, signal, cachedOnly)
   let result = await gather(registry, ['yue', 'zh', 'ja'], 'lookup', ask)
   assert.deepEqual(calls, ['pack:zh'])
   assert.deepEqual(
@@ -281,16 +282,29 @@ test('dictionary sends nothing online when an installed offline pack answers', a
 
   calls.length = 0
   result = await gather(registry, ['en', 'tl', 'fr'], 'lookup', ask)
-  assert.deepEqual(calls, ['pack:en', 'online:en'])
+  assert.deepEqual(calls, [
+    'pack:en',
+    'online:en',
+    'online:tl cached',
+    'online:fr cached',
+  ])
   assert.deepEqual(
     result.found.map(({ lang }) => lang),
-    ['en'],
+    ['en', 'fr'],
   )
 
   calls.length = 0
   result = await gather(registry, ['tl', 'fr', 'en'], 'lookup', ask)
-  assert.deepEqual(calls, ['pack:en', 'online:tl', 'online:fr'])
-  assert.equal(result.found[0].value[0].source.name, 'online')
+  assert.deepEqual(calls, [
+    'pack:en',
+    'online:tl',
+    'online:fr',
+    'online:en cached',
+  ])
+  assert.deepEqual(
+    result.found.map(({ lang }) => lang),
+    ['fr', 'en'],
+  )
 })
 
 test('dictionary sends no follow-up request after the lookup is closed', async () => {
@@ -366,4 +380,32 @@ test('dictionary tries the capitalized page when the lowercase one lacks the lan
   const [entry] = await wiktionary.lookup('Paris', 'fr', signal)
   assert.equal(entry.partOfSpeech, 'proper noun')
   assert.equal(requests.length, 2)
+})
+
+test('dictionary shows every language on a fetched Wiktionary page without new requests', async () => {
+  const requests = []
+  const chat = await fixture('wiktionary-chat.json')
+  const registry = createRegistry()
+  registry.register(
+    wiktionaryProvider(async (request) => {
+      requests.push(request.url)
+      return request.url.endsWith('/chat')
+        ? { ok: true, value: { text: chat } }
+        : { ok: false, code: 'http-status', status: 404 }
+    }),
+  )
+  const result = await gather(
+    registry,
+    ['fr', 'en', 'ja', 'tl'],
+    'lookup',
+    (provider, lang, cachedOnly) =>
+      provider.lookup('Chat', lang, signal, cachedOnly),
+  )
+  assert.deepEqual(
+    result.found.map(({ lang }) => lang),
+    ['fr', 'en', 'tl'],
+  )
+  assert.deepEqual(requests, [
+    'https://en.wiktionary.org/api/rest_v1/page/definition/chat',
+  ])
 })
