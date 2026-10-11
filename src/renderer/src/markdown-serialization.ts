@@ -77,6 +77,9 @@ export function paragraphEscaper(
 
 /** Finish inline escaping with the syntax that only has meaning at block starts. */
 function escapeBlockPrefixes(source: string, parser: Marked) {
+  // Indented code cannot interrupt a paragraph; only its first line needs this.
+  if (/^(?: {4}| {0,3}\t)/.test(source))
+    source = (source[0] === ' ' ? '&#32;' : '&#9;') + source.slice(1)
   const lines = source.split('\n')
   for (const [index, value] of lines.entries()) {
     let line = value

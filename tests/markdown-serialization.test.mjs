@@ -396,6 +396,59 @@ test('table headers and cells skip block escapes while retaining flavor rules', 
   assert.deepEqual(parents, Array(16).fill('table'))
 })
 
+test('leading indentation remains paragraph text through numeric entities', async (t) => {
+  const { core, parser, options } = markdownConfiguration([])
+  const schema = getSchema(core)
+  const configured = new MarkdownManager({
+    extensions: core,
+    marked: parser,
+    markedOptions: options,
+  })
+  for (const [source, text] of [
+    ['&#32;   code', '    code'],
+    ['&#32;       code', '        code'],
+    ['&#9;code', '\tcode'],
+    ['&#9;\tcode', '\t\tcode'],
+    ['&#32;\tcode', ' \tcode'],
+    ['&#32; \tcode', '  \tcode'],
+    ['&#32;  \tcode', '   \tcode'],
+    [' code', ' code'],
+    ['  code', '  code'],
+    ['   code', '   code'],
+  ]) {
+    await t.test(JSON.stringify(text), () => {
+      // The native manager already decodes these entities without flavor support.
+      assert.equal(manager.parse(source).content[0].content[0].text, text)
+      const doc = schema.nodes.doc.create(null, [
+        schema.nodes.paragraph.create(null, schema.text(text)),
+      ])
+      for (const blockLocal of [true, false]) {
+        const saved = markdownSerializer(configured, blockLocal)(doc).source
+        assert.equal(saved, source)
+        assert.ok(schema.nodeFromJSON(configured.parse(saved)).eq(doc))
+      }
+    })
+  }
+  for (const source of ['> &#9;code', '- &#32;   code']) {
+    const doc = schema.nodeFromJSON(configured.parse(source))
+    for (const blockLocal of [true, false]) {
+      const saved = markdownSerializer(configured, blockLocal)(doc).source
+      assert.equal(saved, source)
+      assert.ok(schema.nodeFromJSON(configured.parse(saved)).eq(doc))
+    }
+  }
+  const renderParagraph = paragraphEscaper(parser, [])
+  for (const source of ['text\n    code', 'text  \n\tcode'])
+    assert.equal(
+      renderParagraph(
+        { type: 'paragraph' },
+        { renderChildren: () => source },
+        { index: 0, level: 0, parentType: 'doc' },
+      ),
+      source,
+    )
+})
+
 test('gfm delimiter lines are escaped only when they would form a table', async (t) => {
   for (const gfm of [false, true]) {
     const { core, addons, parser, options } = markdownConfiguration([
