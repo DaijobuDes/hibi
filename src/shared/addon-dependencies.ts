@@ -121,12 +121,10 @@ export function resolveAddonDependencies(
   return { order, blocked }
 }
 
-/** Required dependencies in load order, including missing ids. */
-export function requiredAddonDependencies(
-  manifests: readonly Manifest[],
+function requiredDependencies(
+  addons: ReadonlyMap<string, AddonRequirements['addons']>,
   id: string,
 ): string[] {
-  const { addons } = dependencyGraph(manifests, true)
   const visited = new Set<string>()
   const order: string[] = []
   const visit = (owner: string) => {
@@ -139,6 +137,24 @@ export function requiredAddonDependencies(
   }
   visit(id)
   return order
+}
+
+/** Required dependencies in load order, including missing ids. */
+export function requiredAddonDependencies(
+  manifests: readonly Manifest[],
+  id: string,
+): string[] {
+  return requiredDependencies(dependencyGraph(manifests, true).addons, id)
+}
+
+/** All required closures share one graph validation. */
+export function requiredAddonDependencyMap(
+  manifests: readonly Manifest[],
+): Map<string, string[]> {
+  const { addons } = dependencyGraph(manifests, true)
+  return new Map(
+    [...addons.keys()].map((id) => [id, requiredDependencies(addons, id)]),
+  )
 }
 
 /** Required dependents in unload order, furthest consumers first. */

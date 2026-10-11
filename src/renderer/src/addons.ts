@@ -26,7 +26,7 @@ import {
 } from '../../addons/api'
 import {
   addonDependents,
-  requiredAddonDependencies,
+  requiredAddonDependencyMap,
   resolveAddonDependencies,
 } from '../../shared/addon-dependencies'
 import type { AddonHotkeyRegistration } from '../../shared/addon-hotkeys'
@@ -220,13 +220,7 @@ export function useAddons(
     [catalog],
   )
   const dependencies = useMemo(
-    () =>
-      new Map(
-        manifests.map(({ id }) => [
-          id,
-          requiredAddonDependencies(manifests, id),
-        ]),
-      ),
+    () => requiredAddonDependencyMap(manifests),
     [manifests],
   )
   const resolution = useMemo(
