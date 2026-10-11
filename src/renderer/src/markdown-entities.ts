@@ -7,7 +7,29 @@ import type {
 } from '@tiptap/core'
 import type { MarkdownManager } from '@tiptap/markdown'
 import { decodeHTMLStrict, encodeHTML } from 'entities'
-import type { Token } from 'marked'
+import type { Marked, Token } from 'marked'
+
+const richParsers = new WeakSet<object>()
+
+export function richTextParser(parser: Marked) {
+  const BaseLexer = parser.Lexer
+  class RichLexer<
+    ParserOutput = string,
+    RendererOutput = string,
+  > extends BaseLexer<ParserOutput, RendererOutput> {
+    inlineTokens(source: string, tokens?: Token[]) {
+      const result = super.inlineTokens(source, tokens)
+      // Custom task tokens hide children from walkTokens; normalize at creation.
+      for (const token of result) richTextToken(token)
+      return result
+    }
+  }
+  parser.Lexer = RichLexer
+  parser.lexer = (source, options) =>
+    new RichLexer(options ?? parser.defaults).lex(source)
+  richParsers.add(parser)
+  return parser
+}
 
 function decodeMarkdownEntities(text: string) {
   return text.replace(
@@ -109,6 +131,7 @@ const configured = new WeakSet<MarkdownManager>()
 export function configureMarkdownEntities(manager: MarkdownManager) {
   if (configured.has(manager)) return
   configured.add(manager)
+  const richText = richParsers.has(manager.instance)
   const codec = manager as unknown as TextCodec
   const encodeText = codec.encodeTextForMarkdown.bind(manager)
   codec.encodeTextForMarkdown = (text, node, parent) => {
@@ -120,7 +143,8 @@ export function configureMarkdownEntities(manager: MarkdownManager) {
       )
     )
       return encoded
-    let result = encodeLineBreaks(encoded)
+    // Native parsers retain structural soft breaks; rich parsers normalize them.
+    let result = richText ? encodeLineBreaks(encoded) : encoded
     // Encode text at line edges before Tiptap trims whitespace or moves marks.
     if (parent?.type === 'paragraph' && /[\t\u00a0]/.test(result)) {
       const siblings = parent.content ?? []

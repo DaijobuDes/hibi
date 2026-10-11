@@ -66,7 +66,7 @@ Use **File → Save** (`Cmd/Ctrl+S`) or **Save as** (`Cmd/Ctrl+Shift+S`). New no
 
 Empty paragraphs are saved as blank lines without nonbreaking-space placeholders. Consecutive empty lines collapse to normal paragraph spacing in exported HTML.
 
-When normal view rewrites Markdown, entity references such as `&copy;` can save as their decoded characters. Typed and pasted characters stay literal unless Markdown would change or discard them, such as embedded line breaks or tabs and nonbreaking spaces at paragraph line edges. Literal Markdown punctuation stays protected, and code keeps its literal text.
+When normal view rewrites Markdown, entity references such as `&copy;` can save as their decoded characters. Typed and pasted characters stay literal unless Markdown would change or discard them, such as literal line-break characters from entity references or tabs and nonbreaking spaces at paragraph line edges. Literal Markdown punctuation stays protected, and code keeps its literal text.
 
 To rename a note, run **Rename document…** from the command palette or choose **Rename** in its workspace menu. Renaming keeps unsaved edits and does not replace another file.
 

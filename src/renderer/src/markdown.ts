@@ -2,7 +2,7 @@ import { Extension } from '@tiptap/core'
 import { Placeholder } from '@tiptap/extension-placeholder'
 import { Markdown, type MarkdownExtensionOptions } from '@tiptap/markdown'
 import { StarterKit } from '@tiptap/starter-kit'
-import { Marked, type Token } from 'marked'
+import { Marked } from 'marked'
 import { search } from 'prosemirror-search'
 import type { MarkdownFlavor } from '../../addons/api'
 import { BlockExit } from './BlockExit.ts'
@@ -16,7 +16,7 @@ import {
 import {
   configureMarkdownEntities,
   entityMarkdown,
-  richTextToken,
+  richTextParser,
 } from './markdown-entities.ts'
 import { MarkdownMarkExit } from './markdown-markers.ts'
 import {
@@ -37,22 +37,7 @@ export function markdownConfiguration(
     { gfm: false, breaks: false },
     ...flavors.map((flavor) => flavor.markedOptions),
   )
-  const parser = installSyntaxPreferences(new Marked(options))
-  const BaseLexer = parser.Lexer
-  class RichLexer<
-    ParserOutput = string,
-    RendererOutput = string,
-  > extends BaseLexer<ParserOutput, RendererOutput> {
-    inlineTokens(source: string, tokens?: Token[]) {
-      const result = super.inlineTokens(source, tokens)
-      // Custom task tokens hide children from walkTokens; normalize at creation.
-      for (const token of result) richTextToken(token)
-      return result
-    }
-  }
-  parser.Lexer = RichLexer
-  parser.lexer = (source, options) =>
-    new RichLexer(options ?? parser.defaults).lex(source)
+  const parser = richTextParser(installSyntaxPreferences(new Marked(options)))
   for (const flavor of flavors)
     for (const extension of flavor.export?.extensions ?? [])
       parser.use(extension)

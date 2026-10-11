@@ -757,11 +757,18 @@ test('retained soft breaks escape prefixes on every paragraph line', async (t) =
     'text\n| ordinary | text |',
   ]) {
     await t.test(JSON.stringify(source), () => {
-      const doc = schema.nodeFromJSON(manager.parse(source))
-      // Exercise literal newlines before the entity adapter encodes invisible text.
-      const saved = manager.serialize(doc.toJSON())
-      assert.equal(saved, source)
-      assert.ok(schema.nodeFromJSON(manager.parse(saved)).eq(doc))
+      for (const ending of ['\n', '\r\n']) {
+        const doc = schema.nodeFromJSON(
+          manager.parse(source.replaceAll('\n', ending)),
+        )
+        for (const blockLocal of [true, false]) {
+          const serialize = markdownSerializer(manager, blockLocal)
+          const saved = serialize(doc).source
+          assert.equal(saved, source)
+          assert.ok(schema.nodeFromJSON(manager.parse(saved)).eq(doc))
+          assert.equal(serialize(doc).source, source)
+        }
+      }
     })
   }
 })
@@ -1010,6 +1017,7 @@ test('native HTML entities decode once and survive full and cached serialization
     ['word joiner', 'a&NoBreak;b', 'a\u2060b', 'a\u2060b'],
     ['numeric newline', 'a&#10;b', 'a\nb', 'a&NewLine;b'],
     ['numeric carriage return', 'a&#13;b', 'a\rb', 'a&#13;b'],
+    ['numeric CRLF', 'a&#13;&#10;b', 'a\r\nb', 'a&#13;&NewLine;b'],
     ['tab', 'a&Tab;b', 'a\tb', 'a\tb'],
     ['bold nbsp', '**&nbsp;**', '\u00a0', '**&nbsp;**'],
     ['nbsp paragraphs', '&nbsp;\n\n&nbsp;', '\u00a0\u00a0', '&nbsp;\n\n&nbsp;'],
