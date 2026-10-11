@@ -77,6 +77,9 @@ for (const math of [false, true]) {
       ),
       true,
     )
+    await page.evaluate(
+      () => new Promise((resolve) => requestIdleCallback(resolve)),
+    )
     await page.evaluate(() => {
       const editor = document.querySelector('.tiptap').editor
       editor.commands.setTextSelection(editor.state.doc.content.size - 1)
@@ -110,18 +113,22 @@ for (const math of [false, true]) {
       parses.length <= 8,
       `candidate parse cap exceeded: ${parses.length}`,
     )
-    assert.ok(parses.every((length) => length <= 16 * 1024 + 2))
+    assert.deepEqual(parses, ['elsewhere!\n'.length])
     let expected = original.replace('elsewhere', 'elsewhere!')
     await saveExpected(expected)
-    await page.evaluate(() =>
-      document.querySelector('.tiptap').editor.commands.undo(),
-    )
+    const undoParses = await page.evaluate(() => {
+      window.preservationParses = []
+      document.querySelector('.tiptap').editor.commands.undo()
+      return window.preservationParses.length
+    })
+    assert.ok(undoParses <= 8, 'undo must not rebuild paragraph proofs inline')
     await waitForAsync(
       page,
       async (original) =>
         (await window.hibi.getDocument()).markdown === original,
       original,
     )
+    await saveExpected(original)
     await page.evaluate(() =>
       document.querySelector('.tiptap').editor.commands.redo(),
     )
@@ -131,6 +138,7 @@ for (const math of [false, true]) {
         (await window.hibi.getDocument()).markdown === expected,
       expected,
     )
+    await saveExpected(expected)
     for (const [type, latex] of math
       ? [
           ['inlineMath', 'x'],
@@ -187,15 +195,29 @@ for (const math of [false, true]) {
       ),
       'pq',
     )
+    await page.evaluate(
+      () => new Promise((resolve) => requestIdleCallback(resolve)),
+    )
     await page.evaluate(() => {
       const editor = document.querySelector('.tiptap').editor
       editor.commands.setTextSelection(editor.state.doc.content.size - 1)
       editor.view.focus()
+      const parse = editor.markdown.parse.bind(editor.markdown)
+      window.crlfParses = []
+      editor.markdown.parse = (source) => {
+        window.crlfParses.push(source)
+        return parse(source)
+      }
     })
     await page.keyboard.insertText('q')
     await waitForAsync(
       page,
       async () => (await window.hibi.getDocument()).markdown === 'p\r\n\r\nqq',
+    )
+    assert.deepEqual(
+      await page.evaluate(() => window.crlfParses),
+      ['qq'],
+      'the CRLF edit must parse only its local paragraph',
     )
     await saveExpected('p\r\n\r\nqq', crlfFile)
   })

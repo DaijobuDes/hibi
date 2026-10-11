@@ -1639,6 +1639,7 @@ export function MarkdownEditor({
       scheduled = false,
       syncing = false
     let timer: ReturnType<typeof setTimeout> | undefined
+    let paragraphIdle: number | undefined
     let preview: {
       snapshot: SourceSnapshot
       selection: SourceSelection
@@ -1672,6 +1673,8 @@ export function MarkdownEditor({
       )
     }
     const certify = (snapshot: SourceSnapshot) => {
+      if (paragraphIdle !== undefined) cancelIdleCallback(paragraphIdle)
+      paragraphIdle = undefined
       if (
         outlineSyntax?.math &&
         editor.markdown &&
@@ -1681,17 +1684,32 @@ export function MarkdownEditor({
           snapshot.materialize(),
           markdownExtensions,
         ).content
-        if (!paragraphProof.current?.matches(source, editor.state.doc))
-          paragraphProof.current = createRichParagraphProof(
-            source,
-            editor.state.doc,
-            editor.markdown,
-          )
-        if (paragraphProof.current)
-          provenSources.current.set(editor, {
-            source,
-            document: editor.state.doc,
-          })
+        if (!paragraphProof.current?.matches(source, editor.state.doc)) {
+          paragraphProof.current = null
+          const document = editor.state.doc
+          const manager = editor.markdown
+          // Full parsing remains the fallback until this snapshot has a proof.
+          if (typeof requestIdleCallback === 'function')
+            paragraphIdle = requestIdleCallback(() => {
+              paragraphIdle = undefined
+              if (
+                disposed ||
+                editor.isDestroyed ||
+                editor.state.doc !== document ||
+                session.snapshot().version !== snapshot.version ||
+                !matches(snapshot) ||
+                markdownSyntax.version() !== syntaxVersion
+              )
+                return
+              paragraphProof.current = createRichParagraphProof(
+                source,
+                document,
+                manager,
+              )
+              if (paragraphProof.current)
+                provenSources.current.set(editor, { source, document })
+            })
+        }
       }
       if (
         !plainSyncEligible ||
@@ -1902,6 +1920,7 @@ export function MarkdownEditor({
     return () => {
       disposed = true
       clearTimeout(timer)
+      if (paragraphIdle !== undefined) cancelIdleCallback(paragraphIdle)
       retainedPreview.current = preview ? { editor, session, ...preview } : null
       plainSync.current = null
       pendingPlainSync.current = null
