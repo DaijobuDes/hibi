@@ -34,6 +34,12 @@ For these formats, Source view pauses the preview. Switch to Side-by-side to loa
 
 If a source language fails to load, choose **Retry language** in its notice. Retrying keeps the document and editor open.
 
+## Equations in Markdown
+
+With the LaTeX addon enabled, use `$x$` for inline math. See [Equations in Markdown](../../src/addons/math/README.md#equations-in-markdown) for display math and literal dollar signs.
+
+If an existing document used line-final `text $$x$$` for display math, move `$$x$$` onto its own line.
+
 ## Install required tools
 
 Some formats need tools installed separately. Open **Settings → Dependencies** to check availability, see which addons need each tool, choose an executable, or install a missing tool. **Manage dependencies** in a format's settings opens the same page.

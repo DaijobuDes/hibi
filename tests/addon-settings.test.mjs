@@ -27,6 +27,12 @@ test('compact filters reset preferences, keep addon rows stable, and install rev
           apiVersion: 1,
           version: '1.0.0',
           authors: [{ displayName: 'test author' }],
+          network: {
+            origins: [
+              'https://en.wiktionary.org',
+              'https://api.datamuse.com:8443',
+            ],
+          },
           entry: 'index.js',
         }),
       },
@@ -200,12 +206,12 @@ test('compact filters reset preferences, keep addon rows stable, and install rev
   assert.equal(await installed.isChecked(), false)
   assert.match(
     await addons.locator('.setting-row:visible .addon-metadata').innerText(),
-    /Third-party/,
+    /Third-party.*Connects to: en\.wiktionary\.org, api\.datamuse\.com:8443/s,
   )
   assert.equal(await page.evaluate(() => window.urlFixtureStarted), undefined)
   assert.match(
     (await app.evaluate(() => globalThis.reviewedAddon)).detail,
-    /Downloaded from example.com/,
+    /Downloaded from example.com\n\nConnects to: https:\/\/en\.wiktionary\.org, https:\/\/api\.datamuse\.com:8443/,
   )
   assert.equal(
     JSON.parse(

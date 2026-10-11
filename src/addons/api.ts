@@ -149,12 +149,16 @@ export type AddonManifest = {
   syntax?: readonly AddonSyntaxDescriptor[]
   /** Self-contained ES module exporting analyze(projection). Runs without app, filesystem, or network access. */
   analysis?: { entry: string }
+  /** Inert HTTPS origins shown before enabling. Approves credential-free host GETs to public addresses. */
+  network?: { origins: readonly string[] }
   /** Required addon release version, separate from the host API version. */
   version: string
   /** Additional source-file extensions, without dots. Files remain openable when disabled. */
   fileExtensions?: readonly string[]
   /** Placement and Lucide icon name for the addon's default settings page. */
   settings?: { category?: string; icon?: string }
+  /** Addon requirements, separate from external CLI tools. Required addons start before this addon. */
+  requires?: import('../shared/addon-dependencies').AddonRequirements
   /** External CLI requirements. The host checks and installs these without executing addon-supplied shell commands. */
   dependencies?: readonly import('../shared/dependencies').AddonDependency[]
   authors?: readonly AddonAuthor[]
@@ -300,7 +304,30 @@ export type AddonSlashCommand = {
 }
 
 export type ExportResult = { path: string; pages: number }
-export type AddonState = { id: string; enabled: boolean }
+export type AddonState = {
+  id: string
+  /** The user's preference, retained while required addons are unavailable. */
+  enabled: boolean
+  /** Missing or disabled required addon IDs. Blocked addons cannot run. */
+  blockedBy?: readonly string[]
+}
+
+/** A renderer API object with a positive integer contract version chosen by its provider. */
+export type AddonExports = { readonly version: number }
+
+export type AddonExportsApi = {
+  /** Publish a plain object. It becomes available after start succeeds and is removed on stop.
+   * Returns a disposer for this publication; a newer publication is not affected.
+   */
+  provide: <T extends AddonExports>(api: T) => () => void
+}
+
+export type AddonAccessApi = {
+  /** Read a declared addon's active API. Undeclared IDs throw. Check the provider's version before use. */
+  get: <T extends AddonExports>(id: string) => T | undefined
+  /** Activate an enabled declared addon and await startup. Returns undefined when unavailable, failed, or no API was published. */
+  ready: <T extends AddonExports>(id: string) => Promise<T | undefined>
+}
 
 export type SourcePreservation = {
   level: 'semantic' | 'verbatim'
@@ -314,6 +341,23 @@ export type MarkdownProjection = {
   serialize: (content: string) => string
   readOnly?: boolean
 }
+/** Host context for a paragraph escaping rule, independent of the editor library. */
+export type MarkdownParagraphRuleContext = {
+  /** Parent node type; table paragraphs receive 'table'. */
+  parentType?: string | null
+  /** Protected literal text, keyed by opaque sentinels. */
+  literals: ReadonlyMap<string, string>
+}
+/** Escape paragraph Markdown in flavor and rule order, before core block-prefix escaping. */
+export type MarkdownParagraphRule = {
+  /** Replace these literal text characters with sentinels during inline rendering. */
+  characters?: string
+  /** Replace only whole sentinels that need escaping; the host restores the rest afterward.
+   * Preserve declared characters, using backslash escapes or HTML entities when needed.
+   * Errors, damaged sentinels, or dropped declared characters abort serialization and saving with the flavor id.
+   */
+  escape: (source: string, ctx: MarkdownParagraphRuleContext) => string
+}
 /** Composable parser contributions. Declare descriptors on Addon.flavors for discovery. */
 export type MarkdownFlavor = {
   id: string
@@ -326,6 +370,8 @@ export type MarkdownFlavor = {
   readOnlyWhenDisabled?: boolean
   markedOptions?: { gfm?: boolean; breaks?: boolean }
   richExtensions?: readonly AnyExtension[]
+  /** Rules receive rendered Markdown with declared text characters protected by ctx.literals (sentinel to character), including in tables; preserve node markup. */
+  paragraphRules?: readonly MarkdownParagraphRule[]
   /** Verbatim flavors require source editing. Literal fallback is for semantic syntax only. */
   preservation?: SourcePreservation & { fallback: 'source' | 'literal' }
   /** Opt in only when top-level blocks serialize independently with standard blank-line joining.
@@ -572,6 +618,9 @@ export type SettingsApi = {
 
 /** APIs available while your renderer addon is enabled. Registrations are removed when it stops. */
 export type AddonContext = {
+  /** Same-renderer API exchange for trusted addons; declarations are not a security boundary. */
+  addons: AddonAccessApi
+  exports: AddonExportsApi
   /** OS-wide shortcuts work while Hibi runs, even when another app has focus. */
   globalShortcuts: {
     /** Electron accelerator, such as CommandOrControl+Alt+N. Registration can fail if another app owns it. */

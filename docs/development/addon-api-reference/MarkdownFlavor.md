@@ -2,7 +2,7 @@
 
 # MarkdownFlavor
 
-Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L318)
+Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L362)
 
 Composable parser contributions. Declare descriptors on Addon.flavors for discovery.
 
@@ -21,6 +21,8 @@ type MarkdownFlavor = {
   readOnlyWhenDisabled?: boolean
   markedOptions?: { gfm?: boolean; breaks?: boolean }
   richExtensions?: readonly AnyExtension[]
+  /** Rules receive rendered Markdown with declared text characters protected by ctx.literals (sentinel to character), including in tables; preserve node markup. */
+  paragraphRules?: readonly MarkdownParagraphRule[]
   /** Verbatim flavors require source editing. Literal fallback is for semantic syntax only. */
   preservation?: SourcePreservation & { fallback: 'source' | 'literal' }
   /** Opt in only when top-level blocks serialize independently with standard blank-line joining.
@@ -55,6 +57,7 @@ type MarkdownFlavor = {
 - [readOnlyWhenDisabled](#readonlywhendisabled)
 - [markedOptions](#markedoptions)
 - [richExtensions](#richextensions)
+- [paragraphRules](#paragraphrules)
 - [preservation](#preservation)
 - [serialization](#serialization)
 - [export](#export)
@@ -67,7 +70,7 @@ type MarkdownFlavor = {
 
 ### id
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L319)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L363)
 
 ```typescript
 id: string
@@ -75,7 +78,7 @@ id: string
 
 ### name
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L320)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L364)
 
 ```typescript
 name: string
@@ -83,7 +86,7 @@ name: string
 
 ### kind
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L321)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L365)
 
 ```typescript
 kind: 'dialect' | 'syntax'
@@ -91,7 +94,7 @@ kind: 'dialect' | 'syntax'
 
 ### description
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L322)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L366)
 
 ```typescript
 description: string
@@ -99,7 +102,7 @@ description: string
 
 ### readOnlyWhenDisabled
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L326)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L370)
 
 False when disabled syntax has a lossless built-in fallback, such as a code fence.
 
@@ -109,7 +112,7 @@ readOnlyWhenDisabled?: boolean
 
 ### markedOptions
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L327)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L371)
 
 ```typescript
 markedOptions?: { gfm?: boolean; breaks?: boolean }
@@ -117,15 +120,27 @@ markedOptions?: { gfm?: boolean; breaks?: boolean }
 
 ### richExtensions
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L328)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L372)
 
 ```typescript
 richExtensions?: readonly AnyExtension[]
 ```
 
+### paragraphRules
+
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L374)
+
+Rules receive rendered Markdown with declared text characters protected by ctx.literals (sentinel to character), including in tables; preserve node markup.
+
+```typescript
+paragraphRules?: readonly MarkdownParagraphRule[]
+```
+
+Related: [MarkdownParagraphRule](MarkdownParagraphRule.md).
+
 ### preservation
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L330)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L376)
 
 Verbatim flavors require source editing. Literal fallback is for semantic syntax only.
 
@@ -137,7 +152,7 @@ Related: [SourcePreservation](SourcePreservation.md).
 
 ### serialization
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L335)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L381)
 
 Opt in only when top-level blocks serialize independently with standard blank-line joining.
 Cache context includes index, the previous block, and document attributes.
@@ -149,7 +164,7 @@ serialization?: 'block-local'
 
 ### export
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L337)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L383)
 
 Static exports run the same syntax parsers; their HTML is sanitized by the site.
 
@@ -172,7 +187,7 @@ Related: [RenderedMarkdown](RenderedMarkdown.md).
 
 ### detect
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L324)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L368)
 
 Content detection is a hint, not proof of the author's intended dialect.
 
@@ -190,4 +205,4 @@ detect: (source: string) => boolean
 
 ## Related types
 
-[SourcePreservation](SourcePreservation.md), [RenderedMarkdown](RenderedMarkdown.md).
+[MarkdownParagraphRule](MarkdownParagraphRule.md), [SourcePreservation](SourcePreservation.md), [RenderedMarkdown](RenderedMarkdown.md).
