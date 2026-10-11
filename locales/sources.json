@@ -1218,6 +1218,9 @@
   "77fbde96f850": [
     "src/main/analysis.ts"
   ],
+  "cb580f6fe5b1": [
+    "src/renderer/src/AddonSettings.tsx"
+  ],
   "655907890730": [
     "src/addons/frontmatter/Properties.tsx"
   ],
@@ -1719,6 +1722,7 @@
     "src/renderer/src/FormatsSettings.tsx"
   ],
   "2d7d416b811d": [
+    "src/renderer/src/AddonSettings.tsx",
     "src/renderer/src/addons.ts"
   ],
   "649633032c95": [
@@ -3878,6 +3882,12 @@
   "0c776ceb4592": [
     "src/renderer/src/SourceEditor.tsx"
   ],
+  "5179cc21efa5": [
+    "src/renderer/src/AddonSettings.tsx"
+  ],
+  "c2b325e2cb9e": [
+    "src/renderer/src/AddonSettings.tsx"
+  ],
   "0026c5053478": [
     "src/addons/ui-preview/index.tsx"
   ],
@@ -4428,6 +4438,9 @@
   ],
   "361acbbafb8f": [
     "src/addons/vim/index.ts"
+  ],
+  "bd5c5df390e4": [
+    "src/renderer/src/addons.ts"
   ],
   "5d04fcd66b47": [
     "src/main/workspace.ts"
@@ -6021,6 +6034,9 @@
   "3853dee11967": [
     "src/renderer/src/markdown-syntax.ts"
   ],
+  "b2fe97e14407": [
+    "src/renderer/src/addons.ts"
+  ],
   "7f659c8c45d8": [
     "src/addons/frontmatter/Properties.tsx"
   ],
@@ -6030,6 +6046,9 @@
   "e544c8790998": [
     "src/renderer/src/AddonSettings.tsx",
     "src/renderer/src/SettingsScreen.tsx"
+  ],
+  "158a1820acbb": [
+    "src/renderer/src/addons.ts"
   ],
   "6fd89f885213": [
     "src/renderer/src/NotificationSettings.tsx"

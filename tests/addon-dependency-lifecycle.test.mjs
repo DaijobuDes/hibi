@@ -434,6 +434,7 @@ test('optional readiness settles when a pending consumer loses its required prov
       },
       `export default () => ({ start(context) {
         window.pendingConsumerStarted = true;
+        window.pendingConsumerVersion = context.addons.get('fixture-provider').version;
         context.exports.provide({version:1});
       } });`,
     ],
@@ -442,10 +443,16 @@ test('optional readiness settles when a pending consumer loses its required prov
       {
         activation: 'command',
         commands: [{ id: 'probe', label: 'Provider probe' }],
+        name: 'Pending provider',
       },
-      `export default () => ({ async start() {
-        await new Promise(resolve => { window.failPendingProvider = resolve; });
-        throw new Error('Fixture dependency startup failed');
+      `export default () => ({ async start(context) {
+        window.pendingProviderAttempts = (window.pendingProviderAttempts || 0) + 1;
+        if (window.pendingProviderAttempts === 1) {
+          await new Promise(resolve => { window.failPendingProvider = resolve; });
+          throw new Error('Fixture dependency startup failed');
+        }
+        await new Promise(resolve => { window.releasePendingProviderRetry = resolve; });
+        context.exports.provide({version:1});
       } });`,
     ],
   ]) {
@@ -490,6 +497,35 @@ test('optional readiness settles when a pending consumer loses its required prov
     await page.evaluate(() => window.pendingConsumerStarted),
     undefined,
   )
+
+  await clickMenu(app, 'Settings')
+  await page.getByRole('tab', { name: /^addon manager$/i }).click()
+  const consumer = page.locator('#addon-fixture-command-consumer')
+  const row = page.locator('.setting-row').filter({ has: consumer })
+  await row
+    .getByText('Could not start Pending provider', { exact: true })
+    .waitFor()
+  const retry = row.getByRole('button', { name: /^retry pending provider$/i })
+  assert.equal(await retry.count(), 1)
+  assert.equal(await consumer.isChecked(), true)
+  assert.equal(await page.locator('#addon-fixture-provider').isChecked(), true)
+  await retry.click()
+  await page.waitForFunction(() => !!window.releasePendingProviderRetry)
+  assert.equal(
+    await page.evaluate(() => window.pendingConsumerStarted),
+    undefined,
+  )
+  await page.evaluate(() => window.releasePendingProviderRetry())
+  await page.waitForFunction(() => window.pendingConsumerStarted)
+  assert.equal(await page.evaluate(() => window.pendingProviderAttempts), 2)
+  assert.equal(await page.evaluate(() => window.pendingConsumerVersion), 1)
+  await row
+    .getByText('Could not start Pending provider', { exact: true })
+    .waitFor({ state: 'hidden' })
+  const saved = JSON.parse(await readFile(join(profile, 'addons.json'), 'utf8'))
+  assert.equal(saved['fixture-provider'], true)
+  assert.equal(saved['fixture-command-consumer'], true)
+  assert.equal(saved['fixture-requester'], true)
 })
 
 test('a background consumer does not make its source-activated provider block rich editing', {
