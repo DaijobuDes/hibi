@@ -314,11 +314,16 @@ export type MarkdownProjection = {
   serialize: (content: string) => string
   readOnly?: boolean
 }
-/** Transform rendered paragraph Markdown after core escaping, in flavor and rule order. */
-export type MarkdownParagraphRule = (
-  source: string,
-  ctx: RenderContext,
-) => string
+/** Escape paragraph Markdown in flavor and rule order, before core block-prefix escaping. */
+export type MarkdownParagraphRule = {
+  /** Replace these literal text characters with sentinels during inline rendering. */
+  characters?: string
+  /** Replace only sentinels that need escaping; the host restores the rest afterward. */
+  escape: (
+    source: string,
+    ctx: RenderContext & { literals: ReadonlyMap<string, string> },
+  ) => string
+}
 /** Composable parser contributions. Declare descriptors on Addon.flavors for discovery. */
 export type MarkdownFlavor = {
   id: string
@@ -331,7 +336,7 @@ export type MarkdownFlavor = {
   readOnlyWhenDisabled?: boolean
   markedOptions?: { gfm?: boolean; breaks?: boolean }
   richExtensions?: readonly AnyExtension[]
-  /** Additional paragraph escaping, including inside tables. Preserve inline markup. */
+  /** Rules receive rendered Markdown with declared text characters protected by ctx.literals (sentinel to character), including in tables; preserve node markup. */
   paragraphRules?: readonly MarkdownParagraphRule[]
   /** Verbatim flavors require source editing. Literal fallback is for semantic syntax only. */
   preservation?: SourcePreservation & { fallback: 'source' | 'literal' }
