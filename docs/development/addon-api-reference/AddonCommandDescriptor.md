@@ -2,7 +2,7 @@
 
 # AddonCommandDescriptor
 
-Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L106)
+Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L108)
 
 <details>
 <summary>Declaration</summary>
@@ -35,7 +35,7 @@ type AddonCommandDescriptor = {
 
 ### id
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L107)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L109)
 
 ```typescript
 id: string
@@ -43,7 +43,7 @@ id: string
 
 ### label
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L108)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L110)
 
 ```typescript
 label: string
@@ -51,7 +51,7 @@ label: string
 
 ### keywords
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L109)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L111)
 
 ```typescript
 keywords?: string
@@ -59,7 +59,7 @@ keywords?: string
 
 ### defaultShortcut
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L111)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L113)
 
 Hibi in-app shortcut syntax; mod maps to Command on macOS and Control elsewhere.
 
@@ -69,7 +69,7 @@ defaultShortcut?: string
 
 ### menu
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L113)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L115)
 
 Show this command in a built-in menu.
 

@@ -22,6 +22,8 @@ For installed packages, use the [SideloadFactory](SideloadFactory.md) and the [s
 - [AddonSyntaxDescriptor](AddonSyntaxDescriptor.md)
 - [AddonView](AddonView.md)
 - [AddonViewProps](AddonViewProps.md)
+- [AddonWindowHandle](AddonWindowHandle.md)
+- [AddonWindowProps](AddonWindowProps.md)
 - [CommandMenuContribution](CommandMenuContribution.md)
 - [compatibleAddonManifest](compatibleAddonManifest.md)
 - [defineAddon](defineAddon.md)
@@ -88,6 +90,10 @@ For installed packages, use the [SideloadFactory](SideloadFactory.md) and the [s
 - [WorkspaceChangeEvent](WorkspaceChangeEvent.md)
 - [WorkspaceId](WorkspaceId.md)
 - [WorkspaceTarget](WorkspaceTarget.md)
+
+## Addon windows
+
+- [AddonWindowOptions](AddonWindowOptions.md)
 
 ## Sideloading
 
