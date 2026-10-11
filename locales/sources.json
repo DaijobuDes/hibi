@@ -2002,6 +2002,9 @@
   "cd533847a0a4": [
     "src/renderer/src/AddonPanel.tsx"
   ],
+  "b2ec5f521746": [
+    "src/shared/hotkeys.ts"
+  ],
   "384706288140": [
     "src/renderer/src/SettingsScreen.tsx"
   ],
@@ -3236,6 +3239,9 @@
   "48a7ae24583b": [
     "src/renderer/src/ImportDialog.tsx"
   ],
+  "b52d8596aa3f": [
+    "src/renderer/src/addons.ts"
+  ],
   "29c10407db3a": [
     "src/renderer/src/AddonSettings.tsx"
   ],
@@ -3280,6 +3286,9 @@
   ],
   "b54029154628": [
     "src/site/bootstrap.tsx"
+  ],
+  "dafff0444fbc": [
+    "src/renderer/src/main.tsx"
   ],
   "b3e34b185d06": [
     "src/main/workspace.ts",

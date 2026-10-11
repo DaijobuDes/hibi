@@ -224,9 +224,19 @@ function App() {
     },
     [toasts],
   )
+  const openUpdates = useRef(() => {})
   const setNotice = useCallback(
-    (message: string) => {
-      if (message) toasts.show({ message })
+    (message: string, target?: 'updates') => {
+      if (message)
+        toasts.show({
+          message,
+          ...(target === 'updates' && {
+            action: {
+              label: 'Open update settings',
+              run: () => openUpdates.current(),
+            },
+          }),
+        })
     },
     [toasts],
   )
@@ -821,6 +831,8 @@ function App() {
       captureCommandContext: captureAddonCommandContext,
       isCommandContextCurrent: isAddonCommandContextCurrent,
       openDependencySettings: () => openSetting('dependencies'),
+      openAddonSettings: (id) =>
+        openSetting('addons', id ? `addon-${id}` : undefined),
       openSidebar: selectSidebarView,
       closeSidebar: (side) => {
         if (side === 'right') {
@@ -1159,6 +1171,7 @@ function App() {
     setSettingTarget(id ?? null)
     if (sidebarResize.overlay) setSettingsSidebarOpen(false)
   }
+  openUpdates.current = () => openSetting('hibi', 'install-update')
 
   function openFind() {
     if (!markdownDocument && mode === 'normal') setMode('side-by-side')
@@ -1958,6 +1971,13 @@ function App() {
       case 'settings':
         toggleSettings()
         break
+      case 'focus-notifications': {
+        const live = window.document.querySelectorAll(
+          '.sonner .toast:not([data-closing="true"])',
+        )
+        live[live.length - 1]?.querySelector('button')?.focus()
+        break
+      }
       case 'normal':
       case 'side-by-side':
       case 'markdown':

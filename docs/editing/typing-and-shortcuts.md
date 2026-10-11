@@ -10,6 +10,7 @@ Letter shortcuts and punctuation on letter keys follow your active keyboard layo
 | --- | --- |
 | `Cmd/Ctrl+K` | Search commands and settings |
 | `Cmd/Ctrl+F` | Find text in the current note |
+| `Cmd/Ctrl+Shift+N` | Focus the newest notification |
 | `Cmd/Ctrl+/` | Show or hide the sidebar |
 | `Cmd/Ctrl+N` | New note |
 | `Cmd/Ctrl+O` | Open a file |

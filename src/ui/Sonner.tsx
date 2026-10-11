@@ -12,7 +12,7 @@ import {
 } from 'react'
 import { createPortal } from 'react-dom'
 import { sentenceCase } from '../shared/ui-case'
-import { IconButton } from './Controls'
+import { Button, IconButton } from './Controls'
 import {
   createToastService,
   defaultToastPreferences,
@@ -75,6 +75,17 @@ export function Sonner() {
     service.snapshot,
   )
   const element = useRef<HTMLElement>(null)
+  // Escape and finished actions return focus to where keyboard users came from.
+  const returnFocus = useRef<Element | null>(null)
+  const restoreFocus = () => {
+    const previous = returnFocus.current
+    if (
+      element.current?.contains(document.activeElement) &&
+      previous instanceof HTMLElement &&
+      previous.isConnected
+    )
+      previous.focus()
+  }
   // biome-ignore lint/correctness/useExhaustiveDependencies: changing the portal container creates a new popover element.
   useLayoutEffect(() => {
     const node = element.current
@@ -89,6 +100,10 @@ export function Sonner() {
       className="sonner"
       data-position={preferences.position}
       aria-label="Notifications"
+      onFocus={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget))
+          returnFocus.current = event.relatedTarget
+      }}
     >
       {items.map((item) => {
         const Icon =
@@ -97,12 +112,30 @@ export function Sonner() {
             : item.variant === 'success'
               ? Check
               : Info
+        const message = sentenceCase(item.message)
         return (
+          // biome-ignore lint/a11y/noStaticElementInteractions: the action button gives keyboard users the same target as clicking the notification.
           <div
             key={item.id}
             className="toast"
             data-closing={item.closing}
             data-variant={item.variant ?? 'info'}
+            data-action={!!item.action}
+            onClick={
+              item.action
+                ? () => {
+                    service.select(item.id)
+                    restoreFocus()
+                  }
+                : undefined
+            }
+            onKeyDown={(event) => {
+              if (event.key !== 'Escape') return
+              event.preventDefault()
+              event.stopPropagation()
+              service.dismiss(item.id)
+              restoreFocus()
+            }}
             onPointerEnter={() => service.pause(item.id, 'hover', true)}
             onPointerLeave={() => service.pause(item.id, 'hover', false)}
             onFocusCapture={() => service.pause(item.id, 'focus', true)}
@@ -117,14 +150,27 @@ export function Sonner() {
               role={item.variant === 'error' ? 'alert' : 'status'}
               aria-atomic="true"
             >
-              <span>{sentenceCase(item.message)}</span>
+              <span>{message}</span>
               {item.description && <p>{sentenceCase(item.description)}</p>}
+              {item.action && (
+                <Button
+                  variant="ghost"
+                  className="toast-action"
+                  aria-label={`${/[.!?…]$/.test(message) ? message : `${message}.`} ${sentenceCase(item.action.label)}.`}
+                >
+                  {sentenceCase(item.action.label)}
+                </Button>
+              )}
             </div>
             <IconButton
               aria-label={
                 item.variant === 'error' ? 'Dismiss error' : 'Dismiss notice'
               }
-              onClick={() => service.dismiss(item.id)}
+              onClick={(event) => {
+                event.stopPropagation()
+                service.dismiss(item.id)
+                restoreFocus()
+              }}
             >
               <X aria-hidden="true" />
             </IconButton>
