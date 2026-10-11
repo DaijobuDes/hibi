@@ -1,4 +1,11 @@
-import { BookOpen, Download, Globe, LocateFixed, SearchX } from 'lucide-react'
+import {
+  BookOpen,
+  BookPlus,
+  Download,
+  Globe,
+  LocateFixed,
+  SearchX,
+} from 'lucide-react'
 import {
   type KeyboardEvent,
   type ReactNode,
@@ -9,6 +16,7 @@ import {
 import type { ViewTarget } from '../../shared/foundation-contracts'
 import type { AddonContext } from '../api'
 import { Button, IconButton, Panel, PanelMessage, TextInput } from '../ui'
+import { addCustomWord } from './custom-words'
 import { detectLangs, type LookupTarget, matchCase } from './lookup'
 import type {
   DictionaryFailure,
@@ -86,7 +94,11 @@ function Credit({ sources }: { sources: readonly Source[] }) {
   ]
   return (
     <p className="dictionary-source">
-      {unique.map((source) => `${source.name} · ${source.license}`).join('; ')}
+      {unique
+        .map((source) =>
+          [source.name, source.license].filter(Boolean).join(' · '),
+        )
+        .join('; ')}
     </p>
   )
 }
@@ -191,7 +203,7 @@ export function SideView({
   }
   const missing = (
     gathered: Gathered<unknown>,
-    { emptyText: none }: { emptyText: string },
+    { emptyText: none, add = false }: { emptyText: string; add?: boolean },
   ) => {
     if (gathered.found.length) return null
     const failure = gathered.failure && failures[gathered.failure]
@@ -223,6 +235,24 @@ export function SideView({
           )}
           {failure && gathered.failure !== 'denied' && (
             <Button onClick={() => setAttempt(attempt + 1)}>Try again</Button>
+          )}
+          {add && word && (
+            <Button
+              onClick={() =>
+                addCustomWord({ word })
+                  .then(() => setAttempt((count) => count + 1))
+                  .catch((error) =>
+                    context.notify(
+                      error instanceof Error
+                        ? error.message
+                        : 'Could not save custom words.',
+                    ),
+                  )
+              }
+            >
+              <BookPlus size={14} aria-hidden="true" />
+              Add to dictionary
+            </Button>
           )}
         </div>
       </div>
@@ -290,6 +320,7 @@ export function SideView({
           <Section title="Definition">
             {missing(value.definitions, {
               emptyText: 'No definition found.',
+              add: true,
             }) ??
               value.definitions.found.map(({ lang, value: items }) => (
                 <div key={lang} className="dictionary-side-language">

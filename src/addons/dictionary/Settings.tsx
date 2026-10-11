@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Select, SettingRow, Toggle } from '../ui'
+import { CustomWords } from './CustomWords'
 import { type LanguagePreferences, latinLangs } from './lookup'
 import { PackSettings } from './PackSettings'
 import { languageNames, readPreferences, writePreferences } from './settings'
@@ -119,6 +120,7 @@ export function Settings() {
           }
         />
       </SettingRow>
+      <CustomWords />
       <PackSettings />
     </>
   )
