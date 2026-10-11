@@ -48,6 +48,12 @@ export async function packDirectory(root: string, value: unknown) {
   if (await exists(path)) await directory(path)
   return path
 }
+async function recoverPrevious(path: string, previous: string) {
+  if (!(await exists(previous))) return
+  await directory(previous)
+  if (!(await exists(path))) await rename(previous, path)
+  else await rm(previous, { recursive: true })
+}
 async function regularFile(path: string, maxBytes: number) {
   const info = await lstat(path)
   if (
@@ -118,11 +124,7 @@ export class PackStore {
           await rm(scratch, { recursive: true })
         }
         const previous = join(base, `.previous-${id}`)
-        if (await exists(previous)) {
-          await directory(previous)
-          if (!(await exists(path))) await rename(previous, path)
-          else await rm(previous, { recursive: true })
-        }
+        await recoverPrevious(path, previous)
       })().catch((error) => {
         this.recovered.delete(id)
         throw error
@@ -216,12 +218,13 @@ export class PackStore {
     state: PackState,
   ) {
     const path = await this.recover(id)
-    state.manifest = (await exists(path))
-      ? await manifestAt(path, id).catch(() => null)
-      : null
     const base = await directory(this.root)
     const scratch = join(base, `.install-${id}`)
     const previous = join(base, `.previous-${id}`)
+    await recoverPrevious(path, previous)
+    state.manifest = (await exists(path))
+      ? await manifestAt(path, id).catch(() => null)
+      : null
     if (await exists(scratch)) {
       await directory(scratch)
       await rm(scratch, { recursive: true })
@@ -310,6 +313,7 @@ export class PackStore {
         throw error
       }
       this.verified.delete(id)
+      state.manifest = manifest
       if (await exists(previous)) await rm(previous, { recursive: true })
       this.progress.delete(id)
     } finally {
@@ -338,7 +342,16 @@ export class PackStore {
     try {
       const path = await this.recover(id)
       await this.worker.unload()
-      if (await exists(path)) await rm(path, { recursive: true })
+      const base = await directory(this.root)
+      for (const candidate of [
+        join(base, `.previous-${id}`),
+        join(base, `.install-${id}`),
+        path,
+      ]) {
+        if (!(await exists(candidate))) continue
+        await directory(candidate)
+        await rm(candidate, { recursive: true })
+      }
       this.verified.delete(id)
       this.progress.delete(id)
     } finally {

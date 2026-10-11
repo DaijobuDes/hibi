@@ -436,6 +436,49 @@ test('interrupted update recovery is shared by concurrent lists and lookups', as
   await committed.close()
 })
 
+test('stale backup after recovery cannot resurrect uninstall or block update retry', async (t) => {
+  const ctx = await setup(t)
+  await install(ctx.store, 'zh')
+  assert.equal((await ctx.store.lookup('zh', '猫')).length, 2)
+  const previous = join(ctx.root, '.previous-zh')
+  async function staleBackup() {
+    await mkdir(previous)
+    for (const name of ['manifest.json', 'data.jsonl', 'index.json'])
+      await writeFile(
+        join(previous, name),
+        await readFile(join(ctx.root, 'zh', name)),
+      )
+  }
+  await staleBackup()
+  await mkdir(join(ctx.root, '.install-zh'))
+  await writeFile(join(ctx.root, '.install-zh', 'source-0'), 'partial update')
+  await ctx.store.uninstall('zh')
+  assert.deepEqual(await readdir(ctx.root), [])
+  const reopened = new PackStore(ctx.root, pathToFileURL(worker), () => {
+    throw new Error('network forbidden')
+  })
+  t.after(() => reopened.close())
+  await state(reopened, 'zh', 'absent')
+  assert.deepEqual(await reopened.lookup('zh', '猫'), [])
+  assert.deepEqual(await readdir(ctx.root), [])
+  await reopened.close()
+
+  const first = await install(ctx.store, 'zh')
+  await staleBackup()
+  const updated = gzipSync(
+    (await fixture('zh.txt')).toString().replace('/cat (', '/kitten ('),
+  )
+  ctx.fetch(async () => response(updated))
+  const second = await install(ctx.store, 'zh')
+  assert.notEqual(second.manifest.data.sha256, first.manifest.data.sha256)
+  assert.match(
+    (await ctx.store.lookup('zh', '猫'))[0].meanings[0].definitions[0]
+      .definition,
+    /^kitten/,
+  )
+  assert.deepEqual(await readdir(ctx.root), ['zh'])
+})
+
 test('unsafe ids and symlink root, pack, staging and installed files never access target', async (t) => {
   const ctx = await setup(t)
   for (const id of [
