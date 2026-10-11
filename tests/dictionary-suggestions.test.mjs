@@ -88,6 +88,9 @@ test('suggestions skip commands, code, links, and urls', () => {
     assert.equal(prefixAt(before, ''), null, before)
   assert.equal(prefixAt('```\ncode\n```\nhap', ''), 'hap')
   assert.equal(prefixAt('`code` and hap', ''), 'hap')
+  assert.equal(prefixAt('``a`b`` and hap', ''), 'hap')
+  assert.equal(prefixAt('use \\` for hap', ''), 'hap')
+  assert.equal(prefixAt('``a`b and hap', ''), null)
 })
 
 test('suggestions rank match quality, then language order, then length', () => {
