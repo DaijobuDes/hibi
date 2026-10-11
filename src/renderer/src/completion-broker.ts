@@ -127,7 +127,8 @@ function validItems(items: readonly CompletionItem[], length: number) {
       item.from > item.to ||
       (item.detail !== undefined &&
         (typeof item.detail !== 'string' || item.detail.length > 512)) ||
-      (item.rank !== undefined && !Number.isFinite(item.rank))
+      (item.rank !== undefined && !Number.isFinite(item.rank)) ||
+      (item.acceptOnTab !== undefined && typeof item.acceptOnTab !== 'boolean')
     )
       continue
     result.push(
@@ -138,6 +139,7 @@ function validItems(items: readonly CompletionItem[], length: number) {
         from: item.from,
         to: item.to,
         rank: Math.max(-100, Math.min(100, item.rank ?? 0)),
+        ...(item.acceptOnTab === false ? { acceptOnTab: false } : {}),
       }),
     )
   }

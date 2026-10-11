@@ -22,6 +22,8 @@ export interface CompletionItem {
   readonly from: number
   readonly to: number
   readonly rank?: number
+  /** False leaves Tab to the editor; Enter still accepts. Defaults to true. */
+  readonly acceptOnTab?: boolean
 }
 
 export type CompletionProvider = (

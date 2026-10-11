@@ -7,6 +7,7 @@ import {
   closeCompletion,
   completionStatus,
   pickedCompletion,
+  selectedCompletion,
   startCompletion,
 } from '@codemirror/autocomplete'
 import { defaultKeymap, isolateHistory, selectAll } from '@codemirror/commands'
@@ -666,6 +667,7 @@ export function SourceEditor({
       pending.cancel?.()
       for (const resolve of pending.waiting.splice(0)) resolve(null)
     }
+    const keepTab = new WeakSet<Completion>()
     const resultFor = (pending: PendingCompletion): CompletionResult => ({
       from: pending.request.selection.head,
       to: pending.request.selection.head,
@@ -717,6 +719,7 @@ export function SourceEditor({
           },
         }
         pending.options.set(item, option)
+        if (item.acceptOnTab === false) keepTab.add(option)
         return option
       }),
     })
@@ -844,7 +847,17 @@ export function SourceEditor({
           language.of(markdown()),
           sourceAnnotationExtension,
           autocompletion({ override: [sourceCompletions] }),
-          keymap.of([{ key: 'Tab', run: acceptCompletion }]),
+          keymap.of([
+            {
+              key: 'Tab',
+              run: (view) => {
+                const option = selectedCompletion(view.state)
+                return (
+                  !(option && keepTab.has(option)) && acceptCompletion(view)
+                )
+              },
+            },
+          ]),
           EditorView.domEventHandlers({
             beforeinput(event) {
               if (

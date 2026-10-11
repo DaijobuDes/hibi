@@ -1067,7 +1067,11 @@ export function MarkdownEditor({
           event.stopPropagation()
           return
         }
-        if (event.key === 'Enter' || event.key === 'Tab') {
+        if (
+          event.key === 'Enter' ||
+          (event.key === 'Tab' &&
+            visible.items[selected]?.acceptOnTab !== false)
+        ) {
           accept(selected)
           event.preventDefault()
           event.stopPropagation()
