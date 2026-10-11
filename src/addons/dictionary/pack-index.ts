@@ -375,6 +375,7 @@ export class PackIndex {
         limit >= 1 &&
         limit <= PACK_LIMITS.results,
     )
+    prefix = prefix.normalize('NFC')
     if (!prefix) return []
     return this.using(id, directory, (loaded) => {
       const keys = loaded.normalized?.keys ?? loaded.keys
@@ -426,6 +427,7 @@ export class PackIndex {
   ): Promise<PackEntry[]> {
     validateId(id)
     requireValid(text(word, PACK_LIMITS.key))
+    word = word.normalize('NFC')
     if (!word.length) return []
     return this.using(id, directory, (loaded) => this.entries(loaded, word))
   }

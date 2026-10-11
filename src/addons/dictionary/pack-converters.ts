@@ -39,8 +39,8 @@ function entry(
   if (!word || !meanings.some((m) => m.definitions.length))
     throw new Error('dictionary record has no word or definitions')
   return {
-    word,
-    keys: unique([word, ...keys]),
+    word: word.normalize('NFC'),
+    keys: unique([word, ...keys].map((key) => key.normalize('NFC'))),
     meanings,
     ...(readings ? { readings } : {}),
     synonyms: unique(meanings.flatMap((m) => m.synonyms)),

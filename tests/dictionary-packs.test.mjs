@@ -576,6 +576,14 @@ test('manifest rejects altered provenance, counts, timestamps and hashes; lookup
     id: 'zh',
     word: '猫',
   })
+  for (const [id, word] of [
+    ['fr', 'école'],
+    ['ja', 'が'],
+  ])
+    assert.deepEqual(lookupInput({ id, word: word.normalize('NFD') }), {
+      id,
+      word,
+    })
   for (const value of [
     null,
     { id: 'zh', word: '' },

@@ -139,7 +139,7 @@ export function lookupInput(value: unknown): { id: PackId; word: string } {
     /\p{Cc}/u.test(word)
   )
     throw new Error('Choose a word of 128 characters or fewer.')
-  return { id: packId(id), word: word.trim() }
+  return { id: packId(id), word: word.trim().normalize('NFC') }
 }
 export function validateManifest(value: unknown, id: PackId): PackManifest {
   const item = value as PackManifest | null
