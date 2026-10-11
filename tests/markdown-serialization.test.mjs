@@ -10,7 +10,10 @@ import { EditorState } from '@tiptap/pm/state'
 import { StarterKit } from '@tiptap/starter-kit'
 import { markdownConfiguration } from '../src/renderer/src/markdown.ts'
 import { markdownSerializer } from '../src/renderer/src/markdown-serialization.ts'
-import { preserveRichSource } from '../src/renderer/src/rich-source-preservation.ts'
+import {
+  preserveRichSource,
+  sameRichSourceDocument,
+} from '../src/renderer/src/rich-source-preservation.ts'
 
 const extensions = [
   StarterKit.configure({ trailingNode: false }),
@@ -310,6 +313,61 @@ test('source preservation caps distinct candidate parses including failures', ()
     )
     assert.equal(result, null)
     assert.equal(parses, 8)
+  }
+})
+
+test('fenced preview spelling caches never mask semantic or custom-grammar changes', () => {
+  const names = ['typstBlock', 'mermaidBlock', 'customBlock']
+  const schema = getSchema([
+    StarterKit,
+    ...names.map((name) =>
+      Node.create({
+        name,
+        group: 'block',
+        atom: true,
+        addAttributes: () => ({
+          source: { default: '' },
+          raw: { default: '' },
+          semantic: { default: '' },
+        }),
+      }),
+    ),
+  ])
+  const document = (name, attrs, marks = []) =>
+    schema.nodes.doc.create(null, [
+      schema.nodes.paragraph.create(null, schema.text('untouched')),
+      schema.nodes[name].create(attrs, null, marks),
+    ])
+  for (const name of names) {
+    const expected = document(name, { source: 'new', raw: 'old fence' })
+    const parsed = document(name, { source: 'new', raw: 'new fence' })
+    assert.equal(sameRichSourceDocument(parsed, expected, false), false)
+    assert.equal(
+      sameRichSourceDocument(parsed, expected, true),
+      name !== 'customBlock',
+    )
+    assert.equal(
+      sameRichSourceDocument(parsed, document(name, { source: 'new' }), true),
+      name !== 'customBlock',
+      'newly inserted previews have an empty spelling cache',
+    )
+    for (const different of [
+      document(name, { source: 'other', raw: 'new fence' }),
+      document(name, { source: 'new', raw: 'new fence', semantic: 'changed' }),
+      document(name, { source: 'new', raw: 'new fence' }, [
+        schema.marks.bold.create(),
+      ]),
+      document(name === 'typstBlock' ? 'mermaidBlock' : 'typstBlock', {
+        source: 'new',
+        raw: 'new fence',
+      }),
+      schema.nodes.doc.create(null, [
+        schema.nodes.paragraph.create(null, schema.text('changed')),
+        parsed.lastChild,
+      ]),
+      schema.nodes.doc.create(null, [parsed.lastChild]),
+    ])
+      assert.equal(sameRichSourceDocument(different, expected, true), false)
   }
 })
 

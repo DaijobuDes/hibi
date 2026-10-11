@@ -105,7 +105,10 @@ import { outlineHeadingAt } from './outline-position'
 import { createPlainSourceSync } from './plain-source-sync'
 import { observeRichAnnotations } from './rich-annotations'
 import { createRichParagraphProof } from './rich-paragraph-proof'
-import { preserveRichSource } from './rich-source-preservation'
+import {
+  preserveRichSource,
+  sameRichSourceDocument,
+} from './rich-source-preservation'
 import {
   richSourceEcho,
   richSourceSession,
@@ -1452,6 +1455,19 @@ export function MarkdownEditor({
       setRichInputError('')
       return accepted
     }
+    const builtInGrammar =
+      richSyntaxCompatible &&
+      flavors.every((flavor) =>
+        flavorRegistry
+          .snapshot()
+          .some(
+            (entry) =>
+              entry === flavor &&
+              addonRegistry.origin(entry.addonId) === 'built-in',
+          ),
+      )
+    const matchesDocument = (parsed: RichNode | null, document: RichNode) =>
+      sameRichSourceDocument(parsed, document, builtInGrammar)
     let parses = 0
     const parse = (source: string) => {
       if (parses >= 8) return null
@@ -1523,24 +1539,24 @@ export function MarkdownEditor({
           cached?.source === original && cached.document === editor.state.doc
             ? cached.document
             : parse(original)
-        if (baseline?.eq(editor.state.doc))
+        if (matchesDocument(baseline, editor.state.doc))
           provenSources.current.set(editor, {
             source: original,
             document: editor.state.doc,
           })
-        const patched = baseline?.eq(editor.state.doc)
+        const patched = matchesDocument(baseline, editor.state.doc)
           ? preserveRichSource(
               original,
               before,
               body,
-              (candidate) => parse(candidate)?.eq(nextState.doc) ?? false,
+              (candidate) => matchesDocument(parse(candidate), nextState.doc),
               8 - parses,
             )
           : null
         if (patched === null) {
           if (
             !(editor.state.selection instanceof AllSelection) ||
-            !parse(body)?.eq(nextState.doc)
+            !matchesDocument(parse(body), nextState.doc)
           )
             throw new Error(
               'This edit would rewrite other Markdown. Use Source view for this document.',

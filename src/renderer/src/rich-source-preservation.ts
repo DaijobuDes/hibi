@@ -1,3 +1,32 @@
+import type { Node } from '@tiptap/pm/model'
+
+/** Built-in fenced previews cache spelling in raw; source carries their meaning. */
+export function sameRichSourceDocument(
+  parsed: Node | null,
+  expected: Node,
+  builtInGrammar: boolean,
+): boolean {
+  if (!parsed) return false
+  if (parsed.eq(expected)) return true
+  if (!builtInGrammar) return false
+  const attrs =
+    expected.type.name === 'typstBlock' || expected.type.name === 'mermaidBlock'
+      ? { ...expected.attrs, raw: parsed.attrs.raw }
+      : expected.attrs
+  if (
+    !parsed.hasMarkup(expected.type, attrs, expected.marks) ||
+    parsed.text !== expected.text ||
+    parsed.childCount !== expected.childCount
+  )
+    return false
+  for (let index = 0; index < parsed.childCount; index++)
+    if (
+      !sameRichSourceDocument(parsed.child(index), expected.child(index), true)
+    )
+      return false
+  return true
+}
+
 /** Apply a rich edit to the original Markdown only when parsing proves it. */
 export function preserveRichSource(
   original: string,
