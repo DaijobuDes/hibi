@@ -166,10 +166,11 @@ test('rich codec attachments invalidate plain certificates and source outline as
   // The codec still serializes every block; the source proof keeps untouched bytes.
   const encoded =
     '# title\n\n&#115;teady words\n\n&#109;iddle words\n\n&#104;ellos'
+  const changed = initial.replace('hello', '&#104;ellos')
   await waitForAsync(
     page,
     async (expected) => (await window.hibi.getDocument()).markdown === expected,
-    `${initial}s`,
+    changed,
   )
   assert.equal(
     await page.evaluate(() => {
@@ -180,7 +181,7 @@ test('rich codec attachments invalidate plain certificates and source outline as
   )
   await clickMenu(app, 'Save')
   await waitForAsync(page, async () => !(await window.hibi.getDocument()).dirty)
-  assert.equal(await readFile(file, 'utf8'), `${initial}s`)
+  assert.equal(await readFile(file, 'utf8'), changed)
   // Native save completion precedes the renderer's busy/command cleanup.
   await page.waitForFunction(
     () =>
@@ -200,7 +201,7 @@ test('rich codec attachments invalidate plain certificates and source outline as
   await waitForAsync(
     page,
     async (expected) => (await window.hibi.getDocument()).markdown === expected,
-    `${initial}s`,
+    changed,
   )
 
   await page.getByRole('button', { name: /^source view$/i }).click()
@@ -243,6 +244,6 @@ test('rich codec attachments invalidate plain certificates and source outline as
   await waitForAsync(
     page,
     async (expected) => (await window.hibi.getDocument()).markdown === expected,
-    `${initial}sx`,
+    `${changed}x`,
   )
 })
