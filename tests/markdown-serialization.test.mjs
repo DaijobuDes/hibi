@@ -2,7 +2,13 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { Extension, getSchema, Mark, Node } from '@tiptap/core'
 import { Image } from '@tiptap/extension-image'
-import { TableKit } from '@tiptap/extension-table'
+import {
+  Table,
+  TableCell,
+  TableHeader,
+  TableKit,
+  TableRow,
+} from '@tiptap/extension-table'
 import { TaskItem } from '@tiptap/extension-task-item'
 import { TaskList } from '@tiptap/extension-task-list'
 import { MarkdownManager } from '@tiptap/markdown'
@@ -203,6 +209,86 @@ test('paragraph masking skips code marks and verbatim node output', () => {
     )
 })
 
+test('paragraph rule failures name the flavor and abort serialization', async (t) => {
+  const thrown = new Error('broken rule')
+  for (const [name, transform] of [
+    [
+      'throw',
+      () => {
+        throw thrown
+      },
+    ],
+    ['non-string', () => undefined],
+    [
+      'drop sentinel',
+      (source, { literals }) =>
+        source.replaceAll(literals.keys().next().value, ''),
+    ],
+    ['damage sentinel', (source) => source.replaceAll('\uE001', '')],
+  ]) {
+    await t.test(name, () => {
+      const { core, parser, options } = markdownConfiguration([
+        { id: 'first', paragraphRules: [{ escape: (source) => source }] },
+        {
+          id: 'broken.flavor',
+          paragraphRules: [{ characters: '$', escape: transform }],
+        },
+      ])
+      const schema = getSchema(core)
+      const manager = new MarkdownManager({
+        extensions: core,
+        marked: parser,
+        markedOptions: options,
+      })
+      const doc = schema.nodeFromJSON(manager.parse('a \\$ b'))
+      for (const blockLocal of [true, false])
+        assert.throws(
+          () => markdownSerializer(manager, blockLocal)(doc),
+          (error) => {
+            assert.match(error.message, /broken\.flavor/)
+            if (name === 'throw') assert.equal(error.cause, thrown)
+            return true
+          },
+        )
+    })
+  }
+})
+
+test('paragraph sentinels survive digit rules and support escaped replacements', () => {
+  const { core, parser, options } = markdownConfiguration([
+    {
+      id: 'digits',
+      paragraphRules: [
+        { characters: '$!', escape: (source) => source.replace(/\d/g, '#') },
+        {
+          escape(source, { literals }) {
+            for (const [sentinel, character] of literals)
+              if (character === '!')
+                source = source.replaceAll(sentinel, '&#33;')
+            return source
+          },
+        },
+      ],
+    },
+  ])
+  const schema = getSchema(core)
+  const manager = new MarkdownManager({
+    extensions: core,
+    marked: parser,
+    markedOptions: options,
+  })
+  const doc = schema.nodeFromJSON(manager.parse('a \\$5 ! b'))
+  for (const blockLocal of [true, false]) {
+    const source = markdownSerializer(manager, blockLocal)(doc).source
+    assert.equal(source, 'a $# &#33; b')
+    assert.doesNotMatch(source, /[\uE000-\uF8FF]/)
+    assert.equal(
+      schema.nodeFromJSON(manager.parse(source)).textContent,
+      'a $# ! b',
+    )
+  }
+})
+
 test('paragraph masking skips serialization and copying when no text needs protection', () => {
   const renderParagraph = paragraphEscaper(new Marked(), [
     {
@@ -394,6 +480,77 @@ test('table headers and cells skip block escapes while retaining flavor rules', 
     assert.ok(schema.nodeFromJSON(manager.parse(saved)).eq(doc))
   }
   assert.deepEqual(parents, Array(16).fill('table'))
+})
+
+test('multi-paragraph table headers and cells apply declared-character rules', async (t) => {
+  for (const [name, richExtensions] of [
+    ['kit', [TableKit]],
+    ['individual', [Table, TableRow, TableHeader, TableCell]],
+    [
+      'nested',
+      [
+        Extension.create({
+          name: 'tables',
+          addExtensions: () => [TableKit.extend({})],
+        }),
+      ],
+    ],
+  ]) {
+    await t.test(name, () => {
+      const parents = []
+      const { core, addons, parser, options } = markdownConfiguration([
+        {
+          markedOptions: { gfm: true },
+          richExtensions,
+          paragraphRules: [
+            {
+              characters: '$',
+              escape(source, { parentType, literals }) {
+                parents.push(parentType)
+                for (const [sentinel, character] of literals)
+                  source = source.replaceAll(sentinel, `\\${character}`)
+                return source
+              },
+            },
+          ],
+        },
+      ])
+      const extensions = [...core, ...addons]
+      const schema = getSchema(extensions)
+      const manager = new MarkdownManager({
+        extensions,
+        marked: parser,
+        markedOptions: options,
+      })
+      const doc = schema.nodeFromJSON({
+        type: 'doc',
+        content: [
+          {
+            type: 'table',
+            content: ['tableHeader', 'tableCell'].map((type) => ({
+              type: 'tableRow',
+              content: [
+                {
+                  type,
+                  content: ['$x$', '    # y'].map((text) => ({
+                    type: 'paragraph',
+                    content: [{ type: 'text', text }],
+                  })),
+                },
+              ],
+            })),
+          },
+        ],
+      })
+      const cell = '\\$x\\$<br># y'
+      const expected = `\n| ${cell} |\n| ${'-'.repeat(cell.length)} |\n| ${cell} |\n`
+      for (const blockLocal of [true, false]) {
+        const saved = markdownSerializer(manager, blockLocal)(doc).source
+        assert.equal(saved, expected)
+      }
+      assert.deepEqual(parents, Array(8).fill('table'))
+    })
+  }
 })
 
 test('leading indentation remains paragraph text through numeric entities', async (t) => {
