@@ -195,8 +195,8 @@ import {
   updateWorkspaceText,
 } from './workspace-files'
 import {
-  moveTableLayout,
   readTableLayout,
+  renameWithTableLayout,
   writeTableLayout,
 } from './workspace-layout'
 import {
@@ -2035,19 +2035,20 @@ if (!app.requestSingleInstanceLock()) {
         runFileOperation(event, async () => {
           const previous = getDocumentPath()
           const pending = getDocument().ephemeral
-          const renamed = await renameDocument(name)
-          if (previous !== getDocumentPath()) {
+          const root = workspaceRoot()
+          const renamed = await renameWithTableLayout(
+            () => renameDocument(name),
+            () =>
+              pending || previous === getDocumentPath()
+                ? null
+                : [
+                    root,
+                    workspaceRelativePath(previous),
+                    workspaceRelativePath(getDocumentPath()),
+                  ],
+          )
+          if (previous !== getDocumentPath())
             await documentFileChanged(previous, getDocumentPath(), !pending)
-            const [root, from, to] = [
-              workspaceRoot(),
-              workspaceRelativePath(previous),
-              workspaceRelativePath(getDocumentPath()),
-            ]
-            if (root && from && to && !pending)
-              await moveTableLayout(root, from, to).catch((error: unknown) =>
-                console.error('table layout rename failed:', error),
-              )
-          }
           return renamed
         }),
       )

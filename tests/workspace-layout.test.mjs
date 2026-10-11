@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict'
 import {
+  lstat,
   mkdir,
   mkdtemp,
   readFile,
+  rename,
   rm,
   stat,
   symlink,
@@ -22,13 +24,24 @@ const bundle = await build({
   packages: 'external',
   write: false,
 })
-const module = { exports: {} }
-new Function('module', 'exports', 'require', bundle.outputFiles[0].text)(
-  module,
-  module.exports,
-  createRequire(import.meta.url),
-)
-const { moveTableLayout, readTableLayout, writeTableLayout } = module.exports
+const require = createRequire(import.meta.url)
+/** A fresh module, optionally with node:fs/promises functions replaced. */
+function load(fs) {
+  const module = { exports: {} }
+  new Function('module', 'exports', 'require', bundle.outputFiles[0].text)(
+    module,
+    module.exports,
+    (id) =>
+      fs && id === 'node:fs/promises' ? { ...require(id), ...fs } : require(id),
+  )
+  return module.exports
+}
+const { readTableLayout, renameWithTableLayout, writeTableLayout } = load()
+const move = (root, from, to) =>
+  renameWithTableLayout(
+    () => rename(join(root, from), join(root, to)),
+    () => [root, from, to],
+  )
 
 const table = (key, columns = [120, 0], rows = null) => ({
   key,
@@ -83,8 +96,9 @@ test('table layout follows renames and moves inside the workspace', async (t) =>
   const root = await workspace(t)
   await writeTableLayout(root, 'a.md', [table('0:a')])
   await writeTableLayout(root, 'notes/b.md', [table('0:b')])
-  await moveTableLayout(root, 'a.md', 'renamed.md')
-  await moveTableLayout(root, 'notes', 'archive/notes')
+  await mkdir(join(root, 'archive'))
+  await move(root, 'a.md', 'renamed.md')
+  await move(root, 'notes', 'archive/notes')
   assert.deepEqual(Object.keys((await stored(root)).documents).sort(), [
     'archive/notes/b.md',
     'renamed.md',
@@ -207,4 +221,47 @@ test('table layout recovers from an oversized file', async (t) => {
     documents: { 'a.md': { tables: [table('0:a')] } },
   })
   assert.equal(console.warn.mock.callCount(), 2)
+})
+
+test('pruning waits for a rename to move its sizes', async (t) => {
+  const root = await workspace(t)
+  await writeTableLayout(root, 'a.md', [table('0:a')])
+  await writeTableLayout(root, 'notes/b.md', [table('0:b')])
+  let reached
+  let release
+  const pruning = new Promise((resolve) => {
+    reached = resolve
+  })
+  const gate = new Promise((resolve) => {
+    release = resolve
+  })
+  const racing = load({
+    lstat: async (path, ...rest) => {
+      if (path === join(root, 'a.md')) {
+        reached()
+        await gate
+      }
+      return lstat(path, ...rest)
+    },
+  })
+  const writing = racing.writeTableLayout(root, 'notes/b.md', [
+    table('0:b', [200]),
+  ])
+  await pruning
+  let started = false
+  const renaming = racing.renameWithTableLayout(
+    () => {
+      started = true
+      return rename(join(root, 'a.md'), join(root, 'renamed.md'))
+    },
+    () => [root, 'a.md', 'renamed.md'],
+  )
+  await new Promise(setImmediate)
+  assert.equal(started, false)
+  release()
+  await Promise.all([writing, renaming])
+  assert.deepEqual(await readTableLayout(root, 'renamed.md'), [table('0:a')])
+  assert.deepEqual(await readTableLayout(root, 'notes/b.md'), [
+    table('0:b', [200]),
+  ])
 })

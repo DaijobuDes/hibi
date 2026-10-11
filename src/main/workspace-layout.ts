@@ -81,27 +81,27 @@ function serial<T>(task: () => Promise<T>): Promise<T> {
   return next
 }
 
-async function update(
+async function replace(
   root: string,
   change: (layout: Layout) => boolean | Promise<boolean>,
   keep?: string,
 ) {
-  return serial(async () => {
-    const layout = await readLayout(root)
-    if (!(await change(layout))) return
-    let text = `${JSON.stringify(layout, null, 2)}\n`
-    // Keep the file readable: drop the least recently written documents first.
-    for (const path of Object.keys(layout.documents)) {
-      if (Buffer.byteLength(text) <= WORKSPACE_LAYOUT_LIMIT) break
-      if (path === keep) continue
-      delete layout.documents[path]
-      text = `${JSON.stringify(layout, null, 2)}\n`
-    }
-    if (Buffer.byteLength(text) > WORKSPACE_LAYOUT_LIMIT)
-      throw new Error('These table sizes are too large to save.')
-    await writeWorkspaceText(root, WORKSPACE_LAYOUT, text)
-  })
+  const layout = await readLayout(root)
+  if (!(await change(layout))) return
+  let text = `${JSON.stringify(layout, null, 2)}\n`
+  // Keep the file readable: drop the least recently written documents first.
+  for (const path of Object.keys(layout.documents)) {
+    if (Buffer.byteLength(text) <= WORKSPACE_LAYOUT_LIMIT) break
+    if (path === keep) continue
+    delete layout.documents[path]
+    text = `${JSON.stringify(layout, null, 2)}\n`
+  }
+  if (Buffer.byteLength(text) > WORKSPACE_LAYOUT_LIMIT)
+    throw new Error('These table sizes are too large to save.')
+  await writeWorkspaceText(root, WORKSPACE_LAYOUT, text)
 }
+const update = (...args: Parameters<typeof replace>) =>
+  serial(() => replace(...args))
 
 const exists = (path: string) =>
   lstat(path).then(
@@ -129,46 +129,62 @@ export async function writeTableLayout(
   const tables = validateTableLayout(input).filter(
     (table) => table.columns?.some(Boolean) || table.rows?.some(Boolean),
   )
-  await update(root, async (layout) => {
-    let changed = false
-    for (const entry of Object.keys(layout.documents))
-      if (entry !== path && !(await exists(join(root, entry)))) {
-        delete layout.documents[entry]
-        changed = true
-      }
-    if (
-      JSON.stringify(layout.documents[path]?.tables ?? []) ===
-      JSON.stringify(tables)
-    )
-      return changed
-    // Re-inserting moves the document last, so key order is write recency.
-    delete layout.documents[path]
-    if (tables.length) layout.documents[path] = { tables }
-    return true
-  }, path)
+  await update(
+    root,
+    async (layout) => {
+      let changed = false
+      for (const entry of Object.keys(layout.documents))
+        if (entry !== path && !(await exists(join(root, entry)))) {
+          delete layout.documents[entry]
+          changed = true
+        }
+      if (
+        JSON.stringify(layout.documents[path]?.tables ?? []) ===
+        JSON.stringify(tables)
+      )
+        return changed
+      // Re-inserting moves the document last, so key order is write recency.
+      delete layout.documents[path]
+      if (tables.length) layout.documents[path] = { tables }
+      return true
+    },
+    path,
+  )
 }
 
-/** Follow a file or folder rename inside the workspace. */
-export async function moveTableLayout(
-  root: string,
-  from: string,
-  to: string,
-): Promise<void> {
-  if (!documentPath(from) || !documentPath(to)) return
-  await update(root, (layout) => {
-    let changed = false
-    for (const [path, entry] of Object.entries(layout.documents)) {
-      const target =
-        path === from
-          ? to
-          : path.startsWith(`${from}/`)
-            ? to + path.slice(from.length)
-            : null
-      if (!target) continue
-      delete layout.documents[path]
-      layout.documents[target] = entry
-      changed = true
-    }
-    return changed
+/**
+ * Rename inside the layout queue, then move the sizes of the renamed file or
+ * folder, so pruning never sees the new name before its sizes follow it.
+ * `moved` returns workspace-relative paths, or null when nothing moved.
+ */
+export function renameWithTableLayout<T>(
+  rename: () => Promise<T>,
+  moved: (
+    result: T,
+  ) => [root: string | null, from: string | null, to: string | null] | null,
+): Promise<T> {
+  return serial(async () => {
+    const result = await rename()
+    const [root, from, to] = moved(result) ?? []
+    if (root && from && to && documentPath(from) && documentPath(to))
+      await replace(root, (layout) => {
+        let changed = false
+        for (const [path, entry] of Object.entries(layout.documents)) {
+          const target =
+            path === from
+              ? to
+              : path.startsWith(`${from}/`)
+                ? to + path.slice(from.length)
+                : null
+          if (!target) continue
+          delete layout.documents[path]
+          layout.documents[target] = entry
+          changed = true
+        }
+        return changed
+      }).catch((error: unknown) =>
+        console.error('table layout rename failed:', error),
+      )
+    return result
   })
 }
