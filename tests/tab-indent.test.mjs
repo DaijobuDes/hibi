@@ -96,6 +96,26 @@ test('Tab indents source and code, keeps lists and tables, and Escape then Tab l
   assert.deepEqual(await richState(), { text: 'ab', from: 1, to: 1 })
   assert.equal(await focusIn('.tiptap'), true)
 
+  // Each Tab is its own undo step, apart from typing.
+  const undone = async (text) => {
+    await page.keyboard.press('ControlOrMeta+z')
+    await waitForAsync(
+      page,
+      (text) =>
+        document.querySelector('.tiptap').editor.state.doc.textContent === text,
+      text,
+    )
+  }
+  await setRich('<p>base</p>', 5)
+  await page.keyboard.type('x')
+  await page.keyboard.press('Tab')
+  await undone('basex')
+  await page.keyboard.press('Tab')
+  await page.keyboard.press('Tab')
+  await undone('basex\t')
+  await undone('basex')
+  await undone('base')
+
   // Rich code blocks indent at the caret or across selected lines.
   await setRich('<pre><code>x\ny</code></pre>', 1)
   await page.keyboard.press('Tab')

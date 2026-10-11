@@ -142,7 +142,9 @@ export const TabIndent = Extension.create({
         if (outdent || !/\S/.test(line ?? '')) return true
         tr.insertText('\t', from, to)
       }
-      if (tr.docChanged) view.dispatch(tr.scrollIntoView())
+      // A UI event is its own undo step, apart from typing and other Tabs.
+      if (tr.docChanged)
+        view.dispatch(tr.setMeta('uiEvent', 'indent').scrollIntoView())
       return true
     }
     return { Tab: press(false), 'Shift-Tab': press(true) }
