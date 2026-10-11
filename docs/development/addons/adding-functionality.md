@@ -167,6 +167,8 @@ await context.editor.registerContextActionProvider((request) => {
 
 Hibi owns the menus and applies accepted edits through its version-checked document edit path as one undo operation. Rich view accepts only exact plain-text ranges that preserve the surrounding Markdown. Invalid ranges and edits from a changed document are rejected. The returned removal functions and addon shutdown cancel pending work and remove visible results.
 
+Completion providers registered with `registerCompletionProvider()` return items with a label, the replacement text, and the editor-local range it replaces. Enter accepts the highlighted item, and so does Tab unless the item sets `acceptOnTab: false`; Tab then reaches the editor's own handling. When no completion list is open, Tab is never taken by completions.
+
 ## Add a system-wide shortcut
 
 Register a command, then assign it an Electron accelerator to run it while Hibi is open, even when another application has focus. The registration returns a removal function. Hibi also removes it when the addon stops. Registration rejects a shortcut already owned by another application.

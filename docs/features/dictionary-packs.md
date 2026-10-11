@@ -8,6 +8,8 @@ Leave Hibi open while the pack downloads and prepares. Progress appears beside t
 
 Once installed, place the cursor in a word or select it, then run **Define word** or **Find synonyms**. Hibi checks installed packs first. If they contain an answer, the lookup needs no network request. If they do not, Hibi may offer an online lookup through its usual permission prompt.
 
+Installed packs also power the dictionary side view while it follows the cursor, and optional word suggestions as you type. Neither sends anything online. See the [addon guide](../../src/addons/dictionary/README.md#side-view) for both.
+
 Definitions and readings are more complete than thesaurus data for Chinese and Japanese. Filipino and French use the synonyms and antonyms available in Wiktionary.
 
 Choose **Update** to download the latest source again. The old pack stays installed until its replacement is ready, including when a download fails or is canceled. Update regularly for source corrections. **Uninstall** removes the pack; disabling the addon keeps installed packs for later.

@@ -6,6 +6,30 @@ Place the cursor in a word or select a word or phrase, then choose **Define word
 
 **Define word** shows each part of speech with numbered definitions and an example when one is available. **Find synonyms** shows synonyms and antonyms. Choose one of these words to replace the word you looked up. A capitalized word stays capitalized, and one undo restores the original. Press Escape to close the results and return to your document. Each result names its source and license.
 
+## Side view
+
+Run **Open dictionary side view** from the command palette, or choose **Dictionary** in the sidebar picker, to keep a word's details beside your document. The view opens on the right side of the window.
+
+While **Follow the cursor** is on, the view shows the word at the cursor shortly after the cursor stops moving. It has three sections:
+
+- **Definition** lists each part of speech with numbered definitions, examples, and readings for Chinese and Japanese words.
+- **Thesaurus** lists synonyms and antonyms. Choose one to replace the word in your document. A capitalized word stays capitalized, and one undo restores the original.
+- **By meaning** groups synonyms under each definition when a word has more than one meaning with synonyms.
+
+Each section names its source and license. Use the arrow keys to move between words in a list, and press Enter to choose one. Long lists show **Show all** to reveal the rest.
+
+Following the cursor uses installed offline packs and answers already fetched during this session only. It never sends a word online. When nothing local answers, choose **Look up online** to ask the online services, or install the offline pack it suggests for that language.
+
+Type any word in **Look up a word** and press Enter to look it up, online if needed. A searched word stays in the view until you press Escape in the search field or turn **Follow the cursor** back on. Choosing a word in search results looks that word up instead of changing your document.
+
+## Suggestions as you type
+
+Turn on **Suggest words as you type** in the addon's settings to see word completions from installed offline packs while you type. Suggestions appear in the editor's completion list after you type three letters of a word in Latin letters. They use your preferred language first, then the other installed Latin-letter packs. Chinese and Japanese text is not completed because it has no spaces to mark where a word starts.
+
+Press Enter to insert the highlighted suggestion, or Escape to dismiss the list. **Accept suggestions with Tab** is on by default, so Tab also inserts the highlighted suggestion. When no suggestions are showing, Tab works as it normally does in the editor. Turn the setting off to keep Tab for the editor even while suggestions are showing.
+
+Suggestions never send anything online. They work in the formatted editor and in Source view. In the formatted editor, suggestions are offered in top-level paragraphs and headings but not inside lists, quotes, or tables.
+
 ## Languages
 
 Hibi chooses the language from the word's script. Words with kana are looked up in Japanese. Words written only in Chinese characters use the language chosen under **Settings → Dictionary and thesaurus → Words in Chinese characters**, then the other Chinese-character languages. Words in Latin letters use the language chosen under **Words in Latin letters**, then English, Filipino, and French. When the Wiktionary page for a word has entries in several of these languages, **Define word** shows all of them, the first language that has an entry on top, without sending another request. Korean and other scripts are not supported yet.
@@ -22,6 +46,8 @@ Hibi sends nothing while you type. When you run a lookup that no installed offli
 - **Find synonyms** sends English words to the [Datamuse API](https://www.datamuse.com/api/) at `api.datamuse.com`, once for synonyms and once for antonyms.
 
 Only the word is sent, never the rest of your document. Hibi may ask you to allow each request. Answers are kept in memory until the addon is disabled or Hibi closes, so looking up the same word again does not send another request. Datamuse says it keeps a log of queries until the end of the day and then discards it.
+
+The side view and suggestions never send a word on their own. Only **Look up online** and the side view's search field ask the online services, and they use the same permission prompts.
 
 ## Services and limits
 
