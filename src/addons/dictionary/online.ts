@@ -173,9 +173,11 @@ export function wiktionaryProvider(getText: GetText): DictionaryProvider {
     kind: 'online',
     languages: ['en', 'zh', 'yue', 'ja', 'tl', 'fr', 'de'],
     async lookup(term, lang, signal, cachedOnly) {
-      // Page titles are case-sensitive; a capital is usually sentence case.
+      // German noun capitalization can distinguish an entry from its lowercase form.
       const lower = term.toLowerCase()
-      for (const title of lower === term ? [term] : [lower, term]) {
+      const titles =
+        lower === term ? [term] : lang === 'de' ? [term, lower] : [lower, term]
+      for (const title of titles) {
         if (cachedOnly && !page.has(title)) continue
         stopIfAborted(signal)
         const sections = await page(title)

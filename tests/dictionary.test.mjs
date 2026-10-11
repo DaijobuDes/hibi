@@ -214,6 +214,52 @@ test('dictionary keeps German preferences and recent pack language', (t) => {
   assert.deepEqual(readPreferences(), preferences)
 })
 
+test('german online lookup preserves noun capitalization before lowercase fallback', async () => {
+  const requests = []
+  const wiktionary = wiktionaryProvider(async ({ url }) => {
+    const title = decodeURIComponent(url.split('/').at(-1))
+    requests.push(title)
+    if (title === 'Schön')
+      return { ok: false, code: 'http-status', status: 404 }
+    return {
+      ok: true,
+      value: {
+        text: JSON.stringify({
+          de: [
+            {
+              partOfSpeech: title === 'Haus' ? 'Noun' : 'Verb',
+              definitions: [
+                {
+                  definition:
+                    title === 'Haus'
+                      ? 'house'
+                      : title === 'haus'
+                        ? 'imperative of hausen'
+                        : 'beautiful',
+                },
+              ],
+            },
+          ],
+        }),
+      },
+    }
+  })
+  assert.equal(
+    (await wiktionary.lookup('Haus', 'de', signal))[0].senses[0].gloss,
+    'house',
+  )
+  assert.deepEqual(requests, ['Haus'])
+  assert.equal(
+    (await wiktionary.lookup('haus', 'de', signal))[0].senses[0].gloss,
+    'imperative of hausen',
+  )
+  assert.equal(
+    (await wiktionary.lookup('Schön', 'de', signal))[0].senses[0].gloss,
+    'beautiful',
+  )
+  assert.deepEqual(requests, ['Haus', 'haus', 'Schön', 'schön'])
+})
+
 test('dictionary German and English share a fetched Wiktionary page', async () => {
   const requests = []
   const happy = await fixture('wiktionary-happy.json')
