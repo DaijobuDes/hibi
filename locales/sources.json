@@ -462,6 +462,9 @@
   "c96cbbddcd15": [
     "src/main/workspace-metadata.ts"
   ],
+  "ad83a00f609f": [
+    "src/addons/dictionary/settings.ts"
+  ],
   "eb27a06d869e": [
     "src/addons/quick-note/manifest.ts"
   ],
@@ -531,6 +534,9 @@
   ],
   "7346030400bf": [
     "src/renderer/src/FormattingToolbar.tsx"
+  ],
+  "b0a8813027b8": [
+    "src/addons/dictionary/settings.ts"
   ],
   "2f75b64ac916": [
     "src/addons/ui-preview/index.tsx"
@@ -1746,6 +1752,9 @@
   "2578179d1779": [
     "src/addons/mcp-server/Settings.tsx"
   ],
+  "ba118bf7fc9c": [
+    "src/addons/dictionary/settings.ts"
+  ],
   "1eb30d44ddfa": [
     "src/addons/git/native.ts"
   ],
@@ -1906,6 +1915,9 @@
   "5e43497ec5da": [
     "src/main/workspace-files.ts"
   ],
+  "e8a6062c5c37": [
+    "src/addons/dictionary/settings.ts"
+  ],
   "379c501e44a3": [
     "src/renderer/src/AddonSettings.tsx"
   ],
@@ -2047,6 +2059,9 @@
   ],
   "372c2a56b79b": [
     "src/addons/diagnostics/Settings.tsx"
+  ],
+  "7458199fe97a": [
+    "src/addons/dictionary/settings.ts"
   ],
   "323d638f6497": [
     "src/addons/frontmatter/index.ts",
@@ -2631,6 +2646,9 @@
     "src/renderer/src/FormattingToolbar.tsx",
     "src/renderer/src/markdown-syntax.ts"
   ],
+  "be4ee906d3ef": [
+    "src/addons/dictionary/settings.ts"
+  ],
   "895e7564fa79": [
     "src/renderer/src/HibiSettings.tsx"
   ],
@@ -2779,6 +2797,9 @@
     "src/addons/dictionary/index.tsx"
   ],
   "50edf5185a89": [
+    "src/addons/dictionary/index.tsx"
+  ],
+  "c857005ffa81": [
     "src/addons/dictionary/index.tsx"
   ],
   "9f4024faec10": [
@@ -3182,6 +3203,9 @@
   "ee6f9df95bd1": [
     "src/addons/dictionary/index.tsx"
   ],
+  "a4d29779d024": [
+    "src/addons/dictionary/index.tsx"
+  ],
   "b1a1e8e3cf7c": [
     "src/addons/diagnostics/Settings.tsx"
   ],
@@ -3461,6 +3485,9 @@
   ],
   "771cbda3796a": [
     "src/addons/review/index.tsx"
+  ],
+  "4a356689b984": [
+    "src/addons/dictionary/index.tsx"
   ],
   "fdb600f6535a": [
     "src/renderer/src/FlavorPicker.tsx"
@@ -4662,6 +4689,9 @@
   ],
   "602cad822b0c": [
     "src/main/document.ts"
+  ],
+  "7936a209d09a": [
+    "src/addons/dictionary/index.tsx"
   ],
   "68218ba6809b": [
     "src/addons/mcp-server/tools.ts"

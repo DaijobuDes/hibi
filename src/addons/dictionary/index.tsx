@@ -98,6 +98,17 @@ const failures = {
   },
 }
 
+// `message` fields are collected into the UI copy catalog.
+const notices = {
+  noWord: { message: 'Place the cursor in a word or select one word.' },
+  unsupported: {
+    message:
+      'Lookups support English, Chinese, Cantonese, Japanese, Filipino, and French.',
+  },
+  noPacks: { message: 'Offline packs are not available yet.' },
+  changed: { message: 'The document changed. Look up the word again.' },
+}
+
 function Words({
   label,
   words,
@@ -352,15 +363,13 @@ export default defineAddon({
     ) {
       const found = await target(invocation)
       if (!found) {
-        context.notify('Place the cursor in a word or select one word.')
+        context.notify(notices.noWord.message)
         return
       }
       const { word } = found
       const langs = detectLangs(word, readPreferences())
       if (!langs.length) {
-        context.notify(
-          'Lookups support English, Chinese, Cantonese, Japanese, Filipino, and French.',
-        )
+        context.notify(notices.unsupported.message)
         found.focus()
         return
       }
@@ -389,15 +398,13 @@ export default defineAddon({
               close(null)
               void context.commands
                 .execute(INSTALL_PACK_COMMAND)
-                .catch(() =>
-                  context.notify('Offline packs are not available yet.'),
-                )
+                .catch(() => context.notify(notices.noPacks.message))
             }}
           />
         ),
       }).result
       if (choice && !found.replace(matchCase(word, choice)))
-        context.notify('The document changed. Look up the word again.')
+        context.notify(notices.changed.message)
       found.focus()
     }
     context.commands.register({
