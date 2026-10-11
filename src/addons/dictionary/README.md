@@ -21,7 +21,7 @@ Hibi sends nothing while you type. When you run a lookup that no installed offli
 - **Define word** sends the word to [Wiktionary](https://en.wiktionary.org/) through the Wikimedia REST API at `en.wiktionary.org`.
 - **Find synonyms** sends English words to the [Datamuse API](https://www.datamuse.com/api/) at `api.datamuse.com`, once for synonyms and once for antonyms.
 
-Only the word is sent, never the rest of your document. Hibi may ask you to allow each request. Answers are kept in memory until the addon is disabled or Hibi closes, so looking up the same word again does not send another request. Datamuse says it keeps a log of queries until the end of the day and then discards it.
+Only the word is sent, never the rest of your document. The addon manager lists every declared host before enabling. Enabling the addon allows credential-free requests to those public hosts without another prompt. Requests to other hosts, requests with credentials, and hosts resolving to private addresses still require approval. Answers are kept in memory until the addon is disabled or Hibi closes, so looking up the same word again does not send another request. Datamuse says it keeps a log of queries until the end of the day and then discards it.
 
 ## Services and limits
 
@@ -49,7 +49,7 @@ Measured full packs on 12 October 2026; MB below means 1,000,000 bytes. Download
 
 Keep the app open while a pack downloads and prepares. You can cancel either stage. **Update** fetches the current source again and keeps the installed pack until the replacement is ready. **Uninstall** removes that pack's local data. Update regularly to receive corrections, particularly for the daily CC-CEDICT and JMdict sources.
 
-Installed packs are preferred across the candidate languages. A local answer requires no lookup request. If no installed pack has an answer, the online providers may be used through the usual network permission prompt. Pack installation contacts the displayed publishers but never sends the word you are looking up.
+Installed packs are preferred across the candidate languages. A local answer requires no lookup request. If no installed pack has an answer, the online providers may use the declared public hosts without another permission prompt. Pack installation contacts the displayed publishers but never sends the word you are looking up.
 
 English uses WordNet definitions, synonym groups, antonyms, and explicit inflected forms, with conservative suffix matching when the exact form is absent. Chinese pairs connect simplified and traditional headwords; Japanese entries connect kanji spellings and kana readings. Filipino, French, and German also match lowercase headwords. Readings appear with the definitions.
 
