@@ -28,7 +28,7 @@ test('addon manifests require release versions while accepting versioned v1 pack
 
 test('network declarations retain exact public https origins', () => {
   for (const origins of [
-    ['https://example.com'],
+    ['https://example.com', 'https://127.0.0.1.nip.io'],
     Array.from(
       { length: 16 },
       (_, index) => `https://host${index}.example.com`,
