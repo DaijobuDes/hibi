@@ -1186,8 +1186,11 @@ if (!app.requestSingleInstanceLock()) {
           hotkeys,
           workspace: getWorkspace(),
           externalPending: externalFiles.length > 0 || (await workspacePending),
+          // Files named at launch come first; a restored workspace doesn't defer it.
           introduction:
-            app.isPackaged || app.commandLine.hasSwitch('hibi-introduction'),
+            (app.isPackaged ||
+              app.commandLine.hasSwitch('hibi-introduction')) &&
+            externalFiles.length === 0,
         }),
         Promise.all([documentReady, hotkeysReady, workspacePending]),
       )

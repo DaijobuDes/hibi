@@ -149,7 +149,7 @@ export type DesktopApi = {
       hotkeys: Hotkeys
       workspace: WorkspaceState | null
       externalPending: boolean
-      /** Installed builds may show the first-run introduction; development and tests need --hibi-introduction. */
+      /** Installed builds may show the first-run introduction unless launched with files; development and tests need --hibi-introduction. */
       introduction: boolean
     }>
     addons: () => Promise<{

@@ -1229,9 +1229,7 @@ function App() {
           if (active) {
             initialExternalPending.current = externalPending
             setIntroductionOpen(
-              introduction &&
-                !externalPending &&
-                localStorage.getItem('introduction') === 'pending'
+              introduction && localStorage.getItem('introduction') === 'pending'
                 ? 'automatic'
                 : null,
             )

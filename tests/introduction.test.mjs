@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
@@ -265,4 +265,49 @@ test('a file opened from outside closes the automatic introduction and keeps it 
     /# Note/.test((await window.hibi.getDocument()).markdown),
   )
   assert.equal(await stored(page), 'pending')
+})
+
+test('existing profiles skip the introduction and a restored workspace does not defer it', {
+  timeout: 60000,
+}, async (t) => {
+  const existing = await setup(t, 'hibi-introduction-existing-')
+  let { page } = await existing.launch()
+  // Profiles from before the introduction already store a default view.
+  await page.evaluate(() => {
+    localStorage.removeItem('introduction')
+    localStorage.setItem('default-view', 'normal')
+  })
+  ;({ page } = await existing.launch('--hibi-introduction'))
+  await waitForAppState(
+    page,
+    () => !!document.querySelector('.startup-placeholder'),
+  )
+  assert.equal(await stored(page), 'seen')
+  assert.equal(await introduction(page).count(), 0)
+  await existing.close()
+
+  const session = await setup(t, 'hibi-introduction-workspace-')
+  const folder = join(session.temp, 'workspace')
+  await mkdir(folder)
+  await writeFile(join(folder, 'note.md'), '# Note\n')
+  await session.launch()
+  await session.close()
+  await writeFile(
+    join(session.temp, 'profile', 'workspace-settings.json'),
+    JSON.stringify({
+      enabled: false,
+      path: null,
+      startup: 'folder',
+      startupFolder: folder,
+    }),
+  )
+  ;({ page } = await session.launch('--hibi-introduction'))
+  await introduction(page)
+    .getByRole('heading', { name: 'Welcome to Hibi' })
+    .waitFor()
+  await waitForAppState(
+    page,
+    async () => (await window.hibi.getWorkspace())?.name === 'workspace',
+  )
+  assert.equal(await introduction(page).count(), 1)
 })
