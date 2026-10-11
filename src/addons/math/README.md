@@ -16,6 +16,8 @@ Write `$x^2$` for an inline equation. For a centered display block, start a line
 
 Mid-paragraph pairs such as `text $$x$$` and `text $$x$$ more` stay literal text. Switching between source and visual views preserves their original bytes without adding line breaks. Use `$x$` to render math within a paragraph. Hibi uses this content-preserving rule rather than interpreting mid-paragraph double dollars as an equation; rendering can differ from Obsidian and GitHub.
 
+Use `\$x$` or `\$$x$$` to write literal dollar-delimited text. Visual edits keep that text literal when saving; the placement of backslashes can change. Currency such as `$5 and $10` stays unchanged.
+
 You can also insert equations from the toolbar or command palette. Click a rendered equation to edit it.
 
 Choose which math features to use in **Settings → Syntax**.

@@ -1,5 +1,5 @@
 import { Marked, type MarkedExtension } from 'marked'
-import type { MarkdownFlavor } from '../api'
+import type { MarkdownFlavor, MarkdownParagraphRule } from '../api'
 
 export function inlineMath(source: string) {
   const match = /^\$(?!\$)((?:\\.|[^$\n])+?)\$(?!\$)/.exec(source)
@@ -21,6 +21,44 @@ export function blockMath(source: string) {
   if (!match?.[1]?.trim() || match[1].length > 10000) return
   return { type: 'blockMath', raw: match[0], latex: match[1].trim() }
 }
+export const mathParagraphRule: MarkdownParagraphRule = {
+  characters: '$',
+  escape(source, { literals }) {
+    const marker = [...literals].find(([, value]) => value === '$')?.[0]
+    if (!marker || !source.includes(marker)) return source
+    const dollars = new Set<number>()
+    const restored = source.replaceAll(marker, (_, index) => {
+      dollars.add(index - dollars.size * (marker.length - 1))
+      return '$'
+    })
+    const escaped = new Set<number>()
+    let lineStart = 0
+    for (let index = 0; index < restored.length; index++) {
+      if (restored[index] === '\n') lineStart = index + 1
+      if (restored[index] !== '$') continue
+      const block =
+        index - lineStart <= 3 && /^ *$/.test(restored.slice(lineStart, index))
+          ? blockMath(restored.slice(index))
+          : undefined
+      const token = block ?? inlineMath(restored.slice(index))
+      if (token)
+        for (let at = index; at < index + token.raw.length; at++)
+          if (dollars.has(at)) escaped.add(at)
+      // A literal dollar beside an equation delimiter can prevent its parsing.
+      if (
+        dollars.has(index) &&
+        ((restored[index - 1] === '$' && !dollars.has(index - 1)) ||
+          (restored[index + 1] === '$' && !dollars.has(index + 1)))
+      )
+        escaped.add(index)
+    }
+    let occurrence = 0
+    return source.replaceAll(marker, (_, index) =>
+      escaped.has(index - occurrence++ * (marker.length - 1)) ? '\\$' : marker,
+    )
+  },
+}
+
 export const mathTokens: MarkedExtension = {
   extensions: [
     {
@@ -43,6 +81,7 @@ export const mathFlavor: MarkdownFlavor = {
   name: 'Math',
   kind: 'syntax',
   description: 'LaTeX math: $…$ within a line or $$…$$ in a separate block.',
+  paragraphRules: [mathParagraphRule],
   detect(source) {
     if (!source.includes('$')) return false
     let found = false

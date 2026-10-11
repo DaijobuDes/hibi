@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { getSchema } from '@tiptap/core'
 import { BlockMath, InlineMath } from '@tiptap/extension-mathematics'
+import { TableKit } from '@tiptap/extension-table'
 import { MarkdownManager } from '@tiptap/markdown'
 import { Marked } from 'marked'
 import {
@@ -11,6 +12,7 @@ import {
   mathTokens,
 } from '../src/addons/math/syntax.ts'
 import { markdownConfiguration } from '../src/renderer/src/markdown.ts'
+import { markdownSerializer } from '../src/renderer/src/markdown-serialization.ts'
 import { preserveRichSource } from '../src/renderer/src/rich-source-preservation.ts'
 import { markdownSourceParser } from '../src/shared/markdown-source-references.ts'
 
@@ -52,7 +54,7 @@ const fixtures = [
   ['```tex\n$$x$$\n```', 0],
 ]
 
-function mathParser() {
+function mathParser(gfm = false) {
   const extensions = [InlineMath, BlockMath].map((extension) => {
     const syntax = mathTokens.extensions.find(
       ({ name }) => name === extension.name,
@@ -68,8 +70,10 @@ function mathParser() {
   })
   const { parser, options, core, addons } = markdownConfiguration([
     {
+      ...mathFlavor,
       id: 'math.latex',
-      richExtensions: extensions,
+      markedOptions: { gfm },
+      richExtensions: [...extensions, ...(gfm ? [TableKit] : [])],
       export: { extensions: [mathTokens] },
     },
   ])
@@ -151,6 +155,65 @@ test('math paragraphs retain literal text without inserted line breaks', () => {
     assert.equal(doc.firstChild.type.name, 'paragraph', source)
     assert.equal(doc.textContent, source.replace('\\$', '$'), source)
   }
+})
+
+test('full and cached math serialization preserve literal dollars and equations', async (t) => {
+  const parsers = [mathParser(), mathParser(true)]
+  for (const source of [
+    '\\$$x$$',
+    '\\$x$',
+    '$5 and $10',
+    'a \\$ b',
+    'text $$x$$',
+    'text $$x$$ more',
+    '$$x$$ more',
+    'text  \n\\$$x$$',
+    '> \\$$x$$',
+    '- \\$$x$$',
+    '\\# \\$x$',
+    '**\\$x$**',
+    '\\$**x**$',
+    '[\\$x$](https://example.com/$y$)',
+    '`$x$`',
+    '`$x$` and \\$x$',
+    '| \\$x$ | `$y$` |\n| --- | --- |\n| $z$ | $5 and $10 |',
+    '```tex\n$x$\n```',
+    '$x$ and \\$x$',
+    '\\$x$ and $x$',
+    '$x$\\$',
+    '\\$$x$',
+    '$x$ and $5 and $10',
+    '$x+y$ and $$z$$',
+    '$$x$$',
+    '$$\nx+y\n$$',
+    '\uE0000\uE001 \\$x$ \uE000\uE0000\uE001',
+  ]) {
+    await t.test(JSON.stringify(source), () => {
+      for (const { manager, schema } of parsers) {
+        const doc = schema.nodeFromJSON(manager.parse(source))
+        doc.check()
+        for (const blockLocal of [false, true]) {
+          const saved = markdownSerializer(manager, blockLocal)(doc).source
+          assert.ok(schema.nodeFromJSON(manager.parse(saved)).eq(doc), saved)
+          if (source.includes('$5 and $10'))
+            assert.ok(saved.includes('$5 and $10'), saved)
+          if (source.includes('`$x$`'))
+            assert.ok(saved.includes('`$x$`'), saved)
+        }
+      }
+    })
+  }
+})
+
+test('math-disabled serialization leaves dollar signs unchanged', () => {
+  const { core, parser, options } = markdownConfiguration([])
+  const manager = new MarkdownManager({
+    extensions: core,
+    marked: parser,
+    markedOptions: options,
+  })
+  for (const source of ['$x$', '$$x$$', '$5 and $10'])
+    assert.equal(manager.serialize(manager.parse(source)), source)
 })
 
 test('math round-trips preserve bytes through unrelated rich edits', () => {

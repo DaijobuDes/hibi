@@ -310,6 +310,31 @@ test('math source bytes survive source and visual view round trips and saving', 
   await pressShortcut(app, `${mod}+s`)
   await waitForAsync(page, async () => !(await window.hibi.getDocument()).dirty)
   assert.equal(await readFile(file, 'utf8'), original)
+
+  await rich.locator('[data-type="block-math"]').first().click()
+  const dialog = page.getByRole('dialog', { name: /^math$/i, exact: true })
+  await dialog.getByLabel(/^latex$/i, { exact: true }).fill('z+1')
+  await dialog.getByRole('button', { name: /^apply$/i, exact: true }).click()
+  await waitForAsync(page, async () =>
+    (await window.hibi.getDocument()).markdown.includes('z+1'),
+  )
+  await pressShortcut(app, `${mod}+s`)
+  await waitForAsync(page, async () => !(await window.hibi.getDocument()).dirty)
+  const saved = await readFile(file, 'utf8')
+  assert.equal(
+    saved,
+    (await page.evaluate(() => window.hibi.getDocument())).markdown,
+  )
+  await pressShortcut(app, `${mod}+Shift+]`)
+  await page.getByRole('textbox', { name: /markdown editor/i }).waitFor()
+  await pressShortcut(app, `${mod}+Shift+[`)
+  await page.waitForFunction(
+    () => document.querySelectorAll('.tiptap .katex-display').length === 3,
+  )
+  assert.equal(
+    await rich.getByText('$$x$$', { exact: true }).textContent(),
+    '$$x$$',
+  )
 })
 
 test('split focus preserves each file flavor', {
