@@ -39,7 +39,9 @@ for (const math of [false, true]) {
     const folder = await mkdtemp(join(tmpdir(), 'hibi-math-preservation-'))
     const profile = join(folder, 'profile')
     const file = join(folder, 'note.md')
-    const equations = math ? '$x$\n\n$$y$$\n\n$$\nz\n$$\n\n' : ''
+    const equations = math
+      ? `${'day\n\n'.repeat(40)}$x$\n\n$$y$$\n\n$$\nz\n$$\n\n`
+      : ''
     const original = (
       '---\ntitle: "keep"\n---\n\nheading\n=======\n\n***\n\n_em_\n\n' +
       equations +

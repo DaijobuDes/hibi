@@ -24,6 +24,7 @@ export function preserveRichSource(
         )
       : [inserted.replaceAll('\n', eol)]
 
+  const expected = (prefix * original.length) / (before.length || 1)
   for (const width of [32, 16, 8, 4, 3, 2, 1, 0]) {
     const left = before.slice(Math.max(0, prefix - width), prefix)
     const right = before.slice(
@@ -43,19 +44,19 @@ export function preserveRichSource(
     for (const [contextBefore, contextAfter] of contexts) {
       const needle = contextBefore + removed + contextAfter
       if (!needle) continue
-      let count = 0
       for (
         let at = original.indexOf(needle);
-        at !== -1 && count < 32;
+        at !== -1;
         at = original.indexOf(needle, at + 1)
-      ) {
-        count++
+      )
         positions.add(at + contextBefore.length)
-      }
     }
+    const nearest = [...positions]
+      .sort((a, b) => Math.abs(a - expected) - Math.abs(b - expected))
+      .slice(0, 32)
     for (const replacement of replacements) {
       const proven = new Set<string>()
-      for (const from of positions) {
+      for (const from of nearest) {
         const candidate =
           original.slice(0, from) +
           replacement +

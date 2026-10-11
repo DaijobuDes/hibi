@@ -218,6 +218,22 @@ test('rich insertions at normalized delimiters preserve source only with a uniqu
   )
 })
 
+test('normalized delimiter edits find nearby anchors after more than 32 earlier matches', () => {
+  const original = `${'day\n\n'.repeat(40)}_y_\n`
+  const before = schema.nodeFromJSON(manager.parse(original))
+  const state = EditorState.create({ schema, doc: before })
+  const after = state.apply(state.tr.insertText('!', before.content.size - 1)).doc
+  assert.equal(
+    preserveRichSource(
+      original,
+      manager.serialize(before.toJSON()),
+      manager.serialize(after.toJSON()),
+      (candidate) => schema.nodeFromJSON(manager.parse(candidate)).eq(after),
+    ),
+    original.replace('_y_', '_y!_'),
+  )
+})
+
 test('undeclared serializers retain the full-document path and custom document joining', () => {
   let generation = 0
   const CustomDocument = Node.create({
