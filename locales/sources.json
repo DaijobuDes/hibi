@@ -2892,6 +2892,9 @@
   "0c4dc0d6a354": [
     "src/addons/dictionary/SideView.tsx"
   ],
+  "aa14fc2ee020": [
+    "src/addons/dictionary/SideView.tsx"
+  ],
   "21cf16f7bef3": [
     "src/addons/dictionary/SideView.tsx",
     "src/addons/dictionary/index.tsx"
@@ -3160,6 +3163,9 @@
   "283701594ce8": [
     "src/renderer/src/CommandPalette.tsx"
   ],
+  "e790c8d28322": [
+    "src/addons/dictionary/SideView.tsx"
+  ],
   "7930b28a10a9": [
     "src/addons/dictionary/index.tsx"
   ],
@@ -3234,6 +3240,9 @@
   ],
   "1ec3de776207": [
     "src/addons/dictionary/index.tsx"
+  ],
+  "d98449ea4aea": [
+    "src/addons/dictionary/SideView.tsx"
   ],
   "b57d852b14d2": [
     "src/addons/tags/Panel.tsx"
@@ -3956,6 +3965,9 @@
   ],
   "6beb76e49302": [
     "src/main/document.ts"
+  ],
+  "90826115501d": [
+    "src/addons/dictionary/SideView.tsx"
   ],
   "cff651bb978f": [
     "src/main/workspace-files.ts"
