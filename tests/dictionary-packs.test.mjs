@@ -15,14 +15,17 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { pathToFileURL } from 'node:url'
+import { Worker } from 'node:worker_threads'
 import { gzipSync } from 'node:zlib'
 import { build } from 'esbuild'
+import { createOfflineProviders } from '../src/addons/dictionary/offline.ts'
 import {
   lookupInput,
   packId,
   packs,
   validateManifest,
 } from '../src/addons/dictionary/packs.ts'
+import { createRegistry, gather } from '../src/addons/dictionary/providers.ts'
 import { waitForAsync } from './poll.mjs'
 import { zipFiles } from './zip.mjs'
 
@@ -186,6 +189,248 @@ for (const [id, query, word, count] of [
     await reopened.close()
   })
 
+test('installed languages share one cached list, invalidated after install and uninstall', async (t) => {
+  const { store } = await setup(t)
+  const lists = t.mock.method(store, 'list')
+  for (let i = 0; i < 3; i++)
+    assert.deepEqual(
+      await Promise.all(['en', 'tl', 'fr'].map((id) => store.installed(id))),
+      [false, false, false],
+    )
+  assert.equal(lists.mock.callCount(), 1)
+  await install(store, 'en')
+  let before = lists.mock.callCount()
+  for (let i = 0; i < 3; i++) assert.equal(await store.installed('en'), true)
+  assert.equal(lists.mock.callCount(), before + 1)
+  await store.uninstall('en')
+  before = lists.mock.callCount()
+  for (let i = 0; i < 3; i++) assert.equal(await store.installed('en'), false)
+  assert.equal(lists.mock.callCount(), before + 1)
+})
+
+test('offline lookups keep working during another pack download, blocked conversion, cancellation and removal', async (t) => {
+  const ctx = await setup(t)
+  await install(ctx.store, 'en')
+  await ctx.store.close()
+  const blockedWorker = join(buildRoot, 'blocked-worker.mjs')
+  await build({
+    stdin: {
+      contents: `
+        import { parentPort } from 'node:worker_threads'
+        import { PackIndex } from '${new URL('../src/addons/dictionary/pack-index.ts', import.meta.url).pathname}'
+        const index = new PackIndex()
+        let queue = Promise.resolve()
+        parentPort.on('message', job => {
+          queue = queue.then(async () => {
+            if (job.type === 'convert') {
+              parentPort.postMessage({ seq: job.seq, progress: 1 })
+              await new Promise(() => {})
+            }
+            const result = job.type === 'unload'
+              ? await index.unload(job.id)
+              : await index.lookup(job.id, job.directory, job.word)
+            parentPort.postMessage({ seq: job.seq, result })
+          })
+        })
+      `,
+      resolveDir: process.cwd(),
+    },
+    outfile: blockedWorker,
+    bundle: true,
+    platform: 'node',
+    format: 'esm',
+  })
+  let releaseDownload
+  let entered
+  const requested = new Promise((resolve) => {
+    entered = resolve
+  })
+  const store = new PackStore(ctx.root, pathToFileURL(blockedWorker), (url) => {
+    assert.equal(String(url), packs.fr.sources[0].url)
+    entered()
+    return new Promise((resolve) => {
+      releaseDownload = resolve
+    })
+  })
+  t.after(() => store.close())
+  const registry = createRegistry()
+  for (const provider of createOfflineProviders({
+    query(method, input) {
+      if (method === 'packInstalled') return store.installed(input)
+      if (method === 'packLookup') return store.lookup(input.id, input.word)
+      throw new Error('unexpected native query')
+    },
+  }))
+    registry.register(provider)
+  let online = 0
+  registry.register({
+    id: 'online',
+    label: 'online',
+    kind: 'online',
+    languages: ['en', 'tl', 'fr'],
+    async lookup() {
+      online++
+      throw new Error('network forbidden')
+    },
+  })
+  const lookup = async () => {
+    const result = await gather(
+      registry,
+      ['en', 'tl', 'fr'],
+      'lookup',
+      (provider, lang) =>
+        provider.lookup('children', lang, new AbortController().signal),
+    )
+    assert.equal(result.found[0]?.value[0].term, 'child')
+    assert.equal(online, 0)
+  }
+  await store.install('fr')
+  await requested
+  await lookup()
+  releaseDownload(response(payloads.get(packs.fr.sources[0].url)))
+  await waitForAsync({ evaluate: async (check) => check() }, async () =>
+    (await store.list()).some((item) => item.id === 'fr' && item.entries === 1),
+  )
+  await lookup()
+  await store.cancel('fr')
+  await lookup()
+  const reading = lookup()
+  await store.uninstall('fr')
+  await reading
+})
+
+test('worker validates preload and completion messages before index access', async (t) => {
+  const runtime = new Worker(pathToFileURL(worker))
+  t.after(() => runtime.terminate())
+  let seq = 0
+  const ask = (job) =>
+    new Promise((resolve, reject) => {
+      runtime.once('message', resolve)
+      runtime.once('error', reject)
+      runtime.postMessage({ seq: ++seq, ...job })
+    })
+  for (const job of [
+    { type: 'preload', id: '../en', directory: buildRoot },
+    { type: 'preload', id: 'en', directory: '' },
+    {
+      type: 'complete',
+      id: 'en',
+      directory: buildRoot,
+      prefix: 'x'.repeat(129),
+    },
+    {
+      type: 'complete',
+      id: 'en',
+      directory: buildRoot,
+      prefix: 'ch',
+      limit: 33,
+    },
+    {
+      type: 'complete',
+      id: 'en',
+      directory: buildRoot,
+      prefix: 'ch',
+      limit: 1.5,
+    },
+    { type: 'unload', id: '../en' },
+  ])
+    assert.ok((await ask(job)).error)
+  assert.deepEqual(
+    (
+      await ask({
+        type: 'complete',
+        id: 'en',
+        directory: buildRoot,
+        prefix: '',
+      })
+    ).result,
+    [],
+  )
+})
+
+test('completion and preload share verification, bounds and lifecycle guards', async (t) => {
+  const ctx = await setup(t)
+  await install(ctx.store, 'en')
+  await ctx.store.preload('en')
+  assert.ok((await ctx.store.complete('en', 'ch')).includes('children'))
+  assert.equal((await ctx.store.complete('en', 'ch', 1)).length, 1)
+  assert.deepEqual(await ctx.store.complete('en', ' '), [])
+  for (const limit of [0, -1, 33, 1.5, NaN, '8', null])
+    await assert.rejects(ctx.store.complete('en', 'ch', limit), /limit/)
+  for (const prefix of ['x'.repeat(129), 'ch\u0000', null])
+    await assert.rejects(ctx.store.complete('en', prefix), /prefix/)
+  await assert.rejects(ctx.store.preload('../en'))
+  await assert.rejects(ctx.store.complete('../en', 'ch'))
+  const completing = ctx.store.complete('en', 'ch')
+  const preloading = ctx.store.preload('en')
+  await ctx.store.uninstall('en')
+  assert.deepEqual(await completing, [])
+  await preloading
+  assert.deepEqual(await ctx.store.complete('en', 'ch'), [])
+  await install(ctx.store, 'en')
+  const pending = ctx.store.complete('en', 'ch')
+  await ctx.store.close()
+  assert.deepEqual(await pending, [])
+  await assert.rejects(ctx.store.preload('en'), /closed/)
+  await assert.rejects(ctx.store.complete('en', 'ch'), /closed/)
+})
+
+test('idle preload starts once, loads sequentially and close cancels remaining languages', async (t) => {
+  const { store } = await setup(t)
+  const loaded = []
+  let release
+  const held = new Promise((resolve) => {
+    release = resolve
+  })
+  t.mock.method(store, 'installed', async () => true)
+  t.mock.method(store, 'preload', async (id) => {
+    loaded.push(id)
+    await held
+  })
+  store.preloadInstalled(['en', 'zh'])
+  store.preloadInstalled(['en', 'zh'])
+  assert.deepEqual(loaded, [])
+  await new Promise(setImmediate)
+  assert.deepEqual(loaded, ['en'])
+  await new Promise(setImmediate)
+  assert.deepEqual(loaded, ['en'])
+  await store.close()
+  release()
+  await new Promise(setImmediate)
+  assert.deepEqual(loaded, ['en'])
+})
+
+test('idle preload validates, deduplicates and loads only supplied preferred and recent languages', async (t) => {
+  const { store } = await setup(t)
+  const loaded = []
+  t.mock.method(store, 'installed', async () => true)
+  t.mock.method(store, 'preload', async (id) => {
+    loaded.push(id)
+  })
+  for (const input of [undefined, null, 'en', ['../en'], Array(7).fill('en')])
+    assert.throws(() => store.preloadInstalled(input))
+  store.preloadInstalled(['fr', 'ja', 'en', 'fr'])
+  await waitForAsync(
+    { evaluate: async (check) => check() },
+    async () => loaded.length === 3,
+  )
+  assert.deepEqual(loaded, ['fr', 'ja', 'en'])
+  store.preloadInstalled(['zh'])
+  await new Promise(setImmediate)
+  assert.deepEqual(loaded, ['fr', 'ja', 'en'])
+})
+
+test('preload rejects checksum corruption before loading worker index', async (t) => {
+  const { store, root } = await setup(t)
+  await install(store, 'en')
+  const path = join(root, 'en', 'index.json')
+  const bytes = await readFile(path)
+  bytes[0] ^= 1
+  await writeFile(path, bytes)
+  await assert.rejects(store.preload('en'), /checksum/)
+  await assert.rejects(store.complete('en', 'ch'), /checksum/)
+})
+
 test('successful update replaces installed data and evicts loaded lookup cache', async (t) => {
   const ctx = await setup(t)
   const first = await install(ctx.store, 'zh')
@@ -213,14 +458,20 @@ test('failed download, truncated body and conversion preserve installed pack ato
   await install(ctx.store, 'zh')
   const before = await snapshot(ctx.root)
   const entries = await ctx.store.lookup('zh', '猫')
-  for (const fetcher of [
+  for (const [index, fetcher] of [
     async () => new Response('', { status: 503 }),
     async () => new Response('short', { headers: { 'content-length': '99' } }),
     async () => response(gzipSync('malformed cedict\n')),
-  ]) {
+  ].entries()) {
     ctx.fetch(fetcher)
     await ctx.store.install('zh')
-    assert.ok((await state(ctx.store, 'zh', 'error')).error)
+    const failure = await state(ctx.store, 'zh', 'error')
+    assert.ok(failure.error)
+    if (index === 2)
+      assert.equal(
+        failure.error,
+        'Could not install this dictionary pack. Try again.',
+      )
     assert.deepEqual(await snapshot(ctx.root), before)
     assert.deepEqual(await ctx.store.lookup('zh', '猫'), entries)
     assert.deepEqual(await readdir(ctx.root), ['zh'])

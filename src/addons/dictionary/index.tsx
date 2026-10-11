@@ -32,7 +32,7 @@ import {
   type Related,
   type Source,
 } from './providers'
-import { languageNames, readPreferences } from './settings'
+import { languageNames, readPreferences, readRecentPack } from './settings'
 
 function richTarget(
   editor: Editor,
@@ -275,6 +275,22 @@ export default defineAddon({
   manifest,
   start(context) {
     context.styles.register('dictionary', css)
+    queueMicrotask(() => {
+      const preferences = readPreferences()
+      const recent = readRecentPack()
+      const ids = [
+        ...new Set([
+          preferences.latin,
+          preferences.han,
+          ...(recent ? [recent] : []),
+        ]),
+      ]
+      void context.native
+        .query('preloadPacks', ids)
+        .catch((error) =>
+          console.error('could not preload dictionary packs:', error),
+        )
+    })
     const registry = createRegistry()
     registry.register(wiktionaryProvider(context.host.network.getText))
     registry.register(datamuseProvider(context.host.network.getText))

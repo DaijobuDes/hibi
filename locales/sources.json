@@ -420,9 +420,6 @@
   "42575392ebf8": [
     "src/renderer/src/markdown-syntax.ts"
   ],
-  "9b61d264f34d": [
-    "src/addons/dictionary/pack-converters.ts"
-  ],
   "db9a4c7d4c19": [
     "src/addons/diagnostics/Settings.tsx"
   ],
@@ -472,9 +469,6 @@
   "ad83a00f609f": [
     "src/addons/dictionary/packs.ts",
     "src/addons/dictionary/settings.ts"
-  ],
-  "d10b9d2bc334": [
-    "src/addons/dictionary/pack-converters.ts"
   ],
   "eb27a06d869e": [
     "src/addons/quick-note/manifest.ts"
@@ -1114,6 +1108,9 @@
   "f56d1f9d0955": [
     "src/main/updates.ts"
   ],
+  "9ec4e620e7b9": [
+    "src/addons/dictionary/pack-store.ts"
+  ],
   "7513fb43c0f9": [
     "src/addons/dictionary/PackSettings.tsx"
   ],
@@ -1380,26 +1377,11 @@
   "62c1486ecb8e": [
     "src/addons/dictionary/manifest.ts"
   ],
-  "4f78159e2618": [
-    "src/addons/dictionary/pack-runtime.ts"
-  ],
   "5bff997ead1a": [
     "src/addons/dictionary/pack-store.ts"
   ],
   "daaa951adbd0": [
     "src/addons/dictionary/pack-store.ts"
-  ],
-  "fc47e3b2a7d4": [
-    "src/addons/dictionary/pack-runtime.ts"
-  ],
-  "69fe9e664cf9": [
-    "src/addons/dictionary/pack-runtime.ts"
-  ],
-  "eb44c955aae8": [
-    "src/addons/dictionary/pack-runtime.ts"
-  ],
-  "f12cf184abb4": [
-    "src/addons/dictionary/pack-worker.ts"
   ],
   "d0538788d12f": [
     "src/addons/dictionary/index.tsx"
@@ -1849,6 +1831,9 @@
     "src/main/links.ts"
   ],
   "f1e56f2e1d3d": [
+    "src/shared/addon-package.ts"
+  ],
+  "985951a78382": [
     "src/shared/addon-package.ts"
   ],
   "6dbba6a933ca": [
@@ -2579,21 +2564,11 @@
   "9e9f2a70c53e": [
     "src/main/dependencies.ts"
   ],
-  "db4431a8dbf8": [
-    "src/addons/dictionary/pack-runtime.ts",
-    "src/addons/dictionary/pack-worker.ts"
+  "650bc9063f2c": [
+    "src/addons/dictionary/native.ts"
   ],
-  "651fd47779ec": [
-    "src/addons/dictionary/pack-worker.ts"
-  ],
-  "835f6cbcbd8e": [
-    "src/addons/dictionary/pack-index.ts"
-  ],
-  "439040a36c37": [
-    "src/addons/dictionary/pack-runtime.ts"
-  ],
-  "af68affc86d3": [
-    "src/addons/dictionary/pack-runtime.ts"
+  "9d5bc8bf6003": [
+    "src/addons/dictionary/pack-store.ts"
   ],
   "5a2f299940cc": [
     "src/shared/document-journal.ts"
@@ -5832,9 +5807,6 @@
   "653913ac0e67": [
     "src/addons/word-count/manifest.ts"
   ],
-  "2d33a8438a14": [
-    "src/addons/dictionary/pack-converters.ts"
-  ],
   "b46cf2c0bdf2": [
     "src/addons/dictionary/Settings.tsx"
   ],
@@ -5946,12 +5918,6 @@
   "47dee81a2783": [
     "src/addons/writing-suggestions/manifest.ts"
   ],
-  "0e20e05b8ce6": [
-    "src/addons/dictionary/pack-converters.ts"
-  ],
-  "7f373ecc9a16": [
-    "src/addons/dictionary/pack-converters.ts"
-  ],
   "9b6e8abe425e": [
     "src/addons/frontmatter/Properties.tsx"
   ],
@@ -6033,30 +5999,6 @@
   "f1f44e1b7d9a": [
     "src/ui/DialogProvider.tsx"
   ],
-  "94c86c787230": [
-    "src/addons/dictionary/pack-converters.ts"
-  ],
-  "1337909d4af5": [
-    "src/addons/dictionary/pack-converters.ts"
-  ],
-  "32520cd6368f": [
-    "src/addons/dictionary/pack-converters.ts"
-  ],
-  "158c43580f08": [
-    "src/addons/dictionary/pack-converters.ts"
-  ],
-  "871bf976c428": [
-    "src/addons/dictionary/pack-converters.ts"
-  ],
-  "194b2d6322f6": [
-    "src/addons/dictionary/pack-converters.ts"
-  ],
-  "0bf7217ae224": [
-    "src/addons/dictionary/pack-converters.ts"
-  ],
-  "6d4674d2cc77": [
-    "src/addons/dictionary/pack-converters.ts"
-  ],
   "a0f9c6ef2938": [
     "src/ui/colorschemes.ts"
   ],
@@ -6068,9 +6010,6 @@
   ],
   "706787f67ccf": [
     "src/renderer/src/toolbar.ts"
-  ],
-  "c4020970f358": [
-    "src/addons/dictionary/pack-converters.ts"
   ],
   "f82899b0167f": [
     "src/renderer/src/ImportDialog.tsx"
@@ -6090,26 +6029,8 @@
   "221d2f9633bf": [
     "src/main/local-diagnostics/sink.ts"
   ],
-  "35e3a0ea8153": [
-    "src/addons/dictionary/pack-converters.ts"
-  ],
-  "e569b58fd242": [
-    "src/addons/dictionary/pack-converters.ts"
-  ],
-  "6b3332f1ff2d": [
-    "src/addons/dictionary/pack-converters.ts"
-  ],
-  "e189b8c43a03": [
-    "src/addons/dictionary/pack-converters.ts"
-  ],
   "77ebec0d0b40": [
     "src/renderer/src/code-languages.ts"
-  ],
-  "34ea172dff40": [
-    "src/addons/dictionary/pack-converters.ts"
-  ],
-  "9c55e4c27593": [
-    "src/addons/dictionary/pack-converters.ts"
   ],
   "57a1579f83d3": [
     "src/renderer/src/code-languages.ts"
@@ -6129,24 +6050,6 @@
   "55ea09e5715d": [
     "src/preload/analysis.ts"
   ],
-  "9084e1bdab27": [
-    "src/addons/dictionary/pack-converters.ts"
-  ],
-  "4e357965a69f": [
-    "src/addons/dictionary/pack-converters.ts"
-  ],
-  "445431b197c3": [
-    "src/addons/dictionary/pack-converters.ts"
-  ],
-  "db84f75f10b0": [
-    "src/addons/dictionary/pack-converters.ts"
-  ],
-  "8f45ddbb5c09": [
-    "src/addons/dictionary/pack-converters.ts"
-  ],
-  "e46554b5e326": [
-    "src/addons/dictionary/pack-converters.ts"
-  ],
   "a6375ee99716": [
     "src/addons/vim/Settings.tsx"
   ],
@@ -6158,12 +6061,6 @@
   ],
   "ee4d988c65de": [
     "src/renderer/src/HibiSettings.tsx"
-  ],
-  "361a7790e2eb": [
-    "src/addons/dictionary/pack-converters.ts"
-  ],
-  "0dcd548589aa": [
-    "src/addons/dictionary/pack-converters.ts"
   ],
   "7d982ed61dc3": [
     "src/ui/colorschemes.ts"
@@ -6218,20 +6115,8 @@
   "0620e3b71e5a": [
     "src/ui/Sonner.tsx"
   ],
-  "fc4b4adb5c1f": [
-    "src/addons/dictionary/pack-converters.ts"
-  ],
-  "85b7cfaf7135": [
-    "src/addons/dictionary/pack-converters.ts"
-  ],
-  "d48ad299e9f2": [
-    "src/addons/dictionary/pack-converters.ts"
-  ],
   "c14c177f108b": [
     "src/main/local-diagnostics/sink.ts"
-  ],
-  "cbc48ead4d3e": [
-    "src/addons/dictionary/pack-converters.ts"
   ],
   "d9a5a6e310b3": [
     "src/main/local-diagnostics/sink.ts"

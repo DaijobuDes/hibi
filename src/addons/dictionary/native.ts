@@ -2,8 +2,9 @@ import { join } from 'node:path'
 import { app } from 'electron'
 import type { NativeAddon } from '../api'
 import manifest from './manifest'
+import { completionLimit, completionPrefix } from './pack-runtime'
 import { PackStore } from './pack-store'
-import { lookupInput } from './packs'
+import { lookupInput, packId } from './packs'
 
 let current: PackStore | undefined
 let closing = Promise.resolve()
@@ -29,6 +30,18 @@ export default {
   stop,
   queries: {
     packs: async () => (await store()).list(),
+    preloadPacks: async (input) => (await store()).preloadInstalled(input),
+    async packComplete(input) {
+      if (!input || typeof input !== 'object')
+        throw new Error('Invalid dictionary completion')
+      const { id, prefix, limit } = input as Record<string, unknown>
+      return (await store()).complete(
+        packId(id),
+        completionPrefix(prefix),
+        completionLimit(limit),
+      )
+    },
+    packInstalled: async (input) => (await store()).installed(input),
     async packLookup(input) {
       const { id, word } = lookupInput(input)
       return (await store()).lookup(id, word)

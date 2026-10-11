@@ -12,7 +12,11 @@ import {
 } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { download } from '../../main/download.ts'
-import { PackWorker } from './pack-runtime.ts'
+import {
+  completionLimit,
+  completionPrefix,
+  PackWorker,
+} from './pack-runtime.ts'
 import {
   type PackId,
   type PackManifest,
@@ -88,7 +92,7 @@ async function verifyFile(
     )
 }
 
-/** Download state lives in main; conversion and loaded indexes live in a bounded worker. */
+/** Main owns downloads; lookup and short-lived conversion workers stay independent. */
 export class PackStore {
   private worker: PackWorker
   private verified = new Map<
@@ -99,14 +103,17 @@ export class PackStore {
     | { id: PackId; controller: AbortController; done: Promise<void> }
     | undefined
   private progress = new Map<PackId, PackState>()
-  private busy = false
+  private busy: PackId | undefined
   private closed = false
-  private generation = 0
+  private generation = new Map<PackId, number>()
+  private installedCache: Promise<Set<PackId>> | undefined
   private recovered = new Map<PackId, Promise<void>>()
+  private preloadStarted = false
+  private idle: NodeJS.Immediate | undefined
 
   constructor(
     private root: string,
-    workerPath: string | URL,
+    private workerPath: string | URL,
     private fetcher?: typeof fetch,
   ) {
     this.worker = new PackWorker(workerPath)
@@ -173,6 +180,23 @@ export class PackStore {
     )
   }
 
+  async installed(value: unknown): Promise<boolean> {
+    const id = packId(value)
+    this.ensureOpen()
+    this.installedCache ??= this.list()
+      .then(
+        (states) =>
+          new Set(
+            states.filter((state) => state.manifest).map((state) => state.id),
+          ),
+      )
+      .catch((error) => {
+        this.installedCache = undefined
+        throw error
+      })
+    return (await this.installedCache).has(id)
+  }
+
   async install(value: unknown) {
     const id = packId(value)
     this.ensureOpen()
@@ -180,8 +204,9 @@ export class PackStore {
       throw new Error(
         'Wait for the current dictionary pack operation to finish.',
       )
-    this.busy = true
-    this.generation++
+    this.busy = id
+    this.generation.set(id, (this.generation.get(id) ?? 0) + 1)
+    this.installedCache = undefined
     const controller = new AbortController()
     const state: PackState = {
       id,
@@ -207,7 +232,8 @@ export class PackStore {
       })
       .finally(() => {
         this.active = undefined
-        this.busy = false
+        this.busy = undefined
+        this.installedCache = undefined
       })
     this.active = { id, controller, done }
   }
@@ -230,10 +256,6 @@ export class PackStore {
       await rm(scratch, { recursive: true })
     }
     await mkdir(scratch, { mode: 0o700 })
-    const signal = AbortSignal.any([
-      cancel,
-      AbortSignal.timeout(15 * 60 * 1000),
-    ])
     try {
       const sources: PackManifest['sources'] = []
       const files: string[] = []
@@ -245,7 +267,8 @@ export class PackStore {
           const result = await download(source.url, {
             maxBytes: source.maxBytes,
             allowedOrigins: [new URL(source.url).origin],
-            signal,
+            signal: cancel,
+            stallTimeoutMs: 60_000,
             ...(this.fetcher ? { fetch: this.fetcher } : {}),
             write: async (chunk) => {
               await handle.writeFile(chunk)
@@ -277,15 +300,21 @@ export class PackStore {
       state.phase = 'converting'
       state.total = state.bytes
       // ponytail: local conversion avoids hosted data; use hosted prebuilt packs if conversion becomes too slow.
-      const result = await this.worker.convert(
-        id,
-        files,
-        scratch,
-        signal,
-        (entries) => {
+      const converter = new PackWorker(this.workerPath)
+      const signal = AbortSignal.any([
+        cancel,
+        AbortSignal.timeout(15 * 60 * 1000),
+      ])
+      const result = await converter
+        .convert(id, files, scratch, signal, (entries) => {
           state.entries = entries
-        },
-      )
+        })
+        .catch((error) => {
+          if (!cancel.aborted)
+            console.error('could not prepare dictionary pack:', error)
+          throw new Error('Could not install this dictionary pack. Try again.')
+        })
+        .finally(() => converter.close())
       signal.throwIfAborted()
       const manifest = validateManifest(
         {
@@ -303,7 +332,7 @@ export class PackStore {
         { flag: 'wx', mode: 0o600 },
       )
       for (const file of files) await rm(file)
-      await this.worker.unload()
+      await this.worker.unload(id)
       signal.throwIfAborted()
       if (await exists(path)) await rename(path, previous)
       try {
@@ -337,11 +366,12 @@ export class PackStore {
       throw new Error(
         'Wait for the current dictionary pack operation to finish.',
       )
-    this.busy = true
-    this.generation++
+    this.busy = id
+    this.generation.set(id, (this.generation.get(id) ?? 0) + 1)
+    this.installedCache = undefined
     try {
       const path = await this.recover(id)
-      await this.worker.unload()
+      await this.worker.unload(id)
       const base = await directory(this.root)
       for (const candidate of [
         join(base, `.previous-${id}`),
@@ -355,21 +385,83 @@ export class PackStore {
       this.verified.delete(id)
       this.progress.delete(id)
     } finally {
-      this.busy = false
+      this.busy = undefined
+      this.installedCache = undefined
     }
   }
 
-  async lookup(id: PackId, word: string) {
+  preloadInstalled(value: unknown): void {
+    if (!Array.isArray(value) || value.length > packIds.length)
+      throw new Error('Invalid dictionary preload languages')
+    const preferred = value.map(packId)
     this.ensureOpen()
-    if (this.busy) return []
-    const generation = this.generation
+    if (this.preloadStarted) return
+    this.preloadStarted = true
+    const ids = [...new Set(preferred)]
+    const next = () => {
+      if (this.closed) return
+      const id = ids.shift()
+      if (!id) return
+      this.idle = setImmediate(() => {
+        this.idle = undefined
+        void this.installed(id)
+          .then((installed) => (installed ? this.preload(id) : undefined))
+          .catch((error) => {
+            if (!this.closed)
+              console.error('could not preload dictionary pack:', error)
+          })
+          .finally(next)
+      })
+    }
+    next()
+  }
+
+  async preload(value: unknown): Promise<void> {
+    await this.read(
+      packId(value),
+      (id, path) => this.worker.preload(id, path),
+      undefined,
+    )
+  }
+
+  async complete(value: unknown, prefix: string, limit = 8): Promise<string[]> {
+    const id = packId(value)
+    prefix = completionPrefix(prefix)
+    limit = completionLimit(limit)
+    this.ensureOpen()
+    if (!prefix) return []
+    return this.read(
+      id,
+      (id, path) => this.worker.complete(id, path, prefix, limit),
+      [],
+    )
+  }
+
+  async lookup(id: PackId, word: string) {
+    return this.read(
+      packId(id),
+      (id, path) => this.worker.lookup(id, path, word),
+      [],
+    )
+  }
+
+  private async read<T>(
+    id: PackId,
+    query: (id: PackId, path: string) => Promise<T>,
+    empty: T,
+  ): Promise<T> {
+    this.ensureOpen()
+    if (this.busy === id) return empty
+    const generation = this.generation.get(id) ?? 0
     const changed = () =>
-      this.closed || this.busy || generation !== this.generation
+      this.closed ||
+      this.busy === id ||
+      generation !== (this.generation.get(id) ?? 0)
     try {
       const path = await this.recover(id)
-      if (!(await exists(path))) return []
+      if (!(await exists(path))) return empty
       const manifest = await manifestAt(path, id)
-      if (changed()) return []
+      if (changed()) return empty
       let verification = this.verified.get(id)
       if (
         verification?.stamp !== manifest.installedAt ||
@@ -387,18 +479,20 @@ export class PackStore {
         })
       }
       await verification.pending
-      if (changed()) return []
-      const entries = await this.worker.lookup(id, path, word)
-      return changed() ? [] : entries
+      if (changed()) return empty
+      const result = await query(id, path)
+      return changed() ? empty : result
     } catch (error) {
-      if (changed()) return []
+      if (changed()) return empty
       throw error
     }
   }
 
   async close() {
     this.closed = true
-    this.generation++
+    if (this.idle) clearImmediate(this.idle)
+    this.idle = undefined
+    this.installedCache = undefined
     this.active?.controller.abort(
       new Error('Dictionary pack installation canceled.'),
     )

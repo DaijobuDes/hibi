@@ -1,5 +1,5 @@
 import type { LanguagePreferences } from './lookup'
-import { LANGS, type Lang } from './providers'
+import { LANGS, type Lang } from './providers.ts'
 
 // `label` fields are collected into the UI copy catalog.
 const languages: Record<Lang, { label: string }> = {
@@ -15,6 +15,24 @@ export const languageNames = Object.fromEntries(
 ) as Record<Lang, string>
 
 const key = 'hibi:dictionary'
+const recentKey = 'hibi:dictionary:recent-pack'
+
+export function readRecentPack(): Lang | undefined {
+  try {
+    const id = localStorage.getItem(recentKey)
+    return LANGS.find((lang) => lang === id)
+  } catch {
+    return undefined
+  }
+}
+
+export function writeRecentPack(id: Lang) {
+  try {
+    localStorage.setItem(recentKey, id)
+  } catch {
+    // Storage availability does not affect dictionary results.
+  }
+}
 
 export function readPreferences(): LanguagePreferences {
   let saved: Partial<Record<keyof LanguagePreferences, unknown>> = {}
