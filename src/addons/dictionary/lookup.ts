@@ -1,9 +1,11 @@
 import { decodeHTML } from 'entities'
 import type { Lang } from './providers'
 
-/** One word in a live editor; replace fails if the document changed. */
+/** One word in a live editor; replace reports whether the edit was applied. */
 export type LookupTarget = {
   word: string
+  /** False while the editor rejects edits, such as during a pane switch. */
+  editable: () => boolean
   replace: (text: string) => boolean
   focus: () => void
 }
