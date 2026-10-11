@@ -18,17 +18,29 @@ While **Follow the cursor** is on, the view shows the word at the cursor shortly
 
 Each section names its source and license. Use the arrow keys to move between words in a list, and press Enter to choose one. Long lists show **Show all** to reveal the rest.
 
-Following the cursor uses installed offline packs and answers already fetched during this session only. It never sends a word online. When nothing local answers, choose **Look up online** to ask the online services, or install the offline pack it suggests for that language.
+Following the cursor uses installed offline packs, your custom words, and answers already fetched during this session only. It never sends a word online. When nothing local answers, choose **Look up online** to ask the online services, install the offline pack it offers for each language without one, or choose **Add to dictionary** to keep the word as your own. After the pack dialog closes, the view looks the word up again.
 
 Type any word in **Look up a word** and press Enter to look it up, online if needed. A searched word stays in the view until you press Escape in the search field or turn **Follow the cursor** back on. Choosing a word in search results looks that word up instead of changing your document.
 
 ## Suggestions as you type
 
-Turn on **Suggest words as you type** in the addon's settings to see word completions from installed offline packs while you type. Suggestions appear in the editor's completion list after you type three letters of a word in Latin letters. They use your preferred language first, then the other installed Latin-letter packs. Chinese and Japanese text is not completed because it has no spaces to mark where a word starts.
+Turn on **Suggest words as you type** in the addon's settings to see word completions from installed offline packs while you type. Suggestions appear in the editor's completion list after you type three letters of a word in Latin letters. Chinese and Japanese text is not completed because it has no spaces to mark where a word starts.
+
+**Suggestion languages** chooses which installed packs suggest words. Only English is on at first. Turn on more languages for writing that mixes them, such as English and Filipino or German and English; every keystroke asks all of them in one request. Words that match what you typed best come first: a word that starts with exactly the letters you typed, accents included, comes before one that matches only without accents, and single words come before phrases. Languages then follow the order you turned them on, and shorter words come first. A word found in several languages appears once. When more than one language is on, each suggestion names its language. Your custom words come before pack words.
+
+Suggestions stay out of the way of other typing: none are offered for slash commands, tags, mentions, emoji codes, escapes, links, web addresses, paths, inline code, or fenced code blocks. While the slash command menu is open, it keeps Enter, Tab, and the arrow keys.
 
 Press Enter to insert the highlighted suggestion, or Escape to dismiss the list. **Accept suggestions with Tab** is on by default, so Tab also inserts the highlighted suggestion. When no suggestions are showing, Tab works as it normally does in the editor. Turn the setting off to keep Tab for the editor even while suggestions are showing.
 
 Suggestions never send anything online. They work in the formatted editor and in Source view. In the formatted editor, suggestions are offered in top-level paragraphs and headings but not inside lists, quotes, or tables.
+
+## Custom words
+
+Add your own words, such as names, slang, or terms from your field, so lookups and suggestions know them. Choose **Add to dictionary** when the side view or **Define word** finds no entry, or run **Add word to dictionary** from the command palette or the editor's right-click menu to add the word at the cursor.
+
+**Settings → Dictionary and thesaurus → Custom words** lists your words. Give a word a language and a note, such as its meaning, or remove it. A word without a language belongs to the first language Hibi tries for it. **Export as text** copies your words with one word per line, followed by a tab, the language code, and the note when they have them. Paste that text and choose **Import text** to add the words on another computer; imported words update matching ones.
+
+Custom words are shown as **Your word** in lookups, with your note as the definition. An entry from an installed pack for the same word and language comes first. Custom words are kept with your Hibi settings on this computer, not in a workspace, and are never sent online.
 
 ## Languages
 
@@ -47,7 +59,7 @@ Hibi sends nothing while you type. When you run a lookup that no installed offli
 
 Only the word is sent, never the rest of your document. The addon manager lists every declared host before enabling. Enabling the addon allows credential-free requests to those public hosts without another prompt. Requests to other hosts, requests with credentials, and hosts resolving to private addresses still require approval. Answers are kept in memory until the addon is disabled or Hibi closes, so looking up the same word again does not send another request. Datamuse says it keeps a log of queries until the end of the day and then discards it.
 
-The side view and suggestions never send a word on their own. Only **Look up online** and the side view's search field ask the online services, and they use the same permission prompts.
+The side view, suggestions, and custom words never send a word on their own. Only **Look up online** and the side view's search field ask the online services, and they use the same permission prompts.
 
 ## Services and limits
 
