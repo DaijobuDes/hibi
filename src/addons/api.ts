@@ -1,5 +1,5 @@
 import type { Extension } from '@codemirror/state'
-import type { AnyExtension, Editor } from '@tiptap/core'
+import type { AnyExtension, Editor, RenderContext } from '@tiptap/core'
 import type { MarkedExtension } from 'marked'
 import type { ComponentType, CSSProperties } from 'react'
 import type {
@@ -314,6 +314,11 @@ export type MarkdownProjection = {
   serialize: (content: string) => string
   readOnly?: boolean
 }
+/** Transform rendered paragraph Markdown after core escaping, in flavor and rule order. */
+export type MarkdownParagraphRule = (
+  source: string,
+  ctx: RenderContext,
+) => string
 /** Composable parser contributions. Declare descriptors on Addon.flavors for discovery. */
 export type MarkdownFlavor = {
   id: string
@@ -326,6 +331,8 @@ export type MarkdownFlavor = {
   readOnlyWhenDisabled?: boolean
   markedOptions?: { gfm?: boolean; breaks?: boolean }
   richExtensions?: readonly AnyExtension[]
+  /** Additional paragraph escaping, including inside tables. Preserve inline markup. */
+  paragraphRules?: readonly MarkdownParagraphRule[]
   /** Verbatim flavors require source editing. Literal fallback is for semantic syntax only. */
   preservation?: SourcePreservation & { fallback: 'source' | 'literal' }
   /** Opt in only when top-level blocks serialize independently with standard blank-line joining.
