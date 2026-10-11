@@ -252,6 +252,66 @@ test('flavors auto-detect, persist overrides, render/edit math, and export it of
   }
 })
 
+test('math source bytes survive source and visual view round trips and saving', {
+  timeout: 45000,
+}, async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'hibi-math-source-'))
+  const file = join(root, 'math.md')
+  const original =
+    'anchor\n\ntext $$x$$\n\ntext $$x$$ more\n\n\\$$x$$\n\n$$z$$\n\n   $$y$$\n\n$$\nx\n$$\n'.replaceAll(
+      '\n',
+      '\r\n',
+    )
+  await writeFile(file, original)
+  const app = await electron.launch({
+    args: [resolve('.'), `--user-data-dir=${join(root, 'profile')}`, file],
+  })
+  t.after(async () => {
+    await app.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => ({ response: 1 })
+    })
+    await app.close()
+    await rm(root, { recursive: true, force: true })
+  })
+  const page = await app.firstWindow()
+  page.setDefaultTimeout(7000)
+  const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
+  await waitForDocumentEditor(app, page)
+  await pressShortcut(app, `${mod}+k`)
+  const input = page.getByRole('combobox', { name: /search commands/i })
+  await input.fill('enable latex')
+  await page.getByRole('option').first().waitFor()
+  await input.press('Enter')
+  await page
+    .getByRole('dialog', { name: /command palette/i })
+    .waitFor({ state: 'hidden' })
+  await page.waitForFunction(
+    () => document.querySelectorAll('.tiptap .katex-display').length === 3,
+  )
+  assert.equal(
+    (await page.evaluate(() => window.hibi.getDocument())).markdown,
+    original,
+  )
+  const rich = page.locator('.tiptap')
+  await pressShortcut(app, `${mod}+Shift+]`)
+  await page.getByRole('textbox', { name: /markdown editor/i }).waitFor()
+  await pressShortcut(app, `${mod}+Shift+[`)
+  await page.waitForFunction(
+    () => document.querySelectorAll('.tiptap .katex-display').length === 3,
+  )
+  assert.equal(
+    await rich.getByText('$$x$$', { exact: true }).textContent(),
+    '$$x$$',
+  )
+  assert.equal(
+    (await page.evaluate(() => window.hibi.getDocument())).markdown,
+    original,
+  )
+  await pressShortcut(app, `${mod}+s`)
+  await waitForAsync(page, async () => !(await window.hibi.getDocument()).dirty)
+  assert.equal(await readFile(file, 'utf8'), original)
+})
+
 test('split focus preserves each file flavor', {
   timeout: 45000,
 }, async (t) => {

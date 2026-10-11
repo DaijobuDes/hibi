@@ -14,7 +14,7 @@ Tectonic downloads packages as needed. You can search for packages or clear down
 
 Write `$x^2$` for an inline equation. For a centered display block, start a line with `$$`, optionally indented by up to three spaces. Write `$$x^2$$` on that line, or put the expression between separate `$$` lines. The closing delimiter must end its line, apart from spaces or tabs. These rules also apply inside list items and blockquotes, after their Markdown prefixes.
 
-Mid-paragraph pairs such as `text $$x$$` and `text $$x$$ more` stay literal text. Switching views and editing surrounding text preserve their original bytes without adding line breaks. Use `$x$` to render math within a paragraph. Hibi uses this content-preserving rule rather than interpreting mid-paragraph double dollars as an equation; rendering can differ from Obsidian and GitHub.
+Mid-paragraph pairs such as `text $$x$$` and `text $$x$$ more` stay literal text. Switching between source and visual views preserves their original bytes without adding line breaks. Use `$x$` to render math within a paragraph. Hibi uses this content-preserving rule rather than interpreting mid-paragraph double dollars as an equation; rendering can differ from Obsidian and GitHub.
 
 You can also insert equations from the toolbar or command palette. Click a rendered equation to edit it.
 

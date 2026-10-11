@@ -38,7 +38,7 @@ If a source language fails to load, choose **Retry language** in its notice. Ret
 
 With the LaTeX addon enabled, use `$x$` for inline math. Start a line with `$$x$$` for a centered display equation, or put the expression between separate `$$` lines. The opening delimiter can have up to three leading spaces; the closing delimiter must end its line apart from spaces or tabs. Inside lists and blockquotes, this applies after the list or quote prefix.
 
-Double dollars inside a paragraph, such as `text $$x$$` or `text $$x$$ more`, stay literal text. Switching views and editing surrounding text preserve their original bytes without inserting line breaks.
+Double dollars inside a paragraph, such as `text $$x$$` or `text $$x$$ more`, stay literal text. Switching between source and visual views preserves their original bytes without inserting line breaks.
 
 ## Install required tools
 

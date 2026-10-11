@@ -19,6 +19,11 @@ const fixtures = [
   ['text $$x$$', 0],
   ['text $$x$$ more', 0],
   ['x$$x$$', 0],
+  ['text $$x$$\nmore', 0],
+  ['$$x$$ more', 0],
+  ['text\n$$x$$ more', 0],
+  ['text\n   $$x$$ more', 0],
+  ['text\n$$x$$ more\n$$y$$', 1],
   ['text\n$$x$$', 1],
   ['$$\nx\n$$', 1],
   [' $$x$$', 1],
@@ -30,10 +35,12 @@ const fixtures = [
   ['\t$$x$$', 0],
   ['text\n    $$x$$', 0],
   ['- item\n\n  $$x$$', 1],
+  ['- text\n  $$x$$', 1],
   ['- text $$x$$', 0],
   ['- text $$x$$ more', 0],
   ['- item\n\n  $$\n  x\n  $$', 1],
   ['> $$x$$', 1],
+  ['> text\n> $$x$$', 1],
   ['> $$\n> x\n> $$', 1],
   ['> text $$x$$', 0],
   ['> text $$x$$ more', 0],
@@ -81,6 +88,7 @@ test('display math starts only at line boundaries in visual and source tokenizer
   const parsers = [
     new Marked(mathTokens),
     markdownSourceParser({ gfm: false, math: true }),
+    markdownSourceParser({ gfm: true, math: true }),
   ]
   for (const parser of parsers) {
     for (const [source, expected] of fixtures) {
