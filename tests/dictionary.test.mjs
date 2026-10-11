@@ -17,7 +17,15 @@ import {
   createRegistry,
   DictionaryError,
   gather,
+  LANGS,
 } from '../src/addons/dictionary/providers.ts'
+import {
+  languageNames,
+  readPreferences,
+  readRecentPack,
+  writePreferences,
+  writeRecentPack,
+} from '../src/addons/dictionary/settings.ts'
 
 const fixture = (name) =>
   readFile(new URL(`./fixtures/dictionary/${name}`, import.meta.url), 'utf8')
@@ -41,6 +49,15 @@ test('dictionary parses captured Wiktionary and Datamuse responses', async () =>
   assert.equal(happy[0].senses[0].example, 'Music makes me feel happy.')
   assert.equal(happy[0].source.license, 'CC BY-SA 4.0')
   assert.equal(happy[0].source.url, 'https://en.wiktionary.org/wiki/happy')
+  const german = parseWiktionary(
+    await fixture('wiktionary-happy.json'),
+    'happy',
+    'de',
+  )
+  assert.equal(german[0].lang, 'de')
+  assert.equal(german[0].partOfSpeech, 'adjective')
+  assert.equal(german[0].senses[0].gloss, 'glad; satisfied; momentarily happy')
+  assert.equal(german[0].source.url, happy[0].source.url)
 
   const chat = await fixture('wiktionary-chat.json')
   assert.equal(parseWiktionary(chat, 'chat', 'fr')[0].lang, 'fr')
@@ -156,8 +173,71 @@ test('dictionary finds the caret word with the right segmenter and language', ()
     'fr',
     'en',
     'tl',
+    'de',
   ])
+  assert.deepEqual(detectLangs('Straße', { han: 'zh', latin: 'de' }), [
+    'de',
+    'en',
+    'tl',
+    'fr',
+  ])
+  assert.deepEqual(detectLangs('schön', preferences), ['en', 'tl', 'fr', 'de'])
+  assert.equal(
+    wordAt('die Straße', 6, 6, { han: 'zh', latin: 'de' }).word,
+    'Straße',
+  )
   assert.deepEqual(detectLangs('사랑', preferences), [])
+})
+
+test('dictionary keeps German preferences and recent pack language', (t) => {
+  const saved = new Map()
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: {
+      getItem: (key) => saved.get(key) ?? null,
+      setItem: (key, value) => saved.set(key, value),
+    },
+  })
+  t.after(() => {
+    if (descriptor)
+      Object.defineProperty(globalThis, 'localStorage', descriptor)
+    else delete globalThis.localStorage
+  })
+  assert.ok(LANGS.includes('de'))
+  assert.equal(languageNames.de, 'German')
+  writePreferences({ han: 'zh', latin: 'de' })
+  assert.deepEqual(readPreferences(), { han: 'zh', latin: 'de' })
+  writeRecentPack('de')
+  assert.equal(readRecentPack(), 'de')
+  saved.set('hibi:dictionary', '{"latin":"unsupported"}')
+  assert.deepEqual(readPreferences(), preferences)
+})
+
+test('dictionary German and English share a fetched Wiktionary page', async () => {
+  const requests = []
+  const happy = await fixture('wiktionary-happy.json')
+  const registry = createRegistry()
+  registry.register(
+    wiktionaryProvider(async (request) => {
+      requests.push(request.url)
+      return { ok: true, value: { text: happy } }
+    }),
+  )
+  const result = await gather(
+    registry,
+    detectLangs('happy', { han: 'zh', latin: 'de' }),
+    'lookup',
+    (provider, lang, cachedOnly) =>
+      provider.lookup('happy', lang, signal, cachedOnly),
+  )
+  assert.deepEqual(
+    result.found.map(({ lang }) => lang),
+    ['de', 'en'],
+  )
+  assert.deepEqual(requests, [
+    'https://en.wiktionary.org/api/rest_v1/page/definition/happy',
+  ])
 })
 
 test('dictionary replacements keep the first letter case', () => {

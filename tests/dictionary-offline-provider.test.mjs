@@ -200,4 +200,13 @@ test('related words preserve source relations and Wiktionary entries link to con
   assert.deepEqual(related.antonyms, ['unfollow'])
   const [value] = await fr.lookup('follow', 'fr', signal)
   assert.equal(value.source.url, 'https://en.wiktionary.org/wiki/follow#French')
+  const de = providers.find((p) => p.languages[0] === 'de')
+  const [german] = await de.lookup('follow', 'de', signal)
+  assert.equal(
+    german.source.url,
+    'https://en.wiktionary.org/wiki/follow#German',
+  )
+  assert.deepEqual((await de.related('follow', 'de', signal)).synonyms, [
+    'abonné',
+  ])
 })

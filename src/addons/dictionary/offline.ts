@@ -47,6 +47,7 @@ export function createOfflineProviders(
         ja: 'https://www.edrdg.org/jmdict/j_jmdict.html',
         tl: 'https://kaikki.org/dictionary/Tagalog/',
         fr: 'https://kaikki.org/dictionary/French/',
+        de: 'https://kaikki.org/dictionary/German/',
       }[id],
     }
     async function read(term: string, signal: AbortSignal) {
@@ -79,10 +80,10 @@ export function createOfflineProviders(
               })),
               synonyms: meaning.synonyms,
               source:
-                id === 'tl' || id === 'fr'
+                id === 'tl' || id === 'fr' || id === 'de'
                   ? {
                       ...source,
-                      url: `https://en.wiktionary.org/wiki/${encodeURIComponent(entry.word)}#${id === 'fr' ? 'French' : 'Tagalog'}`,
+                      url: `https://en.wiktionary.org/wiki/${encodeURIComponent(entry.word)}#${id === 'fr' ? 'French' : id === 'de' ? 'German' : 'Tagalog'}`,
                     }
                   : source,
             })),

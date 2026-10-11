@@ -475,10 +475,14 @@ function stringList(value: unknown): string[] {
         : [],
   )
 }
-async function* kaikki(path: string, id: 'tl' | 'fr') {
+async function* kaikki(path: string, id: 'tl' | 'fr' | 'de') {
   for await (const line of lines(
     path,
-    id === 'fr' ? 768 * 1024 * 1024 : MAX_BYTES,
+    id === 'de'
+      ? 1536 * 1024 * 1024
+      : id === 'fr'
+        ? 768 * 1024 * 1024
+        : MAX_BYTES,
   )) {
     if (!line.trim()) continue
     const row = JSON.parse(line)
@@ -522,7 +526,7 @@ async function* kaikki(path: string, id: 'tl' | 'fr') {
 
 /** Converts downloaded source files; gzip streams and records have fixed bounds. */
 export async function* convertEntries(
-  id: 'en' | 'zh' | 'yue' | 'ja' | 'tl' | 'fr',
+  id: 'en' | 'zh' | 'yue' | 'ja' | 'tl' | 'fr' | 'de',
   paths: string[],
 ): AsyncGenerator<PackEntry> {
   const first = paths[0]
@@ -534,7 +538,7 @@ export async function* convertEntries(
       ? english(first)
       : id === 'ja'
         ? japanese(first)
-        : id === 'tl' || id === 'fr'
+        : id === 'tl' || id === 'fr' || id === 'de'
           ? kaikki(first, id)
           : id === 'zh' || id === 'yue'
             ? chinese(paths, id === 'yue')

@@ -5,7 +5,7 @@ import { type FileHandle, lstat, open } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import type { PackEntry } from './pack-converters'
 
-export type PackId = 'en' | 'zh' | 'yue' | 'ja' | 'tl' | 'fr'
+export type PackId = 'en' | 'zh' | 'yue' | 'ja' | 'tl' | 'fr' | 'de'
 export const PACK_LIMITS = {
   data: 512 * 1024 * 1024,
   index: 48 * 1024 * 1024,
@@ -30,7 +30,9 @@ function requireValid(ok: unknown): asserts ok {
   if (!ok) throw new Error('Invalid dictionary pack')
 }
 export function validateId(id: unknown): asserts id is PackId {
-  requireValid(['en', 'zh', 'yue', 'ja', 'tl', 'fr'].includes(id as string))
+  requireValid(
+    ['en', 'zh', 'yue', 'ja', 'tl', 'fr', 'de'].includes(id as string),
+  )
 }
 function text(value: unknown, limit = PACK_LIMITS.record): value is string {
   return (
@@ -74,7 +76,7 @@ export function validateEntry(value: unknown): asserts value is PackEntry {
 function normalize(id: PackId, word: string): string {
   return id === 'en'
     ? word.toLowerCase().replace(/[’‘]/g, "'")
-    : id === 'tl' || id === 'fr'
+    : id === 'tl' || id === 'fr' || id === 'de'
       ? word.toLowerCase()
       : word
 }
@@ -295,7 +297,7 @@ export class PackIndex {
           refs[offset++] = length
         }
       let normalized: LoadedIndex['normalized']
-      if (id === 'en' || id === 'tl' || id === 'fr') {
+      if (id === 'en' || id === 'tl' || id === 'fr' || id === 'de') {
         const aliases = keys.map((key) => normalize(id, key))
         const rows = Uint32Array.from({ length: keys.length }, (_, i) => i)
         rows.sort((a, b) =>

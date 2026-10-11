@@ -27,7 +27,7 @@ export function Settings() {
             })
           }
         >
-          {(['en', 'fr', 'tl'] as const).map((lang) => (
+          {(['en', 'fr', 'de', 'tl'] as const).map((lang) => (
             <option key={lang} value={lang}>
               {languageNames[lang]}
             </option>

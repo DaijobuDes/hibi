@@ -72,6 +72,7 @@ const wiktionarySection: Record<Lang, readonly string[]> = {
   ja: ['ja'],
   tl: ['tl'],
   fr: ['fr'],
+  de: ['de'],
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -170,7 +171,7 @@ export function wiktionaryProvider(getText: GetText): DictionaryProvider {
     id: 'wiktionary',
     label: 'Wiktionary',
     kind: 'online',
-    languages: ['en', 'zh', 'yue', 'ja', 'tl', 'fr'],
+    languages: ['en', 'zh', 'yue', 'ja', 'tl', 'fr', 'de'],
     async lookup(term, lang, signal, cachedOnly) {
       // Page titles are case-sensitive; a capital is usually sentence case.
       const lower = term.toLowerCase()

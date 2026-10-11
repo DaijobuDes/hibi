@@ -2126,6 +2126,10 @@
   "c7a8f9cd36ee": [
     "src/addons/frontmatter/Properties.tsx"
   ],
+  "a659b60d246d": [
+    "src/addons/dictionary/packs.ts",
+    "src/addons/dictionary/settings.ts"
+  ],
   "b949c922b6ef": [
     "src/addons/git/index.tsx",
     "src/addons/git/manifest.ts"
@@ -2858,7 +2862,7 @@
   "82b2acb2fba2": [
     "src/addons/diagnostics/Settings.tsx"
   ],
-  "301c3462f6a7": [
+  "ead1f4ffc27e": [
     "src/addons/dictionary/manifest.ts"
   ],
   "21cf16f7bef3": [
@@ -2867,7 +2871,7 @@
   "50edf5185a89": [
     "src/addons/dictionary/index.tsx"
   ],
-  "c857005ffa81": [
+  "f65c00fbf6c5": [
     "src/addons/dictionary/index.tsx"
   ],
   "9f4024faec10": [
