@@ -1074,6 +1074,35 @@ test('native HTML entities decode once and survive full and cached serialization
   }
 })
 
+test('string and object code marks keep literal text during encoding', () => {
+  const { core, parser, options } = markdownConfiguration([])
+  const manager = new MarkdownManager({
+    extensions: core,
+    marked: parser,
+    markedOptions: options,
+  })
+  markdownSerializer(manager, false)
+  const text = '![x](y)\n&copy;'
+  for (const mark of ['code', { type: 'code' }]) {
+    const node = { type: 'text', text, marks: [mark] }
+    assert.equal(manager.renderNodeToMarkdown(node), text)
+    const content = [node]
+    assert.equal(
+      paragraphEscaper(parser, [])(
+        { type: 'paragraph', content },
+        {
+          renderChildren(children) {
+            assert.equal(children, content)
+            return '`![x](y)`'
+          },
+        },
+        { index: 0, level: 0, parentType: 'doc' },
+      ),
+      '`![x](y)`',
+    )
+  }
+})
+
 test('flavor token children decode entity text and wikilink labels once', () => {
   const { core, addons, parser, options } = markdownConfiguration([
     {

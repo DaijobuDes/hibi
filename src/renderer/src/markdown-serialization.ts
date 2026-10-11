@@ -58,7 +58,9 @@ export function paragraphEscaper(
   ])
   const needsMasking = (child: JSONContent) =>
     child.type === 'text' &&
-    !child.marks?.some((mark) => verbatim.has(mark.type)) &&
+    !child.marks?.some((mark) =>
+      verbatim.has(typeof mark === 'string' ? mark : mark.type),
+    ) &&
     characters.some((character) => child.text?.includes(character))
   return (
     node: JSONContent,

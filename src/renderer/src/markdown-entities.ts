@@ -106,7 +106,9 @@ export function configureMarkdownEntities(manager: MarkdownManager) {
     const encoded = encodeText(text, node, parent)
     if (
       (parent?.type && codec.codeTypes.has(parent.type)) ||
-      node.marks?.some((mark) => codec.codeTypes.has(mark.type))
+      node.marks?.some((mark) =>
+        codec.codeTypes.has(typeof mark === 'string' ? mark : mark.type),
+      )
     )
       return encoded
     let result = encodeLineBreaks(encoded)
