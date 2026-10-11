@@ -222,7 +222,9 @@ test('normalized delimiter edits find nearby anchors after more than 32 earlier 
   const original = `${'day\n\n'.repeat(40)}_y_\n`
   const before = schema.nodeFromJSON(manager.parse(original))
   const state = EditorState.create({ schema, doc: before })
-  const after = state.apply(state.tr.insertText('!', before.content.size - 1)).doc
+  const after = state.apply(
+    state.tr.insertText('!', before.content.size - 1),
+  ).doc
   assert.equal(
     preserveRichSource(
       original,
@@ -232,6 +234,45 @@ test('normalized delimiter edits find nearby anchors after more than 32 earlier 
     ),
     original.replace('_y_', '_y!_'),
   )
+})
+
+test('plain CRLF paragraphs preserve exact line endings when q becomes qq', () => {
+  const original = 'p\r\n\r\nq'
+  const before = schema.nodeFromJSON(manager.parse(original))
+  const state = EditorState.create({ schema, doc: before })
+  const after = state.apply(
+    state.tr.insertText('q', before.content.size - 1),
+  ).doc
+  assert.equal(
+    preserveRichSource(
+      original,
+      manager.serialize(before.toJSON()),
+      manager.serialize(after.toJSON()),
+      (candidate) => schema.nodeFromJSON(manager.parse(candidate)).eq(after),
+    ),
+    'p\r\n\r\nqq',
+  )
+})
+
+test('source preservation caps distinct candidate parses including failures', () => {
+  for (const throws of [false, true]) {
+    const candidates = new Set()
+    let parses = 0
+    const result = preserveRichSource(
+      `${'day\n\n'.repeat(40)}_y_\n`,
+      `${'day\n\n'.repeat(40)}*y*`,
+      `${'day\n\n'.repeat(40)}*y!*`,
+      (candidate) => {
+        parses++
+        assert.ok(!candidates.has(candidate), 'candidate parsed more than once')
+        candidates.add(candidate)
+        if (throws) throw new Error('invalid candidate')
+        return false
+      },
+    )
+    assert.equal(result, null)
+    assert.equal(parses, 8)
+  }
 })
 
 test('undeclared serializers retain the full-document path and custom document joining', () => {

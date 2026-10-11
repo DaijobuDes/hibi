@@ -81,12 +81,18 @@ for (const math of [false, true]) {
       const editor = document.querySelector('.tiptap').editor
       editor.commands.setTextSelection(editor.state.doc.content.size - 1)
       editor.view.focus()
+      const parse = editor.markdown.parse.bind(editor.markdown)
+      window.preservationParses = []
+      editor.markdown.parse = (source) => {
+        window.preservationParses.push(source.length)
+        return parse(source)
+      }
     })
     await page.keyboard.insertText('!')
     await waitForAsync(page, async () =>
       (await window.hibi.getDocument()).markdown.includes('elsewhere!'),
     )
-    async function saveExpected(expected) {
+    async function saveExpected(expected, savedFile = file) {
       assert.equal(
         (await page.evaluate(() => window.hibi.getDocument())).markdown,
         expected,
@@ -96,16 +102,41 @@ for (const math of [false, true]) {
         page,
         async () => !(await window.hibi.getDocument()).dirty,
       )
-      assert.equal(await readFile(file, 'utf8'), expected)
+      assert.equal(await readFile(savedFile, 'utf8'), expected)
       await waitForDocumentEditor(app, page)
     }
+    const parses = await page.evaluate(() => window.preservationParses)
+    assert.ok(
+      parses.length <= 8,
+      `candidate parse cap exceeded: ${parses.length}`,
+    )
+    assert.ok(parses.every((length) => length <= 16 * 1024 + 2))
     let expected = original.replace('elsewhere', 'elsewhere!')
     await saveExpected(expected)
-    if (!math) return
-    for (const [type, latex] of [
-      ['inlineMath', 'x'],
-      ['blockMath', 'y'],
-    ]) {
+    await page.evaluate(() =>
+      document.querySelector('.tiptap').editor.commands.undo(),
+    )
+    await waitForAsync(
+      page,
+      async (original) =>
+        (await window.hibi.getDocument()).markdown === original,
+      original,
+    )
+    await page.evaluate(() =>
+      document.querySelector('.tiptap').editor.commands.redo(),
+    )
+    await waitForAsync(
+      page,
+      async (expected) =>
+        (await window.hibi.getDocument()).markdown === expected,
+      expected,
+    )
+    for (const [type, latex] of math
+      ? [
+          ['inlineMath', 'x'],
+          ['blockMath', 'y'],
+        ]
+      : []) {
       assert.equal(
         await page.evaluate(
           ({ type, latex }) => {
@@ -136,6 +167,37 @@ for (const math of [false, true]) {
       )
       await saveExpected(expected)
     }
+    const crlfFile = join(folder, 'crlf.md')
+    await writeFile(crlfFile, 'p\r\n\r\nq')
+    await app.evaluate(({ dialog }, path) => {
+      dialog.showOpenDialog = async () => ({
+        canceled: false,
+        filePaths: [path],
+      })
+    }, crlfFile)
+    await clickMenu(app, 'Open…')
+    await waitForAsync(
+      page,
+      async () => (await window.hibi.getDocument()).name === 'crlf.md',
+    )
+    await waitForDocumentEditor(app, page)
+    assert.equal(
+      await page.evaluate(
+        () => document.querySelector('.tiptap').editor.state.doc.textContent,
+      ),
+      'pq',
+    )
+    await page.evaluate(() => {
+      const editor = document.querySelector('.tiptap').editor
+      editor.commands.setTextSelection(editor.state.doc.content.size - 1)
+      editor.view.focus()
+    })
+    await page.keyboard.insertText('q')
+    await waitForAsync(
+      page,
+      async () => (await window.hibi.getDocument()).markdown === 'p\r\n\r\nqq',
+    )
+    await saveExpected('p\r\n\r\nqq', crlfFile)
   })
 }
 

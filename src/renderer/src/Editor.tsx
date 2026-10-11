@@ -104,6 +104,7 @@ import type { OutlineHeading, OutlineRequest } from './OutlineSidebar'
 import { outlineHeadingAt } from './outline-position'
 import { createPlainSourceSync } from './plain-source-sync'
 import { observeRichAnnotations } from './rich-annotations'
+import { createRichParagraphProof } from './rich-paragraph-proof'
 import { preserveRichSource } from './rich-source-preservation'
 import {
   richSourceEcho,
@@ -283,6 +284,11 @@ export function MarkdownEditor({
   const serializers = useRef(
     new WeakMap<Editor, ReturnType<typeof markdownSerializer>>(),
   )
+  const provenSources = useRef(
+    new WeakMap<Editor, { source: string; document: RichNode }>(),
+  )
+  const paragraphProof =
+    useRef<ReturnType<typeof createRichParagraphProof>>(null)
   const plainSync = useRef<ReturnType<typeof createPlainSourceSync>>(null)
   const pendingPlainSync = useRef<{
     editor: Editor
@@ -1446,6 +1452,48 @@ export function MarkdownEditor({
       setRichInputError('')
       return accepted
     }
+    let parses = 0
+    const parse = (source: string) => {
+      if (parses >= 8) return null
+      parses++
+      return editor.schema.nodeFromJSON(editor.markdown!.parse(source))
+    }
+    const currentSource =
+      documentRuntime.get(documentState.tabId)?.markdown ?? value
+    const projection = projectMarkdown(currentSource, markdownExtensions)
+    const original = projection.content
+    const local =
+      typing &&
+      outlineSyntax?.math &&
+      markdownSyntax.version() === syntaxVersion &&
+      paragraphProof.current?.matches(original, editor.state.doc)
+        ? paragraphProof.current.plan(
+            editor.state,
+            transaction,
+            nextState.doc,
+            parse,
+          )
+        : null
+    if (local) {
+      const now = performance.now()
+      groupAt(now)
+      const accepted = documentRuntime.beginReplace(
+        projection.serialize(local.source),
+        previous.id,
+        documentState.tabId,
+        viewId,
+      )
+      if (accepted) {
+        paragraphProof.current = local.proof
+        provenSources.current.set(editor, {
+          source: local.source,
+          document: nextState.doc,
+        })
+      }
+      previous.time = now
+      setRichInputError('')
+      return accepted
+    }
     let serialize = serializers.current.get(editor)
     if (!serialize) {
       serialize = markdownSerializer(
@@ -1463,39 +1511,49 @@ export function MarkdownEditor({
     const preserved =
       exactSource.current ??
       exactHistory.current.get(editor)?.get(serialized.source)
-    const currentSource =
-      documentRuntime.get(documentState.tabId)?.markdown ?? value
-    const projection = projectMarkdown(currentSource, markdownExtensions)
-    const original = projection.content
     let body = serialized.source
+    let proven = false
     // Source preservation proves edits with the active parser, including addons.
     // The plain-sync allowlist applies only to paths without a full parse.
     if (!preserved?.document.eq(nextState.doc) && original !== body) {
       const before = serialize(editor.state.doc).source
       if (original !== before) {
-        const baseline = editor.schema.nodeFromJSON(
-          editor.markdown!.parse(original),
-        )
-        const patched = baseline.eq(editor.state.doc)
-          ? preserveRichSource(original, before, body, (candidate) =>
-              editor.schema
-                .nodeFromJSON(editor.markdown!.parse(candidate))
-                .eq(nextState.doc),
+        const cached = provenSources.current.get(editor)
+        const baseline =
+          cached?.source === original && cached.document === editor.state.doc
+            ? cached.document
+            : parse(original)
+        if (baseline?.eq(editor.state.doc))
+          provenSources.current.set(editor, {
+            source: original,
+            document: editor.state.doc,
+          })
+        const patched = baseline?.eq(editor.state.doc)
+          ? preserveRichSource(
+              original,
+              before,
+              body,
+              (candidate) => parse(candidate)?.eq(nextState.doc) ?? false,
+              8 - parses,
             )
           : null
         if (patched === null) {
           if (
             !(editor.state.selection instanceof AllSelection) ||
-            !editor.schema
-              .nodeFromJSON(editor.markdown!.parse(body))
-              .eq(nextState.doc)
+            !parse(body)?.eq(nextState.doc)
           )
             throw new Error(
               'This edit would rewrite other Markdown. Use Source view for this document.',
             )
         } else body = patched
+        proven = true
       }
     }
+    if (proven)
+      provenSources.current.set(editor, {
+        source: body,
+        document: nextState.doc,
+      })
     const source = preserved?.document.eq(nextState.doc)
       ? preserved.source
       : projection.serialize(body)
@@ -1542,6 +1600,8 @@ export function MarkdownEditor({
   // biome-ignore lint/correctness/useExhaustiveDependencies: attachment replacements invalidate codecs even when their compatibility flags match.
   useLayoutEffect(() => {
     pendingPlainSync.current = null
+    if (editor) provenSources.current.delete(editor)
+    paragraphProof.current = null
     if (!editor?.markdown || !markdownDocument || paneMode === 'markdown')
       return
     const serialize = markdownSerializer(
@@ -1612,6 +1672,27 @@ export function MarkdownEditor({
       )
     }
     const certify = (snapshot: SourceSnapshot) => {
+      if (
+        outlineSyntax?.math &&
+        editor.markdown &&
+        markdownSyntax.version() === syntaxVersion
+      ) {
+        const source = projectMarkdown(
+          snapshot.materialize(),
+          markdownExtensions,
+        ).content
+        if (!paragraphProof.current?.matches(source, editor.state.doc))
+          paragraphProof.current = createRichParagraphProof(
+            source,
+            editor.state.doc,
+            editor.markdown,
+          )
+        if (paragraphProof.current)
+          provenSources.current.set(editor, {
+            source,
+            document: editor.state.doc,
+          })
+      }
       if (
         !plainSyncEligible ||
         !editor.markdown ||
@@ -1838,6 +1919,7 @@ export function MarkdownEditor({
     paneMode,
     footnoteDocument,
     plainSyncEligible,
+    outlineSyntax,
     projectionReadOnly,
     disabled,
     richExtensionError,
