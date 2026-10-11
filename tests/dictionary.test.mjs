@@ -314,3 +314,35 @@ test('dictionary sends no follow-up request after the lookup is closed', async (
     'https://en.wiktionary.org/api/rest_v1/page/definition/happy',
   ])
 })
+
+test('dictionary retries malformed answers instead of caching them', async () => {
+  const requests = []
+  const responses = [
+    { ok: true, value: { text: '<html>busy</html>' } },
+    { ok: true, value: { text: await fixture('wiktionary-happy.json') } },
+    { ok: true, value: { text: '{"oops":1}' } },
+    {
+      ok: true,
+      value: { text: await fixture('datamuse-synonyms-happy.json') },
+    },
+    { ok: true, value: { text: '[]' } },
+  ]
+  const getText = async (request) => {
+    requests.push(request.url)
+    return responses.shift()
+  }
+  const wiktionary = wiktionaryProvider(getText)
+  await assert.rejects(wiktionary.lookup('happy', 'en', signal), {
+    reason: 'unavailable',
+  })
+  assert.equal((await wiktionary.lookup('happy', 'en', signal)).length, 3)
+  const datamuse = datamuseProvider(getText)
+  await assert.rejects(datamuse.related('happy', 'en', signal), {
+    reason: 'unavailable',
+  })
+  assert.equal(
+    (await datamuse.related('happy', 'en', signal)).synonyms[0],
+    'halcyon',
+  )
+  assert.equal(requests.length, 5)
+})
