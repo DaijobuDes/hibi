@@ -339,7 +339,7 @@ export function SideView({
                 </div>
               ))}
           </Section>
-          {groups.length > 0 && (
+          {groups.length > 1 && (
             <Section title="By meaning">
               {groups.map((group) => (
                 <Chips
