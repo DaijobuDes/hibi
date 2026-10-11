@@ -26,23 +26,27 @@ const manager = new MarkdownManager({
   markedOptions: { gfm: true },
 })
 
-test('flavor paragraph rules compose after core escaping with render context', () => {
+test('flavor paragraph rules compose before core escaping with render context', () => {
   const seen = []
   const { core, parser, options } = markdownConfiguration([
     {
       paragraphRules: [
-        (source, ctx) => {
-          seen.push([source, ctx.parentType])
-          return source.replaceAll('?', '\\?')
+        {
+          escape(source, ctx) {
+            seen.push([source, ctx.parentType])
+            return source.replaceAll('?', '\\?')
+          },
         },
-        (source) => source.replaceAll('!', '\\!'),
+        { escape: (source) => source.replaceAll('!', '\\!') },
       ],
     },
     {
       paragraphRules: [
-        (source) => {
-          assert.equal(source, '\\# why\\?\\!')
-          return source
+        {
+          escape(source) {
+            assert.equal(source, '# why\\?\\!')
+            return source
+          },
         },
       ],
     },
@@ -61,11 +65,72 @@ test('flavor paragraph rules compose after core escaping with render context', (
     assert.ok(schema.nodeFromJSON(manager.parse(saved)).eq(doc))
   }
   assert.deepEqual(seen, [
-    ['\\# why?!', 'doc'],
-    ['\\# why?!', 'blockquote'],
-    ['\\# why?!', 'doc'],
-    ['\\# why?!', 'blockquote'],
+    ['# why?!', 'doc'],
+    ['# why?!', 'blockquote'],
+    ['# why?!', 'doc'],
+    ['# why?!', 'blockquote'],
   ])
+})
+
+test('paragraph rules distinguish literal text from node output without splitting marks', () => {
+  const dollarNode = Node.create({
+    name: 'dollarNode',
+    group: 'inline',
+    inline: true,
+    atom: true,
+    renderMarkdown: () => '$node$',
+  })
+  const { core, addons, parser, options } = markdownConfiguration([
+    {
+      richExtensions: [dollarNode],
+      paragraphRules: [
+        {
+          characters: '$#',
+          escape(source, { literals }) {
+            assert.ok(source.includes('$node$'))
+            assert.ok(!source.includes('$text$'))
+            for (const [sentinel, character] of literals)
+              if (character === '$') source = source.replaceAll(sentinel, '\\$')
+            return source
+          },
+        },
+      ],
+    },
+  ])
+  const extensions = [...core, ...addons]
+  const schema = getSchema(extensions)
+  const manager = new MarkdownManager({
+    extensions,
+    marked: parser,
+    markedOptions: options,
+  })
+  const json = {
+    type: 'doc',
+    content: [
+      {
+        type: 'paragraph',
+        content: [
+          { type: 'text', text: '# ' },
+          { type: 'text', text: '$te', marks: [{ type: 'bold' }] },
+          {
+            type: 'text',
+            text: 'xt$',
+            marks: [{ type: 'bold' }, { type: 'italic' }],
+          },
+          { type: 'text', text: ' \uE0000\uE001 \uE000\uE0000\uE001 ' },
+          { type: 'dollarNode' },
+        ],
+      },
+    ],
+  }
+  const original = structuredClone(json)
+  const doc = schema.nodeFromJSON(json)
+  const expected =
+    '\\# **\\$te*xt\\$*** \uE0000\uE001 \uE000\uE0000\uE001 $node$'
+  assert.equal(manager.serialize(json), expected)
+  for (const blockLocal of [true, false])
+    assert.equal(markdownSerializer(manager, blockLocal)(doc).source, expected)
+  assert.deepEqual(json, original)
 })
 
 test('literal block prefixes survive full and cached serialization', async (t) => {

@@ -69,11 +69,7 @@ export function markdownConfiguration(
           .map((extension) =>
             extension.name === 'paragraph'
               ? extension.extend({
-                  renderMarkdown: (node, helpers, ctx) =>
-                    escapeParagraph(
-                      helpers.renderChildren(node.content ?? []),
-                      ctx,
-                    ),
+                  renderMarkdown: escapeParagraph,
                 })
               : extension,
           )

@@ -1,9 +1,13 @@
-import type { JSONContent } from '@tiptap/core'
+import type {
+  JSONContent,
+  MarkdownRendererHelpers,
+  RenderContext,
+} from '@tiptap/core'
 import { ORDERED_LIST_MARKER_PATTERN } from '@tiptap/extension-list'
 import type { MarkdownManager } from '@tiptap/markdown'
 import type { Node } from '@tiptap/pm/model'
 import type { Marked } from 'marked'
-import type { MarkdownFlavor, MarkdownParagraphRule } from '../../addons/api'
+import type { MarkdownFlavor } from '../../addons/api'
 
 const orderedPrefix = new RegExp(
   `^( {0,3}(?:${ORDERED_LIST_MARKER_PATTERN}))([.)])(?=[^\\S\\n])`,
@@ -13,12 +17,45 @@ const orderedPrefix = new RegExp(
 export function paragraphEscaper(
   parser: Marked,
   flavors: readonly MarkdownFlavor[],
-): MarkdownParagraphRule {
+) {
   const rules = flavors.flatMap((flavor) => flavor.paragraphRules ?? [])
-  return (source, ctx) => {
-    source = escapeBlockPrefixes(source, parser)
-    for (const rule of rules) source = rule(source, ctx)
-    return source
+  const characters = new Set(
+    rules.flatMap((rule) => [...(rule.characters ?? '')]),
+  )
+  return (
+    node: JSONContent,
+    helpers: MarkdownRendererHelpers,
+    ctx: RenderContext,
+  ): string => {
+    let content = node.content ?? []
+    const literals = new Map<string, string>()
+    if (characters.size) {
+      const original = JSON.stringify(node)
+      let prefix = '\uE000'
+      while (original.includes(prefix)) prefix += '\uE000'
+      const sentinels = new Map(
+        [...characters].map((character, index) => {
+          const sentinel = `${prefix}${index}\uE001`
+          literals.set(sentinel, character)
+          return [character, sentinel]
+        }),
+      )
+      content = content.map((child) =>
+        child.type === 'text' && child.text
+          ? {
+              ...child,
+              text: [...child.text]
+                .map((character) => sentinels.get(character) ?? character)
+                .join(''),
+            }
+          : child,
+      )
+    }
+    let source = helpers.renderChildren(content)
+    for (const rule of rules) source = rule.escape(source, { ...ctx, literals })
+    for (const [sentinel, character] of literals)
+      source = source.replaceAll(sentinel, character)
+    return escapeBlockPrefixes(source, parser)
   }
 }
 

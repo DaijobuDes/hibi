@@ -4,13 +4,60 @@
 
 Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L318)
 
-Transform rendered paragraph Markdown after core escaping, in flavor and rule order.
+Escape paragraph Markdown in flavor and rule order, before core block-prefix escaping.
+
+<details>
+<summary>Declaration</summary>
 
 ```typescript
-type MarkdownParagraphRule = (
-  source: string,
-  ctx: RenderContext,
-) => string
+type MarkdownParagraphRule = {
+  /** Replace these literal text characters with sentinels during inline rendering. */
+  characters?: string
+  /** Replace only sentinels that need escaping; the host restores the rest afterward. */
+  escape: (
+    source: string,
+    ctx: RenderContext & { literals: ReadonlyMap<string, string> },
+  ) => string
+}
+```
+
+</details>
+
+## Contents
+
+**Properties**
+
+- [characters](#characters)
+
+**Methods**
+
+- [escape](#escape)
+
+## Properties
+
+### characters
+
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L320)
+
+Replace these literal text characters with sentinels during inline rendering.
+
+```typescript
+characters?: string
+```
+
+## Methods
+
+### escape
+
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L322)
+
+Replace only sentinels that need escaping; the host restores the rest afterward.
+
+```typescript
+escape: (
+    source: string,
+    ctx: RenderContext & { literals: ReadonlyMap<string, string> },
+  ) => string
 ```
 
 **Parameters**
@@ -18,6 +65,6 @@ type MarkdownParagraphRule = (
 | Name | Type |
 | --- | --- |
 | <code>source</code> | <code>string</code> |
-| <code>ctx</code> | <code>RenderContext</code> |
+| <code>ctx</code> | <code>RenderContext &amp; { literals: ReadonlyMap&lt;string, string&gt; }</code> |
 
 **Returns:** <code>string</code>

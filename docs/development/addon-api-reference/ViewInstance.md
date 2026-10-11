@@ -2,7 +2,7 @@
 
 # ViewInstance
 
-Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L524)
+Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L529)
 
 <details>
 <summary>Declaration</summary>
@@ -36,7 +36,7 @@ type ViewInstance = {
 
 ### id
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L525)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L530)
 
 ```typescript
 id: string
@@ -46,7 +46,7 @@ id: string
 
 ### show
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L526)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L531)
 
 ```typescript
 show: () => void
@@ -56,7 +56,7 @@ show: () => void
 
 ### hide
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L527)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L532)
 
 ```typescript
 hide: () => void
@@ -66,7 +66,7 @@ hide: () => void
 
 ### close
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L528)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L533)
 
 ```typescript
 close: () => void
@@ -76,7 +76,7 @@ close: () => void
 
 ### focus
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L529)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L534)
 
 ```typescript
 focus: () => void
