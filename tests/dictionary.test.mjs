@@ -235,3 +235,56 @@ test('dictionary registry prefers installed offline packs and falls back online'
   assert.equal((await registry.providers('ja', 'lookup')).length, 1)
   assert.equal((await registry.providers('ja', 'related')).length, 0)
 })
+
+test('dictionary sends nothing online when an installed offline pack answers', async () => {
+  const registry = createRegistry()
+  const calls = []
+  const provider = (id, kind, languages, answers) => ({
+    id,
+    label: id,
+    kind,
+    languages,
+    lookup: async (term, lang) => {
+      calls.push(`${id}:${lang}`)
+      return answers.includes(lang)
+        ? [
+            {
+              term,
+              lang,
+              senses: [{ gloss: id }],
+              source: { name: id, license: 'test' },
+            },
+          ]
+        : []
+    },
+  })
+  registry.register(
+    provider(
+      'online',
+      'online',
+      ['zh', 'yue', 'ja', 'en', 'tl', 'fr'],
+      ['zh', 'ja', 'en', 'fr'],
+    ),
+  )
+  registry.register(provider('pack', 'offline', ['zh', 'en'], ['zh']))
+  const ask = (item, lang) => item.lookup('x', lang, signal)
+  let result = await gather(registry, ['yue', 'zh', 'ja'], 'lookup', ask)
+  assert.deepEqual(calls, ['pack:zh'])
+  assert.deepEqual(
+    result.found.map(({ lang }) => lang),
+    ['zh'],
+  )
+
+  calls.length = 0
+  result = await gather(registry, ['en', 'tl', 'fr'], 'lookup', ask)
+  assert.deepEqual(calls, ['pack:en', 'online:en'])
+  assert.deepEqual(
+    result.found.map(({ lang }) => lang),
+    ['en'],
+  )
+
+  calls.length = 0
+  result = await gather(registry, ['tl', 'fr', 'en'], 'lookup', ask)
+  assert.deepEqual(calls, ['pack:en', 'online:tl', 'online:fr'])
+  assert.equal(result.found[0].value[0].source.name, 'online')
+})
