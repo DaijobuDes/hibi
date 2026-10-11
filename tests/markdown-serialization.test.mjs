@@ -251,6 +251,40 @@ test('literal block prefixes survive full and cached serialization', async (t) =
   }
 })
 
+test('table headers and cells skip block escapes while retaining flavor rules', () => {
+  const parents = []
+  const { core, addons, parser, options } = markdownConfiguration([
+    {
+      markedOptions: { gfm: true },
+      richExtensions: [TableKit],
+      paragraphRules: [
+        {
+          escape(source, ctx) {
+            parents.push(ctx.parentType)
+            return source
+          },
+        },
+      ],
+    },
+  ])
+  const extensions = [...core, ...addons]
+  const schema = getSchema(extensions)
+  const manager = new MarkdownManager({
+    extensions,
+    marked: parser,
+    markedOptions: options,
+  })
+  const source =
+    '\n| -   | 1. x | --- | #   |\n| --- | ---- | --- | --- |\n| -   | 1. x | --- | #   |\n'
+  const doc = schema.nodeFromJSON(manager.parse(source))
+  for (const blockLocal of [true, false]) {
+    const saved = markdownSerializer(manager, blockLocal)(doc).source
+    assert.equal(saved, source)
+    assert.ok(schema.nodeFromJSON(manager.parse(saved)).eq(doc))
+  }
+  assert.deepEqual(parents, Array(16).fill('table'))
+})
+
 test('gfm delimiter lines are escaped only when they would form a table', async (t) => {
   for (const gfm of [false, true]) {
     const { core, addons, parser, options } = markdownConfiguration([
