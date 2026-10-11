@@ -148,8 +148,11 @@ export function Sonner() {
             onClick={
               item.action
                 ? () => {
-                    service.select(item.id)
-                    restoreFocus()
+                    try {
+                      service.select(item.id)
+                    } finally {
+                      restoreFocus()
+                    }
                   }
                 : undefined
             }

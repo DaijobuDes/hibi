@@ -445,6 +445,30 @@ test('shared dialogs validate input, trap focus, queue, and clean up by addon ow
     .press('Enter')
   await addonToast.waitFor({ state: 'detached' })
   assert.equal(await page.evaluate(() => window.toastRuns), 2)
+  // A throwing action still reports, dismisses, and returns focus.
+  const toastError = page.waitForEvent('pageerror')
+  await page.evaluate(() =>
+    window.dialogTest.otherToasts.api.show({
+      message: 'addon finished',
+      duration: 0,
+      action: {
+        label: 'Open result',
+        run: () => {
+          throw new Error('toast action failed')
+        },
+      },
+    }),
+  )
+  await prompt.focus()
+  await page
+    .getByRole('button', { name: 'Addon finished. Open result.', exact: true })
+    .press('Enter')
+  assert.match((await toastError).message, /toast action failed/)
+  await addonToast.waitFor({ state: 'detached' })
+  assert.equal(
+    await prompt.evaluate((element) => element === document.activeElement),
+    true,
+  )
   await page.evaluate(() =>
     window.dialogTest.otherToasts.api.show({
       message: 'addon finished',
