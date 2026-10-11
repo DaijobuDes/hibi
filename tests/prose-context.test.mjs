@@ -1,33 +1,38 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { codeSpanRanges, openCodeSpanAt } from '../src/shared/prose-context.ts'
+import { codeSpans } from '../src/shared/prose-context.ts'
 
-test('code spans pair backtick runs of equal length', () => {
-  assert.deepEqual(codeSpanRanges('`a` and ``b`c`` d'), [
-    [0, 3],
-    [8, 15],
+const spans = (text) =>
+  codeSpans(text).map(({ from, to, closed }) => [from, to, closed])
+
+test('code spans close only on a backtick run of equal length', () => {
+  assert.deepEqual(spans('`a` b'), [[0, 3, true]])
+  assert.deepEqual(spans('``a`b`` c'), [[0, 7, true]])
+  assert.deepEqual(spans('```a``b``` c'), [[0, 10, true]])
+  assert.deepEqual(spans('`a` and ``b`c`` d'), [
+    [0, 3, true],
+    [8, 15, true],
   ])
-  // An opener with no closer is literal; a later pair still forms a span.
-  assert.deepEqual(codeSpanRanges('`a ``b`` c'), [[3, 8]])
-  // A backslash escapes an opening backtick, but not a closing one.
-  assert.deepEqual(codeSpanRanges('\\`a` b'), [])
-  assert.deepEqual(codeSpanRanges('\\``a` b'), [[2, 5]])
-  assert.deepEqual(codeSpanRanges('\\``a`` b'), [])
-  assert.deepEqual(codeSpanRanges('`a\\` b'), [[0, 4]])
-  assert.deepEqual(codeSpanRanges('\\\\`a` b'), [[2, 5]])
+  // A 2-run is not closed by part of a 3-run.
+  assert.deepEqual(spans('``a``` b'), [[0, 8, false]])
+  assert.deepEqual(spans('``a``` b `` c'), [[0, 11, true]])
+  assert.deepEqual(spans('no code'), [])
 })
 
-test('an unclosed backtick run before the offset is open code', () => {
-  for (const [text, open] of [
-    ['run `npm ins', true],
-    ['`code` and hap', false],
-    ['``a`b`` and hap', false],
-    ['``a`b and hap', true],
-    ['use \\` for hap', false],
-    ['use \\`` code', true],
-    ['`a\\` and hap', false],
+test('backslashes escape openers outside code but not closers inside it', () => {
+  assert.deepEqual(spans('use \\` for b'), [])
+  assert.deepEqual(spans('\\``a` b'), [[2, 5, true]])
+  assert.deepEqual(spans('\\``a`` b'), [[2, 8, false]])
+  assert.deepEqual(spans('\\\\`a` b'), [[2, 5, true]])
+  assert.deepEqual(spans('`a\\` b'), [[0, 4, true]])
+})
+
+test('an unclosed run is open code to the end of the text', () => {
+  assert.deepEqual(spans('run `npm ins'), [[4, 12, false]])
+  assert.deepEqual(spans('`a` then ``b'), [
+    [0, 3, true],
+    [9, 12, false],
   ])
-    assert.equal(openCodeSpanAt(text, text.length), open, text)
-  assert.equal(openCodeSpanAt('`code` and hap', 3), true)
-  assert.equal(openCodeSpanAt('`code` and hap', 6), false)
+  // Later pairs fall inside the open span.
+  assert.deepEqual(spans('`a ``b`` c'), [[0, 10, false]])
 })

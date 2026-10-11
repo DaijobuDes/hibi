@@ -1,49 +1,39 @@
+export type CodeSpan = { from: number; to: number; closed: boolean }
+
 /**
- * Inline code spans by CommonMark rules: a backtick run opens a span that the
- * next run of the same length closes. A backslash before an opening run
- * escapes its first backtick; inside a span backslashes are literal, so they
- * never stop a closing run. An opener with no closer is literal text.
+ * Inline code spans in `text` by CommonMark rules, backticks included. A
+ * backtick run opens a span that only the next run of equal length closes. A
+ * backslash outside code escapes the first backtick of an opening run; inside
+ * a span backslashes are literal, so they never stop a closing run. A run
+ * with no closer gives a span that is not `closed` and extends to the end of
+ * `text`, as while code is still being typed; CommonMark would treat it as
+ * literal once the paragraph ends.
  */
-function scan(text: string) {
+export function codeSpans(text: string): readonly CodeSpan[] {
   const runs = [...text.matchAll(/`+/g)].map((match) => {
     let slashes = 0
     while (text[match.index - 1 - slashes] === '\\') slashes++
     return {
       start: match.index,
       length: match[0].length,
-      escaped: !!(slashes % 2),
+      escaped: slashes % 2 === 1,
     }
   })
-  const spans: [number, number][] = []
-  let unmatched = false
+  const spans: CodeSpan[] = []
   for (let index = 0; index < runs.length; index++) {
     const run = runs[index]
-    const start = run.start + Number(run.escaped)
+    const from = run.start + Number(run.escaped)
     const length = run.length - Number(run.escaped)
     if (!length) continue
     const close = runs.findIndex(
       (other, later) => later > index && other.length === length,
     )
     if (close === -1) {
-      unmatched = true
-      continue
+      spans.push({ from, to: text.length, closed: false })
+      break
     }
-    spans.push([start, runs[close].start + length])
+    spans.push({ from, to: runs[close].start + length, closed: true })
     index = close
   }
-  return { spans, unmatched }
-}
-
-/** Closed code spans in `text` as `[start, end)` offsets, backticks included. */
-export function codeSpanRanges(text: string): readonly [number, number][] {
-  return scan(text).spans
-}
-
-/**
- * True when a backtick run before `offset` is not closed before it: the
- * offset is inside a code span, or code is still being typed. An opener that
- * never closes later is literal in CommonMark but still counts here.
- */
-export function openCodeSpanAt(text: string, offset: number): boolean {
-  return scan(text.slice(0, offset)).unmatched
+  return spans
 }

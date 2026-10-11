@@ -2,7 +2,7 @@ import type {
   CompletionItem,
   CompletionProvider,
 } from '../../shared/completions.ts'
-import { openCodeSpanAt } from '../../shared/prose-context.ts'
+import { codeSpans } from '../../shared/prose-context.ts'
 import type { AddonContext } from '../api.ts'
 import { type CustomWord, listCustomWords, yours } from './custom-words.ts'
 import { latinLangs, matchCase } from './lookup.ts'
@@ -69,7 +69,7 @@ const opening = /^(?:[("'“‘*_~]|\[(?!\[))*$/u
 /** True inside inline code or a fenced block that opens within `before`. */
 function inCode(before: string, line: string) {
   return (
-    openCodeSpanAt(line, line.length) ||
+    codeSpans(line).some(({ closed }) => !closed) ||
     (before.match(/^ {0,3}(?:```|~~~)/gm)?.length ?? 0) % 2 === 1
   )
 }
