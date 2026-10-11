@@ -149,3 +149,32 @@ test('phrase context never extracts fragments from addresses, identifiers or sec
     'ordinary',
   ])
 })
+
+test('custom vocabulary normalizes matching keys, deduplicates languages, and preserves editor offsets', async () => {
+  const f = fixture()
+  f.settings({ languages: ['tl', 'en'] })
+  let langs
+  f.dictionary.complete = async (_prefix, selected) => {
+    langs = selected
+    return []
+  }
+  f.dictionary.customWords = () => [
+    { word: 'école', lang: 'en' },
+    { word: 'école', lang: 'tl' },
+    { word: 'écologie' },
+  ]
+  const before = 'write e\u0301co'
+  const items = await f.provider(request(before), signal())
+  assert.deepEqual(langs, ['tl', 'en'])
+  assert.deepEqual(
+    items.map((item) => item.label),
+    ['école', 'écologie'],
+  )
+  assert.ok(items.every((item) => item.from === 6 && item.to === before.length))
+  assert.ok(items.every((item) => item.detail === 'Your word'))
+  f.dictionary.customWords = () => [
+    { word: 'bonjour', lang: 'en' },
+    { word: 'bonjour', lang: 'tl' },
+  ]
+  assert.equal((await f.provider(request('bon'), signal())).length, 1)
+})

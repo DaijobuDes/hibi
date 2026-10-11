@@ -120,7 +120,7 @@ export function createPersonalModel(options: PersonalModelOptions = {}) {
     (row.count + row.corrections) * decay(row, time)
 
   function index(row: Row, time: number) {
-    const lower = row.word.toLowerCase()
+    const lower = row.word.normalize('NFC').toLowerCase()
     for (const lang of row.languages)
       for (let length = 0; length <= lower.length; length++) {
         const key = bucketKey(
@@ -339,7 +339,7 @@ export function createPersonalModel(options: PersonalModelOptions = {}) {
       (request.prefix && !safeWord(request.prefix))
     )
       return []
-    const prefix = request.prefix.toLowerCase()
+    const prefix = request.prefix.normalize('NFC').toLowerCase()
     const limit = Number.isFinite(request.limit)
       ? Math.max(0, Math.min(32, Math.floor(request.limit ?? 8)))
       : 8
@@ -357,7 +357,7 @@ export function createPersonalModel(options: PersonalModelOptions = {}) {
             .replace(/\p{M}/gu, '')
             .toLowerCase()
             .startsWith(prefix.normalize('NFD').replace(/\p{M}/gu, '')) &&
-          item.word.toLowerCase() !== prefix,
+          item.word.normalize('NFC').toLowerCase() !== prefix,
       )
     for (const [i, item] of baseline.entries()) {
       const score = item.custom
@@ -397,7 +397,11 @@ export function createPersonalModel(options: PersonalModelOptions = {}) {
         for (const row of buckets.get(
           bucketKey(request.scope, lang, words, prefix),
         ) ?? []) {
-          if (visited.has(row) || row.word.toLowerCase() === prefix) continue
+          if (
+            visited.has(row) ||
+            row.word.normalize('NFC').toLowerCase() === prefix
+          )
+            continue
           visited.add(row)
           const factor = decay(row, time)
           if ((row.count + row.corrections) * factor < 0.02) continue

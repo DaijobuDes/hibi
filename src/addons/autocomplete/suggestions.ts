@@ -1,4 +1,8 @@
-import type { CompletionProvider } from '../../shared/completions.ts'
+import {
+  type CompletionProvider,
+  safeCompletionContext,
+  sourceProseAllowed,
+} from '../../shared/completions.ts'
 import type { DictionaryApi } from '../dictionary/api.ts'
 import { yours } from '../dictionary/custom-words.ts'
 import { matchCase } from '../dictionary/lookup.ts'
@@ -9,18 +13,12 @@ import type { AutocompletePreferences } from './settings.ts'
 
 const MIN_PREFIX = 3
 const MAX_ITEMS = 8
+const wordKey = (word: string) => word.normalize('NFC').toLowerCase()
 const partial =
   /(?:^|[^\p{L}\p{M}'’-])(\p{Script=Latin}[\p{Script=Latin}\p{M}'’-]*)$/u
 
 // Only quotes, brackets, and emphasis may open a prose word.
 const opening = /^(?:[("'“‘*_~]|\[(?!\[))*$/u
-
-function inCode(before: string, line: string) {
-  return (
-    (line.match(/`+/g)?.length ?? 0) % 2 === 1 ||
-    (before.match(/^ {0,3}(?:```|~~~)/gm)?.length ?? 0) % 2 === 1
-  )
-}
 
 /** The Latin-script prose word being typed, excluding commands, code, and urls. */
 export function prefixAt(before: string, after: string) {
@@ -29,7 +27,9 @@ export function prefixAt(before: string, after: string) {
   if (!word || word.length < MIN_PREFIX || word.length > 64) return null
   const line = before.slice(before.lastIndexOf('\n') + 1)
   const token = /\S*$/u.exec(line)?.[0] ?? ''
-  return opening.test(token.slice(0, -word.length)) && !inCode(before, line)
+  return opening.test(token.slice(0, -word.length)) &&
+    sourceProseAllowed(before) &&
+    safeCompletionContext(before, before.length)
     ? word
     : null
 }
@@ -47,10 +47,10 @@ export function rankWords(
   prefix: string,
   found: readonly { lang: Lang; words: readonly string[] }[],
 ) {
-  const typed = prefix.toLowerCase()
+  const typed = wordKey(prefix)
   const capital = prefix[0] !== prefix[0]?.toLowerCase()
   const quality = (word: string, lang: Lang) =>
-    Number(!word.toLowerCase().startsWith(typed)) * 4 +
+    Number(!wordKey(word).startsWith(typed)) * 4 +
     Number(/\s/.test(word)) * 2 +
     Number(lang !== 'de' && !capital && word[0] !== word[0]?.toLowerCase())
   const candidates = found.flatMap(({ lang, words }, order) =>
@@ -68,7 +68,7 @@ export function rankWords(
   const seen = new Set([typed])
   const ranked: { word: string; lang: Lang }[] = []
   for (const { word, lang } of candidates) {
-    const lower = word.toLowerCase()
+    const lower = wordKey(word)
     if (seen.has(lower)) continue
     seen.add(lower)
     ranked.push({ word, lang })
@@ -125,7 +125,8 @@ export function autocompleteCompletions(
     const epoch = learning.epoch()
     const available = dictionary.suggestionLanguages()
     const langs = settings.languages.filter((lang) => available.includes(lang))
-    if (!langs.length) return []
+    const firstLang = langs[0]
+    if (!firstLang) return []
     const found = typed
       ? await dictionary.complete(typed, langs, 24, signal).catch((error) => {
           if (signal.aborted) throw error
@@ -139,18 +140,24 @@ export function autocompleteCompletions(
       learning.epoch() !== epoch
     )
       return []
+    const customNames = new Set<string>()
     const custom = (typed ? dictionary.customWords() : [])
       .filter(
         (item) =>
           (!item.lang || langs.includes(item.lang)) &&
-          item.word.toLowerCase().startsWith(typed.toLowerCase()) &&
-          item.word.toLowerCase() !== typed.toLowerCase(),
+          wordKey(item.word).startsWith(wordKey(typed)) &&
+          wordKey(item.word) !== wordKey(typed),
       )
       .sort((a, b) => a.word.length - b.word.length)
+      .filter((item) => {
+        const key = wordKey(item.word)
+        if (customNames.has(key)) return false
+        customNames.add(key)
+        return true
+      })
       .slice(0, 64)
-    const customNames = new Set(custom.map((item) => item.word.toLowerCase()))
     const baseline = rankWords(typed, found).filter(
-      (item) => !customNames.has(item.word.toLowerCase()),
+      (item) => !customNames.has(wordKey(item.word)),
     )
     const ranked = learning.suggest({
       scope: captured.scope,
@@ -161,7 +168,7 @@ export function autocompleteCompletions(
         ...baseline,
         ...custom.map((item) => ({
           word: item.word,
-          lang: item.lang ?? langs[0]!,
+          lang: item.lang ?? firstLang,
           custom: true,
         })),
       ],
@@ -171,7 +178,7 @@ export function autocompleteCompletions(
     const several = langs.length > 1
     return ranked.map(({ word, lang, score, source }) => ({
       label: word,
-      ...(customNames.has(word.toLowerCase())
+      ...(customNames.has(wordKey(word))
         ? { detail: yours.label }
         : several
           ? { detail: languageName(lang) }

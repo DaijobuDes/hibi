@@ -632,6 +632,7 @@ export function SourceEditor({
     }
     const captureCompletion = (
       trigger: CompletionRequest['trigger'],
+      allowSelection = false,
     ): CompletionRequest | null => {
       const context = editContext.current
       const active = documentRuntime.get(document.tabId)
@@ -656,7 +657,7 @@ export function SourceEditor({
         target.viewId !== viewId ||
         !documentRuntime.isLiveView(target) ||
         selected.ranges.length !== 1 ||
-        !selected.main.empty
+        (!allowSelection && !selected.main.empty)
       )
         return null
       const snapshot = bridge.snapshot()
@@ -1214,7 +1215,7 @@ export function SourceEditor({
       compositionSignal = completionBroker.hasTypingListeners()
         ? {
             changes: editor.state.changes([]),
-            request: captureCompletion({ kind: 'explicit' }),
+            request: captureCompletion({ kind: 'explicit' }, true),
           }
         : null
     }

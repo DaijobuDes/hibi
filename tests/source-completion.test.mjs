@@ -297,6 +297,47 @@ test('source completions stream, accept in one undo step, and retract on provide
     await page.evaluate(() => window.completionProbe.events[0].change),
     { from: 1, to: 1, insertedLength: 2 },
   )
+  await reset('chosen tail')
+  await page.evaluate(() => {
+    const view =
+      window.completionProbe.sdk.codeMirror.view.EditorView.findFromDOM(
+        document.querySelector('.cm-content'),
+      )
+    view.dispatch({ selection: { anchor: 0, head: 6 } })
+    view.focus()
+  })
+  await cdp.send('Input.imeSetComposition', {
+    text: '日',
+    selectionStart: 1,
+    selectionEnd: 1,
+  })
+  await page.waitForFunction(
+    () => document.querySelector('.cm-content').textContent === '日 tail',
+  )
+  assert.deepEqual(await page.evaluate(() => window.completionProbe.events), [])
+  await cdp.send('Input.insertText', { text: '日本語' })
+  await page.waitForFunction(
+    () => document.querySelector('.cm-content').textContent === '日本語 tail',
+  )
+  await page.evaluate(
+    () =>
+      new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve)),
+      ),
+  )
+  assert.equal(
+    await page.evaluate(() => window.completionProbe.events.length),
+    1,
+    'selected-word composition emits one committed correction',
+  )
+  assert.deepEqual(
+    await page.evaluate(() => window.completionProbe.events[0].change),
+    { from: 0, to: 6, insertedLength: 3 },
+  )
+  assert.equal(
+    await page.evaluate(() => window.completionProbe.events[0].kind),
+    'composition',
+  )
   await cdp.detach()
   await reset('ab')
   await source.press('Control+Space')

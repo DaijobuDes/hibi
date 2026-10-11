@@ -68,6 +68,22 @@ test('cold start keeps accent-folded pack matches in their baseline order', () =
   )
 })
 
+test('personal prefix lookup matches equivalent Unicode spellings without changing stored words', () => {
+  const model = createPersonalModel()
+  for (let i = 0; i < 20; i++)
+    model.observe({
+      scope: 'notes',
+      languages: ['fr'],
+      word: 'école',
+      kind: 'typed',
+    })
+  assert.deepEqual(
+    words(model, { scope: 'notes', languages: ['fr'], prefix: 'e\u0301co' }),
+    ['école'],
+  )
+  assert.equal(model.snapshot().entries[0].word, 'école')
+})
+
 test('custom vocabulary outranks ordinary baseline, strong history outranks custom', () => {
   const model = createPersonalModel()
   const request = {
