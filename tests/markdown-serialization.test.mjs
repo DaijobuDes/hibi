@@ -236,6 +236,44 @@ test('normalized delimiter edits find nearby anchors after more than 32 earlier 
   )
 })
 
+test('occurrence order preserves edits after a table shrinks during serialization', () => {
+  const pad = (text) => text + ' '.repeat(60)
+  const table = [
+    `| ${pad('a')} | ${pad('b')} |`,
+    `|${'-'.repeat(62)}|${'-'.repeat(62)}|`,
+    ...Array.from(
+      { length: 300 },
+      (_, index) => `| ${pad(`c${index}`)} | ${pad('d')} |`,
+    ),
+  ].join('\n')
+  const items = Array.from({ length: 20 }, () => '- _y_')
+  const original = `${table}\n\n${items.join('\n')}\n`
+  const before = schema.nodeFromJSON(manager.parse(original))
+  const state = EditorState.create({ schema, doc: before })
+  let occurrence = 0
+  let position = -1
+  before.descendants((node, at) => {
+    if (node.isText && node.text === 'y' && ++occurrence === 10)
+      position = at + 1
+  })
+  assert.notEqual(position, -1)
+  const after = state.apply(state.tr.insertText('!', position)).doc
+  let parses = 0
+  const preserved = preserveRichSource(
+    original,
+    manager.serialize(before.toJSON()),
+    manager.serialize(after.toJSON()),
+    (candidate) => {
+      parses++
+      return schema.nodeFromJSON(manager.parse(candidate)).eq(after)
+    },
+    7,
+  )
+  items[9] = '- _y!_'
+  assert.equal(preserved, `${table}\n\n${items.join('\n')}\n`)
+  assert.ok(parses <= 7, 'one of eight parses is reserved for the baseline')
+})
+
 test('plain CRLF paragraphs preserve exact line endings when q becomes qq', () => {
   const original = 'p\r\n\r\nq'
   const before = schema.nodeFromJSON(manager.parse(original))

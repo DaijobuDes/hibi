@@ -28,6 +28,7 @@ export function preserveRichSource(
   const expected = (prefix * original.length) / (before.length || 1)
   const unique = new Set<number>()
   const ambiguous = new Set<number>()
+  const occurrenceDistance = new Map<number, number>()
   for (const width of [32, 16, 8, 4, 3, 2, 1, 0]) {
     const left = before.slice(Math.max(0, prefix - width), prefix)
     const right = before.slice(
@@ -46,12 +47,29 @@ export function preserveRichSource(
     for (const [contextBefore, contextAfter] of contexts) {
       const needle = contextBefore + removed + contextAfter
       if (!needle) continue
+      let occurrence = 0
+      for (
+        let at = before.indexOf(needle);
+        at !== -1 && at < prefix - contextBefore.length;
+        at = before.indexOf(needle, at + 1)
+      )
+        occurrence++
+      let index = 0
       for (
         let at = original.indexOf(needle);
         at !== -1;
         at = original.indexOf(needle, at + 1)
-      )
-        positions.add(at + contextBefore.length)
+      ) {
+        const position = at + contextBefore.length
+        positions.add(position)
+        occurrenceDistance.set(
+          position,
+          Math.min(
+            occurrenceDistance.get(position) ?? Infinity,
+            Math.abs(index++ - occurrence),
+          ),
+        )
+      }
     }
     for (const position of positions)
       (positions.size === 1 ? unique : ambiguous).add(position)
@@ -59,14 +77,19 @@ export function preserveRichSource(
   const groups = [...unique].map((position) => [position])
   const nearest = [...ambiguous]
     .filter((position) => !unique.has(position))
-    .sort((a, b) => Math.abs(a - expected) - Math.abs(b - expected))
-  // A full parse establishes meaning. Prefer the closest source edit, rejecting
-  // equally close alternatives when both produce the requested document.
+    .sort(
+      (a, b) =>
+        occurrenceDistance.get(a)! - occurrenceDistance.get(b)! ||
+        Math.abs(a - expected) - Math.abs(b - expected),
+    )
+  // Match occurrence order before distance: normalization can shrink whole blocks.
+  // A full parse establishes meaning; equally ranked proven edits stay ambiguous.
   for (const position of nearest) {
     const group = groups.at(-1)
     if (
       group &&
       !unique.has(group[0]!) &&
+      occurrenceDistance.get(group[0]!) === occurrenceDistance.get(position) &&
       Math.abs(group[0]! - expected) === Math.abs(position - expected)
     )
       group.push(position)
