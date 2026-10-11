@@ -45,7 +45,8 @@ const documentPath = (path: string) =>
 
 async function readLayout(root: string): Promise<Layout> {
   const source = await readWorkspaceLayoutText(root)
-  const layout: Layout = { version: 1, documents: {} }
+  // Null prototype, so a document named __proto__ is an ordinary entry.
+  const layout: Layout = { version: 1, documents: Object.create(null) }
   if (!source) return layout
   let parsed: { version?: unknown; documents?: unknown }
   try {

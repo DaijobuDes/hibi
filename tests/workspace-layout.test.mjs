@@ -164,3 +164,12 @@ test('concurrent table layout writes keep every document', async (t) => {
     'notes/b.md',
   ])
 })
+
+test('table layout stores a document named __proto__', async (t) => {
+  const root = await workspace(t)
+  await writeFile(join(root, '__proto__'), '')
+  await writeTableLayout(root, '__proto__', [table('0:p')])
+  assert.deepEqual(await readTableLayout(root, '__proto__'), [table('0:p')])
+  assert.deepEqual(await readTableLayout(root, 'a.md'), [])
+  assert.deepEqual(Object.keys((await stored(root)).documents), ['__proto__'])
+})
