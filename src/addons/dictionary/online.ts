@@ -208,10 +208,12 @@ export function datamuseProvider(getText: GetText): DictionaryProvider {
     kind: 'online',
     languages: ['en'],
     lookup: async () => [],
-    async related(term, _lang, signal): Promise<Related | null> {
+    async related(term, _lang, signal, cachedOnly): Promise<Related | null> {
+      const key = term.toLowerCase()
+      if (cachedOnly && !(lists.syn.has(key) && lists.ant.has(key))) return null
       const words = async (relation: 'syn' | 'ant') => {
         stopIfAborted(signal)
-        const found = await lists[relation](term.toLowerCase())
+        const found = await lists[relation](key)
         stopIfAborted(signal)
         return found
       }

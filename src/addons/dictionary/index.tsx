@@ -32,7 +32,9 @@ import {
   type Related,
   type Source,
 } from './providers'
+import { SideView } from './SideView'
 import { languageNames, readPreferences } from './settings'
+import sideCss from './side-view.css?inline'
 
 function richTarget(
   editor: Editor,
@@ -439,6 +441,33 @@ export default defineAddon({
       defaultShortcut: 'shift+f7',
       menu: { location: 'editor', group: 'dictionary', order: 2 },
       run: (invocation) => lookUp(invocation, 'synonyms'),
+    })
+    context.styles.register('dictionary-side', sideCss)
+    const sideTarget = (view: ViewTarget) => target({ source: 'api', view })
+    const side = context.sidebar.register({
+      id: 'side',
+      label: 'Dictionary',
+      icon: BookOpen,
+      side: 'right',
+      Content: () => (
+        <SideView
+          context={context}
+          registry={registry}
+          target={sideTarget}
+          failures={failures}
+          install={() =>
+            void context.commands
+              .execute(INSTALL_PACK_COMMAND)
+              .catch(() => context.notify(notices.noPacks.message))
+          }
+        />
+      ),
+    })
+    context.commands.register({
+      id: 'side-view',
+      label: 'Open dictionary side view',
+      keywords: 'dictionary thesaurus sidebar panel definition synonyms',
+      run: () => side.open(),
     })
   },
 })

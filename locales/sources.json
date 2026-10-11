@@ -278,6 +278,7 @@
     "src/renderer/src/main.tsx"
   ],
   "b3f05ba1d906": [
+    "src/addons/dictionary/SideView.tsx",
     "src/addons/dictionary/index.tsx"
   ],
   "3907fa7f8072": [
@@ -318,6 +319,9 @@
   ],
   "1e0ff8230be7": [
     "src/renderer/src/WorkspaceSettings.tsx"
+  ],
+  "8601df7ff081": [
+    "src/addons/dictionary/SideView.tsx"
   ],
   "180415cbfdeb": [
     "src/main/media.ts"
@@ -419,6 +423,9 @@
   ],
   "42575392ebf8": [
     "src/renderer/src/markdown-syntax.ts"
+  ],
+  "f9a00edd1208": [
+    "src/addons/dictionary/SideView.tsx"
   ],
   "9b61d264f34d": [
     "src/addons/dictionary/pack-converters.ts"
@@ -1317,6 +1324,9 @@
   "0daae4bccd6c": [
     "src/addons/dictionary/index.tsx"
   ],
+  "9813fafb098c": [
+    "src/addons/dictionary/SideView.tsx"
+  ],
   "837dbb2c66b1": [
     "src/renderer/src/FormattingToolbar.tsx"
   ],
@@ -1376,6 +1386,9 @@
   ],
   "a9e237ed14c7": [
     "src/addons/mermaid/Block.tsx"
+  ],
+  "f12e2c9be9b1": [
+    "src/addons/dictionary/index.tsx"
   ],
   "62c1486ecb8e": [
     "src/addons/dictionary/manifest.ts"
@@ -2099,6 +2112,9 @@
     "src/addons/quick-note/Settings.tsx",
     "src/renderer/src/ImportDialog.tsx"
   ],
+  "17c397893668": [
+    "src/addons/dictionary/SideView.tsx"
+  ],
   "2f343666aaa8": [
     "src/renderer/src/SettingsScreen.tsx"
   ],
@@ -2483,6 +2499,9 @@
   ],
   "e1fe24e1911c": [
     "src/addons/dictionary/PackSettings.tsx"
+  ],
+  "2f0ca753c4f9": [
+    "src/addons/dictionary/SideView.tsx"
   ],
   "22007a1dd5c7": [
     "src/main/sideload.ts"
@@ -2883,16 +2902,27 @@
   "82b2acb2fba2": [
     "src/addons/diagnostics/Settings.tsx"
   ],
+  "4ceafa3a82fe": [
+    "src/addons/dictionary/SideView.tsx"
+  ],
+  "d19db88aa963": [
+    "src/addons/dictionary/SideView.tsx"
+  ],
   "301c3462f6a7": [
     "src/addons/dictionary/manifest.ts"
   ],
+  "0c4dc0d6a354": [
+    "src/addons/dictionary/SideView.tsx"
+  ],
   "21cf16f7bef3": [
+    "src/addons/dictionary/SideView.tsx",
     "src/addons/dictionary/index.tsx"
   ],
   "50edf5185a89": [
     "src/addons/dictionary/index.tsx"
   ],
   "c857005ffa81": [
+    "src/addons/dictionary/SideView.tsx",
     "src/addons/dictionary/index.tsx"
   ],
   "9f4024faec10": [
@@ -3236,6 +3266,9 @@
   "7610dfb3eb04": [
     "src/renderer/src/AddonSidebar.tsx"
   ],
+  "5e67bf447384": [
+    "src/addons/dictionary/SideView.tsx"
+  ],
   "50d5797e87c0": [
     "src/addons/graph/Panel.tsx",
     "src/addons/tags/Panel.tsx",
@@ -3414,6 +3447,9 @@
   "3dd042fdb3dd": [
     "src/addons/discord-presence/Settings.tsx"
   ],
+  "f49a527d588c": [
+    "src/addons/dictionary/index.tsx"
+  ],
   "29d05e904395": [
     "src/shared/hotkeys.ts"
   ],
@@ -3588,6 +3624,9 @@
   ],
   "4a356689b984": [
     "src/addons/dictionary/index.tsx"
+  ],
+  "524bb50d4631": [
+    "src/addons/dictionary/SideView.tsx"
   ],
   "fdb600f6535a": [
     "src/renderer/src/FlavorPicker.tsx"
@@ -4177,6 +4216,9 @@
   "7ee609e625df": [
     "src/addons/mcp-server/tools.ts"
   ],
+  "32392c06e0d5": [
+    "src/addons/dictionary/SideView.tsx"
+  ],
   "255b076dd828": [
     "src/renderer/src/SettingsScreen.tsx"
   ],
@@ -4288,6 +4330,9 @@
   ],
   "2f0de9174662": [
     "src/renderer/src/WorkspaceSettings.tsx"
+  ],
+  "8e22eb5ce251": [
+    "src/addons/dictionary/SideView.tsx"
   ],
   "41472ba92a00": [
     "src/addons/discord-presence/Settings.tsx"
@@ -4565,6 +4610,7 @@
     "src/main/workspace.ts"
   ],
   "181e7ec5a25b": [
+    "src/addons/dictionary/SideView.tsx",
     "src/addons/dictionary/index.tsx"
   ],
   "2ca28cc19a91": [
@@ -5060,6 +5106,9 @@
   "ae8d2458110c": [
     "src/main/sideload.ts"
   ],
+  "39ee7c38435d": [
+    "src/addons/dictionary/SideView.tsx"
+  ],
   "31430920dff7": [
     "src/addons/_shared/FormatPdf.tsx"
   ],
@@ -5477,6 +5526,7 @@
     "src/addons/diagnostics/Settings.tsx"
   ],
   "d8b8392e2c54": [
+    "src/addons/dictionary/SideView.tsx",
     "src/addons/dictionary/index.tsx"
   ],
   "c9379e975e66": [
@@ -6265,6 +6315,9 @@
   ],
   "acf7f505b27e": [
     "src/addons/documentation/ExportDialog.tsx"
+  ],
+  "3a06dca7eb1b": [
+    "src/addons/dictionary/SideView.tsx"
   ],
   "507e6dce93ec": [
     "src/renderer/src/main.tsx"

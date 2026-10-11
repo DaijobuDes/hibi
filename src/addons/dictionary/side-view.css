@@ -1,0 +1,102 @@
+.dictionary-side {
+  flex: 1;
+  align-content: start;
+}
+.dictionary-side-search {
+  display: flex;
+  gap: var(--space-1);
+  align-items: center;
+}
+.dictionary-side-search input {
+  flex: 1;
+  min-width: 0;
+}
+.dictionary-side-search .icon-button[aria-pressed="true"] {
+  color: var(--accent);
+  background: var(--active);
+}
+.dictionary-side-results {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+}
+.dictionary-side-results header h2 {
+  margin: 0;
+  font-size: var(--text-heading);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.dictionary-side-results header p {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+.dictionary-side-section {
+  display: grid;
+  gap: var(--space-2);
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-3);
+  min-width: 0;
+}
+.dictionary-side-section h3 {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.dictionary-side-language + .dictionary-side-language {
+  margin-top: var(--space-2);
+}
+.dictionary-side-language > h4,
+.dictionary-side-chips legend {
+  margin: 0 0 var(--space-1);
+  color: var(--muted);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+.dictionary-side-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: 0;
+  border: 0;
+  padding: 0;
+  min-width: 0;
+}
+.dictionary-side-chips legend {
+  display: -webkit-box;
+  float: left;
+  width: 100%;
+  padding: 0;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  font-style: italic;
+}
+.dictionary-side-chips + .dictionary-side-chips {
+  margin-top: var(--space-2);
+}
+.dictionary-side-chips button.ui-button {
+  min-height: 0;
+  padding: 1px var(--space-2);
+  border-color: var(--border);
+  border-radius: var(--radius-round);
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.dictionary-side .dictionary-meaning ol {
+  padding-left: 1.25em;
+}
+.dictionary-side-missing {
+  display: grid;
+  gap: var(--space-2);
+}
+.dictionary-side-missing p:not([role="alert"]) {
+  color: var(--muted);
+}
+.dictionary-side-missing > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}

@@ -50,11 +50,12 @@ export interface DictionaryProvider {
     signal: AbortSignal,
     cachedOnly?: boolean,
   ): Promise<Entry[]>
-  /** Null means no related words were found. */
+  /** Null means no related words were found. `cachedOnly` works as in `lookup`. */
   related?(
     term: string,
     lang: Lang,
     signal: AbortSignal,
+    cachedOnly?: boolean,
   ): Promise<Related | null>
 }
 
