@@ -1,18 +1,14 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
-  datamuseProvider,
-  wiktionaryProvider,
-} from '../src/addons/dictionary/online.ts'
-import { createRegistry } from '../src/addons/dictionary/providers.ts'
-import {
   dictionaryCompletions,
   prefixAt,
   rankWords,
+  readTyping,
 } from '../src/addons/dictionary/suggestions.ts'
 import { CompletionBroker } from '../src/renderer/src/completion-broker.ts'
 
-const settings = { han: 'zh', latin: 'en', suggest: true, tabAccepts: true }
+const settings = { suggest: true, tabAccepts: true, languages: ['en', 'fr'] }
 const request = (before, after = '') => ({
   view: {
     documentId: 'document',
@@ -46,30 +42,18 @@ const collect = () => {
   }
 }
 
-function registry(packs, calls = []) {
-  const registry = createRegistry()
-  const offline = async () => {
-    throw new Error('network stubbed')
-  }
-  registry.register(wiktionaryProvider(offline))
-  registry.register(datamuseProvider(offline))
-  for (const [lang, words] of Object.entries(packs))
-    registry.register({
-      id: `offline-${lang}`,
-      label: lang,
-      kind: 'offline',
-      languages: [lang],
-      installed: () => true,
-      lookup: async () => [],
-      async complete(prefix, _lang, signal, limit) {
-        calls.push({ lang, prefix, limit })
-        signal.throwIfAborted()
-        return words.filter((word) =>
-          word.toLowerCase().startsWith(prefix.toLowerCase()),
-        )
-      },
+/** One fake native request per keystroke over in-memory packs. */
+function packs(words, calls = []) {
+  return async (langs, prefix, signal, limit) => {
+    calls.push({ langs, prefix, limit })
+    signal.throwIfAborted()
+    return langs.flatMap((lang) => {
+      const found = (words[lang] ?? []).filter((word) =>
+        word.toLowerCase().startsWith(prefix.toLowerCase()),
+      )
+      return found.length ? [{ lang, words: found }] : []
     })
-  return registry
+  }
 }
 
 test('suggestions take the Latin word being typed at the caret', () => {
@@ -106,7 +90,7 @@ test('suggestions skip commands, code, links, and urls', () => {
   assert.equal(prefixAt('`code` and hap', ''), 'hap')
 })
 
-test('suggestions rank preferred language, single words, case, and length', () => {
+test('suggestions rank match quality, then language order, then length', () => {
   const ranked = rankWords('hap', [
     {
       lang: 'en',
@@ -120,10 +104,34 @@ test('suggestions rank preferred language, single words, case, and length', () =
       'en:haply',
       'en:happy',
       'en:happiness',
+      'fr:hapax',
       'en:Hapsburg',
       'en:happy hour',
-      'fr:hapax',
     ],
+  )
+  // A prefix typed exactly beats an accent-folded match in an earlier language.
+  assert.deepEqual(
+    rankWords('cafe', [
+      { lang: 'fr', words: ['café'] },
+      { lang: 'en', words: ['cafeteria'] },
+    ]).map(({ word }) => word),
+    ['cafeteria', 'café'],
+  )
+  // German nouns are capitalized, so case does not demote them.
+  assert.equal(
+    rankWords('haus', [
+      { lang: 'de', words: ['Hausaufgabe'] },
+      { lang: 'en', words: ['hausfrau'] },
+    ])[0].word,
+    'Hausaufgabe',
+  )
+  // The same word from two languages appears once, with its better match.
+  assert.deepEqual(
+    rankWords('pai', [
+      { lang: 'en', words: ['Pain'] },
+      { lang: 'fr', words: ['pain'] },
+    ]),
+    [{ word: 'pain', lang: 'fr' }],
   )
   assert.equal(
     rankWords('Hap', [{ lang: 'en', words: ['Hapsburg', 'happiness'] }])[0]
@@ -138,10 +146,30 @@ test('suggestions rank preferred language, single words, case, and length', () =
   )
 })
 
-test('suggestions come only from installed packs, keep case, and never go online', async () => {
+test('suggestion languages default to English and keep the order they were turned on', () => {
+  const stored = new Map()
+  globalThis.localStorage = {
+    getItem: (key) => stored.get(key) ?? null,
+    setItem: (key, value) => stored.set(key, value),
+  }
+  try {
+    assert.deepEqual(readTyping().languages, ['en'])
+    stored.set(
+      'hibi:dictionary:typing',
+      JSON.stringify({ languages: ['tl', 'ja', 'en', 'tl', 7] }),
+    )
+    assert.deepEqual(readTyping().languages, ['tl', 'en'])
+    stored.set('hibi:dictionary:typing', JSON.stringify({ languages: [] }))
+    assert.deepEqual(readTyping().languages, ['en'])
+  } finally {
+    delete globalThis.localStorage
+  }
+})
+
+test('suggestions ask every language in one request, keep case, and never go online', async () => {
   const calls = []
   const provider = dictionaryCompletions(
-    registry({ en: ['happy', 'happen'], fr: ['hapax'] }, calls),
+    packs({ en: ['happy', 'happen'], fr: ['hapax'] }, calls),
     () => settings,
     (lang) => lang,
   )
@@ -160,17 +188,18 @@ test('suggestions come only from installed packs, keep case, and never go online
       ['hapax', 'Hapax', 0, 3, 'fr'],
     ],
   )
-  assert.deepEqual(
-    calls.map(({ lang }) => lang),
-    ['en', 'fr'],
-  )
+  assert.deepEqual(calls, [{ langs: ['en', 'fr'], prefix: 'Hap', limit: 24 }])
   assert.ok(items.every((item) => item.acceptOnTab === undefined))
-  const keepTab = dictionaryCompletions(
-    registry({ en: ['happy'] }),
-    () => ({ ...settings, tabAccepts: false }),
+  // One language: no language tags, and Tab can be left to the editor.
+  const english = dictionaryCompletions(
+    packs({ en: ['happy'], fr: ['hapax'] }),
+    () => ({ ...settings, languages: ['en'], tabAccepts: false }),
     (lang) => lang,
   )
-  assert.equal((await keepTab(request('hap'), signal()))[0].acceptOnTab, false)
+  const [only, ...rest] = await english(request('hap'), signal())
+  assert.equal(only.acceptOnTab, false)
+  assert.equal(only.detail, undefined)
+  assert.deepEqual(rest, [])
   assert.deepEqual(await provider(request('ha'), signal()), [])
   assert.deepEqual(
     await provider(
@@ -181,34 +210,21 @@ test('suggestions come only from installed packs, keep case, and never go online
   )
 })
 
-test('a failing pack keeps the other packs’ suggestions', async () => {
-  const packs = registry({ en: ['happy'], fr: ['hapax'] })
-  packs.register({
-    id: 'offline-tl',
-    label: 'tl',
-    kind: 'offline',
-    languages: ['tl'],
-    installed: () => true,
-    lookup: async () => [],
-    complete: async () => {
-      throw new Error('corrupt pack')
+test('a failed completion request yields no suggestions; only cancellation rejects', async () => {
+  const failing = dictionaryCompletions(
+    async () => {
+      throw new Error('worker gone')
     },
-  })
-  const provider = dictionaryCompletions(
-    packs,
     () => settings,
     (lang) => lang,
   )
-  assert.deepEqual(
-    (await provider(request('hap'), signal())).map((item) => item.label),
-    ['happy', 'hapax'],
-  )
+  assert.deepEqual(await failing(request('hap'), signal()), [])
 })
 
 test('suggestions stop when a newer keystroke cancels the request', async () => {
   const calls = []
   const provider = dictionaryCompletions(
-    registry({ en: ['happy'], fr: ['hapax'] }, calls),
+    packs({ en: ['happy'], fr: ['hapax'] }, calls),
     () => settings,
     (lang) => lang,
   )

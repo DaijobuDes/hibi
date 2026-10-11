@@ -516,6 +516,6 @@ export default defineAddon({
       keywords: 'dictionary thesaurus sidebar panel definition synonyms',
       run: () => side.open(),
     })
-    stopSuggestions = watchSuggestions(context, registry)
+    stopSuggestions = watchSuggestions(context)
   },
 })

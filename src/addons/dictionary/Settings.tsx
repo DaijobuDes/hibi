@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Select, SettingRow, Toggle } from '../ui'
-import type { LanguagePreferences } from './lookup'
+import { type LanguagePreferences, latinLangs } from './lookup'
 import { PackSettings } from './PackSettings'
 import { languageNames, readPreferences, writePreferences } from './settings'
 import { readTyping, type TypingPreferences, writeTyping } from './suggestions'
@@ -70,6 +70,39 @@ export function Settings() {
           checked={typing.suggest}
           onChange={(event) => changeTyping({ suggest: event.target.checked })}
         />
+      </SettingRow>
+      <SettingRow
+        id="dictionary-suggest-languages"
+        label="Suggestion languages"
+        description="Suggestions come from the installed packs of every language turned on here, so mixed-language writing works. Words that match what you typed best come first, then languages in the order you turned them on."
+      >
+        <fieldset
+          id="dictionary-suggest-languages"
+          className="dictionary-suggest-languages"
+          aria-label="Suggestion languages"
+          disabled={!typing.suggest}
+        >
+          {latinLangs.map((lang) => {
+            const on = typing.languages.includes(lang)
+            return (
+              <label key={lang}>
+                <Toggle
+                  checked={on}
+                  // At least one language stays on.
+                  disabled={on && typing.languages.length === 1}
+                  onChange={(event) =>
+                    changeTyping({
+                      languages: event.target.checked
+                        ? [...typing.languages, lang]
+                        : typing.languages.filter((item) => item !== lang),
+                    })
+                  }
+                />
+                {languageNames[lang]}
+              </label>
+            )
+          })}
+        </fieldset>
       </SettingRow>
       <SettingRow
         id="dictionary-tab-accepts"

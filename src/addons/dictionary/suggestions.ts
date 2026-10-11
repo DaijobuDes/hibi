@@ -3,11 +3,17 @@ import type {
   CompletionProvider,
 } from '../../shared/completions.ts'
 import type { AddonContext } from '../api.ts'
-import { detectLangs, type LanguagePreferences, matchCase } from './lookup.ts'
-import type { DictionaryRegistry, Lang } from './providers.ts'
-import { languageNames, readPreferences } from './settings.ts'
+import { latinLangs, matchCase } from './lookup.ts'
+import { completeAll } from './offline.ts'
+import type { Lang } from './providers.ts'
+import { languageNames } from './settings.ts'
 
-export type TypingPreferences = { suggest: boolean; tabAccepts: boolean }
+export type TypingPreferences = {
+  suggest: boolean
+  tabAccepts: boolean
+  /** Languages to suggest from, in the order they were turned on. */
+  languages: Lang[]
+}
 
 const key = 'hibi:dictionary:typing'
 const listeners = new Set<() => void>()
@@ -21,9 +27,16 @@ export function readTyping(): TypingPreferences {
   } catch {
     // Invalid local preferences use defaults.
   }
+  // Stored order is kept; unknown or repeated entries are dropped.
+  const languages = Array.isArray(saved.languages)
+    ? [...new Set<unknown>(saved.languages)].filter((lang): lang is Lang =>
+        latinLangs.includes(lang as Lang),
+      )
+    : []
   return {
     suggest: saved.suggest === true,
     tabAccepts: saved.tabAccepts !== false,
+    languages: languages.length ? languages : ['en'],
   }
 }
 
@@ -75,9 +88,13 @@ export function prefixAt(before: string, after: string) {
 }
 
 /**
- * Orders pack matches for `prefix`: preferred language first, then single
- * words before phrases, lowercase headwords before names unless the prefix is
- * capitalized, and shorter words first. The prefix itself is dropped.
+ * Orders pack matches for `prefix`, given in the user's language order. Match
+ * quality comes first: words that start with the prefix as typed (accents
+ * included) before accent-folded matches, single words before phrases, and
+ * lowercase headwords before names unless the prefix is capitalized (German
+ * capitalizes every noun, so its case is not held against it). Language order
+ * comes next, then shorter words; packs carry no word frequencies. The same
+ * word from several languages is kept once, and the prefix itself is dropped.
  */
 export function rankWords(
   prefix: string,
@@ -85,33 +102,48 @@ export function rankWords(
 ) {
   const typed = prefix.toLowerCase()
   const capital = prefix[0] !== prefix[0]?.toLowerCase()
+  const quality = (word: string, lang: Lang) =>
+    Number(!word.toLowerCase().startsWith(typed)) * 4 +
+    Number(/\s/.test(word)) * 2 +
+    Number(lang !== 'de' && !capital && word[0] !== word[0]?.toLowerCase())
+  const candidates = found.flatMap(({ lang, words }, order) =>
+    words
+      .filter((word) => word.length <= 64 && !/[\r\n]/.test(word))
+      .map((word) => ({ word, lang, order, quality: quality(word, lang) })),
+  )
+  candidates.sort(
+    (left, right) =>
+      left.quality - right.quality ||
+      left.order - right.order ||
+      left.word.length - right.word.length ||
+      left.word.localeCompare(right.word),
+  )
   const seen = new Set([typed])
-  const candidates: { word: string; lang: Lang; order: number }[] = []
-  for (const [order, { lang, words }] of found.entries())
-    for (const word of words) {
-      const lower = word.toLowerCase()
-      if (seen.has(lower) || word.length > 64 || /[\r\n]/.test(word)) continue
-      seen.add(lower)
-      candidates.push({ word, lang, order })
-    }
-  const score = (word: string) =>
-    Number(/\s/.test(word)) * 1000 +
-    Number(!capital && word[0] !== word[0]?.toLowerCase()) * 100 +
-    word.length
-  return candidates
-    .sort(
-      (left, right) =>
-        left.order - right.order ||
-        score(left.word) - score(right.word) ||
-        left.word.localeCompare(right.word),
-    )
-    .slice(0, MAX_ITEMS)
+  const ranked: { word: string; lang: Lang }[] = []
+  for (const { word, lang } of candidates) {
+    const lower = word.toLowerCase()
+    if (seen.has(lower)) continue
+    seen.add(lower)
+    ranked.push({ word, lang })
+    if (ranked.length === MAX_ITEMS) break
+  }
+  return ranked
 }
 
-/** Word completions from installed offline packs only; nothing is sent online. */
+export type Complete = (
+  langs: readonly Lang[],
+  prefix: string,
+  signal: AbortSignal,
+  limit: number,
+) => Promise<{ lang: Lang; words: string[] }[]>
+
+/**
+ * Word completions from the installed packs of every suggestion language, in
+ * one request per keystroke; nothing is sent online.
+ */
 export function dictionaryCompletions(
-  registry: DictionaryRegistry,
-  preferences: () => LanguagePreferences & TypingPreferences,
+  complete: Complete,
+  preferences: () => TypingPreferences,
   languageName: (lang: Lang) => string,
 ): CompletionProvider {
   return async (request, signal) => {
@@ -119,25 +151,18 @@ export function dictionaryCompletions(
     if (anchor !== head) return []
     const prefix = prefixAt(request.before, request.after)
     if (!prefix) return []
+    signal.throwIfAborted()
     const settings = preferences()
-    const found: { lang: Lang; words: string[] }[] = []
-    for (const lang of detectLangs(prefix, settings)) {
-      for (const provider of await registry.providers(lang, 'lookup')) {
-        signal.throwIfAborted()
-        if (provider.kind !== 'offline' || !provider.complete) continue
-        try {
-          const words = await provider.complete(prefix, lang, signal, ASK)
-          if (words.length) found.push({ lang, words })
-        } catch (error) {
-          // A broken pack leaves the other languages' suggestions.
-          if (signal.aborted) throw error
-        }
-        break
-      }
+    let found: { lang: Lang; words: string[] }[] = []
+    try {
+      found = await complete(settings.languages, prefix, signal, ASK)
+    } catch (error) {
+      // Packs that fail are skipped in the request; this is the request itself.
+      if (signal.aborted) throw error
     }
     signal.throwIfAborted()
     const ranked = rankWords(prefix, found)
-    const several = new Set(ranked.map((item) => item.lang)).size > 1
+    const several = settings.languages.length > 1
     return ranked.map(
       ({ word, lang }): CompletionItem => ({
         label: word,
@@ -152,10 +177,7 @@ export function dictionaryCompletions(
 }
 
 /** Keeps the completion provider registered only while suggestions are on. */
-export function watchSuggestions(
-  context: AddonContext,
-  registry: DictionaryRegistry,
-) {
+export function watchSuggestions(context: AddonContext) {
   let registered: Promise<(() => void) | undefined> | null = null
   const sync = () => {
     const on = readTyping().suggest
@@ -163,8 +185,9 @@ export function watchSuggestions(
       registered = context.editor
         .registerCompletionProvider(
           dictionaryCompletions(
-            registry,
-            () => ({ ...readPreferences(), ...readTyping() }),
+            (langs, prefix, signal, limit) =>
+              completeAll(context.native, langs, prefix, signal, limit),
+            readTyping,
             (lang) => languageNames[lang],
           ),
         )
