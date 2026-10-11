@@ -124,6 +124,43 @@ test('custom words load, save, follow other windows, and clear on stop', async (
   stopListening()
 })
 
+test('custom words keep a newer revision over a late save reply or notification', async () => {
+  // A held save reply, as the storage handle delivers it: its snapshot keeps
+  // the newer revision that arrived first.
+  let current = { status: 'ready', revision: 1, value: [{ word: 'kilig' }] }
+  let reply
+  const listeners = new Set()
+  const notify = (next) => {
+    current = next
+    for (const listener of listeners) listener()
+  }
+  const handle = {
+    snapshot: () => current,
+    subscribe(listener) {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
+    },
+    set: (value) =>
+      new Promise((resolve) => {
+        reply = () => resolve({ status: 'saved', revision: 2, value })
+      }),
+  }
+  const close = await openCustomWords({
+    storage: { global: async () => handle },
+  })
+  const saving = addCustomWord({ word: 'gigil' })
+  await new Promise((resolve) => setImmediate(resolve))
+  const newer = [{ word: 'kilig' }, { word: 'gigil' }, { word: 'Hibi' }]
+  notify({ status: 'ready', revision: 3, value: newer })
+  reply()
+  await saving
+  assert.deepEqual(listCustomWords(), newer)
+  // A notification for an older revision arriving late is ignored too.
+  notify({ status: 'ready', revision: 2, value: [{ word: 'kilig' }] })
+  assert.deepEqual(listCustomWords(), newer)
+  close()
+})
+
 test('custom words are looked up as the user’s own without going online', async () => {
   const { context } = storage([
     { word: 'Hibi', note: 'a markdown editor' },

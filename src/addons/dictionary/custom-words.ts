@@ -48,6 +48,7 @@ export function customWords(value: unknown): CustomWord[] {
 
 let words: readonly CustomWord[] = Object.freeze([])
 let handle: AddonStorageHandle<unknown> | null = null
+let revision = 0
 const listeners = new Set<() => void>()
 
 function publish(next: CustomWord[]) {
@@ -71,17 +72,26 @@ export function onCustomWordsChanged(listener: () => void): () => void {
 export async function openCustomWords(context: AddonContext) {
   const opened = await context.storage.global<unknown>('custom-words', 1)
   handle = opened
-  const sync = () => {
-    const snapshot = opened.snapshot()
-    publish(snapshot.status === 'ready' ? customWords(snapshot.value) : [])
-  }
+  revision = 0
   sync()
   const stop = opened.subscribe(sync)
   return () => {
     stop()
     if (handle === opened) handle = null
+    revision = 0
     publish([])
   }
+}
+
+/** Publishes the handle's latest words; an older revision never replaces a newer one. */
+function sync() {
+  const snapshot = handle?.snapshot()
+  if (!snapshot) return
+  if (snapshot.status === 'ready') {
+    if (snapshot.revision < revision) return
+    revision = snapshot.revision
+  }
+  publish(snapshot.status === 'ready' ? customWords(snapshot.value) : [])
 }
 
 let saving: Promise<unknown> = Promise.resolve()
@@ -102,7 +112,8 @@ export function updateCustomWords(
       throw new Error('Custom words changed in another window. Try again.')
     if (result.status !== 'saved')
       throw new Error('Could not save custom words.')
-    publish(customWords(result.value))
+    // A newer change from another window may have arrived before this reply.
+    sync()
   })
   saving = run.catch(() => {})
   return run
