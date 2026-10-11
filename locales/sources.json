@@ -277,6 +277,9 @@
     "src/main/index.ts",
     "src/renderer/src/main.tsx"
   ],
+  "b3f05ba1d906": [
+    "src/addons/dictionary/index.tsx"
+  ],
   "3907fa7f8072": [
     "src/addons/documentation/ExportDialog.tsx",
     "src/renderer/src/SettingsScreen.tsx",
@@ -506,6 +509,9 @@
   ],
   "7164b51d91dc": [
     "src/addons/_shared/format-renderer.tsx"
+  ],
+  "9fa7cfea94d5": [
+    "src/addons/dictionary/index.tsx"
   ],
   "d3fb4ff0a551": [
     "src/renderer/src/DependencySettings.tsx"
@@ -1112,6 +1118,9 @@
   "7f43531f5a30": [
     "src/addons/documentation/native.ts"
   ],
+  "283432fdadc1": [
+    "src/addons/dictionary/index.tsx"
+  ],
   "2ea302167076": [
     "src/addons/vim/Settings.tsx"
   ],
@@ -1267,6 +1276,18 @@
   "fbd284f4229f": [
     "src/addons/graph/Settings.tsx"
   ],
+  "934e73cfc236": [
+    "src/addons/dictionary/index.tsx"
+  ],
+  "0daae4bccd6c": [
+    "src/addons/dictionary/index.tsx"
+  ],
+  "60745c9e2a79": [
+    "src/addons/dictionary/index.tsx"
+  ],
+  "2e1c806794a0": [
+    "src/addons/dictionary/index.tsx"
+  ],
   "837dbb2c66b1": [
     "src/renderer/src/FormattingToolbar.tsx"
   ],
@@ -1326,6 +1347,9 @@
   ],
   "a9e237ed14c7": [
     "src/addons/mermaid/Block.tsx"
+  ],
+  "62c1486ecb8e": [
+    "src/addons/dictionary/manifest.ts"
   ],
   "187581a4c6c3": [
     "src/addons/git/Panel.tsx"
@@ -1967,6 +1991,9 @@
   ],
   "996e3be92632": [
     "src/shared/source-search-index.ts"
+  ],
+  "4b41e058b4ff": [
+    "src/addons/dictionary/index.tsx"
   ],
   "2cee7495c451": [
     "src/shared/source-search.ts"
@@ -2733,6 +2760,15 @@
   "82b2acb2fba2": [
     "src/addons/diagnostics/Settings.tsx"
   ],
+  "dce811bf43aa": [
+    "src/addons/dictionary/manifest.ts"
+  ],
+  "21cf16f7bef3": [
+    "src/addons/dictionary/index.tsx"
+  ],
+  "50edf5185a89": [
+    "src/addons/dictionary/index.tsx"
+  ],
   "9f4024faec10": [
     "src/renderer/src/HibiSettings.tsx"
   ],
@@ -2987,6 +3023,9 @@
   "283701594ce8": [
     "src/renderer/src/CommandPalette.tsx"
   ],
+  "7930b28a10a9": [
+    "src/addons/dictionary/index.tsx"
+  ],
   "61d62d11fed2": [
     "src/main/imports.ts"
   ],
@@ -3056,6 +3095,9 @@
   "0ecbdc239760": [
     "src/main/dependencies.ts"
   ],
+  "1ec3de776207": [
+    "src/addons/dictionary/index.tsx"
+  ],
   "b57d852b14d2": [
     "src/addons/tags/Panel.tsx"
   ],
@@ -3096,6 +3138,12 @@
   ],
   "8ec5e108fc99": [
     "src/addons/tags/Panel.tsx"
+  ],
+  "f55642ddb45f": [
+    "src/addons/dictionary/index.tsx"
+  ],
+  "6840a8ce6fb5": [
+    "src/addons/dictionary/index.tsx"
   ],
   "6887944c3369": [
     "src/renderer/src/NotificationSettings.tsx"
@@ -4044,6 +4092,9 @@
   "b0f398a57ea3": [
     "src/addons/mcp-server/Settings.tsx"
   ],
+  "60bbf0436e6d": [
+    "src/addons/dictionary/index.tsx"
+  ],
   "6959b4159575": [
     "src/addons/diagnostics/Settings.tsx"
   ],
@@ -4364,6 +4415,12 @@
   ],
   "5d04fcd66b47": [
     "src/main/workspace.ts"
+  ],
+  "181e7ec5a25b": [
+    "src/addons/dictionary/index.tsx"
+  ],
+  "2ca28cc19a91": [
+    "src/addons/dictionary/index.tsx"
   ],
   "dc93879e3107": [
     "src/renderer/src/SettingsScreen.tsx",
@@ -4736,6 +4793,12 @@
   ],
   "3399e3ac99f9": [
     "src/addons/mcp-server/Settings.tsx"
+  ],
+  "a9e198e4f339": [
+    "src/addons/dictionary/index.tsx"
+  ],
+  "6dddc403e45f": [
+    "src/addons/dictionary/index.tsx"
   ],
   "75f8344e99c3": [
     "src/renderer/src/source-session.ts"
@@ -5214,6 +5277,9 @@
   "38555cec15e2": [
     "src/renderer/src/editor-interaction-broker.ts"
   ],
+  "a6e128c99269": [
+    "src/addons/dictionary/index.tsx"
+  ],
   "451aa51a0fb5": [
     "src/renderer/src/EditorToolbar.tsx"
   ],
@@ -5234,6 +5300,9 @@
   ],
   "c9b3c38247f7": [
     "src/addons/diagnostics/Settings.tsx"
+  ],
+  "d8b8392e2c54": [
+    "src/addons/dictionary/index.tsx"
   ],
   "c9379e975e66": [
     "src/addons/graph/Panel.tsx",
@@ -5569,6 +5638,9 @@
   ],
   "653913ac0e67": [
     "src/addons/word-count/manifest.ts"
+  ],
+  "7d3f67a6b854": [
+    "src/addons/dictionary/index.tsx"
   ],
   "95a0dabb7bc7": [
     "src/addons/git/Panel.tsx"

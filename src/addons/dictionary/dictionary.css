@@ -1,0 +1,41 @@
+.dictionary-results {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.dictionary-results > .ui-button {
+  align-self: center;
+}
+.dictionary-meaning h3,
+.dictionary-words h3 {
+  margin: 0 0 var(--space-1);
+  color: var(--muted);
+  font-size: var(--text-sm);
+  font-style: italic;
+  font-weight: 500;
+}
+.dictionary-meaning ol {
+  margin: 0;
+  padding-left: 1.5em;
+  line-height: 1.5;
+}
+.dictionary-meaning li + li {
+  margin-top: var(--space-1);
+}
+.dictionary-example {
+  margin: 0.125rem 0 0;
+  color: var(--muted);
+}
+.dictionary-meaning .dictionary-words {
+  margin-top: var(--space-2);
+}
+.dictionary-words > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+.dictionary-source {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
