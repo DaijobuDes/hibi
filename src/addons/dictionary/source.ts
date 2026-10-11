@@ -28,6 +28,7 @@ export function sourceTarget(
   const range = { from: line.from + found.from, to: line.from + found.to }
   return {
     word: found.word,
+    editable: () => view.dom.isConnected && !view.state.readOnly,
     replace(text) {
       if (view.state.doc !== doc) return false
       view.dispatch({
@@ -38,8 +39,14 @@ export function sourceTarget(
           Transaction.userEvent.of('input.replace'),
         ],
       })
-      return true
+      const after = view.state.doc
+      return (
+        after !== doc &&
+        after.sliceString(range.from, range.from + text.length) === text
+      )
     },
-    focus: () => view.focus(),
+    focus: () => {
+      if (view.dom.isConnected) view.focus()
+    },
   }
 }

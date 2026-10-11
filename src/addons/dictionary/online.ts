@@ -74,12 +74,31 @@ const wiktionarySection: Record<Lang, readonly string[]> = {
   fr: ['fr'],
 }
 
-/** Sections of a Wiktionary REST definition response, by language code. */
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === 'object' && !Array.isArray(value)
+
+/** Sections of a Wiktionary REST definition response, by language code; `{}` has none. */
 function parsePage(text: string) {
   const page: unknown = JSON.parse(text)
-  if (!page || typeof page !== 'object' || Array.isArray(page))
+  if (
+    !isRecord(page) ||
+    !Object.values(page).every(
+      (usages) =>
+        Array.isArray(usages) &&
+        usages.every(
+          (usage) =>
+            isRecord(usage) &&
+            Array.isArray(usage.definitions) &&
+            usage.definitions.every(
+              (definition) =>
+                isRecord(definition) &&
+                typeof definition.definition === 'string',
+            ),
+        ),
+    )
+  )
     throw new SyntaxError()
-  return page as Record<string, unknown>
+  return page
 }
 
 /** Parses the Wiktionary REST definition response for one language. */

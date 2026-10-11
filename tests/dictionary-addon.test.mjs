@@ -46,9 +46,11 @@ test('dictionary looks up the caret word and replaces it with one undo step in b
   // Replace the network bridge so tests never reach the live services.
   await app.evaluate(({ ipcMain }, responses) => {
     globalThis.dictionaryRequests = []
+    globalThis.dictionaryHolds = {}
     ipcMain.removeHandler('host-network:get-text')
-    ipcMain.handle('host-network:get-text', (_event, owner, request) => {
+    ipcMain.handle('host-network:get-text', async (_event, owner, request) => {
       globalThis.dictionaryRequests.push(`${owner} ${request.url}`)
+      await globalThis.dictionaryHolds[request.url]
       const text = responses[request.url]
       return text === undefined
         ? { ok: false, code: 'http-status', status: 404 }
@@ -58,6 +60,8 @@ test('dictionary looks up the caret word and replaces it with one undo step in b
   const requests = () => app.evaluate(() => globalThis.dictionaryRequests)
   const markdown = async () =>
     (await page.evaluate(() => window.hibi.getDocument())).markdown
+  const pageErrors = []
+  page.on('pageerror', (error) => pageErrors.push(error.message))
 
   await app.evaluate(({ dialog }, path) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] })
@@ -126,6 +130,63 @@ test('dictionary looks up the caret word and replaces it with one undo step in b
       (await window.hibi.getDocument()).markdown === 'I am Happy today',
   )
 
+  // Editing while the dialog is open cancels the choice with a notice.
+  await rich.evaluate((element) => element.editor.commands.focus(8))
+  await pressShortcut(app, 'Shift+F7')
+  await synonyms.getByRole('button', { name: 'glad', exact: true }).waitFor()
+  await rich.evaluate((element) =>
+    element.editor.commands.insertContentAt(1, 'Oh, '),
+  )
+  await synonyms.getByRole('button', { name: 'glad', exact: true }).click()
+  await page
+    .locator('.toast')
+    .filter({ hasText: 'The document changed. Look up the word again.' })
+    .waitFor()
+  assert.equal(await markdown(), 'Oh, I am Happy today')
+  assert.deepEqual(pageErrors, [])
+  await rich.evaluate((element) => element.editor.commands.undo())
+  await waitForAsync(
+    page,
+    async () =>
+      (await window.hibi.getDocument()).markdown === 'I am Happy today',
+  )
+
+  // Dismissal stops the lookup before the exit animation ends.
+  const todaySynonyms = 'https://api.datamuse.com/words?rel_syn=today&max=24'
+  await app.evaluate((_electron, url) => {
+    globalThis.dictionaryHolds[url] = new Promise((resolve) => {
+      globalThis.releaseHold = resolve
+    })
+  }, todaySynonyms)
+  await rich.evaluate((element) => element.editor.commands.focus(13))
+  await pressShortcut(app, 'Shift+F7')
+  const today = page.getByRole('dialog', { name: 'Synonyms for “today”' })
+  await today.waitFor()
+  await waitForAsync(
+    app,
+    (_electron, url) =>
+      globalThis.dictionaryRequests.at(-1) === `dictionary ${url}`,
+    todaySynonyms,
+  )
+  await page.keyboard.press('Escape')
+  await app.evaluate(() => globalThis.releaseHold())
+  await today.waitFor({ state: 'detached' })
+  // A later lookup's request proves the closed one sent nothing after it.
+  await rich.evaluate((element) => element.editor.commands.focus(13))
+  await clickMenu(app, 'Command palette')
+  await page
+    .getByRole('combobox', { name: /search commands/i })
+    .fill('Define word')
+  await page.getByRole('option', { name: /Define word/ }).click()
+  const defineToday = page.getByRole('dialog', { name: 'Define “today”' })
+  await defineToday.getByText('No definitions found').waitFor()
+  assert.deepEqual((await requests()).slice(-2), [
+    `dictionary ${todaySynonyms}`,
+    'dictionary https://en.wiktionary.org/api/rest_v1/page/definition/today',
+  ])
+  await page.keyboard.press('Escape')
+  await defineToday.waitFor({ state: 'detached' })
+
   await page.getByRole('button', { name: 'Source view', exact: true }).click()
   await waitForDocumentEditor(app, page, { name: 'Markdown editor' })
   const source = page.getByRole('textbox', {
@@ -149,7 +210,7 @@ test('dictionary looks up the caret word and replaces it with one undo step in b
     async () =>
       (await window.hibi.getDocument()).markdown === 'I am Content today',
   )
-  assert.equal((await requests()).length, 3, 'cached words are not re-sent')
+  assert.equal((await requests()).length, 5, 'cached words are not re-sent')
   await source.press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z')
   await waitForAsync(
     page,
@@ -187,7 +248,10 @@ test('dictionary replaces the word in the split pane it was invoked from', {
     'https://api.datamuse.com/words?rel_syn=happy&max=24': await fixture(
       'datamuse-synonyms-happy.json',
     ),
+    'https://api.datamuse.com/words?rel_syn=sad&max=24': '[{"word":"unhappy"}]',
   }
+  const pageErrors = []
+  page.on('pageerror', (error) => pageErrors.push(error.message))
   await app.evaluate(({ ipcMain }, responses) => {
     ipcMain.removeHandler('host-network:get-text')
     ipcMain.handle('host-network:get-text', (_event, _owner, request) => {
@@ -276,6 +340,42 @@ test('dictionary replaces the word in the split pane it was invoked from', {
     async () => (await window.hibi.getDocument()).markdown === 'Happy',
   )
 
+  // Activating the other pane during the lookup makes restoring focus switch
+  // back, which briefly leaves the left editor read-only.
+  await rich('left').press('Shift+F10')
+  await page
+    .getByRole('menu', { name: 'Editor actions' })
+    .getByRole('menuitem', { name: /^Find synonyms/ })
+    .click()
+  await page
+    .getByRole('dialog', { name: 'Synonyms for “Happy”' })
+    .getByRole('button', { name: 'glad', exact: true })
+    .waitFor()
+  await panes.right.evaluate((pane) =>
+    pane.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })),
+  )
+  await page.waitForFunction(
+    () =>
+      document
+        .querySelector('.editor-page[data-side="right"]')
+        ?.getAttribute('data-active') === 'true',
+  )
+  await pick()
+  await waitForAsync(
+    page,
+    () =>
+      document.querySelector('.editor-page[data-side="left"] .tiptap')
+        ?.textContent === 'Glad',
+  )
+  assert.equal(await page.locator('.toast').count(), 0)
+  assert.equal(await markdown('right', rich), 'Sad')
+  assert.equal(await markdown('left', rich), 'Glad')
+  await rich('left').evaluate((element) => element.editor.commands.undo())
+  await waitForAsync(
+    page,
+    async () => (await window.hibi.getDocument()).markdown === 'Happy',
+  )
+
   const source = (side) => panes[side].locator('.cm-content')
   for (const side of ['left', 'right']) {
     await focusPane(side, rich(side))
@@ -302,4 +402,21 @@ test('dictionary replaces the word in the split pane it was invoked from', {
   )
   assert.equal(await source('right').textContent(), 'Sad')
   assert.equal(await markdown('right', source), 'Sad')
+
+  // Closing the pane while its lookup is open reports the lost word.
+  await focusPane('right', source('right'))
+  await pressShortcut(app, 'Shift+F7')
+  const sad = page.getByRole('dialog', { name: 'Synonyms for “Sad”' })
+  await sad.getByRole('button', { name: 'unhappy', exact: true }).waitFor()
+  await page.evaluate(() =>
+    document.querySelector('[aria-label="Close split"]').click(),
+  )
+  await panes.right.waitFor({ state: 'detached' })
+  await sad.getByRole('button', { name: 'unhappy', exact: true }).click()
+  await page
+    .locator('.toast')
+    .filter({ hasText: 'The document changed. Look up the word again.' })
+    .waitFor()
+  await page.locator('.editor-page .cm-content').waitFor()
+  assert.deepEqual(pageErrors, [])
 })

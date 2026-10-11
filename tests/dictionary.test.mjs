@@ -99,6 +99,21 @@ test('dictionary parses captured Wiktionary and Datamuse responses', async () =>
   assert.equal(plainText('<a title="x > y">word</a>s'), 'words')
   assert.equal(plainText("<p>one</p><p data-x='>'>two</p>"), 'one two')
   assert.equal(plainText('&lt;b&gt;<!-- <i> -->x'), '<b>x')
+  assert.equal(plainText('a < b <!-- x <i>y</i>'), 'a < b <!-- x y')
+  assert.equal(plainText('<a "x> <b>y</b>'), '<a "x> y')
+})
+
+test('dictionary strips malformed markup in linear time', () => {
+  for (const html of [
+    `<${'a'.repeat(64000)}`,
+    '<a '.repeat(21000),
+    '<!--'.repeat(16000),
+    `<a ${'"x" <'.repeat(12000)}`,
+  ]) {
+    const started = performance.now()
+    assert.equal(plainText(html), html.replace(/\s+/g, ' ').trim())
+    assert.ok(performance.now() - started < 50, `${html.slice(0, 8)}…`)
+  }
 })
 
 test('dictionary finds the caret word with the right segmenter and language', () => {
@@ -363,6 +378,26 @@ test('dictionary retries malformed answers instead of caching them', async () =>
     'halcyon',
   )
   assert.equal(requests.length, 5)
+})
+
+test('dictionary caches empty Wiktionary pages but retries malformed sections', async () => {
+  const requests = []
+  const responses = [
+    '{"en":"broken"}',
+    '{"en":[{"definitions":[{"definition":7}]}]}',
+    '{}',
+  ]
+  const wiktionary = wiktionaryProvider(async (request) => {
+    requests.push(request.url)
+    return { ok: true, value: { text: responses.shift() } }
+  })
+  for (const _ of [1, 2])
+    await assert.rejects(wiktionary.lookup('happy', 'en', signal), {
+      reason: 'unavailable',
+    })
+  assert.deepEqual(await wiktionary.lookup('happy', 'en', signal), [])
+  assert.deepEqual(await wiktionary.lookup('happy', 'en', signal), [])
+  assert.equal(requests.length, 3)
 })
 
 test('dictionary tries the capitalized page when the lowercase one lacks the language', async () => {

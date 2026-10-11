@@ -58,6 +58,7 @@ function richTarget(
   if (doc.textBetween(range.from, range.to) !== found.word) return null
   return {
     word: found.word,
+    editable: () => !editor.isDestroyed && editor.isEditable,
     replace(text) {
       if (editor.isDestroyed || editor.state.doc !== doc) return false
       const tr = closeHistory(editor.state.tr).insertText(
@@ -67,10 +68,21 @@ function richTarget(
       )
       tr.setSelection(TextSelection.create(tr.doc, range.from + text.length))
       editor.view.dispatch(tr)
+      // Read-only editors drop document changes without throwing.
+      const after = editor.state.doc
+      const end = range.from + text.length
+      if (
+        after === doc ||
+        end > after.content.size ||
+        after.textBetween(range.from, end) !== text
+      )
+        return false
       editor.view.dispatch(closeHistory(editor.state.tr))
       return true
     },
-    focus: () => editor.view.focus(),
+    focus: () => {
+      if (!editor.isDestroyed) editor.view.focus()
+    },
   }
 }
 
@@ -150,24 +162,28 @@ function Results({
   load,
   choose,
   install,
+  dismissed,
 }: {
   word: string
   kind: 'define' | 'synonyms'
   load: (signal: AbortSignal) => Promise<Outcome>
   choose: (word: string) => void
   install: () => void
+  dismissed: AbortSignal
 }) {
   const [attempt, setAttempt] = useState(0)
   const [result, setResult] = useState<Outcome | null>(null)
   // biome-ignore lint/correctness/useExhaustiveDependencies: attempt reruns the lookup.
   useEffect(() => {
     const controller = new AbortController()
+    // Dismissal aborts before the exit animation unmounts the results.
+    const signal = AbortSignal.any([controller.signal, dismissed])
     setResult(null)
-    void load(controller.signal).then((value) => {
-      if (!controller.signal.aborted) setResult(value)
+    void load(signal).then((value) => {
+      if (!signal.aborted) setResult(value)
     })
     return () => controller.abort()
-  }, [load, attempt])
+  }, [load, attempt, dismissed])
   if (!result)
     return (
       <PanelMessage
@@ -379,18 +395,28 @@ export default defineAddon({
         dom = editor?.dom
       }
       if (!found || !dom) return null
-      const { replace } = found
+      const { editable, replace } = found
       return {
         ...found,
-        // getSelection fails once the view, document, or its generation changes.
-        replace: (text: string) => {
-          const current = context.editorViews.getSelection(view)
-          return (
-            current.ok &&
-            current.value.editor === selection.editor &&
-            inView(dom, view) &&
-            replace(text)
-          )
+        // Restoring focus after the dialog can switch split panes, which
+        // leaves the captured editor read-only for a moment.
+        replace: async (text: string) => {
+          for (const deadline = performance.now() + 2000; ; ) {
+            if (editable()) {
+              // getSelection fails once the view, document, or its generation changes.
+              const current = context.editorViews.getSelection(view)
+              if (
+                !current.ok ||
+                current.value.editor !== selection.editor ||
+                !inView(dom, view)
+              )
+                return false
+              if (replace(text)) return true
+              if (editable()) return false
+            }
+            if (!inView(dom, view) || performance.now() > deadline) return false
+            await new Promise((resolve) => setTimeout(resolve, 16))
+          }
         },
       }
     }
@@ -427,11 +453,12 @@ export default defineAddon({
       const choice = await context.dialogs.open<string>({
         title:
           kind === 'define' ? `Define “${word}”` : `Synonyms for “${word}”`,
-        content: ({ close }) => (
+        content: ({ close, signal }) => (
           <Results
             word={word}
             kind={kind}
             load={load}
+            dismissed={signal}
             choose={close}
             install={() => {
               close(null)
@@ -442,7 +469,7 @@ export default defineAddon({
           />
         ),
       }).result
-      if (choice && !found.replace(matchCase(word, choice)))
+      if (choice && !(await found.replace(matchCase(word, choice))))
         context.notify(notices.changed.message)
       found.focus()
     }
