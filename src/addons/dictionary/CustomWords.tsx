@@ -8,7 +8,8 @@ import {
   listCustomWords,
   mergeCustomWords,
   onCustomWordsChanged,
-  saveCustomWords,
+  sameCustomWord,
+  updateCustomWords,
 } from './custom-words'
 import { LANGS, type Lang } from './providers'
 import { languageNames } from './settings'
@@ -21,8 +22,10 @@ export function CustomWords() {
   const [draft, setDraft] = useState('')
   const [text, setText] = useState('')
   const [message, setMessage] = useState('')
-  const replace = (index: number, next: CustomWord) =>
-    saveCustomWords(words.map((item, at) => (at === index ? next : item)))
+  const replace = (original: CustomWord, next: CustomWord) =>
+    updateCustomWords((current) =>
+      current.map((item) => (sameCustomWord(item, original) ? next : item)),
+    )
       .then(() => setMessage(''))
       .catch((error) => setMessage(failed(error)))
   return (
@@ -61,7 +64,7 @@ export function CustomWords() {
       </form>
       {words.length ? (
         <ul>
-          {words.map((item, index) => (
+          {words.map((item) => (
             <li key={`${item.word}\u0000${item.lang ?? ''}`}>
               <span className="dictionary-custom-word" lang={item.lang}>
                 {item.word}
@@ -72,7 +75,7 @@ export function CustomWords() {
                 onChange={(event) => {
                   const { lang: _old, ...rest } = item
                   const lang = event.target.value as Lang | ''
-                  void replace(index, lang ? { ...rest, lang } : rest)
+                  void replace(item, lang ? { ...rest, lang } : rest)
                 }}
               >
                 <option value="">Any language</option>
@@ -91,14 +94,16 @@ export function CustomWords() {
                   const note = event.target.value.trim()
                   if (note === (item.note ?? '')) return
                   const { note: _old, ...rest } = item
-                  void replace(index, note ? { ...rest, note } : rest)
+                  void replace(item, note ? { ...rest, note } : rest)
                 }}
               />
               <Button
                 variant="ghost"
                 aria-label={`Remove “${item.word}”`}
                 onClick={() =>
-                  saveCustomWords(words.filter((_item, at) => at !== index))
+                  updateCustomWords((current) =>
+                    current.filter((other) => !sameCustomWord(other, item)),
+                  )
                     .then(() => setMessage(''))
                     .catch((error) => setMessage(failed(error)))
                 }
@@ -139,10 +144,14 @@ export function CustomWords() {
               setMessage('No words were found in the text.')
               return
             }
-            saveCustomWords(mergeCustomWords(words, imported))
+            updateCustomWords((current) => mergeCustomWords(current, imported))
               .then(() => {
                 setText('')
-                setMessage(`Imported ${imported.length} words.`)
+                setMessage(
+                  imported.length === 1
+                    ? 'Imported 1 word.'
+                    : `Imported ${imported.length} words.`,
+                )
               })
               .catch((error) => setMessage(failed(error)))
           }}

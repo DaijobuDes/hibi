@@ -84,17 +84,33 @@ export async function openCustomWords(context: AddonContext) {
   }
 }
 
-/** Replaces the saved list. Rejects with a message the UI can show. */
-export async function saveCustomWords(next: readonly CustomWord[]) {
-  if (!handle)
-    throw new Error('Turn on Dictionary and thesaurus to keep custom words.')
-  const value = customWords(next)
-  const result = await handle.set(value)
-  if (result.status === 'conflict')
-    throw new Error('Custom words changed in another window. Try again.')
-  if (result.status !== 'saved') throw new Error('Could not save custom words.')
-  publish(customWords(result.value))
+let saving: Promise<unknown> = Promise.resolve()
+
+/**
+ * Saves `change` applied to the latest list. Changes run one at a time, so a
+ * quick edit after another never works from a stale list. Rejects with a
+ * message the UI can show.
+ */
+export function updateCustomWords(
+  change: (current: readonly CustomWord[]) => readonly CustomWord[],
+) {
+  const run = saving.then(async () => {
+    if (!handle)
+      throw new Error('Turn on Dictionary and thesaurus to keep custom words.')
+    const result = await handle.set(customWords(change(words)))
+    if (result.status === 'conflict')
+      throw new Error('Custom words changed in another window. Try again.')
+    if (result.status !== 'saved')
+      throw new Error('Could not save custom words.')
+    publish(customWords(result.value))
+  })
+  saving = run.catch(() => {})
+  return run
 }
+
+/** True when both name the same word in the same language. */
+export const sameCustomWord = (left: CustomWord, right: CustomWord) =>
+  key(left) === key(right)
 
 /** `incoming` words replace matching ones in place; the rest are added at the end. */
 export function mergeCustomWords(
@@ -110,7 +126,7 @@ export function mergeCustomWords(
 export function addCustomWord(word: CustomWord) {
   const added = customWords([word])
   if (!added.length) return Promise.reject(new Error('Enter a word to add.'))
-  return saveCustomWords(mergeCustomWords(words, added))
+  return updateCustomWords((current) => mergeCustomWords(current, added))
 }
 
 /** One word per line: `word`, then optional tab-separated language code and note. */

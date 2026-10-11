@@ -10,7 +10,7 @@ import {
   mergeCustomWords,
   onCustomWordsChanged,
   openCustomWords,
-  saveCustomWords,
+  updateCustomWords,
 } from '../src/addons/dictionary/custom-words.ts'
 import {
   datamuseProvider,
@@ -103,7 +103,17 @@ test('custom words load, save, follow other windows, and clear on stop', async (
     { word: 'kilig', lang: 'tl' },
     { word: 'Hibi', note: 'an editor' },
   ])
-  await saveCustomWords(listCustomWords().slice(1))
+  // Queued changes each see the list the previous one saved.
+  await Promise.all([
+    updateCustomWords((current) => current.slice(1)),
+    addCustomWord({ word: 'kilig', note: 'giddy' }),
+    updateCustomWords((current) => current.filter((item) => !item.lang)),
+  ])
+  assert.deepEqual(listCustomWords(), [
+    { word: 'Hibi', note: 'an editor' },
+    { word: 'kilig', note: 'giddy' },
+  ])
+  await updateCustomWords((current) => current.slice(0, 1))
   assert.deepEqual(listCustomWords(), [{ word: 'Hibi', note: 'an editor' }])
   handle.external([{ word: 'gigil' }])
   assert.deepEqual(listCustomWords(), [{ word: 'gigil' }])

@@ -2426,6 +2426,9 @@
   "321f179c80ba": [
     "src/renderer/src/ImportDialog.tsx"
   ],
+  "938687e1fee8": [
+    "src/addons/dictionary/CustomWords.tsx"
+  ],
   "610a5d14e9aa": [
     "src/addons/dictionary/CustomWords.tsx"
   ],
