@@ -12,9 +12,7 @@ import { writeRecentPack } from './settings.ts'
 type Native = AddonContext['native']
 
 async function ask<T>(
-  native: Native,
-  method: string,
-  input: unknown,
+  query: () => Promise<T>,
   signal: AbortSignal,
 ): Promise<T> {
   signal.throwIfAborted()
@@ -24,10 +22,7 @@ async function ask<T>(
     signal.addEventListener('abort', abort, { once: true })
   })
   try {
-    const result = await Promise.race([
-      native.query<T>(method, input),
-      canceled,
-    ])
+    const result = await Promise.race([query(), canceled])
     signal.throwIfAborted()
     return result
   } finally {
@@ -35,9 +30,65 @@ async function ask<T>(
   }
 }
 
+type Lane = { live: boolean; waiting?: { run: () => void; drop: () => void } }
+const lanes = new WeakMap<Native, Lane>()
+
+/**
+ * Asks `native` with at most one live query per renderer-native context and
+ * one waiting query; a newer call replaces the waiting one, which rejects as
+ * aborted. Aborting settles the caller at once, but the next query starts
+ * only when the live one's reply arrives, so canceled keystrokes never pile
+ * up native work.
+ */
+export function queryLatest<T>(
+  native: Native,
+  method: string,
+  input: unknown,
+  signal: AbortSignal,
+): Promise<T> {
+  signal.throwIfAborted()
+  let lane = lanes.get(native)
+  if (!lane) lanes.set(native, (lane = { live: false }))
+  const current = lane
+  const start = () => {
+    current.live = true
+    const reply = native.query<T>(method, input)
+    void reply
+      .catch(() => {})
+      .finally(() => {
+        current.live = false
+        const next = current.waiting
+        current.waiting = undefined
+        next?.run()
+      })
+    return ask<T>(() => reply, signal)
+  }
+  if (!current.live) return start()
+  current.waiting?.drop()
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => {
+      if (current.waiting === waiting) current.waiting = undefined
+      reject(signal.reason)
+    }
+    const waiting = {
+      run() {
+        signal.removeEventListener('abort', abort)
+        start().then(resolve, reject)
+      },
+      drop() {
+        signal.removeEventListener('abort', abort)
+        reject(new DOMException('Replaced by a newer query.', 'AbortError'))
+      },
+    }
+    current.waiting = waiting
+    signal.addEventListener('abort', abort, { once: true })
+  })
+}
+
 /**
  * Completions from the installed packs of `langs` in one native request, in
- * that order. Packs that are missing or fail are left out.
+ * that order. Packs that are missing or fail are left out. A newer request
+ * replaces one still waiting for the previous reply.
  */
 export async function completeAll(
   native: Native,
@@ -47,7 +98,7 @@ export async function completeAll(
   limit = 8,
 ): Promise<{ lang: Lang; words: string[] }[]> {
   if (!langs.length || !prefix.trim()) return []
-  const found = await ask<{ id: Lang; words: string[] }[]>(
+  const found = await queryLatest<{ id: Lang; words: string[] }[]>(
     native,
     'packCompleteAll',
     { ids: langs, prefix, limit },
@@ -58,7 +109,7 @@ export async function completeAll(
 
 export function createOfflineProviders(native: Native): DictionaryProvider[] {
   const query = <T>(method: string, input: unknown, signal: AbortSignal) =>
-    ask<T>(native, method, input, signal)
+    ask<T>(() => native.query<T>(method, input), signal)
   return packIds.map((id) => {
     const spec = packs[id]
     const source: Source = {

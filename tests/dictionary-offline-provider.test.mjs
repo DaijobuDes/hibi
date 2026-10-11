@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createOfflineProviders } from '../src/addons/dictionary/offline.ts'
+import {
+  completeAll,
+  createOfflineProviders,
+} from '../src/addons/dictionary/offline.ts'
 import { packIds } from '../src/addons/dictionary/packs.ts'
 import { createRegistry, gather } from '../src/addons/dictionary/providers.ts'
 import {
@@ -209,4 +212,64 @@ test('related words preserve source relations and Wiktionary entries link to con
   assert.deepEqual((await de.related('follow', 'de', signal)).synonyms, [
     'abonné',
   ])
+})
+
+test('pack completions keep one native batch live and only the latest waiting', async () => {
+  // A held worker: native replies arrive only when released.
+  const calls = []
+  const native = {
+    query: (method, input) =>
+      new Promise((resolve) => calls.push({ method, input, resolve })),
+  }
+  const langs = ['en', 'fr', 'de', 'tl']
+  const keystrokes = []
+  let controller
+  for (const prefix of ['hap', 'happ', 'happe', 'happen']) {
+    controller?.abort()
+    controller = new AbortController()
+    keystrokes.push(completeAll(native, langs, prefix, controller.signal))
+  }
+  // Each superseded keystroke settles at once without more native work.
+  for (const keystroke of keystrokes.slice(0, -1))
+    await assert.rejects(keystroke, { name: 'AbortError' })
+  assert.deepEqual(
+    calls.map(({ input }) => input.prefix),
+    ['hap'],
+  )
+  for (let index = 0; index < 16; index++) {
+    controller.abort()
+    controller = new AbortController()
+    keystrokes.push(
+      completeAll(native, langs, `happen${index}`, controller.signal),
+    )
+  }
+  await Promise.all(
+    keystrokes
+      .slice(3, -1)
+      .map((keystroke) => assert.rejects(keystroke, { name: 'AbortError' })),
+  )
+  assert.equal(calls.length, 1)
+  // The live reply frees the slot; only the newest waiting request starts.
+  calls[0].resolve([{ id: 'en', words: ['happy'] }])
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.deepEqual(
+    calls.map(({ input }) => input.prefix),
+    ['hap', 'happen15'],
+  )
+  calls[1].resolve([{ id: 'en', words: ['happen15x'] }])
+  assert.deepEqual(await keystrokes.at(-1), [
+    { lang: 'en', words: ['happen15x'] },
+  ])
+  // An aborted live request settles at once but holds the slot until its reply.
+  const live = new AbortController()
+  const first = completeAll(native, langs, 'kil', live.signal)
+  live.abort()
+  await assert.rejects(first, { name: 'AbortError' })
+  const next = completeAll(native, langs, 'kili', new AbortController().signal)
+  assert.equal(calls.length, 3)
+  calls[2].resolve([])
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(calls.at(-1).input.prefix, 'kili')
+  calls[3].resolve([{ id: 'tl', words: ['kilig'] }])
+  assert.deepEqual(await next, [{ lang: 'tl', words: ['kilig'] }])
 })
