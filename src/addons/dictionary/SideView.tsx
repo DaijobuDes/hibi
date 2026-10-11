@@ -20,7 +20,11 @@ import { languageNames, readPreferences } from './settings'
 import { lookUpSide, meaningGroups, type SideResult } from './side'
 
 type Failure = { icon: ReactNode; title: string; message: string }
-type Query = { word: string; online: boolean; found: LookupTarget | null }
+/** The caret word; replacing waits briefly for the editor to accept edits. */
+type Target = Omit<LookupTarget, 'replace'> & {
+  replace: (text: string) => Promise<boolean>
+}
+type Query = { word: string; online: boolean; found: Target | null }
 
 /** Arrow keys move between the buttons of one word list. */
 function rove(event: KeyboardEvent<HTMLElement>) {
@@ -44,7 +48,7 @@ function Chips({
   label: string
   words: readonly string[]
   action: (word: string) => string
-  choose: (word: string) => void
+  choose: (word: string) => unknown
 }) {
   const [all, setAll] = useState(false)
   if (!words.length) return null
@@ -103,7 +107,7 @@ export function SideView({
 }: {
   context: AddonContext
   registry: DictionaryRegistry
-  target: (view: ViewTarget) => Promise<LookupTarget | null>
+  target: (view: ViewTarget) => Promise<Target | null>
   failures: Record<DictionaryFailure, Failure>
   install: () => void
 }) {
@@ -172,12 +176,12 @@ export function SideView({
     setQuery({ word: next, online: nextOnline, found: null })
   }
   const found = follow ? query?.found : null
-  const choose = (choice: string) => {
+  const choose = async (choice: string) => {
     if (!found || !word) {
       lookUp(choice, online)
       return
     }
-    if (!found.replace(matchCase(word, choice)))
+    if (!(await found.replace(matchCase(word, choice))))
       context.notify('The document changed. Look up the word again.')
     found.focus()
   }

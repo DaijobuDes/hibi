@@ -83,8 +83,7 @@ test('side view prefers installed packs and groups synonyms by meaning', async (
   })
   const result = await lookUpSide(registry, 'happy', ['en'], false, signal)
   assert.equal(result.thesaurus.found[0].value.antonyms[0], 'sad')
-  assert.deepEqual(
-    meaningGroups(result.definitions.found[0].value, 'Happy'),
-    [{ label: 'adjective · feeling pleasure', words: ['glad'] }],
-  )
+  assert.deepEqual(meaningGroups(result.definitions.found[0].value, 'Happy'), [
+    { label: 'adjective · feeling pleasure', words: ['glad'] },
+  ])
 })
