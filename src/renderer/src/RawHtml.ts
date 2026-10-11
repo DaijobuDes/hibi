@@ -4,8 +4,12 @@ import {
   type JSONContent,
   Node,
 } from '@tiptap/core'
+import { DOMSerializer } from '@tiptap/pm/model'
+import { Plugin } from '@tiptap/pm/state'
 import type { Token } from 'marked'
 import { markdownSyntax } from './markdown-syntax.ts'
+
+const clipboardSession = crypto.randomUUID()
 
 const voidTags = new Set(
   'area base br col embed hr img input link meta param source track wbr'.split(
@@ -94,7 +98,10 @@ export const rawHtml = (['inline', 'block'] as const).map((level) => {
       {
         tag: `[data-raw-html="${level}"]`,
         priority: 100,
-        getAttrs: (element) => ({ source: element.textContent ?? '' }),
+        getAttrs: (element) =>
+          element.getAttribute('data-raw-html-session') === clipboardSession
+            ? { source: element.textContent ?? '' }
+            : false,
       },
     ],
     renderHTML: ({ node }) => [
@@ -107,6 +114,21 @@ export const rawHtml = (['inline', 'block'] as const).map((level) => {
       ['code', {}, node.attrs.source],
     ],
     renderText: ({ node }) => node.attrs.source,
+    addProseMirrorPlugins() {
+      if (level !== 'inline') return []
+      const serializer = DOMSerializer.fromSchema(this.editor.schema)
+      const clipboardSerializer = new DOMSerializer(
+        serializer.nodes,
+        serializer.marks,
+      )
+      clipboardSerializer.serializeFragment = (...args) => {
+        const fragment = serializer.serializeFragment(...args)
+        for (const element of fragment.querySelectorAll('[data-raw-html]'))
+          element.setAttribute('data-raw-html-session', clipboardSession)
+        return fragment
+      }
+      return [new Plugin({ props: { clipboardSerializer } })]
+    },
     markdownTokenName: level === 'block' ? 'html' : name,
     parseMarkdown: (token, helpers) => {
       const source =

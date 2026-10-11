@@ -94,6 +94,34 @@ test('raw HTML stays inert and exact through rich edits, atom deletion, undo, an
   })
   const serialize = () =>
     rich.evaluate((element) => element.editor.getMarkdown())
+  const copy = () =>
+    rich.evaluate((element) => {
+      const clipboardData = new DataTransfer()
+      element.dispatchEvent(
+        new ClipboardEvent('copy', {
+          bubbles: true,
+          cancelable: true,
+          clipboardData,
+        }),
+      )
+      return {
+        html: clipboardData.getData('text/html'),
+        text: clipboardData.getData('text/plain'),
+      }
+    })
+  const paste = (data) =>
+    rich.evaluate((element, { html, text }) => {
+      const clipboardData = new DataTransfer()
+      clipboardData.setData('text/html', html)
+      clipboardData.setData('text/plain', text)
+      element.dispatchEvent(
+        new ClipboardEvent('paste', {
+          bubbles: true,
+          cancelable: true,
+          clipboardData,
+        }),
+      )
+    }, data)
   const inert = async () => {
     assert.equal(
       await rich
@@ -250,4 +278,68 @@ test('raw HTML stays inert and exact through rich edits, atom deletion, undo, an
   await inert()
   await page.evaluate(() => window.hibi.saveDocument(false))
   assert.equal(await readFile(file, 'utf8'), sourceEdited)
+
+  await t.test('internal copy/paste restores chips', async () => {
+    for (const [level, source] of [
+      ['inline', '<kbd>y</kbd>'],
+      ['block', div],
+    ]) {
+      await rich
+        .locator(`[data-raw-html="${level}"]`)
+        .filter({ hasText: source })
+        .click()
+      const before = await rich.evaluate((element) => element.editor.getJSON())
+      const copied = await copy()
+      assert.equal(copied.text, source)
+      assert.match(copied.html, /data-raw-html-session="[^"]+"/)
+      assert.equal(await rich.locator('[data-raw-html-session]').count(), 0)
+      await paste(copied)
+      assert.deepEqual(
+        await rich.evaluate((element) => element.editor.getJSON()),
+        before,
+      )
+      assert.equal(await serialize(), sourceEdited)
+      await inert()
+    }
+  })
+
+  await t.test('external html pastes as escaped text', async () => {
+    const text = '<script>alert(1)</script>'
+    const escaped = '&lt;script&gt;alert(1)&lt;/script&gt;'
+    const expected = sourceEdited.replace('last paragraph', escaped)
+    for (const [tag, level] of [
+      ['span', 'inline'],
+      ['div', 'block'],
+    ]) {
+      for (const session of ['', ' data-raw-html-session="external"']) {
+        await rich.evaluate((element) => {
+          const { editor } = element
+          const { doc } = editor.state
+          editor.commands.setTextSelection({
+            from: doc.content.size - doc.lastChild.nodeSize + 1,
+            to: doc.content.size - 1,
+          })
+        })
+        await paste({
+          html: `<${tag} data-raw-html="${level}"${session}>${escaped}</${tag}>`,
+          text,
+        })
+        assert.deepEqual(
+          await rich.evaluate((element) =>
+            element.editor.state.doc.lastChild.toJSON(),
+          ),
+          { type: 'paragraph', content: [{ type: 'text', text }] },
+        )
+        await waitForAsync(
+          page,
+          async (markdown) =>
+            (await window.hibi.getDocument()).markdown === markdown,
+          expected,
+        )
+        await page.evaluate(() => window.hibi.saveDocument(false))
+        assert.equal(await readFile(file, 'utf8'), expected)
+        await inert()
+      }
+    }
+  })
 })
