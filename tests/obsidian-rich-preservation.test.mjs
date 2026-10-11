@@ -41,7 +41,7 @@ test('rich edits and autosave preserve untouched Obsidian syntax', {
   const original =
     '# Notes\n\n> [!tip] Keep this callout.\n\n[[assets/some.svg]]\n\n- [ ] pending\n\n' +
     spacing +
-    '\n\na\nb\n\nSource: keep this text.\n'
+    '\n\n&nbsp;\n\na\nb\n\nSource: keep this text.\n'
   await writeFile(file, original)
   const app = await electron.launch({
     args: [resolve('.'), `--user-data-dir=${join(folder, 'profile')}`],
@@ -67,6 +67,16 @@ test('rich edits and autosave preserve untouched Obsidian syntax', {
   }, file)
   await clickMenu(app, 'Open…')
   await page.getByRole('tab', { name: 'note.md' }).waitFor()
+  await rich.getByText('Source: keep this text.').waitFor()
+  const loaded = await rich.evaluate((element) => ({
+    text: element.textContent,
+    serialized: element.editor.getMarkdown(),
+  }))
+  assert.ok(loaded.text.includes('Spacing: one\u00a0two and three\u00a0four.'))
+  assert.ok(
+    loaded.serialized.includes('Spacing: one&nbsp;two and three&nbsp;four.'),
+  )
+  assert.ok(loaded.serialized.includes('\n\n&nbsp;\n\n'))
   await rich.getByText('Source: keep this text.').click()
   await page.keyboard.press('Enter')
   await waitForAsync(page, async () => (await window.hibi.getDocument()).dirty)
@@ -86,6 +96,7 @@ test('rich edits and autosave preserve untouched Obsidian syntax', {
   await waitForAsync(page, async () => !(await window.hibi.getDocument()).dirty)
   const checked = await readFile(file, 'utf8')
   assert.ok(checked.includes(spacing))
+  assert.ok(checked.includes('\n\n&nbsp;\n\n'))
   assert.ok(checked.includes('\n\na\nb\n\n'))
   assert.match(checked, /- \[x\] pending/)
   assert.match(checked, /\[\[assets\/some\.svg\]\]/)

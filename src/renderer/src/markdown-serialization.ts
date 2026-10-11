@@ -1,12 +1,14 @@
 import type { JSONContent } from '@tiptap/core'
 import type { MarkdownManager } from '@tiptap/markdown'
 import type { Node } from '@tiptap/pm/model'
+import { configureMarkdownEntities } from './markdown-entities.ts'
 
 /** Block caching is opt-in: arbitrary addon serializers may depend on the whole document. */
 export function markdownSerializer(
   manager: MarkdownManager,
   blockLocal: boolean,
 ) {
+  configureMarkdownEntities(manager)
   const json = new WeakMap<Node, JSONContent>()
   const blocks = new WeakMap<
     Node,
@@ -75,7 +77,7 @@ export function markdownSerializer(
     })
     const joined = parts.map((block) => block.source).join('\n\n')
     // Match the manager's empty-document normalization, including blank paragraphs.
-    const source = /^(?:\s|&nbsp;)*$/.test(joined) ? '' : joined
+    const source = /^[ \t\r\n]*$/.test(joined) ? '' : joined
     return { source, rendered, blocks: parts }
   }
 }

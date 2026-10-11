@@ -13,6 +13,11 @@ import {
   guardNativeListTokenizer,
   parseEmptyTaskItems,
 } from './list-tokenizer-prefix.ts'
+import {
+  configureMarkdownEntities,
+  entityMarkdown,
+  richTextToken,
+} from './markdown-entities.ts'
 import { MarkdownMarkExit } from './markdown-markers.ts'
 import { markdownSyntax } from './markdown-syntax.ts'
 import { installSyntaxPreferences } from './syntax-parser.ts'
@@ -37,9 +42,7 @@ export function markdownConfiguration(
     inlineTokens(source: string, tokens?: Token[]) {
       const result = super.inlineTokens(source, tokens)
       // Custom task tokens hide children from walkTokens; normalize at creation.
-      for (const token of result)
-        if (token.type === 'text')
-          token.text = token.text.replace(/[ \t]*\n[ \t]*/g, ' ')
+      for (const token of result) richTextToken(token)
       return result
     }
   }
@@ -64,6 +67,7 @@ export function markdownConfiguration(
     addExtensions() {
       return (
         this.parent?.()
+          .map(entityMarkdown)
           .map((extension) =>
             extension.name === 'paragraph'
               ? extension.extend({
@@ -126,7 +130,12 @@ export function editorExtensions(
       addProseMirrorPlugins: () => [search()],
     }),
     ...core,
-    Markdown.configure({
+    Markdown.extend({
+      onBeforeCreate(event) {
+        this.parent?.(event)
+        configureMarkdownEntities(this.storage.manager)
+      },
+    }).configure({
       // Tiptap types this as the callable singleton, but uses instance methods.
       marked: parser as unknown as NonNullable<
         MarkdownExtensionOptions['marked']
