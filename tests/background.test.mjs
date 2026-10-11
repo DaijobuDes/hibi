@@ -41,7 +41,7 @@ async function adapter(t, platform = 'darwin', packaged = false) {
           build.onResolve(
             { filter: /^node:fs\/promises$/ },
             ({ path, importer }) =>
-              importer.endsWith('/background.ts')
+              importer === resolve('src/main/background.ts')
                 ? { path, namespace: 'background-fs' }
                 : undefined,
           )
