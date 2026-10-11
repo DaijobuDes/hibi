@@ -321,6 +321,7 @@ test('real HTTPS transport sends bearer only after grants and blocks reflected s
       path: request.url,
       authorization: request.headers.authorization,
       cookie: request.headers.cookie,
+      userAgent: request.headers['user-agent'],
     })
     reply.setHeader('content-type', 'text/plain; charset=utf-8')
     reply.end(
@@ -350,6 +351,7 @@ test('real HTTPS transport sends bearer only after grants and blocks reflected s
       return { ok: true, value: { applied: true } }
     },
     resolve: async () => [{ address: '127.0.0.1', family: 4 }],
+    userAgent: 'Hibi/test (https://example.test)',
   })
   t.after(() => host.dispose())
   const request = (path) =>
@@ -372,11 +374,13 @@ test('real HTTPS transport sends bearer only after grants and blocks reflected s
       path: '/plain',
       authorization: 'Bearer host-only-secret',
       cookie: undefined,
+      userAgent: 'Hibi/test (https://example.test)',
     },
     {
       path: '/reflect',
       authorization: 'Bearer host-only-secret',
       cookie: undefined,
+      userAgent: 'Hibi/test (https://example.test)',
     },
   ])
 })

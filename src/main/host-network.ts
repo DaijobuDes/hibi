@@ -112,6 +112,8 @@ type Options = {
     bearer?: string,
   ) => Promise<Response>
   timeoutMs?: number
+  /** Descriptive client name; some public APIs reject requests without one. */
+  userAgent?: string
 }
 type Active = {
   owner: AddonOwner
@@ -251,6 +253,7 @@ async function sendHttps(
   address: Address,
   signal: AbortSignal,
   bearer?: string,
+  userAgent?: string,
 ): Promise<Response> {
   return new Promise((resolve, reject) => {
     const request = httpsRequest(
@@ -264,6 +267,7 @@ async function sendHttps(
         headers: {
           Accept: 'text/plain, application/json;q=0.9, */*;q=0.1',
           'Accept-Encoding': 'gzip, deflate, br',
+          ...(userAgent ? { 'User-Agent': userAgent } : {}),
           ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
         },
         lookup: (_hostname, options, callback) => {
@@ -550,12 +554,15 @@ export class HostNetwork {
         try {
           response = await this.#call(
             () =>
-              (this.#options.transport ?? sendHttps)(
-                url,
-                selected,
-                hopSignal,
-                bearer,
-              ),
+              this.#options.transport
+                ? this.#options.transport(url, selected, hopSignal, bearer)
+                : sendHttps(
+                    url,
+                    selected,
+                    hopSignal,
+                    bearer,
+                    this.#options.userAgent,
+                  ),
             hopSignal,
             (late) => late.body.destroy(),
           )
