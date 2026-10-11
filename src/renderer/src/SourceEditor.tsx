@@ -9,9 +9,16 @@ import {
   pickedCompletion,
   startCompletion,
 } from '@codemirror/autocomplete'
-import { defaultKeymap, isolateHistory, selectAll } from '@codemirror/commands'
+import {
+  defaultKeymap,
+  indentLess,
+  indentMore,
+  isolateHistory,
+  selectAll,
+} from '@codemirror/commands'
 import {
   HighlightStyle,
+  indentUnit,
   type Language,
   syntaxHighlighting,
   syntaxTree,
@@ -29,7 +36,13 @@ import {
   EditorState,
   Transaction,
 } from '@codemirror/state'
-import { EditorView, keymap, lineNumbers, placeholder } from '@codemirror/view'
+import {
+  type Command,
+  EditorView,
+  keymap,
+  lineNumbers,
+  placeholder,
+} from '@codemirror/view'
 import { tags } from '@lezer/highlight'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { DocumentFormat, SourceExtension } from '../../addons/api'
@@ -90,6 +103,7 @@ import {
   type SourceReferenceResult,
   type SourceReferenceSyntax,
 } from './source-view'
+import { detectIndentUnit, tabIndent } from './tab-indent'
 import { textProjection } from './text-projection'
 
 const highlighting = HighlightStyle.define([
@@ -270,6 +284,7 @@ export function SourceEditor({
   const editable = useRef(new Compartment())
   const numbers = useRef(new Compartment())
   const addons = useRef(new Compartment())
+  const indentation = useRef(new Compartment())
   const find = useRef({
     active: findActive,
     query: findQuery,
@@ -813,6 +828,31 @@ export function SourceEditor({
         pending.waiting.push(resolve),
       )
     }
+    const indentSource = (view: EditorView, command: Command) => {
+      if (
+        !tabIndent.snapshot().enabled ||
+        view.state.readOnly ||
+        view.scrollDOM.classList.contains('cm-vimMode')
+      )
+        return false
+      // An open menu declines Tab briefly after appearing; never indent beneath it.
+      if (completionStatus(view.state) === 'active') return true
+      const unit = detectIndentUnit(view.state.doc.iterLines())
+      if (view.state.facet(indentUnit) !== unit)
+        view.dispatch({
+          effects: indentation.current.reconfigure(indentUnit.of(unit)),
+        })
+      if (
+        command === indentLess ||
+        view.state.selection.ranges.some((range) => !range.empty)
+      )
+        return command(view)
+      view.dispatch(view.state.replaceSelection(unit), {
+        scrollIntoView: true,
+        userEvent: 'input',
+      })
+      return true
+    }
     const editor = new EditorView({
       parent: host.current,
       dispatchTransactions(transactions, editor) {
@@ -844,7 +884,15 @@ export function SourceEditor({
           language.of(markdown()),
           sourceAnnotationExtension,
           autocompletion({ override: [sourceCompletions] }),
-          keymap.of([{ key: 'Tab', run: acceptCompletion }]),
+          indentation.current.of([]),
+          keymap.of([
+            { key: 'Tab', run: acceptCompletion },
+            {
+              key: 'Tab',
+              run: (view) => indentSource(view, indentMore),
+              shift: (view) => indentSource(view, indentLess),
+            },
+          ]),
           EditorView.domEventHandlers({
             beforeinput(event) {
               if (

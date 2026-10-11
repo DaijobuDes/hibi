@@ -50,6 +50,7 @@ import {
   settingsNavigation,
 } from './settings-categories'
 import { settingsCategory, settingsPages } from './settings-pages'
+import { tabIndent } from './tab-indent'
 import { WorkspaceSettings } from './WorkspaceSettings'
 
 class PluginSettingsBoundary extends Component<
@@ -201,6 +202,10 @@ export function SettingsScreen({
     target?.focus({ preventScroll: true })
   }, [open, sidebarOpen])
   const casing = useSyncExternalStore(uiCase.subscribe, uiCase.snapshot)
+  const indentation = useSyncExternalStore(
+    tabIndent.subscribe,
+    tabIndent.snapshot,
+  )
   const pluginPages = addons.filter(
     (addon) =>
       (!!addon.manifest.fileExtensions?.length || addon.Settings) &&
@@ -443,6 +448,38 @@ export function SettingsScreen({
                     onShowMarkdownMarkers(event.target.checked)
                   }
                 />
+              </SettingRow>
+              <SettingRow
+                id="tab-indent"
+                label="Tab key indents"
+                description="Turn off to move focus with Tab. Lists and tables keep their Tab behavior."
+              >
+                <Toggle
+                  id="tab-indent"
+                  aria-describedby="tab-indent-description"
+                  checked={indentation.enabled}
+                  onChange={(event) =>
+                    tabIndent.set({ enabled: event.target.checked })
+                  }
+                />
+              </SettingRow>
+              <SettingRow
+                id="indent-unit"
+                label="Indent with"
+                description="Used when a file has no indented lines yet."
+              >
+                <Select
+                  id="indent-unit"
+                  aria-describedby="indent-unit-description"
+                  value={indentation.unit}
+                  onChange={(event) =>
+                    tabIndent.set({ unit: event.target.value })
+                  }
+                >
+                  <option value={'\t'}>Tabs</option>
+                  <option value="  ">2 spaces</option>
+                  <option value="    ">4 spaces</option>
+                </Select>
               </SettingRow>
             </div>
             <AutosaveSettings />
