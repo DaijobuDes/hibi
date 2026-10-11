@@ -1468,11 +1468,9 @@ export function MarkdownEditor({
     const projection = projectMarkdown(currentSource, markdownExtensions)
     const original = projection.content
     let body = serialized.source
-    if (
-      plainSyncEligible &&
-      !preserved?.document.eq(nextState.doc) &&
-      original !== body
-    ) {
+    // Source preservation proves edits with the active parser, including addons.
+    // The plain-sync allowlist applies only to paths without a full parse.
+    if (!preserved?.document.eq(nextState.doc) && original !== body) {
       const before = serialize(editor.state.doc).source
       if (original !== before) {
         const baseline = editor.schema.nodeFromJSON(
