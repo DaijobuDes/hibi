@@ -125,8 +125,13 @@ export function dictionaryCompletions(
       for (const provider of await registry.providers(lang, 'lookup')) {
         signal.throwIfAborted()
         if (provider.kind !== 'offline' || !provider.complete) continue
-        const words = await provider.complete(prefix, lang, signal, ASK)
-        if (words.length) found.push({ lang, words })
+        try {
+          const words = await provider.complete(prefix, lang, signal, ASK)
+          if (words.length) found.push({ lang, words })
+        } catch (error) {
+          // A broken pack leaves the other languages' suggestions.
+          if (signal.aborted) throw error
+        }
         break
       }
     }

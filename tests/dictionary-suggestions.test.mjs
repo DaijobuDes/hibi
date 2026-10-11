@@ -181,6 +181,30 @@ test('suggestions come only from installed packs, keep case, and never go online
   )
 })
 
+test('a failing pack keeps the other packs’ suggestions', async () => {
+  const packs = registry({ en: ['happy'], fr: ['hapax'] })
+  packs.register({
+    id: 'offline-tl',
+    label: 'tl',
+    kind: 'offline',
+    languages: ['tl'],
+    installed: () => true,
+    lookup: async () => [],
+    complete: async () => {
+      throw new Error('corrupt pack')
+    },
+  })
+  const provider = dictionaryCompletions(
+    packs,
+    () => settings,
+    (lang) => lang,
+  )
+  assert.deepEqual(
+    (await provider(request('hap'), signal())).map((item) => item.label),
+    ['happy', 'hapax'],
+  )
+})
+
 test('suggestions stop when a newer keystroke cancels the request', async () => {
   const calls = []
   const provider = dictionaryCompletions(
