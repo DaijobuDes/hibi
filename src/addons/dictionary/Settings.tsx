@@ -85,8 +85,9 @@ export function Settings() {
           {latinLangs.map((lang) => {
             const on = typing.languages.includes(lang)
             return (
-              <label key={lang}>
+              <label key={lang} htmlFor={`dictionary-suggest-${lang}`}>
                 <Toggle
+                  id={`dictionary-suggest-${lang}`}
                   checked={on}
                   // At least one language stays on.
                   disabled={on && typing.languages.length === 1}
