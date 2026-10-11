@@ -107,8 +107,6 @@ test('rejects definitions, html, cross-block math, and paragraph shape changes',
     ['text $$ hazard', 'text ', 2, 'x'],
     ['plain\n\nnext', 'plain', 0, '['],
     ['plain\n\nnext', 'plain', 0, '$$'],
-    ['plain\n\nnext', 'plain', 0, '# '],
-    ['plain\n\nnext', 'plain', 0, '- '],
     ['plain\n\nnext', 'plain', 2, '\n'],
     [' plain\n\nnext', 'plain', 0, ' '],
   ]) {
@@ -117,6 +115,21 @@ test('rejects definitions, html, cross-block math, and paragraph shape changes',
     const tr = insert(state, text, at, value)
     assert.equal(proof.plan(state, tr, tr.doc), null, source + value)
   }
+})
+
+test('escaped block markers stay literal while structural edits fall back', () => {
+  const source = 'plain\n\nnext'
+  const { state, proof } = setup(source)
+  assert.ok(proof)
+  for (const marker of ['# ', '- ']) {
+    const tr = insert(state, 'plain', 0, marker)
+    const result = proof.plan(state, tr, tr.doc)
+    assert.ok(result)
+    assert.equal(result.source, `\\${marker}${source}`)
+    assert.ok(schema.nodeFromJSON(manager.parse(result.source)).eq(tr.doc))
+  }
+  const heading = state.tr.setNodeMarkup(0, schema.nodes.heading, { level: 1 })
+  assert.equal(proof.plan(state, heading, heading.doc), null)
 })
 
 test('escaped angle bracket remains literal text, never raw html', () => {
