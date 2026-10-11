@@ -263,10 +263,41 @@ export function AddonSettings({
               <>
                 {manifest.description}
                 <AddonMetadata manifest={manifest} />
+                {states
+                  .find((state) => state.id === manifest.id)
+                  ?.blockedBy?.map((id) => {
+                    const dependency = addons.find(
+                      (addon) => addon.manifest.id === id,
+                    )?.manifest
+                    return (
+                      <span
+                        className="addon-metadata"
+                        key={id}
+                      >{`Requires ${dependency?.name ?? id}`}</span>
+                    )
+                  })}
               </>
             }
           >
             <div className="addon-actions">
+              {states
+                .find((state) => state.id === manifest.id)
+                ?.blockedBy?.map((id) => {
+                  const dependency = addons.find(
+                    (addon) => addon.manifest.id === id,
+                  )?.manifest
+                  return dependency && !enabled(id) ? (
+                    <Button
+                      key={id}
+                      disabled={busy}
+                      onClick={() =>
+                        void run(() => setEnabled(manifest.id, true))
+                      }
+                    >
+                      {`Enable ${dependency.name} too`}
+                    </Button>
+                  ) : null
+                })}
               {addonRegistry.isInstalled(manifest.id) && (
                 <Button
                   disabled={busy}

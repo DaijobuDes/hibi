@@ -17,7 +17,7 @@ import {
   validateAnalysisProjection,
 } from '../shared/analysis'
 import type { TextProjection } from '../shared/document-projection'
-import { getAddonStates } from './addons'
+import { getAddonActivationGeneration } from './addons'
 import { getDocument } from './document'
 import { reportAnalysisProcessFailure } from './local-diagnostics/owned'
 import { installedAddons, installedDocumentationPath } from './sideload'
@@ -60,8 +60,7 @@ const cancelled: AnalysisResult = {
   status: 'cancelled',
   message: 'Analysis was cancelled.',
 }
-const allowed = (owner: string) =>
-  getAddonStates().some((state) => state.id === owner && state.enabled)
+const allowed = (owner: string) => getAddonActivationGeneration(owner) !== null
 const current = (projection: TextProjection) => {
   const document = getDocument()
   return (

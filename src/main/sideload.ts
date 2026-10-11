@@ -17,6 +17,11 @@ import {
   type AddonManifest,
   compatibleAddonManifest,
 } from '../addons/api'
+import {
+  parseAddonRequirements,
+  requiredAddonDependencies,
+  validateAddonRequirements,
+} from '../shared/addon-dependencies'
 import { validCommandMenu } from '../shared/addon-hotkeys'
 import {
   MAX_ADDON_BYTES,
@@ -157,6 +162,7 @@ function manifest(value: unknown): {
     throw new Error(
       'Declare SDK capabilities before choosing an activation mode.',
     )
+  const requires = parseAddonRequirements(data.requires, data.id)
   const base: AddonManifest = {
     id: data.id,
     name: data.name,
@@ -172,6 +178,7 @@ function manifest(value: unknown): {
     ...(data.dependencies === undefined
       ? {}
       : { dependencies: parseDependencies(data.dependencies) }),
+    ...(requires === undefined ? {} : { requires }),
     ...(data.settings === undefined
       ? {}
       : { settings: settingsMetadata(data.settings) }),
@@ -301,7 +308,11 @@ export function installedDocumentationPath(id: string, path: string) {
     `app://hibi/installed-addons/${id}/${entry.hash}/${path}`,
   )
 }
-export async function loadInstalledAddons(builtinIds: readonly string[]) {
+export async function loadInstalledAddons(
+  builtins: readonly AddonManifest[],
+): Promise<string[]> {
+  const builtinIds = builtins.map((manifest) => manifest.id)
+  const notices: string[] = []
   const entries = await readdir(root(), { withFileTypes: true }).catch(
     (error: NodeJS.ErrnoException) => {
       if (error.code !== 'ENOENT') throw error
@@ -344,13 +355,53 @@ export async function loadInstalledAddons(builtinIds: readonly string[]) {
       )
     } catch (error) {
       console.error(`could not load installed addon ${entry.name}:`, error)
+      notices.push(
+        `Could not load addon "${entry.name}": ${error instanceof Error ? error.message : String(error)}`,
+      )
     }
   }
+  const all = [...builtins, ...next.map((addon) => addon.manifest)]
+  try {
+    validateAddonRequirements(all, { allowMissing: true })
+  } catch (error) {
+    const graph = new Map(
+      all.map((manifest) => [
+        manifest.id,
+        manifest.requires?.addons.map((dependency) => dependency.id) ?? [],
+      ]),
+    )
+    const cyclic = (id: string) => {
+      const visited = new Set<string>()
+      const reachesOwner = (owner: string): boolean => {
+        for (const dependency of graph.get(owner) ?? []) {
+          if (dependency === id) return true
+          if (visited.has(dependency)) continue
+          visited.add(dependency)
+          if (reachesOwner(dependency)) return true
+        }
+        return false
+      }
+      return reachesOwner(id)
+    }
+    const rejected = next.filter((addon) => cyclic(addon.manifest.id))
+    if (!rejected.length) throw error
+    const reason = `Addons with dependency cycles were not loaded: ${rejected.map((addon) => addon.manifest.id).join(', ')}. ${error instanceof Error ? error.message : String(error)}`
+    console.error(reason)
+    notices.push(reason)
+    const rejectedIds = new Set(rejected.map((addon) => addon.manifest.id))
+    installed = next.filter((addon) => !rejectedIds.has(addon.manifest.id))
+    validateAddonRequirements(
+      [...builtins, ...installed.map((addon) => addon.manifest)],
+      { allowMissing: true },
+    )
+    return notices
+  }
   installed = next
+  return notices
 }
 export async function installPackage(
   window: BrowserWindow,
-  builtinIds: readonly string[],
+  builtins: readonly AddonManifest[],
   disable: (id: string) => Promise<() => Promise<void>>,
   url?: unknown,
 ): Promise<boolean> {
@@ -372,7 +423,7 @@ export async function installPackage(
       return await installDirectory(
         window,
         packageDirectory,
-        builtinIds,
+        builtins,
         disable,
         'third-party',
         download.host,
@@ -387,22 +438,39 @@ export async function installPackage(
   })
   if (selection.canceled || !selection.filePaths[0]) return false
   const source = await realpath(selection.filePaths[0])
-  return installDirectory(window, source, builtinIds, disable, 'local')
+  return installDirectory(window, source, builtins, disable, 'local')
 }
 
 async function installDirectory(
   window: BrowserWindow,
   source: string,
-  builtinIds: readonly string[],
+  builtins: readonly AddonManifest[],
   disable: (id: string) => Promise<() => Promise<void>>,
   origin: 'local' | 'third-party',
   host?: string,
 ): Promise<boolean> {
   const data = await readManifest(source)
-  if (builtinIds.includes(data.manifest.id))
+  if (builtins.some((manifest) => manifest.id === data.manifest.id))
     throw new Error(
       'This addon uses the ID of a built-in addon and cannot replace it.',
     )
+  const validateGraph = () => {
+    const graph = [
+      ...builtins,
+      ...installed
+        .filter((addon) => addon.manifest.id !== data.manifest.id)
+        .map((addon) => addon.manifest),
+      data.manifest,
+    ]
+    validateAddonRequirements(graph, { allowMissing: true })
+    const ids = new Set(graph.map((manifest) => manifest.id))
+    for (const id of requiredAddonDependencies(graph, data.manifest.id))
+      if (!ids.has(id))
+        throw new Error(
+          `Addon "${data.manifest.id}" requires unknown addon "${id}".`,
+        )
+  }
+  validateGraph()
   const verdict = await dialog.showMessageBox(window, {
     type: data.manifest.kind === 'extension' ? 'warning' : 'question',
     message: `Install ${data.manifest.name} ${data.manifest.version}?`,
@@ -525,6 +593,7 @@ async function installDirectory(
       throw new Error(
         'An unrecognized addon already uses this ID. Check the addons folder before installing.',
       )
+    validateGraph()
     restore = await disable(data.manifest.id)
     if (exists) {
       await rename(destination, backup)

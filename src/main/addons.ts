@@ -9,6 +9,12 @@ import {
   type NativeAddon,
 } from '../addons/api'
 import { addonDefaultEnabled } from '../shared/addon-defaults'
+import {
+  addonDependents,
+  requiredAddonDependencies,
+  resolveAddonDependencies,
+  validateAddonRequirements,
+} from '../shared/addon-dependencies'
 import { parseDependencies } from '../shared/dependencies'
 import { validDocumentExtensions } from '../shared/document-types'
 import type { AddonId, AddonOwner } from '../shared/foundation-contracts'
@@ -119,8 +125,9 @@ export async function readAddonDocumentation(id: unknown, path: unknown) {
 }
 
 export async function loadAddons(): Promise<void> {
-  const [, stored] = await Promise.all([
-    loadInstalledAddons(bundledManifests.map((manifest) => manifest.id)),
+  validateAddonRequirements(bundledManifests)
+  const [notices, stored] = await Promise.all([
+    loadInstalledAddons(bundledManifests),
     readFile(join(app.getPath('userData'), 'addons.json'), 'utf8')
       .then((text): Record<string, unknown> => {
         const value: unknown = JSON.parse(text)
@@ -154,15 +161,17 @@ export async function loadAddons(): Promise<void> {
     manifests().flatMap((manifest) => manifest.fileExtensions ?? []),
   )
   enabled = Object.fromEntries(
-    manifests()
-      .filter(({ id }) => typeof stored[id] === 'boolean')
-      .map(({ id }) => [id, stored[id] as boolean]),
+    Object.entries(stored).filter(
+      (entry): entry is [string, boolean] => typeof entry[1] === 'boolean',
+    ),
   )
-  addonStartupNotices = []
+  addonStartupNotices = notices
   const modal = manifests().filter((manifest) =>
     manifest.capabilities?.includes('modalEditing'),
   )
-  const enabledModal = modal.filter((manifest) => enabled[manifest.id])
+  const enabledModal = modal.filter((manifest) =>
+    getAddonStates().some((state) => state.id === manifest.id && state.enabled),
+  )
   if (enabledModal.length > 1) {
     for (const manifest of enabledModal) enabled[manifest.id] = false
     const path = join(app.getPath('userData'), 'addons.json')
@@ -182,22 +191,34 @@ export function getAddonStates(): AddonState[] {
   setDocumentExtensions(
     manifests().flatMap((manifest) => manifest.fileExtensions ?? []),
   )
-  return manifests().map(({ id, defaultEnabled }) => ({
+  return addonStates(enabled)
+}
+
+function addonStates(preferences: Record<string, boolean>): AddonState[] {
+  const all = manifests()
+  const states = all.map(({ id, defaultEnabled }) => ({
     id,
     enabled:
       id === 'markdown' ||
-      (enabled[id] ??
+      ((Object.hasOwn(preferences, id) ? preferences[id] : undefined) ??
         addonDefaultEnabled(
           id,
           defaultEnabled,
           !app.isPackaged && !!process.env.ELECTRON_RENDERER_URL,
         )),
   }))
+  const { blocked } = resolveAddonDependencies(all, states)
+  return states.map((state) => {
+    const blockedBy = blocked.get(state.id)
+    return { ...state, ...(blockedBy?.length ? { blockedBy } : {}) }
+  })
 }
+
+const active = (state: AddonState) => state.enabled && !state.blockedBy?.length
 
 /** Main-owned token for requests admitted during one addon activation. */
 export function getAddonActivationGeneration(id: string): number | null {
-  return getAddonStates().some((state) => state.id === id && state.enabled)
+  return getAddonStates().some((state) => state.id === id && active(state))
     ? (generations.get(id) ?? 0)
     : null
 }
@@ -230,7 +251,7 @@ export function invalidateAddonActivations(): void {
 export function getImporters(): import('../shared/imports').Importer[] {
   const enabled = new Set(
     getAddonStates()
-      .filter((state) => state.enabled)
+      .filter(active)
       .map((state) => state.id),
   )
   return bundledManifests.flatMap((manifest) =>
@@ -249,9 +270,17 @@ export async function convertImport(
   id: string,
   files: readonly import('../shared/imports').ImportFile[],
 ) {
-  if (!getImporters().some((importer) => importer.id === id))
+  const generation = getAddonActivationGeneration(id)
+  if (
+    generation === null ||
+    !getImporters().some((importer) => importer.id === id)
+  )
     throw new Error('Enable this importer in Settings → Addons first.')
   const addon = await nativeAddon(id)
+  if (!isAddonActivationCurrent(id, generation))
+    throw new Error(
+      'This importer is no longer enabled or its required addons are unavailable.',
+    )
   if (!addon?.import)
     throw new Error('This addon does not provide an importer.')
   return addon.import(files)
@@ -260,49 +289,121 @@ export async function convertImport(
 export async function enableAddon(
   id: unknown,
   value: unknown,
+  includeRequired: unknown = false,
 ): Promise<AddonState[]> {
   if (
     typeof id !== 'string' ||
     !manifests().some((manifest) => manifest.id === id) ||
-    typeof value !== 'boolean'
+    typeof value !== 'boolean' ||
+    typeof includeRequired !== 'boolean'
   )
     throw new Error('Could not change this addon setting. Try again.')
-  return saveEnabled(id, id === 'markdown' || value)
+  const enable = id === 'markdown' || value
+  const all = manifests()
+  const next = { ...enabled, [id]: enable }
+  if (enable) {
+    const required = requiredAddonDependencies(all, id)
+    const missing = required.filter(
+      (dependency) => !all.some((manifest) => manifest.id === dependency),
+    )
+    if (missing.length)
+      throw new Error(
+        `This addon requires missing addons: ${missing.join(', ')}.`,
+      )
+    const closure = new Set([id, ...required])
+    const modal = all.filter(
+      (manifest) =>
+        closure.has(manifest.id) &&
+        manifest.capabilities?.includes('modalEditing'),
+    )
+    if (modal.length > 1)
+      throw new Error(
+        `Required addons use mutually exclusive modal editing: ${modal.map((manifest) => manifest.id).join(', ')}.`,
+      )
+    if (includeRequired)
+      for (const dependency of required) next[dependency] = true
+    else {
+      const states = getAddonStates()
+      const disabled = required.filter(
+        (dependency) =>
+          !states.some((state) => state.id === dependency && active(state)),
+      )
+      if (disabled.length)
+        throw new Error(
+          `Enable required addons first, or include required addons: ${disabled.join(', ')}.`,
+        )
+    }
+    const selectedModal = modal[0]
+    if (selectedModal)
+      for (const other of all)
+        if (
+          other.id !== selectedModal.id &&
+          other.capabilities?.includes('modalEditing')
+        )
+          next[other.id] = false
+    const target = addonStates(next).find((state) => state.id === id)
+    if (!target || !active(target))
+      throw new Error(
+        `This addon is blocked by required addons: ${target?.blockedBy?.join(', ')}.`,
+      )
+  }
+  return savePreferences(next)
 }
 
-async function saveEnabled(id: string, value: boolean): Promise<AddonState[]> {
-  const previouslyEnabled = new Set(
-    getAddonStates()
-      .filter((state) => state.enabled)
-      .map((state) => state.id),
-  )
-  const next = { ...enabled, [id]: value }
-  const manifest = manifests().find((entry) => entry.id === id)
-  if (value && manifest?.capabilities?.includes('modalEditing'))
-    for (const other of manifests())
-      if (
-        other.id !== id &&
-        other.capabilities?.includes('modalEditing') &&
-        next[other.id]
-      )
-        next[other.id] = false
+async function savePreferences(
+  next: Record<string, boolean>,
+): Promise<AddonState[]> {
+  const before = getAddonStates()
   const path = join(app.getPath('userData'), 'addons.json')
   await writeFile(`${path}.tmp`, JSON.stringify(next), { mode: 0o600 })
   await rename(`${path}.tmp`, path)
   enabled = next
-  const previousGeneration = generations.get(id) ?? 0
-  generations.set(id, previousGeneration + 1)
-  for (const state of getAddonStates())
-    if (previouslyEnabled.has(state.id) && !state.enabled) {
-      let generation = previousGeneration
-      if (state.id !== id) {
-        generation = generations.get(state.id) ?? 0
-        generations.set(state.id, generation + 1)
-      }
-      natives.get(state.id)?.stop?.()
-      await onAddonDeactivated(state.id, generation)
-    }
+  await deactivateUnavailable(before)
   return getAddonStates()
+}
+
+async function deactivateUnavailable(before: readonly AddonState[]) {
+  const current = new Set(
+    getAddonStates()
+      .filter(active)
+      .map((state) => state.id),
+  )
+  const lost = new Set(
+    before
+      .filter((state) => active(state) && !current.has(state.id))
+      .map((state) => state.id),
+  )
+  const ids = new Set(
+    [...lost].flatMap((id) => [...addonDependents(manifests(), id), id]),
+  )
+  const owners = [...ids]
+    .filter((id) => lost.has(id))
+    .map((id) => {
+      const generation = generations.get(id) ?? 0
+      generations.set(id, generation + 1)
+      return { id, generation }
+    })
+  for (const { id, generation } of owners) {
+    try {
+      natives.get(id)?.stop?.()
+    } catch (error) {
+      console.error(`could not stop native addon ${id}:`, error)
+    }
+    await onAddonDeactivated(id, generation)
+  }
+}
+
+async function disableAddonForReplacement(
+  id: string,
+): Promise<() => Promise<void>> {
+  const previous = Object.hasOwn(enabled, id) ? enabled[id] : undefined
+  await savePreferences({ ...enabled, [id]: false })
+  return async () => {
+    const next = { ...enabled }
+    if (previous === undefined) delete next[id]
+    else next[id] = previous
+    await savePreferences(next)
+  }
 }
 
 export async function installAddon(
@@ -311,14 +412,8 @@ export async function installAddon(
 ): Promise<void> {
   await installPackage(
     window,
-    bundledManifests.map((manifest) => manifest.id),
-    async (id) => {
-      const previous = enabled[id] ?? false
-      await saveEnabled(id, false)
-      return async () => {
-        await saveEnabled(id, previous)
-      }
-    },
+    bundledManifests,
+    disableAddonForReplacement,
     url,
   )
 }
@@ -331,12 +426,11 @@ export async function removeAddon(id: unknown): Promise<void> {
     throw new Error(
       'Only addons you installed can be removed. Disable built-in addons instead.',
     )
-  const previous = enabled[id] ?? false
-  await saveEnabled(id, false)
+  const restore = await disableAddonForReplacement(id)
   try {
     await removePackage(id)
   } catch (error) {
-    await saveEnabled(id, previous)
+    await restore()
     throw error
   }
 }
@@ -348,18 +442,15 @@ export async function invokeAddon(
   input: unknown,
   query = false,
 ): Promise<unknown> {
-  if (
-    typeof id !== 'string' ||
-    typeof method !== 'string' ||
-    !getAddonStates().some((addon) => addon.id === id && addon.enabled)
-  )
+  if (typeof id !== 'string' || typeof method !== 'string')
     throw new Error('Enable this addon in Settings → Addons first.')
-  const generation = generations.get(id)
+  const generation = getAddonActivationGeneration(id)
+  if (generation === null)
+    throw new Error(
+      'Enable this addon and its required addons in Settings → Addons first.',
+    )
   const addon = await nativeAddon(id)
-  if (
-    generations.get(id) !== generation ||
-    !getAddonStates().some((state) => state.id === id && state.enabled)
-  )
+  if (!isAddonActivationCurrent(id, generation))
     throw new Error(
       'This addon was disabled. Enable it in Settings → Addons to continue.',
     )

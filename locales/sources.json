@@ -160,6 +160,9 @@
   "4011c051ca2c": [
     "src/shared/addon-dependencies.ts"
   ],
+  "bfa4692ee9ec": [
+    "src/main/sideload.ts"
+  ],
   "c59e9dc04941": [
     "src/renderer/src/AddonSettings.tsx",
     "src/renderer/src/FormatsSettings.tsx",
@@ -1433,6 +1436,12 @@
   "187581a4c6c3": [
     "src/addons/git/Panel.tsx"
   ],
+  "b7e3e4aa4257": [
+    "src/renderer/src/addons.ts"
+  ],
+  "8bf0d15a2390": [
+    "src/renderer/src/addons.ts"
+  ],
   "0d4d22d625f8": [
     "src/addons/ui-preview/index.tsx"
   ],
@@ -1797,6 +1806,9 @@
   "eca198f59235": [
     "src/renderer/src/FlavorPicker.tsx"
   ],
+  "06f08e7c2f8a": [
+    "src/renderer/src/addons.ts"
+  ],
   "a42f7d67e1fe": [
     "src/addons/ui-preview/index.tsx"
   ],
@@ -1806,8 +1818,17 @@
   "27a0ae578c51": [
     "src/renderer/src/FormatsSettings.tsx"
   ],
+  "2d7d416b811d": [
+    "src/renderer/src/addons.ts"
+  ],
+  "649633032c95": [
+    "src/main/addons.ts"
+  ],
   "bc9110896c5b": [
     "src/renderer/src/addons.ts"
+  ],
+  "6fdc3f8d0bcc": [
+    "src/main/addons.ts"
   ],
   "004013250aa1": [
     "src/main/analysis.ts"
@@ -1836,6 +1857,9 @@
   ],
   "297f8ade1919": [
     "src/main/workspace-settings.ts"
+  ],
+  "65431e454a90": [
+    "src/renderer/src/AddonSettings.tsx"
   ],
   "a0d8a682c986": [
     "src/renderer/src/ModalEditingSettings.tsx"
@@ -3960,7 +3984,11 @@
     "src/addons/autocomplete/Settings.tsx"
   ],
   "c3812fc4acb8": [
-    "src/renderer/src/AddonSettings.tsx"
+    "src/renderer/src/AddonSettings.tsx",
+    "src/renderer/src/addons.ts"
+  ],
+  "65e648140def": [
+    "src/renderer/src/addons.ts"
   ],
   "4953f8970948": [
     "src/renderer/src/FormattingToolbar.tsx"
@@ -4045,8 +4073,17 @@
   "4850b174b713": [
     "src/renderer/src/DependencySettings.tsx"
   ],
+  "ece537a32f8e": [
+    "src/main/addons.ts"
+  ],
   "09841d79f59e": [
     "src/addons/_shared/format-renderer.tsx"
+  ],
+  "a08893caf3e9": [
+    "src/renderer/src/AddonSettings.tsx"
+  ],
+  "1fb65b9d0630": [
+    "src/renderer/src/addons.ts"
   ],
   "645982c52b7c": [
     "src/ui/SettingsFilter.tsx"
@@ -5223,6 +5260,9 @@
     "src/renderer/src/document-edits.ts",
     "src/renderer/src/document-target-edits.ts"
   ],
+  "1627605465e3": [
+    "src/main/addons.ts"
+  ],
   "2094abfa005b": [
     "src/renderer/src/addon-registry.ts"
   ],
@@ -5233,6 +5273,12 @@
   "c58889003b80": [
     "src/main/addons.ts",
     "src/main/dependencies.ts"
+  ],
+  "affa77434b63": [
+    "src/renderer/src/addons.ts"
+  ],
+  "5354d03e9037": [
+    "src/main/addons.ts"
   ],
   "e64719f55f97": [
     "src/main/addon-storage.ts"
@@ -5427,6 +5473,9 @@
   ],
   "9a8066d604c9": [
     "src/main/addon-documentation.ts"
+  ],
+  "a1a3c01051cc": [
+    "src/main/addons.ts"
   ],
   "2ff13ca6ab5c": [
     "src/renderer/src/workspace-menu.ts"
@@ -6337,9 +6386,6 @@
   "3853dee11967": [
     "src/renderer/src/markdown-syntax.ts"
   ],
-  "b2fe97e14407": [
-    "src/renderer/src/addons.ts"
-  ],
   "7f659c8c45d8": [
     "src/addons/frontmatter/Properties.tsx"
   ],
@@ -6352,6 +6398,9 @@
   "e544c8790998": [
     "src/renderer/src/AddonSettings.tsx",
     "src/renderer/src/SettingsScreen.tsx"
+  ],
+  "34fed8b3ba5f": [
+    "src/renderer/src/addons.ts"
   ],
   "6fd89f885213": [
     "src/renderer/src/NotificationSettings.tsx"

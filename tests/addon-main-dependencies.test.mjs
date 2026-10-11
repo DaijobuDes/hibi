@@ -1,0 +1,408 @@
+import assert from 'node:assert/strict'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { dirname, join, resolve } from 'node:path'
+import test from 'node:test'
+import { pathToFileURL } from 'node:url'
+import { build } from 'esbuild'
+
+const details = (id, extra = {}) => ({
+  id,
+  name: id,
+  description: 'Dependency test',
+  kind: 'extension',
+  apiVersion: 2,
+  version: '1.0.0',
+  authors: [{ displayName: 'Test' }],
+  entry: 'index.js',
+  defaultEnabled: false,
+  ...extra,
+})
+const requires = (...ids) => ({ addons: ids.map((id) => ({ id })) })
+
+async function fixture(root, manifest, installed = false) {
+  const folder = join(root, manifest.id)
+  await mkdir(folder, { recursive: true })
+  await writeFile(join(folder, 'hibi-addon.json'), JSON.stringify(manifest))
+  await writeFile(join(folder, 'index.js'), 'export default () => ({})')
+  await writeFile(join(folder, 'README.md'), '# Test')
+  if (installed)
+    await writeFile(
+      join(folder, '.hibi-install.json'),
+      JSON.stringify({
+        hash: 'a'.repeat(64),
+        files: ['hibi-addon.json', 'index.js', 'README.md'],
+      }),
+    )
+  return folder
+}
+
+async function host(t, builtins = [details('markdown')]) {
+  const root = await mkdtemp(join(tmpdir(), 'hibi-addon-main-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const modules = Object.fromEntries(
+    builtins.map((manifest) => [
+      `../addons/${manifest.id}/manifest.ts`,
+      manifest,
+    ]),
+  )
+  const stubs = {
+    electron: `import {rm} from 'node:fs/promises';
+      export const state = {root:${JSON.stringify(root)}, manifests:${JSON.stringify(modules)}, nativeModules:{}, natives:{}, source:null, failTrash:false, failRename:false, reviews:[]};
+      state.nativeModules = Object.fromEntries(Object.values(state.manifests).map(manifest => [
+        '../addons/' + manifest.id + '/native.ts', async () => state.natives[manifest.id],
+      ]));
+      export const app = {getPath:()=>state.root,isPackaged:true};
+      export const dialog = {
+        showOpenDialog:async()=>({canceled:!state.source,filePaths:state.source?[state.source]:[]}),
+        showMessageBox:async(_window,options)=>{state.reviews.push(options);return {response:1}}
+      };
+      export const shell = {trashItem:async path=>{if(state.failTrash)throw new Error('trash failed');await rm(path,{recursive:true,force:true})}};
+    `,
+    'node:fs/promises': `import * as fs from 'node:fs/promises';import {state} from 'electron';
+      export const {lstat,readFile,realpath,writeFile,mkdir,mkdtemp,readdir,rm}=fs;
+      export const rename=async(from,to)=>{if(state.failRename&&from.includes('/.staging-'))throw new Error('replace failed');return fs.rename(from,to)};
+    `,
+    './appearance': 'export const exportedAppearance=()=>({})',
+    './document': `export const clearDocument=()=>{},getDocument=()=>({}),getDocumentPath=()=>null,hasUnsavedDocuments=()=>false,loadDocument=()=>{},newDocument=()=>{},renameDocument=()=>{},updateDocument=()=>{}`,
+    './document-types': 'export const setDocumentExtensions=()=>{}',
+    './files': 'export const validateMarkdown=()=>{},writeText=()=>{}',
+    './workspace': `export const getWorkspace=()=>null,refreshWorkspace=()=>{},resolveWorkspaceFile=()=>null,snapshotWorkspace=()=>{},workspaceId=()=>null,workspaceRoot=()=>null`,
+    './dependencies': 'export const resolveDependency=()=>null',
+    './addon-repository':
+      'export const repositoryUrl=()=>false,downloadRepository=()=>{throw new Error("No downloads in this test")}',
+    './addon-download': 'export const downloadAddon=()=>{},unpackAddon=()=>{}',
+  }
+  const { outputFiles } = await build({
+    stdin: {
+      contents:
+        "export * from './src/main/addons.ts'; export * from './src/main/sideload.ts'; export {state} from 'electron'",
+      resolveDir: resolve('.'),
+    },
+    bundle: true,
+    write: false,
+    platform: 'node',
+    format: 'esm',
+    plugins: [
+      {
+        name: 'main-dependency-host',
+        setup(bundle) {
+          bundle.onResolve({ filter: /.*/ }, ({ path, importer }) => {
+            if (
+              path in stubs &&
+              (path === 'electron' || /\/(addons|sideload)\.ts$/.test(importer))
+            )
+              return { path, namespace: 'host' }
+          })
+          bundle.onLoad({ filter: /.*/, namespace: 'host' }, ({ path }) => ({
+            contents: stubs[path],
+          }))
+          bundle.onLoad(
+            { filter: /\/main\/addons\.ts$/ },
+            async ({ path }) => ({
+              contents:
+                "import {state as hostState} from 'electron';\n" +
+                (await readFile(path, 'utf8'))
+                  .replace(
+                    /const manifestModules =[\s\S]*?(?=const bundledManifests)/,
+                    'const manifestModules = hostState.manifests\n',
+                  )
+                  .replace(
+                    /const nativeModules =[\s\S]*?(?=const nativeLoaders)/,
+                    'const nativeModules = hostState.nativeModules\n',
+                  ),
+              loader: 'ts',
+              resolveDir: dirname(path),
+            }),
+          )
+        },
+      },
+    ],
+  })
+  const module = join(root, 'main-host.mjs')
+  await writeFile(module, outputFiles[0].contents)
+  return import(pathToFileURL(module).href)
+}
+
+const stateOf = (host, id) =>
+  host.getAddonStates().find((state) => state.id === id)
+
+test('main admission blocks transitive consumers without changing enabled preferences', async (t) => {
+  const h = await host(t, [
+    details('markdown'),
+    details('provider'),
+    details('consumer', {
+      requires: requires('provider'),
+      importer: { extensions: ['txt'] },
+    }),
+    details('leaf', { requires: requires('consumer') }),
+    details('optional', {
+      requires: { addons: [{ id: 'provider', optional: true }] },
+    }),
+  ])
+  const errors = t.mock.method(console, 'error', () => {})
+  let stops = 0
+  h.state.natives.consumer = {
+    id: 'consumer',
+    methods: { probe: () => 'ok' },
+    import: () => 'imported',
+    stop() {
+      stops++
+      throw new Error('native stop failed')
+    },
+  }
+  await h.loadAddons()
+  await assert.rejects(
+    h.enableAddon('leaf', true),
+    /Enable required addons first/,
+  )
+  for (const value of [null, 'true', 1, {}])
+    await assert.rejects(h.enableAddon('leaf', true, value), /Could not change/)
+  assert.equal(stateOf(h, 'provider').enabled, false)
+  await h.enableAddon('leaf', true, true)
+  await h.enableAddon('optional', true)
+  const owner = h.currentAddonOwner('consumer')
+  assert.equal(await h.invokeAddon({}, 'consumer', 'probe', null), 'ok')
+  assert.equal(await h.convertImport('consumer', []), 'imported')
+  const cleanups = []
+  h.setAddonDeactivationHandler(async (id, generation) => {
+    assert.equal(h.getAddonActivationGeneration('consumer'), null)
+    cleanups.push([id, generation])
+  })
+  await h.enableAddon('provider', false)
+  for (const id of ['consumer', 'leaf']) {
+    assert.deepEqual(stateOf(h, id), {
+      id,
+      enabled: true,
+      blockedBy: ['provider'],
+    })
+    assert.equal(h.getAddonActivationGeneration(id), null)
+  }
+  assert.equal(stops, 1)
+  assert.equal(errors.mock.calls.length, 1)
+  assert.deepEqual(
+    cleanups.map(([id]) => id),
+    ['leaf', 'consumer', 'provider'],
+  )
+  assert.equal(h.getImporters().length, 0)
+  assert.equal(stateOf(h, 'optional').blockedBy, undefined)
+  await assert.rejects(
+    h.invokeAddon({}, 'consumer', 'probe', null),
+    /Enable this addon/,
+  )
+  await assert.rejects(h.convertImport('consumer', []), /Enable this importer/)
+  await h.enableAddon('provider', true)
+  assert.equal(stateOf(h, 'consumer').blockedBy, undefined)
+  assert.equal(
+    h.isAddonActivationCurrent('consumer', owner.activationGeneration),
+    false,
+  )
+  assert.equal(await h.invokeAddon({}, 'consumer', 'probe', null), 'ok')
+})
+
+test('installed ids matching inherited object properties remain disabled until explicitly enabled', async (t) => {
+  const h = await host(t)
+  await h.loadAddons()
+  h.state.source = await fixture(
+    join(h.state.root, 'sources'),
+    details('constructor'),
+  )
+  await h.installAddon({})
+  assert.deepEqual(stateOf(h, 'constructor'), {
+    id: 'constructor',
+    enabled: false,
+  })
+  assert.equal(h.getAddonActivationGeneration('constructor'), null)
+  await h.enableAddon('constructor', true)
+  assert.notEqual(h.getAddonActivationGeneration('constructor'), null)
+})
+
+test('main enable rejects impossible modal closures and atomically replaces existing modal mode', async (t) => {
+  const modal = { capabilities: ['modalEditing'] }
+  const h = await host(t, [
+    details('markdown'),
+    details('first-modal', modal),
+    details('second-modal', modal),
+    details('impossible', {
+      requires: requires('first-modal', 'second-modal'),
+    }),
+    details('consumer', { requires: requires('first-modal') }),
+    details('old-consumer', { requires: requires('second-modal') }),
+  ])
+  await h.loadAddons()
+  await h.enableAddon('old-consumer', true, true)
+  const original = await readFile(join(h.state.root, 'addons.json'), 'utf8')
+  await assert.rejects(
+    h.enableAddon('impossible', true, true),
+    /mutually exclusive modal/,
+  )
+  assert.equal(
+    await readFile(join(h.state.root, 'addons.json'), 'utf8'),
+    original,
+  )
+  await h.enableAddon('consumer', true, true)
+  assert.equal(stateOf(h, 'first-modal').enabled, true)
+  assert.equal(stateOf(h, 'second-modal').enabled, false)
+  assert.deepEqual(stateOf(h, 'old-consumer').blockedBy, ['second-modal'])
+})
+
+test('sideload parses requirements and rejects malformed, missing, and cyclic install graphs', async (t) => {
+  const h = await host(t)
+  await h.loadAddons()
+  const source = join(h.state.root, 'sources')
+  for (const invalid of [
+    null,
+    {},
+    { addons: 'provider' },
+    requires('invalid-self'),
+    requires('markdown', 'markdown'),
+    { addons: [{ id: 'markdown', optional: 'yes' }] },
+    requires(...Array.from({ length: 33 }, (_, i) => `addon-${i}`)),
+  ]) {
+    h.state.source = await fixture(
+      source,
+      details('invalid-self', { requires: invalid }),
+    )
+    await assert.rejects(h.installAddon({}), /requirements/)
+  }
+  h.state.source = await fixture(
+    source,
+    details('consumer', { requires: requires('provider') }),
+  )
+  await assert.rejects(h.installAddon({}), /unknown addon "provider"/)
+  assert.equal(h.state.reviews.length, 0)
+  h.state.source = await fixture(
+    source,
+    details('provider', {
+      requires: { addons: [{ id: 'absent', optional: true }] },
+    }),
+  )
+  await h.installAddon({})
+  h.state.source = await fixture(
+    source,
+    details('consumer', { requires: requires('provider') }),
+  )
+  await h.installAddon({})
+  assert.deepEqual(
+    h.installedAddons().find((addon) => addon.manifest.id === 'consumer')
+      .manifest.requires,
+    requires('provider'),
+  )
+  h.state.source = await fixture(
+    source,
+    details('provider', { requires: requires('consumer') }),
+  )
+  await assert.rejects(h.installAddon({}), /dependency cycle/)
+  assert.equal(h.state.reviews.length, 2)
+  assert.equal(
+    h.installedAddons().find((addon) => addon.manifest.id === 'provider')
+      .manifest.requires.addons[0].optional,
+    true,
+  )
+})
+
+test('replacement and removal block dependents, retain their preferences, and restore root preference on failure', async (t) => {
+  const h = await host(t)
+  await h.loadAddons()
+  const source = join(h.state.root, 'sources')
+  for (const manifest of [
+    details('provider'),
+    details('consumer', { requires: requires('provider') }),
+  ]) {
+    h.state.source = await fixture(source, manifest)
+    await h.installAddon({})
+  }
+  await h.enableAddon('consumer', true, true)
+  const generation = h.getAddonActivationGeneration('consumer')
+  h.state.source = await fixture(
+    source,
+    details('provider', { version: '2.0.0' }),
+  )
+  h.state.failRename = true
+  await assert.rejects(h.installAddon({}), /replace failed/)
+  assert.equal(stateOf(h, 'provider').enabled, true)
+  assert.equal(stateOf(h, 'consumer').blockedBy, undefined)
+  assert.equal(
+    h.installedAddons().find((addon) => addon.manifest.id === 'provider')
+      .manifest.version,
+    '1.0.0',
+  )
+  h.state.failRename = false
+  await h.installAddon({})
+  assert.equal(stateOf(h, 'provider').enabled, false)
+  assert.deepEqual(stateOf(h, 'consumer'), {
+    id: 'consumer',
+    enabled: true,
+    blockedBy: ['provider'],
+  })
+  await h.enableAddon('provider', true)
+  assert.equal(h.isAddonActivationCurrent('consumer', generation), false)
+  h.state.failTrash = true
+  await assert.rejects(h.removeAddon('provider'), /trash failed/)
+  assert.equal(stateOf(h, 'provider').enabled, true)
+  assert.equal(stateOf(h, 'consumer').blockedBy, undefined)
+  h.state.failTrash = false
+  await h.removeAddon('provider')
+  await h.loadAddons()
+  assert.deepEqual(stateOf(h, 'consumer'), {
+    id: 'consumer',
+    enabled: true,
+    blockedBy: ['provider'],
+  })
+  await assert.rejects(
+    h.enableAddon('consumer', true, true),
+    /requires missing addons: provider/,
+  )
+  h.state.source = await fixture(source, details('unrelated'))
+  await h.installAddon({})
+  assert.equal(stateOf(h, 'unrelated').enabled, false)
+  assert.deepEqual(stateOf(h, 'consumer').blockedBy, ['provider'])
+  h.state.source = await fixture(
+    source,
+    details('new-consumer', { requires: requires('consumer') }),
+  )
+  await assert.rejects(h.installAddon({}), /unknown addon "provider"/)
+  h.state.source = await fixture(source, details('provider'))
+  await h.installAddon({})
+  assert.equal(stateOf(h, 'provider').enabled, false)
+  await h.enableAddon('provider', true)
+  assert.equal(stateOf(h, 'consumer').blockedBy, undefined)
+})
+
+test('startup loads unordered dependencies and missing consumers while culling only installed cycle participants', async (t) => {
+  const h = await host(t)
+  const installed = join(h.state.root, 'installed-addons')
+  for (const manifest of [
+    details('a-consumer', { requires: requires('z-provider') }),
+    details('z-provider'),
+    details('missing-consumer', { requires: requires('gone') }),
+    details('cycle-alpha', { requires: requires('cycle-beta') }),
+    details('cycle-beta', {
+      requires: { addons: [{ id: 'cycle-alpha', optional: true }] },
+    }),
+    details('cycle-consumer', { requires: requires('cycle-alpha') }),
+    details('unrelated'),
+  ])
+    await fixture(installed, manifest, true)
+  await writeFile(
+    join(h.state.root, 'addons.json'),
+    JSON.stringify({
+      'a-consumer': true,
+      'z-provider': true,
+      'missing-consumer': true,
+      'cycle-consumer': true,
+      unrelated: true,
+    }),
+  )
+  await h.loadAddons()
+  assert.equal(stateOf(h, 'a-consumer').blockedBy, undefined)
+  assert.deepEqual(stateOf(h, 'missing-consumer').blockedBy, ['gone'])
+  assert.deepEqual(stateOf(h, 'cycle-consumer').blockedBy, ['cycle-alpha'])
+  assert.equal(stateOf(h, 'unrelated').enabled, true)
+  assert.equal(stateOf(h, 'cycle-alpha'), undefined)
+  assert.equal(stateOf(h, 'cycle-beta'), undefined)
+  assert.match(
+    h.getAddonStartupNotices().join(' '),
+    /dependency cycles.*cycle-alpha.*cycle-beta/,
+  )
+})
