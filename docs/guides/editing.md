@@ -80,4 +80,6 @@ Under **Settings → Addons**, enable **Word count** for word and character tota
 
 Enable **Writing suggestions** for workspace tag completions after `#`, note-path completions after `[[` in Source view, and a `;todo` text snippet in either editing view. Choose a suggestion with Enter or Tab; Escape leaves the text unchanged.
 
+Enable **Dictionary and thesaurus** to look up definitions and synonyms for the word at the cursor in English, Chinese, Cantonese, Japanese, Filipino, or French, then replace it with a synonym. Looked-up words are sent to online services unless an offline pack answers, so the addon is off by default. Its readme in **Settings → Addons** describes which services it uses.
+
 The **Frontmatter** addon adds editable [page properties](frontmatter.md). **Settings → Editor → Writing → Spell check** controls spelling underlines in formatted text. See [settings](settings.md) for other preferences.

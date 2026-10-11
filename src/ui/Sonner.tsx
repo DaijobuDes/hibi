@@ -104,7 +104,9 @@ export function Sonner() {
   // biome-ignore lint/correctness/useExhaustiveDependencies: changing the portal container creates a new popover element.
   useLayoutEffect(() => {
     const node = element.current
-    if (items.length && node && !node.matches(':popover-open'))
+    // A modal container removed in this commit resets the container, which
+    // portals a new element into the body and reruns this effect.
+    if (items.length && node?.isConnected && !node.matches(':popover-open'))
       node.showPopover()
   }, [items.length, container])
   if (!items.length) return null
