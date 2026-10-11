@@ -113,9 +113,9 @@ export function autocompleteCompletions(
       prose.before.slice(0, prose.before.length - typed.length),
     )
     const epoch = learning.epoch()
-    const langs = dictionary.suggestionLanguages().filter((lang) =>
-      settings.languages.includes(lang),
-    )
+    const langs = dictionary
+      .suggestionLanguages()
+      .filter((lang) => settings.languages.includes(lang))
     const found = typed
       ? await dictionary.complete(typed, langs, 24, signal).catch((error) => {
           if (signal.aborted) throw error

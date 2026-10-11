@@ -574,7 +574,7 @@ export function SourceEditor({
     ) => {
       if (!completionBroker.hasTypingListeners()) return
       const request = captureCompletion({ kind: 'explicit' })
-      if (!request || (kind !== 'replace' && !request.prose)) return
+      if (!request) return
       let from = Infinity,
         to = 0,
         insertedLength = 0
@@ -591,7 +591,7 @@ export function SourceEditor({
             ? (request.prose?.before ?? '')
             : `${boundaryBefore}\n`.slice(-256),
         after: request.prose?.after ?? '',
-        kind,
+        kind: request.prose ? kind : 'replace',
         change: { from, to, insertedLength },
       })
     }

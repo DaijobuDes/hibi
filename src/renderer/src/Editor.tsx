@@ -2,7 +2,7 @@ import type { Editor, EditorEvents } from '@tiptap/core'
 import { closeHistory } from '@tiptap/pm/history'
 import type { Node as RichNode } from '@tiptap/pm/model'
 import { AllSelection, TextSelection } from '@tiptap/pm/state'
-import { ReplaceStep } from '@tiptap/pm/transform'
+import { Mapping, ReplaceStep } from '@tiptap/pm/transform'
 import { EditorContent, useEditor } from '@tiptap/react'
 import {
   findNext,
@@ -742,6 +742,9 @@ export function MarkdownEditor({
     let inputKind: TypingContext['kind'] | null = null
     let inputBefore: CompletionRequest | null = null
     let composingDocument: RichNode | null = null
+    let composingMapping = new Mapping()
+    let composingFrom = Infinity,
+      composingTo = 0
     let compositionFrame = 0
     let sourceEchoBefore: { version: number; before: RichNode } | null = null
     const open = () => menu.matches(':popover-open')
@@ -811,6 +814,15 @@ export function MarkdownEditor({
             selection.$head.marks().some((mark) => mark.type.spec.code)))
       )
         return null
+      if (!rangeOnly)
+        for (let depth = 1; depth <= selection.$head.depth; depth++) {
+          const node = selection.$head.node(depth)
+          if (
+            node.type.spec.code ||
+            /frontmatter|math|html/i.test(node.type.name)
+          )
+            return null
+        }
       if (!typingContext && !plainSync.current)
         plainSync.current = createPlainSourceSync(
           source,
@@ -1180,15 +1192,26 @@ export function MarkdownEditor({
       before: RichNode,
       after: RichNode,
       previous?: CompletionRequest | null,
+      actualChange?: TypingContext['change'],
     ) => {
       if (!completionBroker.hasTypingListeners() || view.state.doc !== after)
         return
-      const request = capture({ kind: 'explicit' }, true, kind === 'replace')
-      if (!request || (kind !== 'replace' && !request.prose)) return
-      const from = before.content.findDiffStart(after.content)
-      const end = before.content.findDiffEnd(after.content)
-      if (from === null || !end) return
-      const overlap = Math.max(0, from - Math.min(end.a, end.b))
+      const request =
+        capture({ kind: 'explicit' }, true, kind === 'replace') ??
+        capture({ kind: 'explicit' }, true, true)
+      if (!request) return
+      let change = actualChange
+      if (!change) {
+        const from = before.content.findDiffStart(after.content)
+        const end = before.content.findDiffEnd(after.content)
+        if (from === null || !end) return
+        const overlap = Math.max(0, from - Math.min(end.a, end.b))
+        change = {
+          from,
+          to: end.a + overlap,
+          insertedLength: end.b + overlap - from,
+        }
+      }
       completionBroker.emitTypingContext({
         ...request,
         before:
@@ -1200,12 +1223,8 @@ export function MarkdownEditor({
             ? `${previous.prose.before}\n`.slice(-256)
             : (request.prose?.before ?? ''),
         after: request.prose?.after ?? '',
-        kind,
-        change: {
-          from,
-          to: end.a + overlap,
-          insertedLength: end.b + overlap - from,
-        },
+        kind: request.prose ? kind : 'replace',
+        change,
       })
     }
     const onBeforeInput = (event: InputEvent) => {
@@ -1231,6 +1250,9 @@ export function MarkdownEditor({
     const startCompositionSignal = () => {
       cancelAnimationFrame(compositionFrame)
       inputKind = null
+      composingMapping = new Mapping()
+      composingFrom = Infinity
+      composingTo = 0
       composingDocument = completionBroker.hasTypingListeners()
         ? view.state.doc
         : null
@@ -1241,7 +1263,24 @@ export function MarkdownEditor({
         const before = composingDocument
         composingDocument = null
         inputKind = null
-        if (before) reportTyping('composition', before, view.state.doc)
+        if (before)
+          reportTyping(
+            'composition',
+            before,
+            view.state.doc,
+            null,
+            Number.isFinite(composingFrom)
+              ? {
+                  from: composingFrom,
+                  to: composingTo,
+                  insertedLength:
+                    view.state.doc.content.size -
+                    before.content.size +
+                    composingTo -
+                    composingFrom,
+                }
+              : undefined,
+          )
       })
     }
     const removeTypingHistory = documentRuntime
@@ -1276,6 +1315,16 @@ export function MarkdownEditor({
         | undefined
       if (echo && transaction.docChanged)
         sourceEchoBefore = { version: echo.version, before: transaction.before }
+      if (composingDocument && transaction.docChanged && !echo) {
+        for (const map of transaction.mapping.maps) {
+          const inverse = composingMapping.invert()
+          map.forEach((from, to) => {
+            composingFrom = Math.min(composingFrom, inverse.map(from, -1))
+            composingTo = Math.max(composingTo, inverse.map(to, 1))
+          })
+          composingMapping.appendMap(map)
+        }
+      }
       const kind = inputKind,
         previous = inputBefore
       inputKind = null
@@ -1289,8 +1338,14 @@ export function MarkdownEditor({
       ) {
         const before = transaction.before,
           after = view.state.doc
+        const step =
+          transaction.steps.length === 1 ? transaction.steps[0] : null
+        const change =
+          step instanceof ReplaceStep && transaction.doc.eq(after)
+            ? { from: step.from, to: step.to, insertedLength: step.slice.size }
+            : undefined
         queueMicrotask(() => {
-          if (!disposed) reportTyping(kind, before, after, previous)
+          if (!disposed) reportTyping(kind, before, after, previous, change)
         })
       }
       if (!completionBroker.hasProviders()) return

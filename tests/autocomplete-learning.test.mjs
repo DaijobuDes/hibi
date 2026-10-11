@@ -291,7 +291,7 @@ test('rich enter uses old word end despite paragraph token offset gap', () => {
   const prefix = 'that was '
   for (let i = 0; i < 4; i++) {
     const before = prefix + 'wild'.slice(0, i + 1)
-    const from = prefix.length + i + 1
+    const from = prefix.length + i
     signals.input(
       input(before, {
         editor: 'rich',
@@ -305,9 +305,9 @@ test('rich enter uses old word end despite paragraph token offset gap', () => {
   signals.input(
     input('that was wild\n', {
       editor: 'rich',
-      documentLength: 17,
-      selection: { anchor: 16, head: 16 },
-      change: { from: 14, to: 14, insertedLength: 2 },
+      documentLength: 16,
+      selection: { anchor: 15, head: 15 },
+      change: { from: 13, to: 13, insertedLength: 2 },
     }),
     session,
     languages,

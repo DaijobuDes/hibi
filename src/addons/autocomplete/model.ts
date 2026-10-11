@@ -355,16 +355,18 @@ export function createPersonalModel(options: PersonalModelOptions = {}) {
           item.word.toLowerCase().startsWith(prefix) &&
           item.word.toLowerCase() !== prefix,
       )
-    for (const [i, item] of baseline.entries())
-      if (!candidates.has(item.word))
+    for (const [i, item] of baseline.entries()) {
+      const score = item.custom
+        ? 1.05 + 0.1 * (1 - i / Math.max(1, baseline.length))
+        : 1 - i / Math.max(1, baseline.length)
+      if (score > (candidates.get(item.word)?.score ?? -Infinity))
         candidates.set(item.word, {
           word: item.word,
           lang: item.lang,
-          score: item.custom
-            ? 1.05 + 0.1 * (1 - i / Math.max(1, baseline.length))
-            : 1 - i / Math.max(1, baseline.length),
+          score,
           source: 'baseline',
         })
+    }
     if (request.enabled === false)
       return [...candidates.values()]
         .sort((a, b) => b.score - a.score)
@@ -385,14 +387,16 @@ export function createPersonalModel(options: PersonalModelOptions = {}) {
       }
     >()
     const time = now()
+    const visited = new Set<Row>()
     for (const words of contexts)
       for (const lang of langs)
         for (const row of buckets.get(
           bucketKey(request.scope, lang, words, prefix),
         ) ?? []) {
-          if (row.word.toLowerCase() === prefix) continue
+          if (visited.has(row) || row.word.toLowerCase() === prefix) continue
+          visited.add(row)
           const factor = decay(row, time)
-          if (strength(row, time) < 0.02) continue
+          if ((row.count + row.corrections) * factor < 0.02) continue
           const signals = evidence.get(row.word) ?? {
             count: 0,
             context: 0,

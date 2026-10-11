@@ -63,6 +63,20 @@ test('custom vocabulary outranks ordinary baseline, strong history outranks cust
   assert.equal(words(model, { ...request, enabled: false })[0], 'craycray')
 })
 
+test('custom priority is retained when an offline pack contains the same word', () => {
+  const model = createPersonalModel()
+  const request = {
+    ...query,
+    baseline: [...baseline, { word: 'crayfish', lang: 'en', custom: true }],
+  }
+  assert.equal(words(model, request)[0], 'crayfish')
+  assert.equal(words(model, { ...request, enabled: false })[0], 'crayfish')
+  assert.equal(
+    words(model, request).filter((word) => word === 'crayfish').length,
+    1,
+  )
+})
+
 test('repetition promotes personal vocabulary and existing dictionary words', () => {
   const model = createPersonalModel()
   learn(model, 'craycray', 40)
