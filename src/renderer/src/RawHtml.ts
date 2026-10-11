@@ -1,4 +1,9 @@
-import { type AnyExtension, type JSONContent, Node } from '@tiptap/core'
+import {
+  type AnyExtension,
+  getExtensionField,
+  type JSONContent,
+  Node,
+} from '@tiptap/core'
 import type { Token } from 'marked'
 import { markdownSyntax } from './markdown-syntax.ts'
 
@@ -54,14 +59,19 @@ export function preserveHtml(extension: AnyExtension) {
       addAttributes: () => ({ rawHtml: { default: null, rendered: false } }),
       renderMarkdown: (node: JSONContent) => node.attrs?.rawHtml ?? '  \n',
     })
-  if (extension.type === 'mark')
+  if (
+    extension.type === 'mark' &&
+    getExtensionField(extension, 'parseMarkdown')
+  )
     return extension.extend({
       parseMarkdown(token, helpers) {
         const result = this.parent?.(token, helpers)
         if (
           result &&
           'mark' in result &&
-          result.content?.some((node) => node.type === 'rawHtmlInline')
+          result.content?.some(
+            (node) => node.type === 'rawHtmlInline' || node.attrs?.rawHtml,
+          )
         )
           return helpers.createNode('rawHtmlInline', { source: token.raw })
         return result ?? null

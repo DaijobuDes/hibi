@@ -30,6 +30,8 @@ for (const source of [
   'a <span>unclosed',
   '<kbd>x\n\ny</kbd>',
   '**<kbd>x</kbd>**',
+  '**a<br>b**',
+  '[a<br>b](https://example.com)',
   '**a <span>x</span> b**',
   '[<kbd>x</kbd>](https://example.com)',
   '*before <span>inside* after</span>',
