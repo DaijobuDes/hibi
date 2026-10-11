@@ -141,9 +141,7 @@ test('raw HTML stays inert and exact through rich edits, atom deletion, undo, an
     [comment, 'block'],
     ...details.split('\n\n').map((source) => [source, 'block']),
   ]) {
-    const atom = atoms.find(
-      (node) => node.source.replace(/\n+$/, '') === source,
-    )
+    const atom = atoms.find((node) => node.source === source)
     assert.ok(atom, `missing ${level} atom: ${source}`)
     assert.equal(
       atom.type,
@@ -193,7 +191,7 @@ test('raw HTML stays inert and exact through rich edits, atom deletion, undo, an
         size: selection.to - selection.from,
       }
     })
-    assert.equal(selection.source.replace(/\n+$/, ''), source)
+    assert.equal(selection.source, source)
     assert.equal(selection.atom, true)
     assert.equal(selection.size, 1, 'native click must select whole atom')
     assert.equal(await page.getByRole('dialog').count(), 0)

@@ -109,7 +109,10 @@ export const rawHtml = (['inline', 'block'] as const).map((level) => {
     renderText: ({ node }) => node.attrs.source,
     markdownTokenName: level === 'block' ? 'html' : name,
     parseMarkdown: (token, helpers) => {
-      const source = token.raw ?? ''
+      const source =
+        level === 'block'
+          ? (token.raw ?? '').replace(/\n+$/, '')
+          : (token.raw ?? '')
       if (
         level === 'inline' &&
         /^<br\s*\/?>$/i.test(source) &&

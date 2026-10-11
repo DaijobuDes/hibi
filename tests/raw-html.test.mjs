@@ -6,6 +6,7 @@ import { EditorState } from '@tiptap/pm/state'
 import { markdownConfiguration } from '../src/renderer/src/markdown.ts'
 import { markdownSerializer } from '../src/renderer/src/markdown-serialization.ts'
 import { markdownSyntax } from '../src/renderer/src/markdown-syntax.ts'
+import { preserveRichSource } from '../src/renderer/src/rich-source-preservation.ts'
 
 const { core, parser, options } = markdownConfiguration([])
 const schema = getSchema(core)
@@ -78,6 +79,37 @@ test('inline and block html are selectable atoms, while br keeps its source spel
   const br = schema.nodeFromJSON(manager.parse('a<br>b')).firstChild.child(1)
   assert.equal(br.type.name, 'hardBreak')
   assert.equal(br.attrs.rawHtml, '<br>')
+})
+
+test('block html excludes trailing newlines and list edits keep original spacing', () => {
+  const source = '- a\n\n  <div>x</div>\n\n- b'
+  const before = schema.nodeFromJSON(manager.parse(source))
+  assert.equal(
+    before.firstChild.firstChild.lastChild.attrs.source,
+    '<div>x</div>',
+  )
+  const state = EditorState.create({ schema, doc: before })
+  const after = state.apply(
+    state.tr.insertText('!', before.content.size - 3),
+  ).doc
+  for (const blockLocal of [true, false]) {
+    const serialize = markdownSerializer(manager, blockLocal)
+    assert.equal(serialize(before).source, '- a\n  <div>x</div>\n- b')
+    assert.equal(
+      preserveRichSource(
+        source,
+        serialize(before).source,
+        serialize(after).source,
+        (candidate) => schema.nodeFromJSON(manager.parse(candidate)).eq(after),
+      ),
+      `${source}!`,
+    )
+  }
+  assert.equal(
+    schema.nodeFromJSON(manager.parse('<div>x</div>\n')).firstChild.attrs
+      .source,
+    '<div>x</div>',
+  )
 })
 
 test('html br becomes an opaque chip when line breaks are disabled', () => {
