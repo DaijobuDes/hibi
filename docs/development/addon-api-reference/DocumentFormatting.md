@@ -2,7 +2,7 @@
 
 # DocumentFormatting
 
-Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L444)
+Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L451)
 
 <details>
 <summary>Declaration</summary>
@@ -32,7 +32,7 @@ type DocumentFormatting = {
 
 ### actions
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L445)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L452)
 
 ```typescript
 actions: readonly string[]
@@ -42,7 +42,7 @@ actions: readonly string[]
 
 ### apply
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L446)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L453)
 
 ```typescript
 apply: (action: string, selection: DocumentSelection) => DocumentEdit | null
@@ -61,7 +61,7 @@ Related: [DocumentSelection](DocumentSelection.md), [DocumentEdit](DocumentEdit.
 
 ### isActive
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L447)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L454)
 
 ```typescript
 isActive?: (action: string, selection: DocumentSelection) => boolean

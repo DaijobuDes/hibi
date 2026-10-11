@@ -1,5 +1,7 @@
 import {
+  type AnyExtension,
   callOrReturn,
+  decodeHtmlEntities,
   flattenExtensions,
   getExtensionField,
   type JSONContent,
@@ -23,20 +25,28 @@ export function paragraphEscaper(
   parser: Marked,
   flavors: readonly MarkdownFlavor[],
 ) {
-  const rules: MarkdownParagraphRule[] = [
+  const rules: { flavor: string; rule: MarkdownParagraphRule }[] = [
     {
-      characters: '!',
-      escape(source, { literals }) {
-        for (const [sentinel, character] of literals)
-          if (character === '!')
-            source = source.replaceAll(`${sentinel}[`, '\\![')
-        return source
+      flavor: 'core.entities',
+      rule: {
+        characters: '!',
+        escape(source, { literals }) {
+          for (const [sentinel, character] of literals)
+            if (character === '!')
+              source = source.replaceAll(`${sentinel}[`, '\\![')
+          return source
+        },
       },
     },
-    ...flavors.flatMap((flavor) => flavor.paragraphRules ?? []),
+    ...flavors.flatMap((flavor) =>
+      (flavor.paragraphRules ?? []).map((rule) => ({
+        flavor: flavor.id,
+        rule,
+      })),
+    ),
   ]
   const characters = [
-    ...new Set(rules.flatMap((rule) => [...(rule.characters ?? '')])),
+    ...new Set(rules.flatMap(({ rule }) => [...(rule.characters ?? '')])),
   ]
   const verbatim = new Set([
     'code',
@@ -57,13 +67,18 @@ export function paragraphEscaper(
   ): string => {
     let content = node.content ?? []
     const literals = new Map<string, string>()
+    let prefix = ''
     if (characters.length && content.some(needsMasking)) {
-      const original = JSON.stringify(node)
-      let prefix = '\uE000'
-      while (original.includes(prefix)) prefix += '\uE000'
+      prefix = '\uE000'
+      const hasPrefix = (child: JSONContent): boolean =>
+        !!child.text?.includes(prefix) || !!child.content?.some(hasPrefix)
+      while (content.some(hasPrefix)) prefix += '\uE000'
       const sentinels = new Map(
         characters.map((character, index) => {
-          const sentinel = `${prefix}${index}\uE001`
+          const digits = Array.from(index.toString(36), (digit) =>
+            String.fromCharCode(0xe002 + Number.parseInt(digit, 36)),
+          ).join('')
+          const sentinel = `${prefix}${digits}\uE001`
           literals.set(sentinel, character)
           return [character, sentinel]
         }),
@@ -79,15 +94,76 @@ export function paragraphEscaper(
           : child,
       )
     }
+    const restore = (value: string) => {
+      for (const [sentinel, character] of literals)
+        value = value.replaceAll(sentinel, character)
+      return value
+    }
     let source = helpers.renderChildren(content)
-    for (const rule of rules) source = rule.escape(source, { ...ctx, literals })
-    for (const [sentinel, character] of literals)
-      source = source.replaceAll(sentinel, character)
+    for (const { flavor, rule } of rules) {
+      try {
+        const next = rule.escape(source, {
+          parentType: ctx.parentType ?? null,
+          literals,
+        })
+        if (typeof next !== 'string') throw new Error('Expected Markdown text.')
+        if (prefix) {
+          const restored = restore(next)
+          if (restored.includes(prefix))
+            throw new Error('Unresolved paragraph sentinel.')
+          const before = decodeHtmlEntities(restore(source))
+          const after = decodeHtmlEntities(restored)
+          for (const character of literals.values())
+            if (after.split(character).length < before.split(character).length)
+              throw new Error('Dropped a protected paragraph character.')
+        }
+        source = next
+      } catch (cause) {
+        throw new Error(
+          `Markdown paragraph rule failed for flavor "${flavor}".`,
+          {
+            cause,
+          },
+        )
+      }
+    }
+    source = restore(source)
     if (ctx.parentType !== 'table') source = escapeBlockPrefixes(source, parser)
     return source.replace(/^[ \t\u00a0]+|[ \t\u00a0]+$/gm, (space) =>
       space.replace(/[\t\u00a0]/g, encodeHTML),
     )
   }
+}
+
+/** Keep native table layout while routing every cell paragraph through its renderer. */
+export function renderTableParagraphs(extension: AnyExtension): AnyExtension {
+  if (extension.name === 'table')
+    return extension.extend({
+      renderMarkdown(node, helpers, ctx) {
+        return (
+          this.parent?.(
+            node,
+            {
+              ...helpers,
+              renderChildren: (children, separator) =>
+                helpers.renderChildren(
+                  !Array.isArray(children) && children.type === 'paragraph'
+                    ? [children]
+                    : children,
+                  separator,
+                ),
+            },
+            ctx,
+          ) ?? ''
+        )
+      },
+    })
+  if (!getExtensionField(extension, 'addExtensions')) return extension
+  return extension.extend({
+    addExtensions() {
+      return this.parent?.().map(renderTableParagraphs) ?? []
+    },
+  })
 }
 
 /** Finish inline escaping with the syntax that only has meaning at block starts. */
