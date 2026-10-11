@@ -12,10 +12,7 @@ export default {
   defaultEnabled: false,
   startup: 'background',
   network: {
-    origins: [
-      'https://en.wiktionary.org',
-      'https://api.datamuse.com',
-    ],
+    origins: ['https://en.wiktionary.org', 'https://api.datamuse.com'],
   },
   settings: { category: 'addons', icon: 'book-open' },
   authors: [authors.may],
