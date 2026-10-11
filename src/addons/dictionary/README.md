@@ -94,7 +94,7 @@ The German pack uses [Kaikki's German extract of English Wiktionary](https://kai
 
 The [official German gzip](https://kaikki.org/dictionary/German/kaikki.org-dictionary-German.jsonl.gz) downloaded and fully decompressed on 12 October 2026: 98,333,861 compressed bytes and 1,085,014,820 expanded bytes. It was extracted on 3 October from the 2 September English Wiktionary dump. The language-specific endpoint is deprecated upstream, like French and Tagalog. German has a 128 MiB download limit and a 1.5 GiB source expansion limit; converted-data and index limits remain unchanged.
 
-German keeps noun capitalization and matches lowercase aliases after exact spelling. Umlauts use Unicode NFC normalization; accents are not removed, and `ß` is not rewritten as `ss`. The pack keeps Wiktionary synonyms. [OpenThesaurus data](https://www.openthesaurus.de/about/download) offers CC BY-SA 4.0 or LGPL 2.1, and [OdeNet data](https://github.com/hdaSprachtechnologie/odenet) uses CC BY-SA 4.0 (its software is MIT). Neither dataset is permissively licensed; no additional thesaurus dataset is included.
+German keeps noun capitalization and matches lowercase aliases after exact spelling. Umlauts use Unicode NFC normalization; accents are not removed, and `ß` is not rewritten as `ss`. German synonyms come from Wiktionary for now. After measuring synonym coverage, a dedicated thesaurus could be added; [OpenThesaurus](https://www.openthesaurus.de/about/download) is the preferred follow-up because it uses a single download origin and offers an LGPL 2.1 option alongside CC BY-SA 4.0. Hibi downloads dictionary data from publishers and converts it locally; it does not redistribute the datasets.
 
 #### French
 
