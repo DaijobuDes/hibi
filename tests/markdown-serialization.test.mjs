@@ -26,6 +26,48 @@ const manager = new MarkdownManager({
   markedOptions: { gfm: true },
 })
 
+test('flavor paragraph rules compose after core escaping with render context', () => {
+  const seen = []
+  const { core, parser, options } = markdownConfiguration([
+    {
+      paragraphRules: [
+        (source, ctx) => {
+          seen.push([source, ctx.parentType])
+          return source.replaceAll('?', '\\?')
+        },
+        (source) => source.replaceAll('!', '\\!'),
+      ],
+    },
+    {
+      paragraphRules: [
+        (source) => {
+          assert.equal(source, '\\# why\\?\\!')
+          return source
+        },
+      ],
+    },
+  ])
+  const schema = getSchema(core)
+  const manager = new MarkdownManager({
+    extensions: core,
+    marked: parser,
+    markedOptions: options,
+  })
+  const source = '\\# why\\?\\!\n\n> \\# why\\?\\!'
+  const doc = schema.nodeFromJSON(manager.parse(source))
+  for (const blockLocal of [true, false]) {
+    const saved = markdownSerializer(manager, blockLocal)(doc).source
+    assert.equal(saved, source)
+    assert.ok(schema.nodeFromJSON(manager.parse(saved)).eq(doc))
+  }
+  assert.deepEqual(seen, [
+    ['\\# why?!', 'doc'],
+    ['\\# why?!', 'blockquote'],
+    ['\\# why?!', 'doc'],
+    ['\\# why?!', 'blockquote'],
+  ])
+})
+
 test('literal block prefixes survive full and cached serialization', async (t) => {
   for (const gfm of [false, true]) {
     const { core, addons, parser, options } = markdownConfiguration([

@@ -3,14 +3,28 @@ import { ORDERED_LIST_MARKER_PATTERN } from '@tiptap/extension-list'
 import type { MarkdownManager } from '@tiptap/markdown'
 import type { Node } from '@tiptap/pm/model'
 import type { Marked } from 'marked'
+import type { MarkdownFlavor, MarkdownParagraphRule } from '../../addons/api'
 import { configureMarkdownEntities } from './markdown-entities.ts'
 
 const orderedPrefix = new RegExp(
   `^( {0,3}(?:${ORDERED_LIST_MARKER_PATTERN}))([.)])(?=[^\\S\\n])`,
 )
 
+/** Capture the active parser and flavor rules once per Markdown configuration. */
+export function paragraphEscaper(
+  parser: Marked,
+  flavors: readonly MarkdownFlavor[],
+): MarkdownParagraphRule {
+  const rules = flavors.flatMap((flavor) => flavor.paragraphRules ?? [])
+  return (source, ctx) => {
+    source = escapeBlockPrefixes(source, parser)
+    for (const rule of rules) source = rule(source, ctx)
+    return source
+  }
+}
+
 /** Finish inline escaping with the syntax that only has meaning at block starts. */
-export function escapeParagraphMarkdown(source: string, parser: Marked) {
+function escapeBlockPrefixes(source: string, parser: Marked) {
   const lines = source.split('\n')
   for (const [index, value] of lines.entries()) {
     let line = value
