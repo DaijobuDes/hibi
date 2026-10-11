@@ -53,6 +53,10 @@ test('source completions stream, accept in one undo step, and retract on provide
           resolve(label) { resolve([{ label, insertText: label, from: request.selection.head - 1, to: request.selection.head }]); }
         }));
       }));
+      stops.push(await context.editor.registerContextActionProvider((request) => [{
+        label: 'Probe action',
+        edit: { from: request.selection.head, to: request.selection.head, insertText: '!' },
+      }]));
       window.completionProbe.dispose = () => stops.forEach(stop => stop());
       window.completionProbe.ready = true;
     } });`,
@@ -115,6 +119,45 @@ test('source completions stream, accept in one undo step, and retract on provide
   await page.waitForFunction(
     async () => (await window.hibi.getDocument()).markdown === 'ab',
   )
+  // The editor actions menu owns the keys as well: completions stay closed
+  // while it is open, and opening it closes them.
+  const actions = page.getByRole('menu', { name: 'Editor actions' })
+  await source.press('Shift+F10')
+  await actions.getByRole('menuitem', { name: 'Probe action' }).waitFor()
+  const actionRequests = await page.evaluate(
+    () => window.completionProbe.requests.length,
+  )
+  await page.keyboard.press('Control+Space')
+  await page.evaluate(
+    () =>
+      new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve)),
+      ),
+  )
+  assert.equal(
+    await page.locator('.cm-tooltip-autocomplete').isVisible(),
+    false,
+  )
+  assert.equal(
+    await page.evaluate(() => window.completionProbe.requests.length),
+    actionRequests,
+  )
+  await page.keyboard.press('Escape')
+  await actions.waitFor({ state: 'hidden' })
+  await source.press('Control+Space')
+  await page.locator('.cm-tooltip-autocomplete').waitFor()
+  await source.press('Shift+F10')
+  await actions.getByRole('menuitem', { name: 'Probe action' }).waitFor()
+  await page.locator('.cm-tooltip-autocomplete').waitFor({ state: 'hidden' })
+  await page.keyboard.press('Escape')
+  await actions.waitFor({ state: 'hidden' })
+  // Settle the explicit request the actions menu canceled; it holds its
+  // provider's slot until then.
+  await page.waitForFunction(() => window.completionProbe.pending.length > 0)
+  await page.evaluate(() => {
+    for (const pending of window.completionProbe.pending.splice(0))
+      pending.resolve('canceled')
+  })
 
   await source.press('Control+Space')
   await page
