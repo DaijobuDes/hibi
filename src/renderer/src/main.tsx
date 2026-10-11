@@ -1190,6 +1190,11 @@ function App() {
       ).then(focus)
   }
 
+  function showIntroduction() {
+    setSettingsOpen(false)
+    setIntroductionOpen(true)
+  }
+
   function openFind() {
     if (!markdownDocument && mode === 'normal') setMode('side-by-side')
     showTitlebar()
@@ -2228,7 +2233,7 @@ function App() {
         category: 'app',
         label: 'Show introduction',
         keywords: 'welcome onboarding tour help',
-        run: () => setIntroductionOpen(true),
+        run: showIntroduction,
       },
       {
         id: 'submenu.shortcuts',
@@ -3100,10 +3105,7 @@ function App() {
               showTitlebar()
             }}
             info={info}
-            onShowIntroduction={() => {
-              setSettingsOpen(false)
-              setIntroductionOpen(true)
-            }}
+            onShowIntroduction={showIntroduction}
           />
         </Suspense>
       )}

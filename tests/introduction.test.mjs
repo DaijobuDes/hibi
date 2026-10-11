@@ -182,6 +182,28 @@ test('the command palette and About settings reopen the introduction', {
   await page.getByRole('tab', { name: 'About', exact: true }).click()
   await page.getByRole('button', { name: 'Show introduction' }).click()
   await dialog.getByRole('heading', { name: 'Welcome to Hibi' }).waitFor()
+  await dialog.getByRole('button', { name: 'Skip' }).click()
+  await dialog.waitFor({ state: 'detached' })
+
+  // The palette entry leaves Settings the same way the About entry does.
+  await clickMenu(app, 'Settings')
+  await waitForAppState(
+    page,
+    () => !!document.querySelector('.settings-screen:not([hidden])'),
+  )
+  await clickMenu(app, 'Command palette')
+  await palette
+    .getByRole('combobox', { name: /search commands/i })
+    .fill('show introduction')
+  await palette.locator('[id="command-app.introduction"]').click()
+  await dialog.getByRole('button', { name: 'Skip' }).click()
+  await dialog.waitFor({ state: 'detached' })
+  await waitForAppState(
+    page,
+    () =>
+      !document.querySelector('.settings-screen:not([hidden])') &&
+      document.querySelector('.editor-page')?.inert === false,
+  )
 })
 
 test('navigation waits for a pending open and then advances from its own step', {
