@@ -1,3 +1,4 @@
+import { decodeHTML } from 'entities'
 import type { Lang } from './providers'
 
 /** One word in a live editor; replace fails if the document changed. */
@@ -94,27 +95,18 @@ export function matchCase(original: string, replacement: string) {
     : replacement
 }
 
-const entities: Record<string, string> = {
-  amp: '&',
-  lt: '<',
-  gt: '>',
-  quot: '"',
-  apos: "'",
-  nbsp: ' ',
-}
+// Quoted attribute values may contain `>`. Breaks and blocks separate words.
+const tag = /<!--[\s\S]*?-->|<\/?([a-z][\w-]*)(?:[^>"']|"[^"]*"|'[^']*')*>/gi
+const separates =
+  /^(?:br|p|div|li|dd|dt|tr|td|th|h[1-6]|ul|ol|dl|table|blockquote|hr|section)$/i
 
 /** Plain text from a Wiktionary HTML fragment; results are rendered as text, never HTML. */
 export function plainText(html: string) {
-  return html
-    .replace(/<[^>]*>/g, '')
-    .replace(/&(#x[\da-f]+|#\d+|[a-z]+);/gi, (match, name: string) => {
-      if (name[0] !== '#') return entities[name.toLowerCase()] ?? match
-      const code = Number.parseInt(
-        name.slice(name[1] === 'x' || name[1] === 'X' ? 2 : 1),
-        name[1] === 'x' || name[1] === 'X' ? 16 : 10,
-      )
-      return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : match
-    })
+  return decodeHTML(
+    html.replace(tag, (_tag, name?: string) =>
+      name && separates.test(name) ? ' ' : '',
+    ),
+  )
     .replace(/\s+/g, ' ')
     .trim()
 }

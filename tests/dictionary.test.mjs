@@ -95,6 +95,10 @@ test('dictionary parses captured Wiktionary and Datamuse responses', async () =>
     plainText('<a href="/wiki/x">fish</a> &amp; <i>chips</i>&#33; &#x2014;'),
     'fish & chips! —',
   )
+  assert.equal(plainText('a<br>b &eacute;'), 'a b é')
+  assert.equal(plainText('<a title="x > y">word</a>s'), 'words')
+  assert.equal(plainText("<p>one</p><p data-x='>'>two</p>"), 'one two')
+  assert.equal(plainText('&lt;b&gt;<!-- <i> -->x'), '<b>x')
 })
 
 test('dictionary finds the caret word with the right segmenter and language', () => {
