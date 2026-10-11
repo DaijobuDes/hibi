@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
@@ -88,7 +88,8 @@ test('autocomplete learns locally, disables learning, excludes documents and cle
     })
     return (
       data.status === 'ready' &&
-      data.value.entries.some((row) => row.word === 'wild' && row.count >= 3)
+      // Counts begin decaying before the debounced write reaches disk.
+      data.value.entries.some((row) => row.word === 'wild' && row.count > 2.99)
     )
   })
   const first = await stored()
@@ -127,17 +128,17 @@ test('autocomplete learns locally, disables learning, excludes documents and cle
   )
 
   await settings()
-  await page
+  const clearButton = page
+    .getByRole('main', { name: 'Settings' })
     .getByRole('button', { name: 'Clear learned words', exact: true })
-    .click()
+  await clearButton.click()
   const confirmation = page.getByRole('dialog', { name: 'Clear learned words' })
   await confirmation
     .getByRole('button', { name: 'Cancel', exact: true })
     .click()
+  await confirmation.waitFor({ state: 'hidden' })
   assert.ok((await stored()).value.entries.length > 0)
-  await page
-    .getByRole('button', { name: 'Clear learned words', exact: true })
-    .click()
+  await clearButton.click()
   await confirmation
     .getByRole('button', { name: 'Clear learned words', exact: true })
     .click()
@@ -182,6 +183,67 @@ test('autocomplete learns locally, disables learning, excludes documents and cle
     return data.status === 'ready' && data.value.entries.length === 0
   })
   assert.deepEqual((await disk()).entries['learned-words'].value.entries, [])
+  await confirmation.waitFor({ state: 'hidden' })
+  const learnWord = async (word) => {
+    await rich.evaluate((element) => element.editor.commands.focus('end'))
+    await page.keyboard.type(` ${word} `)
+    await waitForAsync(
+      page,
+      async (word) => {
+        const data = await window.hibi.readAddonStorage({
+          owner: 'autocomplete',
+          scope: { kind: 'global' },
+          key: 'learned-words',
+          version: 1,
+        })
+        return (
+          data.status === 'ready' &&
+          data.value.entries.some((row) => row.word === word)
+        )
+      },
+      word,
+    )
+  }
+  await learnWord('outsideword')
+  const workspace = join(profile, 'workspace-fixture')
+  await mkdir(workspace)
+  await writeFile(join(workspace, 'note.md'), 'existing ')
+  await app.evaluate(({ dialog }, workspace) => {
+    dialog.showOpenDialog = async () => ({
+      canceled: false,
+      filePaths: [workspace],
+    })
+    dialog.showMessageBox = async () => ({ response: 1 })
+  }, workspace)
+  await page.getByRole('button', { name: /toggle workspace sidebar/i }).click()
+  await page
+    .getByRole('button', { name: /^open workspace$/i, exact: true })
+    .click()
+  await page.getByRole('treeitem', { name: /^note\.md$/i, exact: true }).click()
+  await waitForDocumentEditor(app, page)
+  await learnWord('workspaceword')
+  const workspaceId = await page.evaluate(
+    async () => (await window.hibi.getWorkspace()).id,
+  )
+  const scoped = (await stored()).value.entries
+  assert.ok(
+    scoped.some((row) => row.word === 'outsideword' && row.scope === null),
+  )
+  assert.ok(
+    scoped.some(
+      (row) => row.word === 'workspaceword' && row.scope === workspaceId,
+    ),
+  )
+  await settings()
+  await page.locator('#autocomplete-clear-scope').selectOption('workspace')
+  await clearButton.click()
+  await confirmation
+    .getByRole('button', { name: 'Clear learned words', exact: true })
+    .click()
+  await confirmation.waitFor({ state: 'hidden' })
+  const remaining = (await disk()).entries['learned-words'].value.entries
+  assert.ok(remaining.some((row) => row.word === 'outsideword'))
+  assert.ok(remaining.every((row) => row.scope !== workspaceId))
   assert.deepEqual(await app.evaluate(() => globalThis.autocompleteNetwork), [])
   assert.deepEqual(errors, [])
 })

@@ -64,9 +64,26 @@ export function writePreferences(next: AutocompletePreferences) {
   for (const listener of listeners) listener()
 }
 
+function changedInAnotherWindow(event: StorageEvent) {
+  if (
+    event.storageArea !== localStorage ||
+    (event.key !== key && event.key !== null)
+  )
+    return
+  cached = undefined
+  for (const listener of listeners) listener()
+}
+
 export function onPreferencesChange(listener: () => void) {
+  if (!listeners.size) {
+    cached = undefined
+    if (typeof window !== 'undefined')
+      window.addEventListener('storage', changedInAnotherWindow)
+  }
   listeners.add(listener)
   return () => {
     listeners.delete(listener)
+    if (!listeners.size && typeof window !== 'undefined')
+      window.removeEventListener('storage', changedInAnotherWindow)
   }
 }

@@ -37,6 +37,42 @@ test('autocomplete inherits existing language and Tab preferences and respects i
   settings.writePreferences(next)
   assert.equal(changes, 1)
 })
+test('privacy preferences reload across windows and after resubscribing', async (t) => {
+  const settings = await preferences({})
+  const events = new EventTarget()
+  globalThis.window = events
+  t.after(() => {
+    delete globalThis.window
+  })
+  const initial = settings.readPreferences()
+  let changes = 0
+  const stop = settings.onPreferencesChange(() => changes++)
+  const next = { ...initial, learning: false, excludedWorkspaces: ['private'] }
+  localStorage.setItem('hibi:autocomplete', JSON.stringify(next))
+  const notify = (key, storageArea = localStorage) =>
+    events.dispatchEvent(
+      Object.assign(new Event('storage'), { key, storageArea }),
+    )
+  notify('unrelated')
+  notify('hibi:autocomplete', {})
+  assert.equal(changes, 0)
+  notify('hibi:autocomplete')
+  assert.equal(changes, 1)
+  assert.deepEqual(settings.readPreferences(), next)
+  stop()
+  localStorage.setItem(
+    'hibi:autocomplete',
+    JSON.stringify({ ...next, suggest: false }),
+  )
+  notify('hibi:autocomplete')
+  assert.equal(changes, 1)
+  const again = settings.onPreferencesChange(() => changes++)
+  assert.equal(settings.readPreferences().suggest, false)
+  notify(null)
+  assert.equal(changes, 2)
+  again()
+})
+
 test('autocomplete validates stored languages and exclusions, and defaults safely', async () => {
   const settings = await preferences({
     'hibi:autocomplete': {
