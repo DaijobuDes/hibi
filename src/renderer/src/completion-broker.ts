@@ -146,6 +146,16 @@ function validItems(items: readonly CompletionItem[], length: number) {
   return result
 }
 
+/**
+ * True while another open popup, such as the slash menu, controls `editor`;
+ * that popup keeps the keys and completions stay closed.
+ */
+export function otherPopupOpen(editor: Element, own?: Element) {
+  const id = editor.getAttribute('aria-controls')
+  const popup = id && document.getElementById(id)?.closest(':popover-open')
+  return !!popup && popup !== own
+}
+
 /** One active query; old providers retain slots until their promises actually settle. */
 export class CompletionBroker {
   readonly #registrations = new Map<number, Registration>()
