@@ -103,6 +103,7 @@ import {
   getDocumentSourceFor,
   getOpenDocumentVersions,
   hasOpenDocumentPath,
+  hasUnsavedDocuments,
   loadDocument,
   loadDocumentPreferences,
   moveDocumentTab,
@@ -839,11 +840,17 @@ function createWindow(): void {
       window.hide()
       return
     }
-    if (quitting && background.enabled && !window.isVisible()) showMainWindow()
     confirmingClose = true
     void (async () => {
       await flushRenderer()
       await fileOperation?.catch(() => undefined)
+      if (
+        quitting &&
+        background.enabled &&
+        !window.isVisible() &&
+        hasUnsavedDocuments()
+      )
+        showMainWindow()
       if (await confirmDiscardAll(window)) {
         const installed = finishUpdateInstall()
         if (installed === false) {
@@ -907,6 +914,7 @@ function createWindow(): void {
     flushRequest?.resolve()
     console.error('renderer exited:', details.reason, details.exitCode)
     if (details.reason === 'clean-exit' || window.isDestroyed()) return
+    if (background.enabled && !window.isVisible()) showMainWindow()
     void dialog
       .showMessageBox(window, {
         type: 'error',
@@ -1008,7 +1016,9 @@ function installMenu(): void {
           role: process.platform === 'darwin' ? 'close' : 'quit',
           ...(process.platform === 'darwin'
             ? { accelerator: 'CmdOrCtrl+Shift+W' }
-            : { accelerator: 'CmdOrCtrl+Q' }),
+            : process.platform === 'win32' && background.enabled
+              ? { accelerator: 'CmdOrCtrl+Q' }
+              : {}),
         },
       ],
     },
@@ -1181,6 +1191,7 @@ if (!app.requestSingleInstanceLock()) {
       handle(BACKGROUND_CHANNELS.get, () => background.enabled)
       handle(BACKGROUND_CHANNELS.set, async (_event, value: unknown) => {
         const enabled = await background.save(value)
+        installMenu()
         if (!enabled && mainWindow && !mainWindow.isVisible()) showMainWindow()
         return enabled
       })

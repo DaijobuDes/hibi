@@ -14,7 +14,7 @@ asarUnpack:
 extraResources:
   - from: build
     to: icons
-    filter: ["icon-*.png", "tray*.png", "tray.ico"]
+    filter: ["icon-*.png", "trayTemplate*.png", "tray.png", "tray.ico"]
   - from: node_modules/electron/dist/LICENSES.chromium.html
     to: licenses/electron-third-party.html
   - from: docs/licenses

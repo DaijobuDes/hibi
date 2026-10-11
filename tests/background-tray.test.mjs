@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
 import {
+  crashAndReload,
   electron,
   stopElectronTree,
   waitForDocumentEditor,
@@ -139,6 +140,20 @@ async function answerDialog(app, response) {
   }, response)
 }
 
+async function assertWindowsQuitAccelerator(app, expected) {
+  if (process.platform !== 'win32') return
+  assert.equal(
+    await app.evaluate(({ Menu }) => {
+      const quit = Menu.getApplicationMenu()
+        .items.flatMap((item) => item.submenu?.items ?? [])
+        .find((item) => item.role === 'quit')
+      if (!quit) throw new Error('Quit role unavailable')
+      return quit.accelerator ?? null
+    }),
+    expected,
+  )
+}
+
 async function quitFromTray(app, child) {
   const exited = waitForElectronShutdown(child, app.waitForEvent('close'))
   await trayClick(app, 'Quit')
@@ -155,6 +170,7 @@ test('background defaults off and closing retains the platform lifecycle', {
     false,
   )
   assert.equal(await app.evaluate(() => globalThis.backgroundTestTray), null)
+  await assertWindowsQuitAccelerator(app, null)
   await clickMenu(app, 'Settings')
   await page.getByRole('tab', { name: /^about$/i }).click()
   const about = page.getByRole('tabpanel', { name: /^about$/i })
@@ -206,6 +222,7 @@ test('tray preserves drafts, restores the same renderer and cancels unsafe quits
   })
   await checkbox.click()
   await waitForAsync(page, async () => window.hibi.getBackgroundMode())
+  await assertWindowsQuitAccelerator(app, 'CmdOrCtrl+Q')
   assert.equal(await readFile(join(profile, 'background.json'), 'utf8'), 'true')
   assert.equal(
     await app.evaluate(
@@ -349,10 +366,18 @@ test('tray quick note follows UI registration and invokes the hidden renderer', 
   timeout: 30000,
 }, async (t) => {
   const { app, page } = await launch(t)
+  const captureHasHotkey = () =>
+    page.evaluate(async () =>
+      (await window.hibi.getAddonHotkeys()).some(
+        (item) => item.id === 'quick-note.capture',
+      ),
+    )
+  assert.equal(await captureHasHotkey(), false)
   assert.equal(
     await page.evaluate(() => window.hibi.setBackgroundMode(true)),
     true,
   )
+  await assertWindowsQuitAccelerator(app, 'CmdOrCtrl+Q')
   assert.equal(
     await app.evaluate(() =>
       globalThis.backgroundTestMenu.items.some(
@@ -374,16 +399,12 @@ test('tray quick note follows UI registration and invokes the hidden renderer', 
   const checkbox = page.locator('#addon-quick-note')
   assert.equal(await checkbox.isChecked(), false)
   await checkbox.click()
-  await waitForAsync(page, async () =>
-    (await window.hibi.getAddonHotkeys()).some(
-      (item) => item.id === 'quick-note.capture',
-    ),
-  )
   await waitForAsync(app, () =>
     globalThis.backgroundTestMenu.items.some(
       (item) => item.label.toLowerCase() === 'new quick note',
     ),
   )
+  assert.equal(await captureHasHotkey(), false)
   await page.getByRole('button', { name: /^back to app$/i }).click()
   await app.evaluate(() => globalThis.backgroundTestWindow.showInactive())
   const original = await windowState(app)
@@ -394,6 +415,7 @@ test('tray quick note follows UI registration and invokes the hidden renderer', 
   const [command] = await page.evaluate(() => window.backgroundTestCommands)
   assert.equal(command.id, 'quick-note.capture')
   assert.equal(command.source, 'menu')
+  assert.equal(await captureHasHotkey(), false)
   assert.equal(typeof command.token, 'string')
   assert.notEqual(command.token, '')
   assert.deepEqual(await windowState(app), { ...original, visible: false })
@@ -403,19 +425,13 @@ test('tray quick note follows UI registration and invokes the hidden renderer', 
   await page.getByRole('tab', { name: /^addon manager$/i }).click()
   await checkbox.click()
   await waitForAsync(
-    page,
-    async () =>
-      !(await window.hibi.getAddonHotkeys()).some(
-        (item) => item.id === 'quick-note.capture',
-      ),
-  )
-  await waitForAsync(
     app,
     () =>
       !globalThis.backgroundTestMenu.items.some(
         (item) => item.label.toLowerCase() === 'new quick note',
       ),
   )
+  assert.equal(await captureHasHotkey(), false)
   assert.equal(await page.evaluate(() => window.hibi.getBackgroundMode()), true)
   await page.evaluate(() => window.backgroundTestStopCommands())
   await page.getByRole('button', { name: /^back to app$/i }).click()
@@ -465,4 +481,87 @@ test('tray quick note follows UI registration and invokes the hidden renderer', 
     await app.evaluate(() => globalThis.backgroundTestTray.isDestroyed()),
     true,
   )
+  await assertWindowsQuitAccelerator(app, null)
+})
+
+test('hidden renderer crash shows recovery and clean tray quit stays hidden', {
+  timeout: 30000,
+}, async (t) => {
+  const { app, child, page, root } = await launch(t)
+  assert.equal(
+    await page.evaluate(() => window.hibi.setBackgroundMode(true)),
+    true,
+  )
+  const rich = page.getByRole('textbox', {
+    name: 'Document editor',
+    exact: true,
+  })
+  await replaceRichText(page, rich, 'recover hidden draft')
+  await waitForAsync(
+    page,
+    async () =>
+      (await window.hibi.getDocument()).markdown === 'recover hidden draft',
+  )
+  await app.evaluate(() => {
+    globalThis.backgroundTestWindow.showInactive()
+    globalThis.backgroundTestCrashShown = false
+    globalThis.backgroundTestWindow.once('show', () => {
+      globalThis.backgroundTestCrashShown = true
+    })
+  })
+  const original = await windowState(app)
+  await closeMain(app)
+  await waitVisible(app, false)
+  await crashAndReload(app)
+  await waitForAsync(app, () =>
+    globalThis.backgroundTestContents.executeJavaScript(
+      `!!document.querySelector('.app[aria-busy="false"] #document-editor-panel[aria-busy="false"] .tiptap[contenteditable="true"]')`,
+    ),
+  )
+  await waitVisible(app, true)
+  assert.equal(
+    await app.evaluate(() => globalThis.backgroundTestCrashShown),
+    true,
+  )
+  assert.deepEqual(await windowState(app), original)
+  assert.equal(
+    await app.evaluate(() =>
+      globalThis.backgroundTestContents.executeJavaScript(
+        "document.querySelector('.tiptap').textContent",
+      ),
+    ),
+    'recover hidden draft',
+  )
+  const recovered = await app.evaluate(() =>
+    globalThis.backgroundTestContents.executeJavaScript(
+      'window.hibi.getDocument()',
+    ),
+  )
+  assert.equal(recovered.markdown, 'recover hidden draft')
+  assert.equal(recovered.dirty, true)
+  await app.evaluate(() =>
+    globalThis.backgroundTestContents.executeJavaScript(
+      `document.querySelector('.tiptap').editor.commands.setContent('<p></p>')`,
+    ),
+  )
+  await waitForAsync(
+    app,
+    async () =>
+      !(
+        await globalThis.backgroundTestContents.executeJavaScript(
+          'window.hibi.getDocument()',
+        )
+      ).dirty,
+  )
+  const visibility = join(root, 'clean-quit-visibility.txt')
+  await writeFile(visibility, 'hidden')
+  await app.evaluate((_, path) => {
+    globalThis.backgroundTestWindow.on('show', () => {
+      process.getBuiltinModule('fs').writeFileSync(path, 'shown')
+    })
+  }, visibility)
+  await closeMain(app)
+  await waitVisible(app, false)
+  await quitFromTray(app, child)
+  assert.equal(await readFile(visibility, 'utf8'), 'hidden')
 })

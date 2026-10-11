@@ -30,7 +30,7 @@ Under **About → General**, turn on **Keep Hibi running in the background** to 
 
 When enabled, closing hides the window without discarding unsaved text. Use **Open Hibi** in the menu bar or tray menu to restore the same window, or launch Hibi again. **New quick note** appears when the Quick note addon is enabled, and **Settings** opens the app settings. On Windows, clicking the notification-area icon opens Hibi; on macOS, clicking the menu bar icon opens its menu. Linux tray availability and clicks depend on your desktop environment and its indicator support.
 
-Choose **Quit** from the tray or app menu, or press `Cmd/Ctrl+Q`, to stop Hibi. Hibi still asks about unsaved changes and checks for external file changes when you save. Cancelling keeps Hibi and your edits open. Background mode does not open Hibi at login or hide its Dock icon. See [running in the background](../features/background.md) for more details.
+Choose **Quit** from the tray or app menu to stop Hibi. Use `Cmd+Q` on macOS or `Ctrl+Q` on Linux. On Windows, `Ctrl+Q` is available only while background mode is enabled. Hibi still asks about unsaved changes and checks for external file changes when you save. Cancelling keeps Hibi and your edits open. Background mode does not open Hibi at login or hide its Dock icon. See [running in the background](../features/background.md) for more details.
 
 ## Autosave
 

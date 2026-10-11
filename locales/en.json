@@ -278,7 +278,7 @@
   "5e23480c81c1": "Close this document in Hibi before moving it to the trash.",
   "7fdde378ddd4": "Close this document in Hibi before moving it.",
   "31a8910a7cf4": "Close {name}",
-  "81e1850c6c08": "Closing the window keeps your edits and addons running. Use the menu bar or tray icon to reopen Hibi or quit. This is off by default.",
+  "49f09fa5195f": "Closing the window keeps your edits and addons running. Use the menu bar or tray icon to reopen Hibi or quit. Some Linux desktops need indicator support to show the icon. This is off by default.",
   "2cae577523a5": "Code Highlight",
   "7545380a2996": "Code block",
   "ea9255d5c74d": "Code blocks",

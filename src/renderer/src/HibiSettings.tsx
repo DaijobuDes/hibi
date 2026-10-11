@@ -104,7 +104,7 @@ export function HibiSettings({ info }: { info: AppInfo | null }) {
         <SettingRow
           id="keep-running-in-background"
           label="Keep Hibi running in the background"
-          description="Closing the window keeps your edits and addons running. Use the menu bar or tray icon to reopen Hibi or quit. This is off by default."
+          description="Closing the window keeps your edits and addons running. Use the menu bar or tray icon to reopen Hibi or quit. Some Linux desktops need indicator support to show the icon. This is off by default."
         >
           <Toggle
             id="keep-running-in-background"

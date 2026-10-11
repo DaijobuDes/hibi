@@ -6,6 +6,6 @@ When enabled, closing hides the main window and keeps its unsaved edits in memor
 
 Choose **New quick note** to run the Quick note addon's capture command. This item appears only while that addon is enabled and its command is available. You must configure the addon before saving a note. **Settings** opens Hibi's app settings.
 
-Use **Quit** from the icon's menu or the app menu, or press `Cmd/Ctrl+Q`, when you want Hibi to stop. Hibi asks you to save or discard unsaved changes before quitting. Cancelling returns to your document. Closing a window is not a save operation, so save your work regularly or enable [autosave](../guides/settings.md#autosave).
+Use **Quit** from the icon's menu or the app menu when you want Hibi to stop. You can press `Cmd+Q` on macOS or `Ctrl+Q` on Linux. On Windows, background mode also enables `Ctrl+Q`; it is unavailable while background mode is off. Hibi asks you to save or discard unsaved changes before quitting. Cancelling returns to your document. Closing a window is not a save operation, so save your work regularly or enable [autosave](../guides/settings.md#autosave).
 
 On Linux, some desktops need an AppIndicator or StatusNotifier extension to display tray icons. Use your desktop's app launcher to reopen Hibi if no icon is visible. Background mode keeps the editor and addons in memory, and enabled addons can still use resources. It does not hide the macOS Dock icon or start Hibi at login.
