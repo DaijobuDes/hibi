@@ -8,9 +8,20 @@ export default {
   version: '1.0.0',
   apiVersion: 2,
   description:
-    'Look up definitions and synonyms in English, Chinese, Cantonese, Japanese, Filipino, and French. Words you look up are sent to Wiktionary and Datamuse.',
+    'Look up definitions and synonyms in English, Chinese, Cantonese, Japanese, Filipino, French, and German. Words you look up are sent to Wiktionary and Datamuse.',
   defaultEnabled: false,
   startup: 'background',
+  network: {
+    origins: [
+      'https://en.wiktionary.org',
+      'https://api.datamuse.com',
+      'https://en-word.net',
+      'https://www.mdbg.net',
+      'https://cantonese.org',
+      'https://www.edrdg.org',
+      'https://kaikki.org',
+    ],
+  },
   settings: { category: 'addons', icon: 'book-open' },
   authors: [authors.may],
   licenses: packLicenses,

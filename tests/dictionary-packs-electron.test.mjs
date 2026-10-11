@@ -103,6 +103,9 @@ test('pack dialog install, offline definition, profile restart, path rejection a
   const packDialog = page.getByRole('dialog', {
     name: /offline language packs/i,
   })
+  const german = packDialog.locator('[data-setting-id="dictionary-pack-de"]')
+  await german.getByText('German', { exact: true }).waitFor()
+  assert.match(await german.innerText(), /kaikki\.org/)
   const row = packDialog.locator('[data-setting-id="dictionary-pack-zh"]')
   const installButton = row.locator('button#dictionary-pack-zh')
   await waitForAsync(
@@ -250,4 +253,19 @@ test('pack dialog install, offline definition, profile restart, path rejection a
     readFile(join(profile, 'dictionary-packs', 'zh', 'manifest.json')),
     { code: 'ENOENT' },
   )
+  await clickMenu(app, 'Settings')
+  await page.getByRole('tab', { name: /^addon manager$/i, exact: true }).click()
+  const addonRow = page.locator('[data-setting-id="addon-dictionary"]')
+  await addonRow.waitFor()
+  const metadata = await addonRow.locator('.addon-metadata').innerText()
+  for (const host of [
+    'en.wiktionary.org',
+    'api.datamuse.com',
+    'en-word.net',
+    'www.mdbg.net',
+    'cantonese.org',
+    'www.edrdg.org',
+    'kaikki.org',
+  ])
+    assert.ok(metadata.includes(host), `missing declared host: ${host}`)
 })

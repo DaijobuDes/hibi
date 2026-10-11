@@ -1,6 +1,6 @@
 # Dictionary and thesaurus
 
-Look up a word's definitions and synonyms without leaving your document. Lookups support English, Chinese (Mandarin, in simplified or traditional characters), Cantonese, Japanese, Filipino, and French. Enable **Dictionary and thesaurus** under **Settings → Addons**. It is off by default because lookups use online services.
+Look up a word's definitions and synonyms without leaving your document. Lookups support English, Chinese (Mandarin, in simplified or traditional characters), Cantonese, Japanese, Filipino, French, and German. Enable **Dictionary and thesaurus** under **Settings → Addons**. It is off by default because lookups use online services.
 
 Place the cursor in a word or select a word or phrase, then choose **Define word** or **Find synonyms** from the command palette or the editor's right-click menu. **Find synonyms** also has the default shortcut `Shift+F7`, which you can change under **Settings → Hotkeys**. Both commands work in the formatted editor and in Source view.
 
@@ -32,11 +32,11 @@ Suggestions never send anything online. They work in the formatted editor and in
 
 ## Languages
 
-Hibi chooses the language from the word's script. Words with kana are looked up in Japanese. Words written only in Chinese characters use the language chosen under **Settings → Dictionary and thesaurus → Words in Chinese characters**, then the other Chinese-character languages. Words in Latin letters use the language chosen under **Words in Latin letters**, then English, Filipino, and French. When the Wiktionary page for a word has entries in several of these languages, **Define word** shows all of them, the first language that has an entry on top, without sending another request. Korean and other scripts are not supported yet.
+Hibi chooses the language from the word's script. Words with kana are looked up in Japanese. Words written only in Chinese characters use the language chosen under **Settings → Dictionary and thesaurus → Words in Chinese characters**, then the other Chinese-character languages. Words in Latin letters use the language chosen under **Words in Latin letters**, then English, Filipino, French, and German. When the Wiktionary page for a word has entries in several of these languages, **Define word** shows all of them, the first language that has an entry on top, without sending another request. Korean and other scripts are not supported yet.
 
 Chinese and Japanese text has no spaces between words, so Hibi finds the word at the cursor using the system's word boundaries. If it picks too few or too many characters, select the exact word first. Cantonese definitions come from Wiktionary's Chinese entries, which also cover Mandarin.
 
-Online synonyms are available for English. Offline English, Filipino, and French packs supply synonyms and antonyms when their sources have them; Chinese and Japanese thesaurus coverage is limited. The results offer **Install offline pack** when a pack may help.
+Online synonyms are available for English. Offline English, Filipino, French, and German packs supply synonyms and antonyms when their sources have them; Chinese and Japanese thesaurus coverage is limited. The results offer **Install offline pack** when a pack may help.
 
 ## Privacy
 
@@ -45,7 +45,7 @@ Hibi sends nothing while you type. When you run a lookup that no installed offli
 - **Define word** sends the word to [Wiktionary](https://en.wiktionary.org/) through the Wikimedia REST API at `en.wiktionary.org`.
 - **Find synonyms** sends English words to the [Datamuse API](https://www.datamuse.com/api/) at `api.datamuse.com`, once for synonyms and once for antonyms.
 
-Only the word is sent, never the rest of your document. Hibi may ask you to allow each request. Answers are kept in memory until the addon is disabled or Hibi closes, so looking up the same word again does not send another request. Datamuse says it keeps a log of queries until the end of the day and then discards it.
+Only the word is sent, never the rest of your document. The addon manager lists every declared host before enabling. Enabling the addon allows credential-free requests to those public hosts without another prompt. Requests to other hosts, requests with credentials, and hosts resolving to private addresses still require approval. Answers are kept in memory until the addon is disabled or Hibi closes, so looking up the same word again does not send another request. Datamuse says it keeps a log of queries until the end of the day and then discards it.
 
 The side view and suggestions never send a word on their own. Only **Look up online** and the side view's search field ask the online services, and they use the same permission prompts.
 
@@ -59,7 +59,7 @@ If a service cannot be reached, is limiting requests, or has no entry for the wo
 
 ## Offline packs
 
-Open the addon's settings, or run **Dictionary: install offline pack**, and choose **Install pack** beside a language. English, Mandarin in both scripts, Cantonese, Japanese, Filipino (Tagalog), and French are available. Each row shows its download size, hosts, sources, and licenses before installation. Hibi downloads directly from those publishers; packs are not bundled or hosted by Hibi.
+Open the addon's settings, or run **Dictionary: install offline pack**, and choose **Install pack** beside a language. English, Mandarin in both scripts, Cantonese, Japanese, Filipino (Tagalog), French, and German are available. Each row shows its download size, hosts, sources, and licenses before installation. Hibi downloads directly from those publishers; packs are not bundled or hosted by Hibi.
 
 Measured full packs on 12 October 2026; MB below means 1,000,000 bytes. Download sizes for rolling sources can change. Installed size excludes the small manifest.
 
@@ -71,14 +71,15 @@ Measured full packs on 12 October 2026; MB below means 1,000,000 bytes. Download
 | Japanese | JMdict_e, CC BY-SA 4.0 | `www.edrdg.org` | 10.58 | 89.52 |
 | Filipino | Wiktionary via Kaikki, CC BY-SA 4.0 / GFDL | `kaikki.org` | 16.28 | 11.86 |
 | French | Wiktionary via Kaikki, CC BY-SA 4.0 / GFDL | `kaikki.org` | 58.23 | 103.53 |
+| German | Wiktionary via Kaikki, CC BY-SA 4.0 / GFDL | `kaikki.org` | 98.33 | 141.48 |
 
 Keep the app open while a pack downloads and prepares. You can cancel either stage. **Update** fetches the current source again and keeps the installed pack until the replacement is ready. **Uninstall** removes that pack's local data. Update regularly to receive corrections, particularly for the daily CC-CEDICT and JMdict sources.
 
-Installed packs are preferred across the candidate languages. A local answer requires no lookup request. If no installed pack has an answer, the online providers may be used through the usual network permission prompt. Pack installation contacts the displayed publishers but never sends the word you are looking up.
+Installed packs are preferred across the candidate languages. A local answer requires no lookup request. If no installed pack has an answer, the online providers may use the declared public hosts without another permission prompt. Pack installation contacts the displayed publishers but never sends the word you are looking up.
 
-English uses WordNet definitions, synonym groups, antonyms, and explicit inflected forms, with conservative suffix matching when the exact form is absent. Chinese pairs connect simplified and traditional headwords; Japanese entries connect kanji spellings and kana readings. Filipino and French also match lowercase headwords. Readings appear with the definitions.
+English uses WordNet definitions, synonym groups, antonyms, and explicit inflected forms, with conservative suffix matching when the exact form is absent. Chinese pairs connect simplified and traditional headwords; Japanese entries connect kanji spellings and kana readings. Filipino, French, and German also match lowercase headwords. Readings appear with the definitions.
 
-CC-CEDICT, CC-Canto, and JMdict do not supply a general thesaurus. Their packs therefore provide definitions and readings; synonym results depend on available source relations or the online fallback. Filipino and French retain Wiktionary synonym and antonym fields. No extra thesaurus dataset is bundled.
+CC-CEDICT, CC-Canto, and JMdict do not supply a general thesaurus. Their packs therefore provide definitions and readings; synonym results depend on available source relations or the online fallback. Filipino, French, and German retain Wiktionary synonym and antonym fields. No extra thesaurus dataset is bundled.
 
 See [offline pack help](../../../docs/features/dictionary-packs.md) and the [pack implementation and measurements](../../../docs/development/addons/dictionary-packs.md).
 
@@ -113,8 +114,16 @@ WordNet XML supplies 4,473 explicit inflected forms. Its optional [WNDB archive]
 
 The CEDICT export has traditional and simplified spellings, numbered Pinyin and slash-separated definitions. Cantonese files add Jyutping inside braces; the readings file has no definitions and must be joined to CC-CEDICT. JMdict has kanji spellings, kana readings and restricted senses; its internal DTD defines named POS entities. Kaikki JSON Lines has one entry object per line, including `word`, `lang_code`, `pos`, `senses`, `forms` and optional lexical relation objects. [Wiktextract's upstream documentation](https://github.com/tatuylonen/wiktextract) describes its fields.
 
+#### German
+
+The German pack uses [Kaikki's German extract of English Wiktionary](https://kaikki.org/dictionary/German/), with English definitions and the source's synonym and antonym fields. Hibi uses the [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) option from [Wiktionary's copyright terms](https://en.wiktionary.org/wiki/Wiktionary:Copyrights). Original entry links, contributor attribution, license notices, and conversion notices remain available.
+
+The [official German gzip](https://kaikki.org/dictionary/German/kaikki.org-dictionary-German.jsonl.gz) downloaded and fully decompressed on 12 October 2026: 98,333,861 compressed bytes and 1,085,014,820 expanded bytes. It was extracted on 3 October from the 2 September English Wiktionary dump. The language-specific endpoint is deprecated upstream, like French and Tagalog. German has a 128 MiB download limit and a 1.5 GiB source expansion limit; converted-data and index limits remain unchanged.
+
+German keeps noun capitalization and matches lowercase aliases after exact spelling. Umlauts use Unicode NFC normalization; accents are not removed, and `ß` is not rewritten as `ss`. The pack keeps Wiktionary synonyms. [OpenThesaurus data](https://www.openthesaurus.de/about/download) offers CC BY-SA 4.0 or LGPL 2.1, and [OdeNet data](https://github.com/hdaSprachtechnologie/odenet) uses CC BY-SA 4.0 (its software is MIT). Neither dataset is permissively licensed; no additional thesaurus dataset is included.
+
 #### French
 
 The French pack uses the [French extract of English Wiktionary from Kaikki](https://kaikki.org/dictionary/French/), under the same [Wiktionary CC BY-SA 4.0 / GFDL terms](https://en.wiktionary.org/wiki/Wiktionary:Copyrights) as Tagalog. Hibi uses the CC BY-SA 4.0 option. [The official compressed JSON Lines download](https://kaikki.org/dictionary/French/kaikki.org-dictionary-French.jsonl.gz) was 58,232,930 bytes (583,677,104 bytes expanded) when verified by HEAD and a complete download on 12 October 2026. It was extracted on 3 October 2026 from the 2 September English Wiktionary dump.
 
-Like Tagalog's language-specific feed, this endpoint is deprecated upstream but remains available. Hibi streams it and keeps only French entries. The maintained all-language raw alternative is much larger and is not downloaded by this pack. Both Wiktionary packs preserve links to original entries for attribution.
+Like Tagalog's language-specific feed, this endpoint is deprecated upstream but remains available. Hibi streams it and keeps only French entries. The maintained all-language raw alternative is much larger and is not downloaded by this pack. All Wiktionary packs preserve links to original entries for attribution.

@@ -1,6 +1,14 @@
 /** Lookup languages. `zh` covers simplified and traditional Mandarin; `yue` is Cantonese. */
-export type Lang = 'en' | 'zh' | 'yue' | 'ja' | 'tl' | 'fr'
-export const LANGS: readonly Lang[] = ['en', 'zh', 'yue', 'ja', 'tl', 'fr']
+export type Lang = 'en' | 'zh' | 'yue' | 'ja' | 'tl' | 'fr' | 'de'
+export const LANGS: readonly Lang[] = [
+  'en',
+  'zh',
+  'yue',
+  'ja',
+  'tl',
+  'fr',
+  'de',
+]
 
 /** Shown with every result so attribution travels with the text. */
 export type Source = { name: string; license: string; url?: string }

@@ -120,7 +120,7 @@ const notices = {
   noWord: { message: 'Place the cursor in a word or select one word.' },
   unsupported: {
     message:
-      'Lookups support English, Chinese, Cantonese, Japanese, Filipino, and French.',
+      'Lookups support English, Chinese, Cantonese, Japanese, Filipino, French, and German.',
   },
   noPacks: { message: 'Offline packs are not available yet.' },
   changed: { message: 'The document changed. Look up the word again.' },
