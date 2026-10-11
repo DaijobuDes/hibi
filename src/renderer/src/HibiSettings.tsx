@@ -83,7 +83,11 @@ export function HibiSettings({
           label="Introduction"
           description="Choose an appearance, default view, and addons, and see essential shortcuts."
         >
-          <Button id="introduction" onClick={onShowIntroduction}>
+          <Button
+            id="introduction"
+            aria-label="Show introduction"
+            onClick={onShowIntroduction}
+          >
             Show introduction
           </Button>
         </SettingRow>
