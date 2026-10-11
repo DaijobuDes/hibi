@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import test from 'node:test'
+import { setImmediate } from 'node:timers/promises'
+import { packs, validateManifest } from '../src/addons/dictionary/packs.ts'
 import { download } from '../src/main/download.ts'
+import { downloadUrl } from '../src/shared/addon-package.ts'
 
 test('downloads stream bounded bytes, progress and checksums without credentials', async () => {
   const parts = []
@@ -71,6 +74,147 @@ test('dictionary downloads reject redirects outside the fixed source origins', a
     /unapproved host/,
   )
   assert.deepEqual(requests, ['https://source.test/pack'])
+})
+
+test('download inactivity allows flowing bodies past the timeout duration', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  let body
+  const parts = []
+  const pending = download('https://example.test/file', {
+    maxBytes: 8,
+    signal: new AbortController().signal,
+    stallTimeoutMs: 100,
+    fetch: async () =>
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            body = controller
+          },
+        }),
+      ),
+    write: (chunk) => parts.push(chunk),
+  })
+  await setImmediate()
+  for (let i = 0; i < 4; i++) {
+    t.mock.timers.tick(80)
+    body.enqueue(new Uint8Array([i]))
+    await setImmediate()
+  }
+  body.close()
+  assert.equal((await pending).bytes, 4)
+  assert.equal(parts.length, 4)
+})
+
+test('download inactivity aborts stalled headers and bodies', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  for (const headers of [true, false]) {
+    let signal
+    let canceled = false
+    const pending = download('https://example.test/file', {
+      maxBytes: 8,
+      signal: new AbortController().signal,
+      stallTimeoutMs: 100,
+      fetch: async (_url, options) => {
+        signal = options.signal
+        if (headers) return new Promise(() => {})
+        return new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(new Uint8Array([1]))
+            },
+            cancel() {
+              canceled = true
+            },
+          }),
+        )
+      },
+      write: () => {},
+    })
+    const rejection = assert.rejects(pending, /download is incomplete/)
+    await setImmediate()
+    t.mock.timers.tick(100)
+    await rejection
+    assert.equal(signal.aborted, true)
+    if (!headers) assert.equal(canceled, true)
+  }
+})
+
+test('cancellation aborts pending headers and body reads without a timeout', async () => {
+  for (const headers of [true, false]) {
+    const controller = new AbortController()
+    let signal
+    let canceled = false
+    const pending = download('https://example.test/file', {
+      maxBytes: 8,
+      signal: controller.signal,
+      fetch: async (_url, options) => {
+        signal = options.signal
+        if (headers) return new Promise(() => {})
+        return new Response(
+          new ReadableStream({
+            cancel() {
+              canceled = true
+            },
+          }),
+        )
+      },
+      write: () => assert.fail('unexpected write'),
+    })
+    const rejection = assert.rejects(pending, /canceled/)
+    await setImmediate()
+    controller.abort(new Error('canceled'))
+    await rejection
+    assert.equal(signal.aborted, true)
+    if (!headers) assert.equal(canceled, true)
+  }
+})
+
+test('shared url validation and redirect errors use neutral download copy', async () => {
+  assert.throws(() => downloadUrl(undefined), {
+    message: 'Enter an HTTPS URL for the download.',
+  })
+  await assert.rejects(
+    download('https://example.test/file', {
+      maxBytes: 8,
+      signal: new AbortController().signal,
+      write: () => {},
+      fetch: async () =>
+        new Response(null, {
+          status: 302,
+          headers: { location: 'http://example.test/file' },
+        }),
+    }),
+    { message: 'Use an HTTPS URL without a username or password.' },
+  )
+})
+
+test('gzip source manifests retain valid legacy jsonl installs within old bounds', () => {
+  const file = { bytes: 1, sha256: 'a'.repeat(64) }
+  for (const id of ['fr', 'tl']) {
+    const source = packs[id].sources[0]
+    assert.ok(source.url.endsWith('.jsonl.gz'))
+    const manifest = {
+      format: 1,
+      id,
+      installedAt: new Date().toISOString(),
+      sources: [{ ...source, ...file, lastModified: null }],
+      entries: 1,
+      keys: 1,
+      data: file,
+      index: file,
+      convertMs: 0,
+    }
+    assert.equal(validateManifest(manifest, id), manifest)
+    const legacy = manifest.sources[0]
+    legacy.url = source.url.slice(0, -3)
+    legacy.bytes = (id === 'fr' ? 768 : 256) * 1024 * 1024
+    assert.equal(validateManifest(manifest, id), manifest)
+    legacy.bytes++
+    assert.throws(() => validateManifest(manifest, id), /damaged or outdated/)
+    legacy.bytes = source.maxBytes + 1
+    legacy.url = source.url
+    assert.throws(() => validateManifest(manifest, id), /damaged or outdated/)
+  }
 })
 
 test('download cancellation stops before writing further bytes', async () => {
