@@ -4,7 +4,7 @@ Enable **Dictionary and thesaurus** in **Settings → Addons**, then open its se
 
 Each pack shows its approximate download size, publisher hosts, sources, and licenses before installation. Mandarin includes both simplified and traditional spellings. Japanese includes kanji and kana readings. Definitions are in English.
 
-Leave Hibi open while the pack downloads and prepares. Progress appears beside the pack, and **Cancel** stops the operation. French downloads about 58 MB and Filipino about 16 MB. Slow downloads can continue as long as data keeps arriving; a download stops after a minute without data. Other installed languages remain available while a pack downloads or prepares.
+Leave Hibi open while the pack downloads and prepares. Progress appears beside the pack, and **Cancel** stops the operation. French downloads about 58 MB and Filipino about 16 MB. Slow downloads stop after a minute without data. Each source also has a total time limit based on its expected size at 50 KiB/s, plus one minute of extra time; occasional bytes do not extend this limit. Other installed languages remain available while a pack downloads or prepares.
 
 Once installed, place the cursor in a word or select it, then run **Define word** or **Find synonyms**. Hibi checks installed packs first. If they contain an answer, the lookup needs no network request. If they do not, Hibi may offer an online lookup through its usual permission prompt.
 
