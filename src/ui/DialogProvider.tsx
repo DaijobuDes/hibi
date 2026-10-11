@@ -41,13 +41,17 @@ export function createDialogService() {
   const publish = () => {
     for (const listener of listeners) listener()
   }
-  const finish = (request: Request, value: unknown) => {
-    if (!requests.includes(request)) return
-    request.controller.abort()
-    requests = requests.filter((entry) => entry !== request)
-    request.settle(value)
+  /** Removes every request before any abort listener runs, so none can settle another. */
+  const settleAll = (targets: Iterable<Request>, value: unknown) => {
+    const done = [...targets].filter((request) => requests.includes(request))
+    if (!done.length) return
+    requests = requests.filter((request) => !done.includes(request))
+    for (const request of done) request.controller.abort()
+    for (const request of done) request.settle(value)
     publish()
   }
+  const finish = (request: Request, value: unknown) =>
+    settleAll([request], value)
   const close = (request: Request, value: unknown) => {
     if (!requests.includes(request) || request.closing) return
     if (requests[0] !== request) {
@@ -136,7 +140,7 @@ export function createDialogService() {
       api,
       dispose() {
         disposed = true
-        for (const request of owned) finish(request, null)
+        settleAll(owned, null)
       },
     }
   }
@@ -158,7 +162,7 @@ export function createDialogService() {
     },
     stop() {
       active = false
-      for (const request of requests) finish(request, null)
+      settleAll(requests, null)
     },
   }
 }
