@@ -1,6 +1,217 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { CompletionBroker } from '../src/renderer/src/completion-broker.ts'
+import {
+  safeCompletionContext,
+  sourceProseAllowed,
+} from '../src/shared/completions.ts'
+
+test('acceptance uses visible item identity, winning provider, and one receipt per session', async () => {
+  const broker = new CompletionBroker()
+  const accepted = []
+  broker.register(owner('lower'), () => [item('lower', 0, 'same')], 0, {
+    onAccepted: () => accepted.push('lower'),
+  })
+  broker.register(
+    owner('winner'),
+    () => [
+      {
+        ...item('winner', 10, 'same'),
+        onAccepted: () => accepted.push('item'),
+      },
+    ],
+    0,
+    {
+      onAccepted: (input, picked) => accepted.push([input, picked]),
+    },
+  )
+  const captured = request()
+  const { items, request: bounded } = await collect(broker, captured).final
+  const picked = items[0]
+  assert.equal('onAccepted' in picked, false)
+  assert.equal(broker.prepareAcceptance(bounded, { ...picked }), null)
+  assert.equal(
+    broker.prepareAcceptance(request({ contentVersion: 2 }), picked),
+    null,
+  )
+  const first = broker.prepareAcceptance(bounded, picked)
+  const second = broker.prepareAcceptance(bounded, picked)
+  assert.deepEqual(accepted, [])
+  first()
+  first()
+  second()
+  assert.equal(accepted.length, 1)
+  assert.deepEqual(accepted[0], [bounded, picked])
+})
+
+test('reserved acceptance survives menu dismissal but not disposal or a newer request', async () => {
+  for (const action of ['dismiss', 'stop', 'supersede', 'dispose']) {
+    const broker = new CompletionBroker()
+    let calls = 0
+    const registered = owner('provider')
+    broker.register(registered, () => [item('word')], 0, {
+      onAccepted: () => calls++,
+    })
+    const pending = collect(broker)
+    const shown = await pending.final
+    const report = broker.prepareAcceptance(shown.request, shown.items[0])
+    if (action === 'dismiss') pending.cancel()
+    if (action === 'stop') broker.stopOwner(registered)
+    if (action === 'supersede')
+      await collect(broker, request({ contentVersion: 4 })).final
+    if (action === 'dispose') broker.dispose()
+    report()
+    assert.equal(calls, action === 'dismiss' ? 1 : 0, action)
+    assert.equal(broker.prepareAcceptance(shown.request, shown.items[0]), null)
+  }
+})
+
+test('failed edit without receipt has no feedback; throwing feedback cannot affect another edit', async () => {
+  const broker = new CompletionBroker()
+  let calls = 0
+  broker.register(owner('provider'), () => [item('word')], 0, {
+    onAccepted: () => {
+      calls++
+      throw new Error('feedback failure')
+    },
+  })
+  const first = await collect(broker).final
+  assert.ok(broker.prepareAcceptance(first.request, first.items[0]))
+  assert.equal(calls, 0)
+  const second = await collect(broker).final
+  assert.doesNotThrow(broker.prepareAcceptance(second.request, second.items[0]))
+  assert.equal(calls, 1)
+})
+
+test('typing context is bounded, frozen, isolated from listener failures, and removed on disposal', () => {
+  const broker = new CompletionBroker()
+  const events = []
+  broker.onTypingContext(() => {
+    throw new Error('listener failure')
+  })
+  const remove = broker.onTypingContext((event) => events.push(event))
+  const context = {
+    ...request({ before: 'a'.repeat(1000), after: 'b'.repeat(1000) }),
+    kind: 'input',
+    change: { from: 2, to: 2, insertedLength: 1 },
+  }
+  broker.emitTypingContext(context)
+  assert.equal(events.length, 1)
+  assert.equal(events[0].before.length, 256)
+  assert.equal(events[0].after.length, 256)
+  assert.equal('trigger' in events[0], false)
+  assert.ok(Object.isFrozen(events[0]))
+  assert.ok(Object.isFrozen(events[0].change))
+  broker.emitTypingContext({
+    ...context,
+    change: { from: -1, to: 2, insertedLength: 1 },
+  })
+  assert.equal(events.length, 1)
+  remove()
+  broker.emitTypingContext(context)
+  assert.equal(events.length, 1)
+  broker.dispose()
+  assert.equal(broker.hasTypingListeners(), false)
+})
+
+test('paste replacement emits only range data for an immediate overlapping accepted edit', async () => {
+  const broker = new CompletionBroker()
+  const events = []
+  broker.onTypingContext((event) => events.push(event))
+  broker.register(owner('provider'), () => [item('word')])
+  const context = {
+    ...request({ contentVersion: 4, before: 'private pasted text' }),
+    kind: 'replace',
+    change: { from: 0, to: 4, insertedLength: 19 },
+  }
+  broker.emitTypingContext(context)
+  assert.deepEqual(events, [])
+  const shown = await collect(broker).final
+  broker.prepareAcceptance(shown.request, shown.items[0])()
+  broker.emitTypingContext({
+    ...context,
+    change: { from: 5, to: 6, insertedLength: 1 },
+  })
+  assert.deepEqual(events, [])
+  broker.emitTypingContext(context)
+  assert.equal(events.length, 1)
+  assert.equal(events[0].before, '')
+  assert.equal(events[0].after, '')
+  broker.emitTypingContext(context)
+  assert.equal(events.length, 1)
+})
+
+test('safe prose is bounded separately from legacy completion context', async () => {
+  const broker = new CompletionBroker()
+  let input
+  broker.register(owner('provider'), (request) => {
+    input = request
+    return []
+  })
+  await collect(
+    broker,
+    request({
+      before: 'legacy [[prefix',
+      prose: { before: 'x'.repeat(600), after: 'y'.repeat(600) },
+    }),
+  ).final
+  assert.equal(input.before, 'legacy [[prefix')
+  assert.equal(input.prose.before.length, 256)
+  assert.equal(input.prose.after.length, 256)
+  assert.ok(Object.isFrozen(input.prose))
+  await collect(broker, request({ prose: null })).final
+  assert.equal(input.prose, null)
+})
+
+test('plain prose clips excluded neighboring spans and keeps punctuation', () => {
+  for (const excluded of [
+    '`hidden`',
+    '$hidden$',
+    '$$hidden$$',
+    '<span>hidden</span>',
+    'https://private.example/value',
+    'qwerty1234567890_secret',
+  ]) {
+    const text = `${excluded} bro, wild! `
+    const safe = safeCompletionContext(text, text.length)
+    assert.deepEqual(safe, { before: ' bro, wild! ', after: '' }, excluded)
+  }
+  for (const text of [
+    '`secret',
+    '$secret',
+    'password: shortsecret',
+    'api_key=privatevalue',
+    'https://private.example/sec',
+  ]) {
+    assert.equal(safeCompletionContext(text, text.length), null, text)
+  }
+  assert.equal(
+    safeCompletionContext('mixed 中文 slang. ', 16)?.before,
+    'mixed 中文 slang. ',
+  )
+})
+
+test('source proof excludes frontmatter and code/math fences within bounded work', () => {
+  for (const text of [
+    '---\nsecret: value',
+    '```js\nsecret',
+    '~~~\nsecret',
+    '$$\nsecret\n\ntext',
+    '---\nsecret: value\n---',
+  ]) {
+    assert.equal(sourceProseAllowed(text), false, text)
+  }
+  for (const text of [
+    'plain words',
+    '---\nsecret: value\n---\n\nsafe',
+    '```\n$$\n```\nsafe',
+    '$$\nsecret\n$$\nsafe',
+    '$$inline$$\nsafe',
+  ]) {
+    assert.equal(sourceProseAllowed(text), true, text)
+  }
+  assert.equal(sourceProseAllowed('x'.repeat(16385)), false)
+})
 
 const owner = (addonId, activationGeneration = 1) => ({
   addonId,

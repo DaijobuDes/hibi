@@ -12,6 +12,7 @@ import {
 } from '@codemirror/autocomplete'
 import { defaultKeymap, isolateHistory, selectAll } from '@codemirror/commands'
 import {
+  ensureSyntaxTree,
   HighlightStyle,
   type Language,
   syntaxHighlighting,
@@ -25,6 +26,7 @@ import {
   setSearchQuery,
 } from '@codemirror/search'
 import {
+  ChangeSet,
   Compartment,
   EditorSelection,
   EditorState,
@@ -34,9 +36,12 @@ import { EditorView, keymap, lineNumbers, placeholder } from '@codemirror/view'
 import { tags } from '@lezer/highlight'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { DocumentFormat, SourceExtension } from '../../addons/api'
-import type {
-  CompletionItem,
-  CompletionRequest,
+import {
+  type CompletionItem,
+  type CompletionRequest,
+  safeCompletionContext,
+  sourceProseAllowed,
+  type TypingContext,
 } from '../../shared/completions'
 import { type DocumentState, MAX_DOCUMENT_BYTES } from '../../shared/desktop'
 import {
@@ -557,6 +562,66 @@ export function SourceEditor({
       character: string
     } | null = null
     let closingCompletion = false
+    let compositionSignal: {
+      changes: ChangeSet
+      request: CompletionRequest | null
+    } | null = null
+    let compositionFrame = 0
+    const reportTyping = (kind: TypingContext['kind'], changes: ChangeSet, boundaryBefore?: string) => {
+      if (!completionBroker.hasTypingListeners()) return
+      const request = captureCompletion({ kind: 'explicit' })
+      if (!request || (kind !== 'replace' && !request.prose)) return
+      let from = Infinity,
+        to = 0,
+        insertedLength = 0
+      changes.iterChangedRanges((fromA, toA, fromB, toB) => {
+        from = Math.min(from, fromA)
+        to = Math.max(to, toA)
+        insertedLength += toB - fromB
+      })
+      if (!Number.isFinite(from)) return
+      completionBroker.emitTypingContext({
+        ...request,
+        before: boundaryBefore === undefined ? request.prose?.before ?? '' : `${boundaryBefore}\n`.slice(-256),
+        after: request.prose?.after ?? '',
+        kind,
+        change: { from, to, insertedLength },
+      })
+    }
+    const proseAt = (state = editor.state) => {
+      const pos = state.selection.main.head
+      if (
+        !parserOptions.current.markdownMode ||
+        pos > 16384 ||
+        !sourceProseAllowed(state.sliceDoc(0, pos))
+      )
+        return null
+      const line = state.doc.lineAt(pos)
+      if (
+        line.length > 16384 ||
+        /^\s*\//.test(line.text) ||
+        /<\/?[a-z!]/i.test(line.text)
+      )
+        return null
+      const tree = ensureSyntaxTree(state, line.to, 2)
+      if (tree?.type.name !== 'Document') return null
+      let from = line.from,
+        to = line.to,
+        excluded = false
+      tree.iterate({
+        from: line.from,
+        to: line.to,
+        enter(node) {
+          if (!/code|frontmatter|html|link|url|math/i.test(node.name)) return
+          if (node.from < pos && pos < node.to) excluded = true
+          if (node.to <= pos) from = Math.max(from, node.to)
+          if (node.from >= pos) to = Math.min(to, node.from)
+        },
+      })
+      return excluded
+        ? null
+        : safeCompletionContext(state.sliceDoc(from, to), pos - from)
+    }
     const captureCompletion = (
       trigger: CompletionRequest['trigger'],
     ): CompletionRequest | null => {
@@ -594,6 +659,7 @@ export function SourceEditor({
         editor: 'source',
         documentLength: editor.state.doc.length,
         selection: { anchor: selected.main.anchor, head: pos },
+        prose: proseAt(),
         before: editor.state.sliceDoc(Math.max(0, pos - 256), pos),
         after: editor.state.sliceDoc(
           pos,
@@ -703,7 +769,12 @@ export function SourceEditor({
               closeCompletion(view)
               return
             }
-            view.dispatch({
+            const report = completionBroker.prepareAcceptance(
+              pending.request,
+              item,
+            )
+            if (!report) return
+            const transaction = view.state.update({
               changes: {
                 from: item.from,
                 to: item.to,
@@ -716,6 +787,14 @@ export function SourceEditor({
                 Transaction.userEvent.of('input.complete'),
               ],
             })
+            view.dispatch(transaction)
+            if (
+              view.state.doc.eq(transaction.state.doc) &&
+              bridge.snapshot().version ===
+                pending.request.contentVersion + 1 &&
+              session.ownsCurrentSnapshot(bridge.snapshot())
+            )
+              report()
           },
         }
         pending.options.set(item, option)
@@ -978,6 +1057,31 @@ export function SourceEditor({
             spellcheck: 'false',
           }),
           EditorView.updateListener.of((update) => {
+            if (update.docChanged && completionBroker.hasTypingListeners()) {
+              const transaction =
+                update.transactions.length === 1 ? update.transactions[0] : null
+              if (compositionSignal) {
+                compositionSignal.changes = compositionSignal.changes.compose(
+                  update.changes,
+                )
+              } else if (
+                transaction &&
+                !update.view.composing &&
+                !transaction.isUserEvent('input.type.compose')
+              ) {
+                if (transaction.isUserEvent('input.type'))
+                  reportTyping('input', update.changes,
+                    update.state.doc.lineAt(update.state.selection.main.head).from === update.state.selection.main.head
+                      ? proseAt(update.startState)?.before : undefined)
+                else if (transaction.isUserEvent('delete'))
+                  reportTyping('delete', update.changes)
+                else if (
+                  transaction.isUserEvent('input.paste') ||
+                  transaction.isUserEvent('input.drop')
+                )
+                  reportTyping('replace', update.changes)
+              }
+            }
             if (update.selectionSet || update.docChanged)
               editorViewRegistry.changed(viewId as ViewId, 'source')
             if (
@@ -1051,6 +1155,55 @@ export function SourceEditor({
     })
     view.current = editor
     const detachSession = bridge.attach(editor)
+    const removeTypingHistory = session.subscribeOperations((prepared) => {
+      if (
+        !completionBroker.hasTypingListeners() ||
+        (prepared.operation.origin !== 'undo' &&
+          prepared.operation.origin !== 'redo')
+      )
+        return
+      const changes = editorChangesFromSource(
+        prepared.before,
+        prepared.operation.changes,
+      )
+      const previousLength = prepared.before.normalizedLength
+      reportTyping(
+        prepared.operation.origin,
+        ChangeSet.of(changes, previousLength),
+      )
+    })
+    const startCompositionSignal = () => {
+      cancelAnimationFrame(compositionFrame)
+      compositionSignal = completionBroker.hasTypingListeners()
+        ? {
+            changes: editor.state.changes([]),
+            request: captureCompletion({ kind: 'explicit' }),
+          }
+        : null
+    }
+    const endCompositionSignal = () => {
+      compositionFrame = requestAnimationFrame(() => {
+        compositionFrame = 0
+        const signal = compositionSignal
+        compositionSignal = null
+        const current = captureCompletion({ kind: 'explicit' })
+        if (
+          !signal?.request ||
+          !current ||
+          signal.request.view.viewGeneration !== current.view.viewGeneration ||
+          signal.request.view.documentGeneration !==
+            current.view.documentGeneration
+        )
+          return
+        reportTyping('composition', signal.changes)
+      })
+    }
+    editor.contentDOM.addEventListener(
+      'compositionstart',
+      startCompositionSignal,
+      true,
+    )
+    editor.contentDOM.addEventListener('compositionend', endCompositionSignal)
     const removeAnnotations = observeSourceAnnotations(editor)
     const unregisterProjection = documentProjections.register(
       'source',
@@ -1371,6 +1524,17 @@ export function SourceEditor({
       .load('13px "Geist Mono"')
       .then(finishFont, finishFont)
     return () => {
+      cancelAnimationFrame(compositionFrame)
+      editor.contentDOM.removeEventListener(
+        'compositionstart',
+        startCompositionSignal,
+        true,
+      )
+      editor.contentDOM.removeEventListener(
+        'compositionend',
+        endCompositionSignal,
+      )
+      removeTypingHistory()
       cancelCompletion()
       clearReferences('unavailable', false)
       sourceFind.current?.dispose()

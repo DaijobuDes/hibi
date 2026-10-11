@@ -39,13 +39,14 @@ test('source completions stream, accept in one undo step, and retract on provide
   )
   await writeFile(
     join(directory, 'index.js'),
-    `export default () => ({ async start(context) {
-      window.completionProbe = { requests: [], pending: [] };
+    `export default sdk => ({ async start(context) {
+      window.completionProbe = { requests: [], pending: [], events: [], accepted: [], sdk };
       const stops = [];
+      stops.push(context.editor.onTypingContext(event => window.completionProbe.events.push(event)));
       stops.push(await context.editor.registerCompletionProvider((request) => {
         window.completionProbe.requests.push(request);
         return [{ label: 'beta', insertText: 'beta', from: request.selection.head - 1, to: request.selection.head }];
-      }));
+      }, { onAccepted(request, item) { window.completionProbe.accepted.push({request, item}); } }));
       stops.push(await context.editor.registerCompletionProvider((request, signal) => {
         if (request.trigger.kind !== 'explicit') return [];
         return new Promise(resolve => window.completionProbe.pending.push({
@@ -91,6 +92,7 @@ test('source completions stream, accept in one undo step, and retract on provide
     const content = document.querySelector('.source-pane .cm-content')
     return content?.isContentEditable && content.textContent === 'a'
   })
+  assert.deepEqual(await page.evaluate(() => window.completionProbe.events), [])
   await source.focus()
   await source.press(
     process.platform === 'darwin' ? 'Meta+ArrowDown' : 'Control+End',
@@ -105,15 +107,45 @@ test('source completions stream, accept in one undo step, and retract on provide
     await page.evaluate(() => window.completionProbe.requests.at(-1)?.trigger),
     { kind: 'input', character: 'b' },
   )
+  await page.waitForFunction(
+    () => window.completionProbe.events.at(-1)?.kind === 'input',
+  )
+  assert.equal(
+    await page.evaluate(() => window.completionProbe.events.at(-1).before),
+    'ab',
+  )
+  assert.equal(
+    await page.evaluate(
+      () => window.completionProbe.requests.at(-1).prose?.before,
+    ),
+    'ab',
+  )
   // CodeMirror guards newly opened menus from immediate accidental acceptance.
   await page.waitForTimeout(100)
   await source.press('Tab')
   await page.waitForFunction(
     async () => (await window.hibi.getDocument()).markdown === 'abeta',
   )
+  assert.equal(
+    await page.evaluate(() => window.completionProbe.accepted.length),
+    1,
+  )
+  assert.equal(
+    await page.evaluate(
+      () => window.completionProbe.accepted[0].item.insertText,
+    ),
+    'beta',
+  )
   await source.press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z')
   await page.waitForFunction(
     async () => (await window.hibi.getDocument()).markdown === 'ab',
+  )
+  await page.waitForFunction(
+    () => window.completionProbe.events.at(-1)?.kind === 'undo',
+  )
+  assert.equal(
+    await page.evaluate(() => window.completionProbe.accepted.length),
+    1,
   )
 
   await source.press('Control+Space')
@@ -134,6 +166,101 @@ test('source completions stream, accept in one undo step, and retract on provide
   await source.press('Escape')
   await page.locator('.cm-tooltip-autocomplete').waitFor({ state: 'hidden' })
 
+  const reset = async (text) => {
+    await page.evaluate((text) => {
+      const view =
+        window.completionProbe.sdk.codeMirror.view.EditorView.findFromDOM(
+          document.querySelector('.cm-content'),
+        )
+      window.completionProbe.events = []
+      view.dispatch({
+        changes: { from: 0, to: view.state.doc.length, insert: text },
+        selection: { anchor: text.length },
+      })
+      view.focus()
+    }, text)
+    assert.deepEqual(
+      await page.evaluate(() => window.completionProbe.events),
+      [],
+    )
+  }
+  for (const text of [
+    '---\nsecret: value',
+    '```\nsecret',
+    '`hidden',
+    '[label](https://private.example/sec',
+    '$$\nsecret',
+    '<span>secret',
+    'password: secret',
+    'abcdefgh123456789012345',
+    '/heading',
+  ]) {
+    await reset(text)
+    await page.keyboard.type('x')
+    await page.waitForFunction(() =>
+      window.completionProbe.requests.at(-1)?.before.endsWith('x'),
+    )
+    assert.equal(
+      await page.evaluate(() => window.completionProbe.requests.at(-1).prose),
+      null,
+      text,
+    )
+    assert.deepEqual(
+      await page.evaluate(() => window.completionProbe.events),
+      [],
+      text,
+    )
+    await source.press('Escape')
+  }
+  await reset('`secret` ordinary ')
+  await page.keyboard.type('x')
+  await page.waitForFunction(() => window.completionProbe.events.length > 0)
+  assert.equal(
+    await page.evaluate(() => window.completionProbe.events.at(-1).before),
+    ' ordinary x',
+  )
+  await source.press('Escape')
+  await reset(`${'x'.repeat(300)} `)
+  await page.keyboard.type('b')
+  await page.waitForFunction(() => window.completionProbe.events.length > 0)
+  assert.ok(
+    await page.evaluate(() =>
+      window.completionProbe.events.every(
+        (event) => event.before.length <= 256 && event.after.length <= 256,
+      ),
+    ),
+  )
+  await source.press('Escape')
+  await reset('bro ')
+  const cdp = await page.context().newCDPSession(page)
+  await cdp.send('Input.imeSetComposition', {
+    text: '日',
+    selectionStart: 1,
+    selectionEnd: 1,
+  })
+  await page.waitForFunction(() =>
+    document.querySelector('.cm-content').textContent.includes('日'),
+  )
+  assert.deepEqual(await page.evaluate(() => window.completionProbe.events), [])
+  await cdp.send('Input.imeSetComposition', {
+    text: '日本',
+    selectionStart: 2,
+    selectionEnd: 2,
+  })
+  await cdp.send('Input.insertText', { text: '日本語' })
+  await page.waitForFunction(() =>
+    window.completionProbe.events.some((event) => event.kind === 'composition'),
+  )
+  assert.equal(
+    await page.evaluate(() => window.completionProbe.events.length),
+    1,
+  )
+  assert.equal(
+    await page.evaluate(() => window.completionProbe.events[0].before),
+    'bro 日本語',
+  )
+  await cdp.detach()
+  await reset('ab')
   await source.press('Control+Space')
   await page
     .locator('.cm-tooltip-autocomplete .cm-completionLabel', {

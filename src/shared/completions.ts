@@ -62,13 +62,16 @@ export function sourceProseAllowed(prefix: string) {
   // ponytail: proof covers the first 16 KiB; extend with incremental syntax state.
   if (prefix.length > 16384) return false
   const lines = prefix.split(/\r?\n/)
-  let frontmatter = /^\uFEFF?---\s*$/.test(lines[0])
+  let frontmatter = /^\uFEFF?---\s*$/.test(lines[0] ?? '')
   let fence = ''
   let math = false
   for (let index = frontmatter ? 1 : 0; index < lines.length; index++) {
-    const line = lines[index]
+    const line = lines[index] ?? ''
     if (frontmatter) {
-      if (/^(---|\.\.\.)\s*$/.test(line)) frontmatter = false
+      if (/^(---|\.\.\.)\s*$/.test(line)) {
+        if (index === lines.length - 1) return false
+        frontmatter = false
+      }
       continue
     }
     const code = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1]
@@ -94,6 +97,13 @@ export function safeCompletionContext(text: string, offset: number) {
     )
   )
     return null
+  if (
+    text.length > 16384 ||
+    !Number.isSafeInteger(offset) ||
+    offset < 0 ||
+    offset > text.length
+  )
+    return null
   let from = Math.max(0, offset - 256)
   let to = Math.min(text.length, offset + 256)
   const exclude = (start: number, end: number, open = false) => {
@@ -113,10 +123,10 @@ export function safeCompletionContext(text: string, offset: number) {
       !(/[a-z]/i.test(token) && /[\d_=/+]/.test(token))
     )
       continue
-    if (
-      !exclude(match.index, match.index + token.length, !!match[1] && !match[3])
-    )
-      return null
+    const open =
+      (!!match[1] && !match[3]) ||
+      (!match[1] && match.index + token.length === text.length)
+    if (!exclude(match.index, match.index + token.length, open)) return null
   }
   return { before: text.slice(from, offset), after: text.slice(offset, to) }
 }
