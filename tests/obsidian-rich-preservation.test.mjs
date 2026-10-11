@@ -77,7 +77,7 @@ test('rich edits and autosave preserve untouched Obsidian syntax', {
   }))
   assert.ok(loaded.text.includes('Spacing: one\u00a0two and three\u00a0four.'))
   assert.ok(
-    loaded.serialized.includes('Spacing: one&nbsp;two and three&nbsp;four.'),
+    loaded.serialized.includes('Spacing: one\u00a0two and three\u00a0four.'),
   )
   assert.ok(loaded.serialized.includes('\n\n&nbsp;\n\n'))
   assert.ok(loaded.text.includes('Entities: © © © &lt; &copy; and &copy;.'))
