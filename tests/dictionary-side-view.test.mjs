@@ -198,6 +198,7 @@ test('side view follows the caret offline, replaces in one undo step, and pack s
       .getByRole('tab', { name: 'Dictionary and thesaurus', exact: true })
       .click()
     await page.locator(`#${id}`).click()
+    await page.screenshot({ path: `test-results/${id}.png` })
     await page.getByRole('button', { name: /back to app/i }).click()
     await page.locator('.settings-screen').waitFor({ state: 'hidden' })
     await waitForDocumentEditor(app, page, editor)
@@ -219,6 +220,7 @@ test('side view follows the caret offline, replaces in one undo step, and pack s
   })
   await page.keyboard.type(' hap')
   await menu.getByRole('option', { name: 'happy', exact: true }).waitFor()
+  await page.screenshot({ path: 'test-results/dictionary-suggestions.png' })
   await page.keyboard.press('Tab')
   await menu.waitFor({ state: 'hidden' })
   await waitForAsync(
