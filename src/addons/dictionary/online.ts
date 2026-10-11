@@ -12,8 +12,7 @@ import {
 type GetText = (request: HostTextRequest) => Promise<HostTextResult>
 
 /** Response text, or null when the service has no page for the request. */
-async function read(getText: GetText, url: string, signal: AbortSignal) {
-  if (signal.aborted) throw new DictionaryError('unavailable')
+async function read(getText: GetText, url: string) {
   let result: HostTextResult
   try {
     result = await getText({ url })
@@ -35,10 +34,24 @@ async function read(getText: GetText, url: string, signal: AbortSignal) {
   )
 }
 
+/** Closing the dialog stops follow-up requests; the host cannot cancel one in flight. */
+function stopIfAborted(signal: AbortSignal) {
+  if (signal.aborted) throw new DictionaryError('unavailable')
+}
+
+/** Malformed answers count as unavailable, so they are retried instead of kept. */
+function parsed<T>(parse: () => T) {
+  try {
+    return parse()
+  } catch {
+    throw new DictionaryError('unavailable')
+  }
+}
+
 /** Successful answers are kept for the session; failures are retried. */
 function remember<T>(load: (key: string) => Promise<T>) {
   const cache = new Map<string, Promise<T>>()
-  return (key: string) => {
+  const get = (key: string) => {
     let value = cache.get(key)
     if (!value) {
       value = load(key)
@@ -47,6 +60,8 @@ function remember<T>(load: (key: string) => Promise<T>) {
     }
     return value
   }
+  /** True once `key` was requested, even if the answer is still pending. */
+  return Object.assign(get, { has: (key: string) => cache.has(key) })
 }
 
 const wiktionarySection: Record<Lang, readonly string[]> = {
@@ -59,16 +74,28 @@ const wiktionarySection: Record<Lang, readonly string[]> = {
   fr: ['fr'],
 }
 
+/** Sections of a Wiktionary REST definition response, by language code. */
+function parsePage(text: string) {
+  const page: unknown = JSON.parse(text)
+  if (!page || typeof page !== 'object' || Array.isArray(page))
+    throw new SyntaxError()
+  return page as Record<string, unknown>
+}
+
 /** Parses the Wiktionary REST definition response for one language. */
 export function parseWiktionary(
   text: string,
   term: string,
   lang: Lang,
 ): Entry[] {
-  const page: unknown = JSON.parse(text)
-  if (!page || typeof page !== 'object' || Array.isArray(page))
-    throw new SyntaxError()
-  const sections = page as Record<string, unknown>
+  return wiktionaryEntries(parsePage(text), term, lang)
+}
+
+function wiktionaryEntries(
+  sections: Record<string, unknown>,
+  term: string,
+  lang: Lang,
+): Entry[] {
   const key = wiktionarySection[lang].find((code) =>
     Array.isArray(sections[code]),
   )
@@ -113,30 +140,28 @@ export function parseWiktionary(
 
 /** Wikimedia asks for a descriptive User-Agent (sent by the host) and allows 200 requests a minute. */
 export function wiktionaryProvider(getText: GetText): DictionaryProvider {
-  const page = remember(async (term: string) =>
-    read(
+  const page = remember(async (term: string) => {
+    const text = await read(
       getText,
       `https://en.wiktionary.org/api/rest_v1/page/definition/${encodeURIComponent(term)}`,
-      new AbortController().signal,
-    ),
-  )
+    )
+    return text === null ? null : parsed(() => parsePage(text))
+  })
   return {
     id: 'wiktionary',
     label: 'Wiktionary',
     kind: 'online',
     languages: ['en', 'zh', 'yue', 'ja', 'tl', 'fr'],
-    async lookup(term, lang, signal) {
-      if (signal.aborted) throw new DictionaryError('unavailable')
+    async lookup(term, lang, signal, cachedOnly) {
       // Page titles are case-sensitive; a capital is usually sentence case.
       const lower = term.toLowerCase()
       for (const title of lower === term ? [term] : [lower, term]) {
-        const text = await page(title)
-        if (text === null) continue
-        try {
-          return parseWiktionary(text, title, lang)
-        } catch {
-          throw new DictionaryError('unavailable')
-        }
+        if (cachedOnly && !page.has(title)) continue
+        stopIfAborted(signal)
+        const sections = await page(title)
+        stopIfAborted(signal)
+        const entries = sections ? wiktionaryEntries(sections, title, lang) : []
+        if (entries.length) return entries
       }
       return []
     },
@@ -163,13 +188,15 @@ export function parseWords(text: string, word: string): string[] {
 // ponytail: Datamuse is keyless up to 100,000 requests a day only until early
 // 2027, when it will require an API key. Add a stored key or drop this source.
 export function datamuseProvider(getText: GetText): DictionaryProvider {
-  const list = remember((query: string) =>
-    read(
-      getText,
-      `https://api.datamuse.com/words?${query}&max=24`,
-      new AbortController().signal,
-    ),
-  )
+  const list = (relation: 'syn' | 'ant') =>
+    remember(async (word: string) => {
+      const text = await read(
+        getText,
+        `https://api.datamuse.com/words?rel_${relation}=${encodeURIComponent(word)}&max=24`,
+      )
+      return text === null ? [] : parsed(() => parseWords(text, word))
+    })
+  const lists = { syn: list('syn'), ant: list('ant') }
   const source: Source = {
     name: 'Datamuse',
     license: 'Datamuse API',
@@ -182,16 +209,11 @@ export function datamuseProvider(getText: GetText): DictionaryProvider {
     languages: ['en'],
     lookup: async () => [],
     async related(term, _lang, signal): Promise<Related | null> {
-      if (signal.aborted) throw new DictionaryError('unavailable')
-      const key = encodeURIComponent(term.toLowerCase())
       const words = async (relation: 'syn' | 'ant') => {
-        const text = await list(`rel_${relation}=${key}`)
-        if (text === null) return []
-        try {
-          return parseWords(text, term)
-        } catch {
-          throw new DictionaryError('unavailable')
-        }
+        stopIfAborted(signal)
+        const found = await lists[relation](term.toLowerCase())
+        stopIfAborted(signal)
+        return found
       }
       const synonyms = await words('syn')
       const antonyms = await words('ant')

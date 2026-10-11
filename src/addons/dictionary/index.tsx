@@ -11,7 +11,10 @@ import {
   WifiOff,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import type { CommandExecutionContext } from '../../shared/foundation-contracts'
+import type {
+  CommandExecutionContext,
+  ViewTarget,
+} from '../../shared/foundation-contracts'
 import { defineAddon } from '../api'
 import { Button, PanelMessage } from '../ui'
 import css from './dictionary.css?inline'
@@ -88,13 +91,24 @@ const failures = {
     icon: <Ban size={28} />,
     title: 'Lookup not allowed',
     message:
-      'Nothing was sent. Run the command again and allow the request to look up this word.',
+      'The blocked request was not sent. Run the command again and allow it to look up this word.',
   },
   'not-installed': {
     icon: <Download size={28} />,
     title: 'Offline pack not installed',
     message: 'Install the offline pack for this language, then try again.',
   },
+}
+
+// `message` fields are collected into the UI copy catalog.
+const notices = {
+  noWord: { message: 'Place the cursor in a word or select one word.' },
+  unsupported: {
+    message:
+      'Lookups support English, Chinese, Cantonese, Japanese, Filipino, and French.',
+  },
+  noPacks: { message: 'Offline packs are not available yet.' },
+  changed: { message: 'The document changed. Look up the word again.' },
 }
 
 function Words({
@@ -211,12 +225,9 @@ function Results({
             </section>
           )
         // Cantonese can share Wiktionary's Chinese entries; show them once.
-        const entries = value.filter((entry) => {
-          const key = `${entry.source.name}:${entry.lang}`
-          if (shown.has(key)) return false
-          shown.add(key)
-          return true
-        })
+        const key = (entry: Entry) => `${entry.source.name}:${entry.lang}`
+        const entries = value.filter((entry) => !shown.has(key(entry)))
+        for (const entry of entries) shown.add(key(entry))
         const [first] = entries
         if (!first) return null
         return (
@@ -295,39 +306,72 @@ export default defineAddon({
       create: async () =>
         (await import('./source')).trackSourceViews(sourceViews),
     })
+    // ponytail: extensions are not told which view they belong to, so split
+    // panes are matched through core's `data-side`, which is also their view
+    // ID. Use a view ID from core once extensions receive one.
+    const inView = (dom: Element, view: ViewTarget) => {
+      const pane = dom.closest<HTMLElement>('.editor-page')
+      return (
+        dom.isConnected &&
+        !!pane &&
+        (pane.dataset.side ?? view.viewId) === view.viewId
+      )
+    }
     async function target(invocation: CommandExecutionContext) {
       // Palette and shortcut invocations capture the view but not its selection.
       const view = invocation.view ?? context.editorViews.getActive()
-      const active = view && context.editorViews.getSelection(view)
+      if (!view) return null
+      const active = context.editorViews.getSelection(view)
       const selection =
-        invocation.selection ?? (active?.ok ? active.value : null)
+        invocation.selection ?? (active.ok ? active.value : null)
       if (!selection) return null
       const from = Math.min(selection.anchor, selection.head)
       const to = Math.max(selection.anchor, selection.head)
+      const at = (dom: Element, anchor: number, head: number) =>
+        inView(dom, view) &&
+        anchor === selection.anchor &&
+        head === selection.head
+      let found: LookupTarget | null = null
+      let dom: Element | undefined
       if (selection.editor === 'rich') {
-        for (const editor of richEditors) {
-          const current = editor.state.selection
-          if (
+        const editor = [...richEditors].find(
+          (editor) =>
             !editor.isDestroyed &&
-            editor.view.dom.isConnected &&
-            current.anchor === selection.anchor &&
-            current.head === selection.head
-          )
-            return richTarget(editor, from, to)
-        }
-        return null
-      }
-      const { sourceTarget } = await import('./source')
-      for (const view of sourceViews) {
-        const current = view.state.selection.main
-        if (
-          view.dom.isConnected &&
-          current.anchor === selection.anchor &&
-          current.head === selection.head
+            at(
+              editor.view.dom,
+              editor.state.selection.anchor,
+              editor.state.selection.head,
+            ),
         )
-          return sourceTarget(view, from, to)
+        found = editor ? richTarget(editor, from, to) : null
+        dom = editor?.view.dom
+      } else {
+        const { sourceTarget } = await import('./source')
+        const editor = [...sourceViews].find((editor) =>
+          at(
+            editor.dom,
+            editor.state.selection.main.anchor,
+            editor.state.selection.main.head,
+          ),
+        )
+        found = editor ? sourceTarget(editor, from, to) : null
+        dom = editor?.dom
       }
-      return null
+      if (!found || !dom) return null
+      const { replace } = found
+      return {
+        ...found,
+        // getSelection fails once the view, document, or its generation changes.
+        replace: (text: string) => {
+          const current = context.editorViews.getSelection(view)
+          return (
+            current.ok &&
+            current.value.editor === selection.editor &&
+            inView(dom, view) &&
+            replace(text)
+          )
+        },
+      }
     }
     async function lookUp(
       invocation: CommandExecutionContext,
@@ -335,29 +379,29 @@ export default defineAddon({
     ) {
       const found = await target(invocation)
       if (!found) {
-        context.notify('Place the cursor in a word or select one word.')
+        context.notify(notices.noWord.message)
         return
       }
       const { word } = found
       const langs = detectLangs(word, readPreferences())
       if (!langs.length) {
-        context.notify(
-          'Lookups support English, Chinese, Cantonese, Japanese, Filipino, and French.',
-        )
+        context.notify(notices.unsupported.message)
         found.focus()
         return
       }
       const load = (signal: AbortSignal): Promise<Outcome> =>
         kind === 'define'
-          ? gather(registry, langs, 'lookup', (provider, lang) =>
-              provider.lookup(word, lang, signal),
+          ? gather(registry, langs, 'lookup', (provider, lang, cachedOnly) =>
+              provider.lookup(word, lang, signal, cachedOnly),
             )
           : gather(
               registry,
               langs,
               'related',
-              (provider, lang) =>
-                provider.related?.(word, lang, signal) ?? Promise.resolve(null),
+              async (provider, lang, cachedOnly) =>
+                cachedOnly
+                  ? null
+                  : (provider.related?.(word, lang, signal) ?? null),
             )
       const choice = await context.dialogs.open<string>({
         title:
@@ -372,15 +416,13 @@ export default defineAddon({
               close(null)
               void context.commands
                 .execute(INSTALL_PACK_COMMAND)
-                .catch(() =>
-                  context.notify('Offline packs are not available yet.'),
-                )
+                .catch(() => context.notify(notices.noPacks.message))
             }}
           />
         ),
       }).result
       if (choice && !found.replace(matchCase(word, choice)))
-        context.notify('The document changed. Look up the word again.')
+        context.notify(notices.changed.message)
       found.focus()
     }
     context.commands.register({

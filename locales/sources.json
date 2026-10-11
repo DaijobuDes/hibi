@@ -470,7 +470,8 @@
     "src/main/workspace-metadata.ts"
   ],
   "ad83a00f609f": [
-    "src/addons/dictionary/packs.ts"
+    "src/addons/dictionary/packs.ts",
+    "src/addons/dictionary/settings.ts"
   ],
   "d10b9d2bc334": [
     "src/addons/dictionary/pack-converters.ts"
@@ -544,6 +545,9 @@
   ],
   "7346030400bf": [
     "src/renderer/src/FormattingToolbar.tsx"
+  ],
+  "b0a8813027b8": [
+    "src/addons/dictionary/settings.ts"
   ],
   "2f75b64ac916": [
     "src/addons/ui-preview/index.tsx"
@@ -1805,7 +1809,8 @@
     "src/addons/mcp-server/Settings.tsx"
   ],
   "ba118bf7fc9c": [
-    "src/addons/dictionary/packs.ts"
+    "src/addons/dictionary/packs.ts",
+    "src/addons/dictionary/settings.ts"
   ],
   "1eb30d44ddfa": [
     "src/addons/git/native.ts"
@@ -1967,6 +1972,9 @@
   "5e43497ec5da": [
     "src/main/workspace-files.ts"
   ],
+  "e8a6062c5c37": [
+    "src/addons/dictionary/settings.ts"
+  ],
   "fb6310eef205": [
     "src/addons/dictionary/packs.ts"
   ],
@@ -2113,7 +2121,8 @@
     "src/addons/diagnostics/Settings.tsx"
   ],
   "7458199fe97a": [
-    "src/addons/dictionary/packs.ts"
+    "src/addons/dictionary/packs.ts",
+    "src/addons/dictionary/settings.ts"
   ],
   "323d638f6497": [
     "src/addons/frontmatter/index.ts",
@@ -2727,7 +2736,8 @@
     "src/renderer/src/markdown-syntax.ts"
   ],
   "be4ee906d3ef": [
-    "src/addons/dictionary/packs.ts"
+    "src/addons/dictionary/packs.ts",
+    "src/addons/dictionary/settings.ts"
   ],
   "895e7564fa79": [
     "src/renderer/src/HibiSettings.tsx"
@@ -2880,6 +2890,9 @@
     "src/addons/dictionary/index.tsx"
   ],
   "50edf5185a89": [
+    "src/addons/dictionary/index.tsx"
+  ],
+  "c857005ffa81": [
     "src/addons/dictionary/index.tsx"
   ],
   "9f4024faec10": [
@@ -3258,9 +3271,6 @@
   "f55642ddb45f": [
     "src/addons/dictionary/index.tsx"
   ],
-  "6840a8ce6fb5": [
-    "src/addons/dictionary/index.tsx"
-  ],
   "6887944c3369": [
     "src/renderer/src/NotificationSettings.tsx"
   ],
@@ -3291,6 +3301,9 @@
     "src/addons/dictionary/index.tsx"
   ],
   "ee6f9df95bd1": [
+    "src/addons/dictionary/index.tsx"
+  ],
+  "a4d29779d024": [
     "src/addons/dictionary/index.tsx"
   ],
   "b1a1e8e3cf7c": [
@@ -3572,6 +3585,9 @@
   ],
   "771cbda3796a": [
     "src/addons/review/index.tsx"
+  ],
+  "4a356689b984": [
+    "src/addons/dictionary/index.tsx"
   ],
   "fdb600f6535a": [
     "src/renderer/src/FlavorPicker.tsx"
@@ -4731,6 +4747,9 @@
   "96c5ae0b5065": [
     "src/renderer/src/SettingsScreen.tsx"
   ],
+  "72498ff535eb": [
+    "src/addons/dictionary/index.tsx"
+  ],
   "2ea18168d79b": [
     "src/renderer/src/addons.ts"
   ],
@@ -4773,6 +4792,9 @@
   ],
   "602cad822b0c": [
     "src/main/document.ts"
+  ],
+  "7936a209d09a": [
+    "src/addons/dictionary/index.tsx"
   ],
   "68218ba6809b": [
     "src/addons/mcp-server/tools.ts"

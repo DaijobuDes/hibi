@@ -95,6 +95,10 @@ test('dictionary parses captured Wiktionary and Datamuse responses', async () =>
     plainText('<a href="/wiki/x">fish</a> &amp; <i>chips</i>&#33; &#x2014;'),
     'fish & chips! —',
   )
+  assert.equal(plainText('a<br>b &eacute;'), 'a b é')
+  assert.equal(plainText('<a title="x > y">word</a>s'), 'words')
+  assert.equal(plainText("<p>one</p><p data-x='>'>two</p>"), 'one two')
+  assert.equal(plainText('&lt;b&gt;<!-- <i> -->x'), '<b>x')
 })
 
 test('dictionary finds the caret word with the right segmenter and language', () => {
@@ -244,8 +248,8 @@ test('dictionary sends nothing online when an installed offline pack answers', a
     label: id,
     kind,
     languages,
-    lookup: async (term, lang) => {
-      calls.push(`${id}:${lang}`)
+    lookup: async (term, lang, _signal, cachedOnly) => {
+      calls.push(`${id}:${lang}${cachedOnly ? ' cached' : ''}`)
       return answers.includes(lang)
         ? [
             {
@@ -267,7 +271,8 @@ test('dictionary sends nothing online when an installed offline pack answers', a
     ),
   )
   registry.register(provider('pack', 'offline', ['zh', 'en'], ['zh']))
-  const ask = (item, lang) => item.lookup('x', lang, signal)
+  const ask = (item, lang, cachedOnly) =>
+    item.lookup('x', lang, signal, cachedOnly)
   let result = await gather(registry, ['yue', 'zh', 'ja'], 'lookup', ask)
   assert.deepEqual(calls, ['pack:zh'])
   assert.deepEqual(
@@ -277,14 +282,130 @@ test('dictionary sends nothing online when an installed offline pack answers', a
 
   calls.length = 0
   result = await gather(registry, ['en', 'tl', 'fr'], 'lookup', ask)
-  assert.deepEqual(calls, ['pack:en', 'online:en'])
+  assert.deepEqual(calls, [
+    'pack:en',
+    'online:en',
+    'online:tl cached',
+    'online:fr cached',
+  ])
   assert.deepEqual(
     result.found.map(({ lang }) => lang),
-    ['en'],
+    ['en', 'fr'],
   )
 
   calls.length = 0
   result = await gather(registry, ['tl', 'fr', 'en'], 'lookup', ask)
-  assert.deepEqual(calls, ['pack:en', 'online:tl', 'online:fr'])
-  assert.equal(result.found[0].value[0].source.name, 'online')
+  assert.deepEqual(calls, [
+    'pack:en',
+    'online:tl',
+    'online:fr',
+    'online:en cached',
+  ])
+  assert.deepEqual(
+    result.found.map(({ lang }) => lang),
+    ['fr', 'en'],
+  )
+})
+
+test('dictionary sends no follow-up request after the lookup is closed', async () => {
+  const requests = []
+  let controller = new AbortController()
+  const getText = async (request) => {
+    requests.push(request.url)
+    controller.abort()
+    return { ok: false, code: 'http-status', status: 404 }
+  }
+  await assert.rejects(
+    datamuseProvider(getText).related('happy', 'en', controller.signal),
+    DictionaryError,
+  )
+  assert.deepEqual(requests, [
+    'https://api.datamuse.com/words?rel_syn=happy&max=24',
+  ])
+  requests.length = 0
+  controller = new AbortController()
+  await assert.rejects(
+    wiktionaryProvider(getText).lookup('Happy', 'en', controller.signal),
+    DictionaryError,
+  )
+  assert.deepEqual(requests, [
+    'https://en.wiktionary.org/api/rest_v1/page/definition/happy',
+  ])
+})
+
+test('dictionary retries malformed answers instead of caching them', async () => {
+  const requests = []
+  const responses = [
+    { ok: true, value: { text: '<html>busy</html>' } },
+    { ok: true, value: { text: await fixture('wiktionary-happy.json') } },
+    { ok: true, value: { text: '{"oops":1}' } },
+    {
+      ok: true,
+      value: { text: await fixture('datamuse-synonyms-happy.json') },
+    },
+    { ok: true, value: { text: '[]' } },
+  ]
+  const getText = async (request) => {
+    requests.push(request.url)
+    return responses.shift()
+  }
+  const wiktionary = wiktionaryProvider(getText)
+  await assert.rejects(wiktionary.lookup('happy', 'en', signal), {
+    reason: 'unavailable',
+  })
+  assert.equal((await wiktionary.lookup('happy', 'en', signal)).length, 3)
+  const datamuse = datamuseProvider(getText)
+  await assert.rejects(datamuse.related('happy', 'en', signal), {
+    reason: 'unavailable',
+  })
+  assert.equal(
+    (await datamuse.related('happy', 'en', signal)).synonyms[0],
+    'halcyon',
+  )
+  assert.equal(requests.length, 5)
+})
+
+test('dictionary tries the capitalized page when the lowercase one lacks the language', async () => {
+  const requests = []
+  const responses = {
+    'https://en.wiktionary.org/api/rest_v1/page/definition/paris':
+      '{"en":[{"partOfSpeech":"Noun","definitions":[{"definition":"plaster"}]}]}',
+    'https://en.wiktionary.org/api/rest_v1/page/definition/Paris':
+      '{"fr":[{"partOfSpeech":"Proper noun","definitions":[{"definition":"Paris"}]}]}',
+  }
+  const wiktionary = wiktionaryProvider(async (request) => {
+    requests.push(request.url)
+    return { ok: true, value: { text: responses[request.url] } }
+  })
+  const [entry] = await wiktionary.lookup('Paris', 'fr', signal)
+  assert.equal(entry.partOfSpeech, 'proper noun')
+  assert.equal(requests.length, 2)
+})
+
+test('dictionary shows every language on a fetched Wiktionary page without new requests', async () => {
+  const requests = []
+  const chat = await fixture('wiktionary-chat.json')
+  const registry = createRegistry()
+  registry.register(
+    wiktionaryProvider(async (request) => {
+      requests.push(request.url)
+      return request.url.endsWith('/chat')
+        ? { ok: true, value: { text: chat } }
+        : { ok: false, code: 'http-status', status: 404 }
+    }),
+  )
+  const result = await gather(
+    registry,
+    ['fr', 'en', 'ja', 'tl'],
+    'lookup',
+    (provider, lang, cachedOnly) =>
+      provider.lookup('Chat', lang, signal, cachedOnly),
+  )
+  assert.deepEqual(
+    result.found.map(({ lang }) => lang),
+    ['fr', 'en', 'tl'],
+  )
+  assert.deepEqual(requests, [
+    'https://en.wiktionary.org/api/rest_v1/page/definition/chat',
+  ])
 })
