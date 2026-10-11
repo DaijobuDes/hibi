@@ -396,7 +396,7 @@ test('table headers and cells skip block escapes while retaining flavor rules', 
   assert.deepEqual(parents, Array(16).fill('table'))
 })
 
-test('leading indentation remains paragraph text through numeric entities', async (t) => {
+test('leading indentation remains paragraph text through entities', async (t) => {
   const { core, parser, options } = markdownConfiguration([])
   const schema = getSchema(core)
   const configured = new MarkdownManager({
@@ -404,14 +404,14 @@ test('leading indentation remains paragraph text through numeric entities', asyn
     marked: parser,
     markedOptions: options,
   })
-  for (const [source, text] of [
+  for (const [source, text, expected = source] of [
     ['&#32;   code', '    code'],
     ['&#32;       code', '        code'],
-    ['&#9;code', '\tcode'],
-    ['&#9;\tcode', '\t\tcode'],
-    ['&#32;\tcode', ' \tcode'],
-    ['&#32; \tcode', '  \tcode'],
-    ['&#32;  \tcode', '   \tcode'],
+    ['&#9;code', '\tcode', '&Tab;code'],
+    ['&#9;\tcode', '\t\tcode', '&Tab;&Tab;code'],
+    ['&#32;\tcode', ' \tcode', ' &Tab;code'],
+    ['&#32; \tcode', '  \tcode', '  &Tab;code'],
+    ['&#32;  \tcode', '   \tcode', '   &Tab;code'],
     [' code', ' code'],
     ['  code', '  code'],
     ['   code', '   code'],
@@ -424,16 +424,19 @@ test('leading indentation remains paragraph text through numeric entities', asyn
       ])
       for (const blockLocal of [true, false]) {
         const saved = markdownSerializer(configured, blockLocal)(doc).source
-        assert.equal(saved, source)
+        assert.equal(saved, expected)
         assert.ok(schema.nodeFromJSON(configured.parse(saved)).eq(doc))
       }
     })
   }
-  for (const source of ['> &#9;code', '- &#32;   code']) {
+  for (const [source, expected = source] of [
+    ['> &#9;code', '> &Tab;code'],
+    ['- &#32;   code'],
+  ]) {
     const doc = schema.nodeFromJSON(configured.parse(source))
     for (const blockLocal of [true, false]) {
       const saved = markdownSerializer(configured, blockLocal)(doc).source
-      assert.equal(saved, source)
+      assert.equal(saved, expected)
       assert.ok(schema.nodeFromJSON(configured.parse(saved)).eq(doc))
     }
   }
