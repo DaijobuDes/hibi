@@ -1,0 +1,403 @@
+import { Extension } from '@tiptap/core'
+import type { Node } from '@tiptap/pm/model'
+import { Plugin, PluginKey, type Transaction } from '@tiptap/pm/state'
+import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view'
+import type { TableLayout } from '../../shared/table-layout'
+import { richSourceEcho } from './rich-source-session'
+
+type Axis = 'column' | 'row'
+type Handle = { table: number; axis: Axis; index: number }
+/** Sizes in pixels by column or row index; 0 is automatic. */
+type Sized = { pos: number; columns: number[]; rows: number[] }
+type State = {
+  tables: Sized[]
+  stored: TableLayout[]
+  handle: Handle | null
+  commits: number
+  decorations: DecorationSet
+}
+type Meta = {
+  load?: TableLayout[]
+  handle?: Handle | null
+  size?: Handle & { value: number; commit: boolean }
+}
+
+const key = new PluginKey<State>('tableLayout')
+const EDGE = 5
+const MIN = { column: 40, row: 24 }
+// Sizes are view state, not Markdown: they survive tab switches in this window.
+const session = new Map<string, TableLayout[]>()
+
+function tablesIn(doc: Node) {
+  const found: { pos: number; node: Node }[] = []
+  doc.descendants((node, pos) => {
+    if (node.type.name !== 'table') return !node.isTextblock
+    found.push({ pos, node })
+    return false
+  })
+  return found
+}
+
+// ponytail: header cell index is the column index. Markdown tables have no
+// spans; a pasted HTML table with colspans would need TableMap here.
+const columnCount = (table: Node) => table.firstChild?.childCount ?? 0
+
+/** Ordinal plus a hash of the header row, so edits elsewhere keep sizes. */
+export function tableKey(index: number, table: Node) {
+  let text = String(columnCount(table))
+  table.firstChild?.forEach((cell) => {
+    text += `\t${cell.textContent}`
+  })
+  let hash = 0x811c9dc5
+  for (let i = 0; i < text.length; i++)
+    hash = Math.imul(hash ^ text.charCodeAt(i), 0x01000193)
+  return `${index}:${(hash >>> 0).toString(36)}`
+}
+
+function bind(doc: Node, stored: TableLayout[], tracked: Sized[]): Sized[] {
+  if (!stored.length) return tracked
+  const known = new Map(stored.map((table) => [table.key, table]))
+  const bound = [...tracked]
+  tablesIn(doc).forEach(({ pos, node }, index) => {
+    const table = known.get(tableKey(index, node))
+    if (table && !tracked.some((sized) => sized.pos === pos))
+      bound.push({ pos, columns: table.columns ?? [], rows: table.rows ?? [] })
+  })
+  return bound
+}
+
+/** A source sync replaces the whole document; carry sizes over by table order. */
+function rebind(before: Node, tracked: Sized[], doc: Node): Sized[] {
+  const previous = tablesIn(before)
+  const next = tablesIn(doc)
+  return tracked.flatMap((sized) => {
+    const index = previous.findIndex((table) => table.pos === sized.pos)
+    const old = previous[index]
+    const table = next[index]
+    if (!old || !table) return []
+    const same =
+      previous.length === next.length
+        ? columnCount(old.node) === columnCount(table.node)
+        : tableKey(index, old.node) === tableKey(index, table.node)
+    return same ? [{ ...sized, pos: table.pos }] : []
+  })
+}
+
+function mapped(tables: Sized[], tr: Transaction): Sized[] {
+  return tables.flatMap((sized) => {
+    const result = tr.mapping.mapResult(sized.pos, 1)
+    return !result.deleted && tr.doc.nodeAt(result.pos)?.type.name === 'table'
+      ? [{ ...sized, pos: result.pos }]
+      : []
+  })
+}
+
+function decorate(doc: Node, tables: Sized[], handle: Handle | null) {
+  if (!tables.length && !handle) return DecorationSet.empty
+  const decorations: Decoration[] = []
+  const node = (from: number, to: Node, attrs: Record<string, string>) =>
+    decorations.push(Decoration.node(from, from + to.nodeSize, attrs))
+  for (const sized of tables) {
+    const table = doc.nodeAt(sized.pos)!
+    const columns = columnCount(table)
+    if (sized.columns.some(Boolean))
+      node(sized.pos, table, {
+        'data-columns-sized':
+          sized.columns.length >= columns &&
+          sized.columns.slice(0, columns).every(Boolean)
+            ? 'all'
+            : 'some',
+      })
+    table.forEach((row, offset, index) => {
+      const start = sized.pos + 1 + offset
+      if (sized.rows[index])
+        node(start, row, {
+          style: `--table-row-height: ${sized.rows[index]}px`,
+        })
+      if (index === 0)
+        row.forEach((cell, cellOffset, column) => {
+          if (sized.columns[column])
+            node(start + 1 + cellOffset, cell, {
+              style: `width: ${sized.columns[column]}px`,
+            })
+        })
+    })
+  }
+  const table = handle && doc.nodeAt(handle.table)
+  if (handle && table?.type.name === 'table')
+    table.forEach((row, offset, index) => {
+      const start = handle.table + 1 + offset
+      row.forEach((cell, cellOffset, column) => {
+        if ((handle.axis === 'row' ? index : column) === handle.index)
+          node(start + 1 + cellOffset, cell, {
+            'data-resize-handle': handle.axis,
+          })
+      })
+    })
+  return DecorationSet.create(doc, decorations)
+}
+
+function layout(state: State, doc: Node): TableLayout[] {
+  return tablesIn(doc)
+    .flatMap(({ pos, node }, index) => {
+      const sized = state.tables.find((table) => table.pos === pos)
+      const columns = sized?.columns.slice(0, columnCount(node))
+      const rows = sized?.rows.slice(0, node.childCount)
+      return columns?.some(Boolean) || rows?.some(Boolean)
+        ? [
+            {
+              key: tableKey(index, node),
+              columns: columns?.some(Boolean) ? columns : null,
+              rows: rows?.some(Boolean) ? rows : null,
+            },
+          ]
+        : []
+    })
+    .slice(0, 1000)
+}
+
+/** The resize handle under the pointer, with the element whose size it sets. */
+function handleAt(view: EditorView, event: MouseEvent) {
+  const cell = (event.target as Element | null)?.closest?.('td, th')
+  if (!(cell instanceof HTMLTableCellElement) || !view.dom.contains(cell))
+    return null
+  const row = cell.parentElement as HTMLTableRowElement
+  const bounds = cell.getBoundingClientRect()
+  let axis: Axis
+  let element: Element | null
+  if (bounds.right - event.clientX <= EDGE) {
+    axis = 'column'
+    element = cell
+  } else if (event.clientX - bounds.left <= EDGE) {
+    axis = 'column'
+    element = cell.previousElementSibling
+  } else if (bounds.bottom - event.clientY <= EDGE) {
+    axis = 'row'
+    element = row
+  } else if (event.clientY - bounds.top <= EDGE) {
+    axis = 'row'
+    element = row.previousElementSibling
+  } else return null
+  if (!(element instanceof HTMLElement)) return null
+  const $cell = view.state.doc.resolve(view.posAtDOM(cell, 0))
+  for (let depth = $cell.depth; depth > 0; depth--)
+    if ($cell.node(depth).type.name === 'table') {
+      const index =
+        element instanceof HTMLTableRowElement
+          ? element.rowIndex
+          : (element as HTMLTableCellElement).cellIndex
+      return {
+        handle: { table: $cell.before(depth), axis, index },
+        element,
+      }
+    }
+  return null
+}
+
+const same = (a: Handle | null, b: Handle | null) =>
+  a === b ||
+  (!!a &&
+    !!b &&
+    a.table === b.table &&
+    a.axis === b.axis &&
+    a.index === b.index)
+
+/**
+ * Column widths and row heights for tables in the visual editor. Sizes are
+ * decorations, so they never enter the Markdown source or its history.
+ */
+export const tableLayout = Extension.create<{ tabId: string }>({
+  name: 'tableLayout',
+  addOptions: () => ({ tabId: '' }),
+  addProseMirrorPlugins() {
+    const { tabId } = this.options
+    let dragging = false
+    const setHandle = (view: EditorView, handle: Handle | null) => {
+      if (!same(key.getState(view.state)?.handle ?? null, handle))
+        view.dispatch(view.state.tr.setMeta(key, { handle } satisfies Meta))
+    }
+    return [
+      new Plugin<State>({
+        key,
+        state: {
+          init: () => ({
+            tables: [],
+            stored: [],
+            handle: null,
+            commits: 0,
+            decorations: DecorationSet.empty,
+          }),
+          apply(tr, previous, before, state) {
+            const meta = tr.getMeta(key) as Meta | undefined
+            if (!meta && !tr.docChanged) return previous
+            let { tables, stored, handle, commits } = previous
+            if (tr.docChanged) {
+              tables = tr.getMeta(richSourceEcho)
+                ? bind(state.doc, stored, rebind(before.doc, tables, state.doc))
+                : mapped(tables, tr)
+              const table = handle && tr.mapping.mapResult(handle.table, 1)
+              handle =
+                handle &&
+                table &&
+                !table.deleted &&
+                state.doc.nodeAt(table.pos)?.type.name === 'table'
+                  ? { ...handle, table: table.pos }
+                  : null
+            }
+            if (meta?.load) {
+              stored = meta.load
+              tables = bind(state.doc, stored, tables)
+            }
+            if (meta?.handle !== undefined) handle = meta.handle
+            if (meta?.size) {
+              const { table, axis, index, value, commit } = meta.size
+              const existing = tables.find((sized) => sized.pos === table)
+              const sized = existing
+                ? { ...existing }
+                : { pos: table, columns: [], rows: [] }
+              const sizes = [...sized[axis === 'column' ? 'columns' : 'rows']]
+              while (sizes.length <= index) sizes.push(0)
+              sizes[index] = value
+              sized[axis === 'column' ? 'columns' : 'rows'] = sizes
+              tables = [...tables.filter((other) => other !== existing), sized]
+              if (commit) commits++
+            }
+            return {
+              tables,
+              stored,
+              handle,
+              commits,
+              decorations: decorate(state.doc, tables, handle),
+            }
+          },
+        },
+        props: {
+          decorations: (state) => key.getState(state)?.decorations,
+          attributes: (state): Record<string, string> => {
+            const handle = key.getState(state)?.handle
+            return handle ? { 'data-table-resize': handle.axis } : {}
+          },
+          handleDOMEvents: {
+            mousemove(view, event) {
+              if (view.editable && !dragging)
+                setHandle(view, handleAt(view, event)?.handle ?? null)
+              return false
+            },
+            mouseleave(view) {
+              if (!dragging) setHandle(view, null)
+              return false
+            },
+            mousedown(view, event) {
+              const found =
+                view.editable && event.button === 0 && handleAt(view, event)
+              if (!found) return false
+              event.preventDefault()
+              const { handle, element } = found
+              const axis = handle.axis
+              const frames = view.dom.ownerDocument.defaultView!
+              const start = axis === 'column' ? event.clientX : event.clientY
+              const bounds = element.getBoundingClientRect()
+              const initial = axis === 'column' ? bounds.width : bounds.height
+              let value: number | null = null
+              let frame = 0
+              const size = (commit: boolean) => {
+                frame = 0
+                if (value !== null && !view.isDestroyed)
+                  view.dispatch(
+                    view.state.tr.setMeta(key, {
+                      size: { ...handle, value, commit },
+                    } satisfies Meta),
+                  )
+              }
+              const move = (moved: MouseEvent) => {
+                const offset =
+                  (axis === 'column' ? moved.clientX : moved.clientY) - start
+                value = Math.min(
+                  10000,
+                  Math.max(MIN[axis], Math.round(initial + offset)),
+                )
+                frame ||= frames.requestAnimationFrame(() => size(false))
+              }
+              const finish = () => {
+                frames.removeEventListener('mousemove', move)
+                frames.removeEventListener('mouseup', finish)
+                frames.cancelAnimationFrame(frame)
+                dragging = false
+                // A click without movement keeps the size; double-click resets it.
+                size(true)
+              }
+              dragging = true
+              setHandle(view, handle)
+              frames.addEventListener('mousemove', move)
+              frames.addEventListener('mouseup', finish)
+              return true
+            },
+            dblclick(view, event) {
+              const found = view.editable && handleAt(view, event)
+              if (!found) return false
+              event.preventDefault()
+              view.dispatch(
+                view.state.tr.setMeta(key, {
+                  size: { ...found.handle, value: 0, commit: true },
+                } satisfies Meta),
+              )
+              return true
+            },
+          },
+        },
+        view(view) {
+          let timer: ReturnType<typeof setTimeout> | undefined
+          let written = JSON.stringify(session.get(tabId) ?? [])
+          const save = () => {
+            clearTimeout(timer)
+            timer = undefined
+            const state = key.getState(view.state)
+            if (!state) return
+            const tables = layout(state, view.state.doc)
+            const json = JSON.stringify(tables)
+            if (json === written) return
+            written = json
+            session.set(tabId, tables)
+            void window.hibi
+              .writeTableLayout(tabId, tables)
+              .catch((error: unknown) =>
+                console.error('table sizes could not be saved:', error),
+              )
+          }
+          void Promise.resolve(
+            session.get(tabId) ?? window.hibi.readTableLayout(tabId),
+          ).then(
+            (tables) => {
+              if (!tables?.length || view.isDestroyed) return
+              written = JSON.stringify(tables)
+              view.dispatch(
+                view.state.tr.setMeta(key, { load: tables } satisfies Meta),
+              )
+            },
+            (error: unknown) =>
+              console.error('table sizes could not be read:', error),
+          )
+          return {
+            update(view, previous) {
+              const state = key.getState(view.state)
+              const before = key.getState(previous)
+              if (
+                state &&
+                before &&
+                (state.commits !== before.commits ||
+                  (view.state.doc !== previous.doc &&
+                    (state.tables.length || before.tables.length)))
+              ) {
+                clearTimeout(timer)
+                timer = setTimeout(save, 500)
+              }
+            },
+            destroy() {
+              if (timer) save()
+            },
+          }
+        },
+      }),
+    ]
+  },
+})
