@@ -7,9 +7,15 @@ export function inlineMath(source: string) {
   if (!match || !latex || latex.length > 10000 || latex.trim() !== latex) return
   return { type: 'inlineMath', raw: match[0], latex }
 }
+export function blockMathStart(source: string) {
+  // Marked probes after dropping the first character; only a real newline
+  // proves a block boundary. The tokenizer handles the current line itself.
+  const match = /\n {0,3}\$\$/.exec(source)
+  return match ? match.index + 1 : -1
+}
 export function blockMath(source: string) {
   const match =
-    /^\$\$[ \t]*\n?((?:\\[\s\S]|(?!\$\$)[^\\])+?)\$\$(?:[ \t]*(?:\n|$))/.exec(
+    /^ {0,3}\$\$[ \t]*\n?((?:\\[\s\S]|(?!\$\$)[^\\])+?)\$\$(?:[ \t]*(?:\n|$))/.exec(
       source,
     )
   if (!match?.[1]?.trim() || match[1].length > 10000) return
@@ -20,7 +26,7 @@ export const mathTokens: MarkedExtension = {
     {
       name: 'blockMath',
       level: 'block',
-      start: (source) => source.indexOf('$$'),
+      start: blockMathStart,
       tokenizer: blockMath,
     },
     {

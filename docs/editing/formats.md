@@ -34,6 +34,12 @@ For these formats, Source view pauses the preview. Switch to Side-by-side to loa
 
 If a source language fails to load, choose **Retry language** in its notice. Retrying keeps the document and editor open.
 
+## Equations in Markdown
+
+With the LaTeX addon enabled, use `$x$` for inline math. Start a line with `$$x$$` for a centered display equation, or put the expression between separate `$$` lines. The opening delimiter can have up to three leading spaces; the closing delimiter must end its line apart from spaces or tabs. Inside lists and blockquotes, this applies after the list or quote prefix.
+
+Double dollars inside a paragraph, such as `text $$x$$` or `text $$x$$ more`, stay literal text. Switching views and editing surrounding text preserve their original bytes without inserting line breaks.
+
 ## Install required tools
 
 Some formats need tools installed separately. Open **Settings → Dependencies** to check availability, see which addons need each tool, choose an executable, or install a missing tool. **Manage dependencies** in a format's settings opens the same page.

@@ -74,7 +74,7 @@ test('flavors auto-detect, persist overrides, render/edit math, and export it of
   await pressShortcut(app, `${mod}+Shift+]`)
   const source = page.getByRole('textbox', { name: /markdown editor/i })
   const initial =
-    '# math\n\ninline $x^2$\n\n$$\n\\frac{1}{2}\n$$\n\n`$literal$`\n\n```javascript\nconst answer = 42\n```'
+    '# math\n\ninline $x^2$\n\ntext $$x$$\n\ntext $$x$$ more\n\n$$\n\\frac{1}{2}\n$$\n\n`$literal$`\n\n```javascript\nconst answer = 42\n```'
   const hiddenText = await page.locator('.tiptap').textContent()
   await source.fill(initial)
   await page
@@ -98,6 +98,14 @@ test('flavors auto-detect, persist overrides, render/edit math, and export it of
     () => document.querySelectorAll('.tiptap .katex').length === 2,
   )
   assert.equal(await page.locator('.tiptap .katex-display').count(), 1)
+  for (const text of ['text $$x$$', 'text $$x$$ more'])
+    assert.equal(
+      await page
+        .locator('.tiptap p')
+        .getByText(text, { exact: true })
+        .textContent(),
+      text,
+    )
   assert.equal(
     await page.locator('[data-type="inline-math"] .katex-display').count(),
     0,
@@ -148,6 +156,7 @@ test('flavors auto-detect, persist overrides, render/edit math, and export it of
     true,
   )
   const saved = await readFile(file, 'utf8')
+  assert.equal(saved, initial.replace('$x^2$', '$x^3$'))
   await pressShortcut(app, `${mod}+Shift+o`)
   await page.getByRole('button', { name: /new workspace file/i }).waitFor()
   await choose('export workspace to html')
