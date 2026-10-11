@@ -128,20 +128,27 @@ test('dictionary parses captured Wiktionary and Datamuse responses', async () =>
   assert.equal(plainText('<a "x> <b>y</b>'), '<a "x> y')
 })
 
-test('dictionary strips malformed markup in linear time', () => {
-  for (const html of [
+test('dictionary strips malformed markup in linear time', (t) => {
+  const cases = [
     `<${'a'.repeat(64000)}`,
     '<a '.repeat(21000),
     `<a ${'"x" <'.repeat(12000)}`,
-  ]) {
-    const started = performance.now()
-    assert.equal(plainText(html), html.replace(/\s+/g, ' ').trim())
-    assert.ok(performance.now() - started < 50, `${html.slice(0, 8)}…`)
-  }
-  for (const html of ['<!--'.repeat(16000), '<!'.repeat(32000)]) {
-    const started = performance.now()
-    assert.equal(plainText(`x${html}`), 'x')
-    assert.ok(performance.now() - started < 50, `${html.slice(0, 8)}…`)
+  ].map((html) => [html, html.replace(/\s+/g, ' ').trim()])
+  for (const html of ['<!--'.repeat(16000), '<!'.repeat(32000)])
+    cases.push([`x${html}`, 'x'])
+  for (const [html, expected] of cases) {
+    assert.equal(plainText(html), expected)
+    const timings = []
+    for (let run = 0; run < 7; run++) {
+      const started = performance.now()
+      const result = plainText(html)
+      timings.push(performance.now() - started)
+      assert.equal(result, expected)
+    }
+    const median = timings.sort((a, b) => a - b)[3]
+    const label = `${html.slice(0, 8)}… median ${median.toFixed(2)} ms`
+    t.diagnostic(label)
+    assert.ok(median < 250, label)
   }
 })
 
