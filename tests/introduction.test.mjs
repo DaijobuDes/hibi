@@ -67,9 +67,9 @@ test('the introduction waits for a launch without files and stays dismissed afte
   assert.equal(await stored(page), 'pending')
   assert.equal(await introduction(page).count(), 0)
 
-  let app
-  ;({ app, page } = await session.launch('--hibi-introduction', file))
-  await waitForDocumentEditor(app, page)
+  const withFile = await session.launch('--hibi-introduction', file)
+  page = withFile.page
+  await waitForDocumentEditor(withFile.app, page)
   assert.match(
     (await page.evaluate(() => window.hibi.getDocument())).markdown,
     /# Note/,
