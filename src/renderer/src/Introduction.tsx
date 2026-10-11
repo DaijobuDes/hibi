@@ -69,7 +69,7 @@ export function Introduction({
   tabsBusy: boolean
   onTabsEnabled: (enabled: boolean) => void
   addonStates: readonly AddonState[]
-  onAddonEnabled: (id: string, enabled: boolean) => void
+  onAddonEnabled: (id: string, enabled: boolean) => Promise<void>
   onOpenWorkspace: () => Promise<boolean>
   onOpenFile: () => Promise<boolean>
   /** `start` finishes the flow; `skip` leaves the app as it is. */
@@ -90,7 +90,7 @@ export function Introduction({
   // biome-ignore lint/correctness/useExhaustiveDependencies: passive effects run after Modal opens the dialog, so each step title takes focus.
   useEffect(() => heading.current?.focus(), [step])
 
-  // One request at a time; navigation waits so a finished open advances from its own step.
+  // One request at a time, like the Addon Manager; navigation waits so a finished open advances from its own step.
   async function run<T>(action: () => Promise<T>) {
     if (pending) return
     setPending(true)
@@ -377,8 +377,11 @@ export function Introduction({
                   checked={addonStates.some(
                     (state) => state.id === manifest.id && state.enabled,
                   )}
+                  aria-disabled={pending}
                   onChange={(event) =>
-                    onAddonEnabled(manifest.id, event.target.checked)
+                    void run(() =>
+                      onAddonEnabled(manifest.id, event.target.checked),
+                    )
                   }
                 />
               </SettingRow>
