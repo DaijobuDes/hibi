@@ -117,6 +117,18 @@ import { type WorkspaceRename, workspaceMenuItems } from './workspace-menu'
 const stopLocalDiagnostics = installRendererDiagnostics(window.hibiDiagnostics)
 import.meta.hot?.dispose(stopLocalDiagnostics)
 startupMark('renderer-entry')
+// Only the app writes default-view, so its absence marks a profile's first launch.
+// The introduction stays pending until a launch without files can show it.
+if (localStorage.getItem('introduction') === null)
+  localStorage.setItem(
+    'introduction',
+    localStorage.getItem('default-view') === null ? 'pending' : 'seen',
+  )
+const Introduction = lazy(() =>
+  import('./Introduction').then((module) => ({
+    default: module.Introduction,
+  })),
+)
 const SettingsScreen = lazy(() =>
   import('./SettingsScreen').then((module) => ({
     default: module.SettingsScreen,
@@ -561,6 +573,7 @@ function App() {
     history.navigating = false
   }, [settingsOpen, settingsCategory])
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const [introductionOpen, setIntroductionOpen] = useState(false)
   useEffect(() => {
     if (settingsOpen || paletteOpen) setSettingsLoaded(true)
   }, [settingsOpen, paletteOpen])
@@ -1160,6 +1173,23 @@ function App() {
     if (sidebarResize.overlay) setSettingsSidebarOpen(false)
   }
 
+  function startWriting() {
+    const focus = () =>
+      window.document
+        .querySelector<HTMLElement>(
+          mode === 'normal' ? '.tiptap' : '.cm-content',
+        )
+        ?.focus()
+    // Wait for a closing dialog to restore focus before moving it to the editor.
+    if (!showWelcome) requestAnimationFrame(focus)
+    else
+      void applyDocumentOperation(
+        () => window.hibi.newDocument(),
+        true,
+        true,
+      ).then(focus)
+  }
+
   function openFind() {
     if (!markdownDocument && mode === 'normal') setMode('side-by-side')
     showTitlebar()
@@ -1179,16 +1209,30 @@ function App() {
     startupMark('bootstrap-document-effect')
     window.hibi.bootstrap
       .document()
-      .then(({ info, document, hotkeys, workspace, externalPending }) => {
-        startupMark('bootstrap-document-result')
-        if (active) {
-          initialExternalPending.current = externalPending
-          setWorkspace(workspace)
-          setInfo(info)
-          acceptDocument(document)
-          setHotkeys(hotkeys)
-        }
-      })
+      .then(
+        ({
+          info,
+          document,
+          hotkeys,
+          workspace,
+          externalPending,
+          introduction,
+        }) => {
+          startupMark('bootstrap-document-result')
+          if (active) {
+            initialExternalPending.current = externalPending
+            setIntroductionOpen(
+              introduction &&
+                !externalPending &&
+                localStorage.getItem('introduction') === 'pending',
+            )
+            setWorkspace(workspace)
+            setInfo(info)
+            acceptDocument(document)
+            setHotkeys(hotkeys)
+          }
+        },
+      )
       .catch(() => {
         if (active) setFailed(true)
       })
@@ -2180,6 +2224,13 @@ function App() {
         })),
       },
       {
+        id: 'app.introduction',
+        category: 'app',
+        label: 'Show introduction',
+        keywords: 'welcome onboarding tour help',
+        run: () => setIntroductionOpen(true),
+      },
+      {
         id: 'submenu.shortcuts',
         category: 'settings',
         label: 'Edit keyboard shortcuts',
@@ -2623,19 +2674,7 @@ function App() {
               onOpen={(id) => void openFolder(id)}
               onOpenFile={() => void runCommand('open')}
               onOpenWorkspace={() => void openFolder()}
-              onDismiss={() => {
-                void applyDocumentOperation(
-                  () => window.hibi.newDocument(),
-                  true,
-                  true,
-                ).then(() =>
-                  window.document
-                    .querySelector<HTMLElement>(
-                      mode === 'normal' ? '.tiptap' : '.cm-content',
-                    )
-                    ?.focus(),
-                )
-              }}
+              onDismiss={startWriting}
             />
           ))}
         {!settingsOpen && active && (
@@ -2843,6 +2882,40 @@ function App() {
           onClose={() => setPaletteOpen(false)}
         />
       )}
+      {introductionOpen && (
+        <Suspense fallback={null}>
+          <Introduction
+            platform={info?.platform ?? 'darwin'}
+            hotkeys={hotkeys}
+            defaultView={defaultView}
+            onDefaultView={(view) => {
+              setDefaultView(view)
+              setMode(view)
+            }}
+            markdownMarkers={showMarkdownMarkers}
+            onMarkdownMarkers={setShowMarkdownMarkers}
+            spellCheck={spellCheck}
+            onSpellCheck={setSpellCheck}
+            tabsEnabled={document?.tabsEnabled !== false}
+            tabsBusy={busy}
+            onTabsEnabled={(enabled) =>
+              void applyDocumentOperation(
+                () => window.hibi.setTabsEnabled(enabled),
+                false,
+              )
+            }
+            addonStates={addonHost.states}
+            onAddonEnabled={addonHost.setEnabled}
+            onOpenWorkspace={async () => Boolean(await openFolder())}
+            onOpenFile={() => runCommand('open')}
+            onClose={(reason) => {
+              localStorage.setItem('introduction', 'seen')
+              setIntroductionOpen(false)
+              if (reason === 'start') startWriting()
+            }}
+          />
+        </Suspense>
+      )}
       <WorkspaceSidebar
         overlay={sidebarResize.overlay}
         onDismiss={() => closeSidebar(false)}
@@ -3027,6 +3100,10 @@ function App() {
               showTitlebar()
             }}
             info={info}
+            onShowIntroduction={() => {
+              setSettingsOpen(false)
+              setIntroductionOpen(true)
+            }}
           />
         </Suspense>
       )}

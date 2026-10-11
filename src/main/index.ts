@@ -1186,6 +1186,8 @@ if (!app.requestSingleInstanceLock()) {
           hotkeys,
           workspace: getWorkspace(),
           externalPending: externalFiles.length > 0 || (await workspacePending),
+          introduction:
+            app.isPackaged || app.commandLine.hasSwitch('hibi-introduction'),
         }),
         Promise.all([documentReady, hotkeysReady, workspacePending]),
       )

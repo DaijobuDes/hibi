@@ -7,7 +7,13 @@ import { RecoveryScreen } from './RecoveryScreen'
 import { UpdateSettings } from './UpdateSettings'
 import './hibi-settings.css'
 
-export function HibiSettings({ info }: { info: AppInfo | null }) {
+export function HibiSettings({
+  info,
+  onShowIntroduction,
+}: {
+  info: AppInfo | null
+  onShowIntroduction: () => void
+}) {
   const [preview, setPreview] = useState(false)
   function openExternalLink(event: MouseEvent<HTMLAnchorElement>) {
     event.preventDefault()
@@ -69,6 +75,18 @@ export function HibiSettings({ info }: { info: AppInfo | null }) {
             Join the Discord <ArrowUpRight aria-hidden="true" />
           </a>
         </nav>
+      </div>
+      <h2>Help</h2>
+      <div className="settings-group">
+        <SettingRow
+          id="introduction"
+          label="Introduction"
+          description="Choose an appearance, default view, and addons, and see essential shortcuts."
+        >
+          <Button id="introduction" onClick={onShowIntroduction}>
+            Show introduction
+          </Button>
+        </SettingRow>
       </div>
       <UpdateSettings />
       <h2>Diagnostics</h2>
