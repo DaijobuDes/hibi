@@ -243,3 +243,24 @@ test('navigation waits for a pending open and then advances from its own step', 
     false,
   )
 })
+
+test('a file opened from outside closes the automatic introduction and keeps it pending', {
+  timeout: 45000,
+}, async (t) => {
+  const session = await setup(t, 'hibi-introduction-external-')
+  const file = join(session.temp, 'note.md')
+  await writeFile(file, '# Note\n')
+  await session.launch()
+  const { app, page } = await session.launch('--hibi-introduction')
+  const dialog = introduction(page)
+  await dialog.getByRole('heading', { name: 'Welcome to Hibi' }).waitFor()
+  await app.evaluate(
+    ({ app }, path) => app.emit('open-file', { preventDefault() {} }, path),
+    file,
+  )
+  await dialog.waitFor({ state: 'detached' })
+  await waitForAppState(page, async () =>
+    /# Note/.test((await window.hibi.getDocument()).markdown),
+  )
+  assert.equal(await stored(page), 'pending')
+})

@@ -573,7 +573,9 @@ function App() {
     history.navigating = false
   }, [settingsOpen, settingsCategory])
   const [paletteOpen, setPaletteOpen] = useState(false)
-  const [introductionOpen, setIntroductionOpen] = useState(false)
+  const [introductionOpen, setIntroductionOpen] = useState<
+    'automatic' | 'manual' | null
+  >(null)
   useEffect(() => {
     if (settingsOpen || paletteOpen) setSettingsLoaded(true)
   }, [settingsOpen, paletteOpen])
@@ -1192,7 +1194,7 @@ function App() {
 
   function showIntroduction() {
     setSettingsOpen(false)
-    setIntroductionOpen(true)
+    setIntroductionOpen('manual')
   }
 
   function openFind() {
@@ -1229,7 +1231,9 @@ function App() {
             setIntroductionOpen(
               introduction &&
                 !externalPending &&
-                localStorage.getItem('introduction') === 'pending',
+                localStorage.getItem('introduction') === 'pending'
+                ? 'automatic'
+                : null,
             )
             setWorkspace(workspace)
             setInfo(info)
@@ -1245,6 +1249,12 @@ function App() {
       active = false
     }
   }, [acceptDocument])
+
+  // A file opened from outside takes over; the introduction stays pending for the next launch.
+  useEffect(() => {
+    if (introductionOpen !== 'automatic') return
+    return window.hibi.onExternalDocuments(() => setIntroductionOpen(null))
+  }, [introductionOpen])
 
   const documentLoaded = document !== null
   // biome-ignore lint/correctness/useExhaustiveDependencies: recovery uses live document refs; resubscribing on every render would restart the external-file drain.
@@ -2915,7 +2925,7 @@ function App() {
             onOpenFile={() => runCommand('open')}
             onClose={(reason) => {
               localStorage.setItem('introduction', 'seen')
-              setIntroductionOpen(false)
+              setIntroductionOpen(null)
               if (reason === 'start') startWriting()
             }}
           />
