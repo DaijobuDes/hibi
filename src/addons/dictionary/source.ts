@@ -2,6 +2,7 @@ import { isolateHistory } from '@codemirror/commands'
 import { Transaction } from '@codemirror/state'
 import { type EditorView, ViewPlugin } from '@codemirror/view'
 import { type LookupTarget, wordAt } from './lookup'
+import { readPreferences } from './settings'
 
 export const trackSourceViews = (views: Set<EditorView>) =>
   ViewPlugin.define((view) => {
@@ -17,7 +18,12 @@ export function sourceTarget(
   const { doc } = view.state
   const line = doc.lineAt(from)
   if (to > line.to) return null
-  const found = wordAt(line.text, from - line.from, to - line.from)
+  const found = wordAt(
+    line.text,
+    from - line.from,
+    to - line.from,
+    readPreferences(),
+  )
   if (!found) return null
   const range = { from: line.from + found.from, to: line.from + found.to }
   return {

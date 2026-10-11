@@ -1,23 +1,4 @@
-import type { HostTextRequest, HostTextResult } from '../../shared/host-network'
-
-// ponytail: English lookups need the network and two free services. Bundle an
-// offline lexicon, such as a WordNet download, if they become unreliable.
-export type Meaning = {
-  partOfSpeech: string
-  definitions: { definition: string; example?: string }[]
-  synonyms: string[]
-}
-export type Definitions = { meanings: Meaning[]; license?: string }
-export type Thesaurus = { synonyms: string[]; antonyms: string[] }
-export type LookupFailure =
-  | 'offline'
-  | 'rate-limited'
-  | 'denied'
-  | 'unavailable'
-/** A null value means the service has no entry for the word. */
-export type Lookup<T> =
-  | { ok: true; value: T | null }
-  | { ok: false; reason: LookupFailure }
+import type { Lang } from './providers'
 
 /** One word in a live editor; replace fails if the document changed. */
 export type LookupTarget = {
@@ -26,21 +7,82 @@ export type LookupTarget = {
   focus: () => void
 }
 
-const letter = /[\p{L}\p{M}]/u
-const inner = /[\p{L}\p{M}'’-]/u
+/** Which language a word in each script is looked up in first. */
+export type LanguagePreferences = {
+  han: 'zh' | 'yue' | 'ja'
+  latin: 'en' | 'tl' | 'fr'
+}
 
-/** Expands a caret or trims a selection to one word; offsets are in `text`. */
-export function wordAt(text: string, from: number, to: number) {
-  if (from === to) {
-    while (from > 0 && inner.test(text.charAt(from - 1))) from--
-    while (to < text.length && inner.test(text.charAt(to))) to++
+const kana = /[\p{Script=Hiragana}\p{Script=Katakana}]/u
+const han = /\p{Script=Han}/u
+const letter = /\p{L}/u
+
+const ordered = <T extends Lang>(first: T, all: readonly T[]) => [
+  first,
+  ...all.filter((lang) => lang !== first),
+]
+
+/** Candidate languages in preference order; empty for unsupported scripts such as Hangul. */
+export function detectLangs(
+  term: string,
+  preferences: LanguagePreferences,
+): Lang[] {
+  if (/\p{Script=Hangul}/u.test(term)) return []
+  if (kana.test(term)) return ['ja']
+  if (han.test(term)) return ordered(preferences.han, ['zh', 'yue', 'ja'])
+  if (/\p{Script=Latin}/u.test(term))
+    return ordered(preferences.latin, ['en', 'tl', 'fr'])
+  return []
+}
+
+/** Segmenter locale for the text around a caret; scripts without spaces need it. */
+export function segmentLocale(text: string, preferences: LanguagePreferences) {
+  if (kana.test(text)) return 'ja'
+  if (han.test(text))
+    return { zh: 'zh', yue: 'zh-Hant', ja: 'ja' }[preferences.han]
+  return 'en'
+}
+
+/**
+ * Expands a caret to the word around it, or trims a selection, which is looked
+ * up as written. Offsets are in `text`.
+ */
+export function wordAt(
+  text: string,
+  from: number,
+  to: number,
+  preferences: LanguagePreferences,
+) {
+  if (from !== to) {
+    const selected = text.slice(from, to)
+    const word = selected.trim()
+    const start = from + selected.indexOf(word)
+    return word.length <= 64 && letter.test(word) && !/[\r\n]/.test(word)
+      ? { from: start, to: start + word.length, word }
+      : null
   }
-  while (from < to && !letter.test(text.charAt(from))) from++
-  while (to > from && !letter.test(text.charAt(to - 1))) to--
-  const word = text.slice(from, to)
-  return word.length <= 64 && /^[\p{L}\p{M}'’-]+$/u.test(word)
-    ? { from, to, word }
-    : null
+  // Long paragraphs only need the text near the caret.
+  const offset = Math.max(0, from - 64)
+  const near = text.slice(offset, from + 64)
+  const caret = from - offset
+  // Inside a word wins, then the word ending at the caret, then the one after it.
+  let before: { from: number; to: number; word: string } | null = null
+  for (const part of new Intl.Segmenter(segmentLocale(near, preferences), {
+    granularity: 'word',
+  }).segment(near)) {
+    if (part.index > caret) break
+    const end = part.index + part.segment.length
+    if (!part.isWordLike || !letter.test(part.segment) || end < caret) continue
+    const found = {
+      from: offset + part.index,
+      to: offset + end,
+      word: part.segment,
+    }
+    if (part.index < caret && caret < end) return found
+    if (end === caret) before = found
+    else return before ?? found
+  }
+  return before
 }
 
 /** Capitalizes the replacement when the original word starts with a capital. */
@@ -52,164 +94,27 @@ export function matchCase(original: string, replacement: string) {
     : replacement
 }
 
-function words(values: unknown, limit: number, exclude = '') {
-  const result = new Set<string>()
-  for (const value of Array.isArray(values) ? values : [])
-    if (
-      typeof value === 'string' &&
-      value.trim() &&
-      value.length <= 80 &&
-      value.toLowerCase() !== exclude &&
-      result.size < limit
-    )
-      result.add(value.trim())
-  return [...result]
+const entities: Record<string, string> = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+  nbsp: ' ',
 }
 
-/** Parses a Free Dictionary API entry list, merging meanings by part of speech. */
-export function parseDefinitions(text: string): Definitions | null {
-  const entries: unknown = JSON.parse(text)
-  if (!Array.isArray(entries)) throw new SyntaxError()
-  const meanings = new Map<string, Meaning>()
-  let license: string | undefined
-  for (const entry of entries) {
-    if (typeof entry?.license?.name === 'string') license ??= entry.license.name
-    for (const meaning of Array.isArray(entry?.meanings)
-      ? entry.meanings
-      : []) {
-      const partOfSpeech =
-        typeof meaning?.partOfSpeech === 'string' ? meaning.partOfSpeech : ''
-      const current: Meaning = meanings.get(partOfSpeech) ?? {
-        partOfSpeech,
-        definitions: [],
-        synonyms: [],
-      }
-      meanings.set(partOfSpeech, current)
-      const synonyms = [...current.synonyms, ...words(meaning.synonyms, 12)]
-      for (const item of Array.isArray(meaning.definitions)
-        ? meaning.definitions
-        : []) {
-        if (typeof item?.definition !== 'string' || !item.definition.trim())
-          continue
-        synonyms.push(...words(item.synonyms, 12))
-        if (current.definitions.length < 8)
-          current.definitions.push({
-            definition: item.definition.trim(),
-            ...(typeof item.example === 'string' && item.example.trim()
-              ? { example: item.example.trim() }
-              : {}),
-          })
-      }
-      current.synonyms = words(synonyms, 12)
-    }
-  }
-  const result = [...meanings.values()].filter(
-    (meaning) => meaning.definitions.length,
-  )
-  return result.length
-    ? { meanings: result, ...(license ? { license } : {}) }
-    : null
-}
-
-/** Parses a Datamuse word list, dropping the looked-up word itself. */
-export function parseWords(text: string, word: string): string[] {
-  const items: unknown = JSON.parse(text)
-  if (!Array.isArray(items)) throw new SyntaxError()
-  return words(
-    items.map((item) => item?.word),
-    24,
-    word.toLowerCase(),
-  )
-}
-
-type GetText = (request: HostTextRequest) => Promise<HostTextResult>
-
-async function read(getText: GetText, url: string): Promise<Lookup<string>> {
-  let result: HostTextResult
-  try {
-    result = await getText({ url })
-  } catch {
-    return { ok: false, reason: 'unavailable' }
-  }
-  if (result.ok) return { ok: true, value: result.value.text }
-  if (result.code === 'http-status')
-    return result.status === 404
-      ? { ok: true, value: null }
-      : {
-          ok: false,
-          reason: result.status === 429 ? 'rate-limited' : 'unavailable',
-        }
-  return {
-    ok: false,
-    reason:
-      result.code === 'permission-denied'
-        ? 'denied'
-        : result.code === 'timeout' || result.code === 'unavailable'
-          ? 'offline'
-          : 'unavailable',
-  }
-}
-
-function parsed<T>(
-  response: Lookup<string>,
-  parse: (text: string) => T,
-): Lookup<T> {
-  if (!response.ok || response.value === null) return response as Lookup<T>
-  try {
-    return { ok: true, value: parse(response.value) }
-  } catch {
-    return { ok: false, reason: 'unavailable' }
-  }
-}
-
-/** Sends one request per user lookup and keeps answers for this session only. */
-export function createLookups(getText: GetText) {
-  const cache = new Map<string, Lookup<unknown>>()
-  async function cached<T>(key: string, load: () => Promise<Lookup<T>>) {
-    const hit = cache.get(key)
-    if (hit) return hit as Lookup<T>
-    const result = await load()
-    if (result.ok) cache.set(key, result)
-    return result
-  }
-  const keyOf = (word: string) => word.toLowerCase().replaceAll('’', "'")
-  return {
-    define(word: string) {
-      const key = keyOf(word)
-      return cached(`define:${key}`, async () =>
-        parsed(
-          await read(
-            getText,
-            `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(key)}`,
-          ),
-          parseDefinitions,
-        ),
+/** Plain text from a Wiktionary HTML fragment; results are rendered as text, never HTML. */
+export function plainText(html: string) {
+  return html
+    .replace(/<[^>]*>/g, '')
+    .replace(/&(#x[\da-f]+|#\d+|[a-z]+);/gi, (match, name: string) => {
+      if (name[0] !== '#') return entities[name.toLowerCase()] ?? match
+      const code = Number.parseInt(
+        name.slice(name[1] === 'x' || name[1] === 'X' ? 2 : 1),
+        name[1] === 'x' || name[1] === 'X' ? 16 : 10,
       )
-    },
-    thesaurus(word: string) {
-      const key = keyOf(word)
-      const list = async (relation: 'syn' | 'ant') =>
-        parsed(
-          await read(
-            getText,
-            `https://api.datamuse.com/words?rel_${relation}=${encodeURIComponent(key)}&max=24`,
-          ),
-          (text) => parseWords(text, key),
-        )
-      return cached<Thesaurus>(`thesaurus:${key}`, async () => {
-        const synonyms = await list('syn')
-        if (!synonyms.ok) return synonyms
-        const antonyms = await list('ant')
-        if (!antonyms.ok) return antonyms
-        const value = {
-          synonyms: synonyms.value ?? [],
-          antonyms: antonyms.value ?? [],
-        }
-        return {
-          ok: true,
-          value: value.synonyms.length || value.antonyms.length ? value : null,
-        }
-      })
-    },
-  }
+      return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : match
+    })
+    .replace(/\s+/g, ' ')
+    .trim()
 }

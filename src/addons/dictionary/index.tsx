@@ -2,22 +2,32 @@ import type { EditorView } from '@codemirror/view'
 import type { Editor } from '@tiptap/core'
 import { closeHistory } from '@tiptap/pm/history'
 import { TextSelection } from '@tiptap/pm/state'
-import { Ban, BookOpen, Hourglass, SearchX, WifiOff } from 'lucide-react'
+import {
+  Ban,
+  BookOpen,
+  Download,
+  Hourglass,
+  SearchX,
+  WifiOff,
+} from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { CommandExecutionContext } from '../../shared/foundation-contracts'
 import { defineAddon } from '../api'
 import { Button, PanelMessage } from '../ui'
 import css from './dictionary.css?inline'
-import {
-  createLookups,
-  type Definitions,
-  type Lookup,
-  type LookupTarget,
-  matchCase,
-  type Thesaurus,
-  wordAt,
-} from './lookup'
+import { detectLangs, type LookupTarget, matchCase, wordAt } from './lookup'
 import manifest from './manifest'
+import { datamuseProvider, wiktionaryProvider } from './online'
+import {
+  createRegistry,
+  type Entry,
+  type Gathered,
+  gather,
+  INSTALL_PACK_COMMAND,
+  type Related,
+  type Source,
+} from './providers'
+import { languageNames, readPreferences } from './settings'
 
 function richTarget(
   editor: Editor,
@@ -33,6 +43,7 @@ function richTarget(
     $from.parent.textBetween(0, $from.parent.content.size, undefined, '￼'),
     from - base,
     to - base,
+    readPreferences(),
   )
   if (!found) return null
   const range = { from: base + found.from, to: base + found.to }
@@ -77,6 +88,11 @@ const failures = {
     message:
       'Nothing was sent. Run the command again and allow the request to look up this word.',
   },
+  'not-installed': {
+    icon: <Download size={28} />,
+    title: 'Offline pack not installed',
+    message: 'Install the offline pack for this language, then try again.',
+  },
 }
 
 function Words({
@@ -91,7 +107,7 @@ function Words({
   if (!words.length) return null
   return (
     <section className="dictionary-words" aria-label={label}>
-      <h3>{label}</h3>
+      <h4>{label}</h4>
       <div>
         {words.map((word) => (
           <Button key={word} variant="ghost" onClick={() => choose(word)}>
@@ -103,31 +119,35 @@ function Words({
   )
 }
 
+const credit = (source: Source) => (
+  <p className="dictionary-source">{`${source.name} · ${source.license}`}</p>
+)
+
+type Outcome = Gathered<Entry[]> | Gathered<Related>
+
 function Results({
   word,
   kind,
   load,
   choose,
+  install,
 }: {
   word: string
   kind: 'define' | 'synonyms'
-  load: () => Promise<Lookup<Definitions | Thesaurus>>
+  load: (signal: AbortSignal) => Promise<Outcome>
   choose: (word: string) => void
+  install: () => void
 }) {
   const [attempt, setAttempt] = useState(0)
-  const [result, setResult] = useState<Lookup<Definitions | Thesaurus> | null>(
-    null,
-  )
+  const [result, setResult] = useState<Outcome | null>(null)
   // biome-ignore lint/correctness/useExhaustiveDependencies: attempt reruns the lookup.
   useEffect(() => {
-    let live = true
+    const controller = new AbortController()
     setResult(null)
-    void load().then((value) => {
-      if (live) setResult(value)
+    void load(controller.signal).then((value) => {
+      if (!controller.signal.aborted) setResult(value)
     })
-    return () => {
-      live = false
-    }
+    return () => controller.abort()
   }, [load, attempt])
   if (!result)
     return (
@@ -137,20 +157,35 @@ function Results({
         loading
       />
     )
-  if (!result.ok) {
-    const failure = failures[result.reason]
-    return (
-      <div className="dictionary-results">
-        <PanelMessage icon={failure.icon} title={failure.title} role="alert">
-          {failure.message}
-        </PanelMessage>
-        {result.reason !== 'denied' && (
-          <Button onClick={() => setAttempt(attempt + 1)}>Try again</Button>
-        )}
-      </div>
-    )
-  }
-  if (!result.value)
+  if (!result.found.length) {
+    if (result.failure) {
+      const failure = failures[result.failure]
+      return (
+        <div className="dictionary-results">
+          <PanelMessage icon={failure.icon} title={failure.title} role="alert">
+            {failure.message}
+          </PanelMessage>
+          {result.failure !== 'denied' && (
+            <Button onClick={() => setAttempt(attempt + 1)}>Try again</Button>
+          )}
+        </div>
+      )
+    }
+    const [missing] = result.installable
+    if (missing)
+      return (
+        <div className="dictionary-results">
+          <PanelMessage
+            icon={<Download size={28} />}
+            title={`${languageNames[missing]} needs an offline pack`}
+          >
+            {kind === 'define'
+              ? 'Install an offline pack to look up words in this language.'
+              : 'Install an offline pack to find synonyms in this language.'}
+          </PanelMessage>
+          <Button onClick={install}>Install offline pack</Button>
+        </div>
+      )
     return (
       <PanelMessage
         icon={<SearchX size={28} />}
@@ -159,39 +194,66 @@ function Results({
         {`Nothing was found for “${word}”. Check the spelling or try another form of the word.`}
       </PanelMessage>
     )
-  if ('meanings' in result.value) {
-    const { meanings, license } = result.value
-    return (
-      <div className="dictionary-results">
-        {meanings.map((meaning) => (
-          <section key={meaning.partOfSpeech} className="dictionary-meaning">
-            {meaning.partOfSpeech && <h3>{meaning.partOfSpeech}</h3>}
-            <ol>
-              {meaning.definitions.map((item) => (
-                <li key={item.definition}>
-                  {item.definition}
-                  {item.example && (
-                    <p className="dictionary-example">{item.example}</p>
-                  )}
-                </li>
-              ))}
-            </ol>
-            <Words label="Synonyms" words={meaning.synonyms} choose={choose} />
-          </section>
-        ))}
-        <p className="dictionary-source">
-          {license
-            ? `Definitions from Wiktionary via Free Dictionary API, ${license}.`
-            : 'Definitions from Wiktionary via Free Dictionary API.'}
-        </p>
-      </div>
-    )
   }
+  const shown = new Set<string>()
   return (
     <div className="dictionary-results">
-      <Words label="Synonyms" words={result.value.synonyms} choose={choose} />
-      <Words label="Antonyms" words={result.value.antonyms} choose={choose} />
-      <p className="dictionary-source">Words from the Datamuse API.</p>
+      {result.found.map(({ lang, value }) => {
+        if (!Array.isArray(value))
+          return (
+            <section key={lang} aria-label={languageNames[lang]}>
+              <h3>{languageNames[lang]}</h3>
+              <Words label="Synonyms" words={value.synonyms} choose={choose} />
+              <Words label="Antonyms" words={value.antonyms} choose={choose} />
+              {credit(value.source)}
+            </section>
+          )
+        // Cantonese can share Wiktionary's Chinese entries; show them once.
+        const entries = value.filter((entry) => {
+          const key = `${entry.source.name}:${entry.lang}`
+          if (shown.has(key)) return false
+          shown.add(key)
+          return true
+        })
+        const [first] = entries
+        if (!first) return null
+        return (
+          <section key={lang} aria-label={languageNames[first.lang]}>
+            <h3>{languageNames[first.lang]}</h3>
+            {entries.map((entry, index) => (
+              <div
+                // biome-ignore lint/suspicious/noArrayIndexKey: entries are static per lookup.
+                key={index}
+                className="dictionary-meaning"
+              >
+                {(entry.partOfSpeech || entry.reading) && (
+                  <h4>
+                    {[entry.partOfSpeech, entry.reading]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </h4>
+                )}
+                <ol>
+                  {entry.senses.map((sense) => (
+                    <li key={sense.gloss}>
+                      {sense.gloss}
+                      {sense.example && (
+                        <p className="dictionary-example">{sense.example}</p>
+                      )}
+                    </li>
+                  ))}
+                </ol>
+                <Words
+                  label="Synonyms"
+                  words={entry.synonyms ?? []}
+                  choose={choose}
+                />
+                {credit(entry.source)}
+              </div>
+            ))}
+          </section>
+        )
+      })}
     </div>
   )
 }
@@ -200,7 +262,9 @@ export default defineAddon({
   manifest,
   start(context) {
     context.styles.register('dictionary', css)
-    const lookups = createLookups(context.host.network.getText)
+    const registry = createRegistry()
+    registry.register(wiktionaryProvider(context.host.network.getText))
+    registry.register(datamuseProvider(context.host.network.getText))
     const richEditors = new Set<Editor>()
     const sourceViews = new Set<EditorView>()
     context.editor.registerRich({
@@ -259,15 +323,44 @@ export default defineAddon({
         return
       }
       const { word } = found
-      const load =
+      const langs = detectLangs(word, readPreferences())
+      if (!langs.length) {
+        context.notify(
+          'Lookups support English, Chinese, Cantonese, Japanese, Filipino, and French.',
+        )
+        found.focus()
+        return
+      }
+      const load = (signal: AbortSignal): Promise<Outcome> =>
         kind === 'define'
-          ? () => lookups.define(word)
-          : () => lookups.thesaurus(word)
+          ? gather(registry, langs, 'lookup', (provider, lang) =>
+              provider.lookup(word, lang, signal),
+            )
+          : gather(
+              registry,
+              langs,
+              'related',
+              (provider, lang) =>
+                provider.related?.(word, lang, signal) ?? Promise.resolve(null),
+            )
       const choice = await context.dialogs.open<string>({
         title:
           kind === 'define' ? `Define “${word}”` : `Synonyms for “${word}”`,
         content: ({ close }) => (
-          <Results word={word} kind={kind} load={load} choose={close} />
+          <Results
+            word={word}
+            kind={kind}
+            load={load}
+            choose={close}
+            install={() => {
+              close(null)
+              void context.commands
+                .execute(INSTALL_PACK_COMMAND)
+                .catch(() =>
+                  context.notify('Offline packs are not available yet.'),
+                )
+            }}
+          />
         ),
       }).result
       if (choice && !found.replace(matchCase(word, choice)))
