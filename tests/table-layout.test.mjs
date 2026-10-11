@@ -300,3 +300,25 @@ test('a paste that adds columns keeps the widths of the cells it replaces', () =
   ])
 })
 
+test('moving a block around an unchanged table keeps its decorations', () => {
+  let state = create(
+    table(['a', 'b'], [['1', '2']]),
+    paragraph('one'),
+    paragraph('two'),
+  )
+  state = size(state, 0, 'column', 0, 150)
+  state = size(state, 0, 'row', 1, 60)
+  const before = styles(state)
+  // The block-drag addon swaps siblings by replacing the parent's content.
+  const [first, one, two] = state.doc.content.content
+  state = state.apply(
+    state.tr.replaceWith(
+      0,
+      state.doc.content.size,
+      Fragment.fromArray([first, two, one]),
+    ),
+  )
+  assert.equal(state.doc.child(1).textContent, 'two')
+  assert.deepEqual(plugin.getState(state).tables[0].columns, [150])
+  assert.deepEqual(styles(state), before)
+})

@@ -129,7 +129,16 @@ function mapped(
     const table = tr.doc.nodeAt(result.pos)
     if (table?.type.name !== 'table') return []
     const old = before.nodeAt(sized.pos)
-    if (old === table) return [{ ...sized, pos: result.pos }]
+    if (old === table) {
+      // A replacement around an unchanged table, like a block move, still
+      // drops its decorations.
+      if (
+        result.deleted ||
+        tr.mapping.mapResult(sized.pos + table.nodeSize, -1).deleted
+      )
+        touched.push(result.pos)
+      return [{ ...sized, pos: result.pos }]
+    }
     touched.push(result.pos)
     if (result.deleted) return []
     if (!old) return [{ ...sized, pos: result.pos }]
