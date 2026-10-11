@@ -89,6 +89,11 @@ test('custom words round-trip through plain text', () => {
     { word: 'Hibi' },
     { word: 'gemütlich', lang: 'de' },
   ])
+  // Words starting with `#` are not read back as comments.
+  const tags = [{ word: '#hashtag', lang: 'en' }, { word: '\\#odd' }, { word: 'C#' }]
+  const tagText = exportCustomWords(tags)
+  assert.equal(tagText, '\\#hashtag\ten\n\\\\#odd\nC#')
+  assert.deepEqual(importCustomWords(tagText), tags)
 })
 
 test('custom words load, save, follow other windows, and clear on stop', async () => {

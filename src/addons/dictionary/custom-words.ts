@@ -159,11 +159,19 @@ export function addCustomWord(word: CustomWord) {
   return updateCustomWords((current) => mergeCustomWords(current, added))
 }
 
-/** One word per line: `word`, then optional tab-separated language code and note. */
+/**
+ * One word per line: `word`, then optional tab-separated language code and
+ * note. A backslash goes before a word starting with `#` (after any
+ * backslashes) so it is not read back as a comment.
+ */
 export function exportCustomWords(list: readonly CustomWord[]) {
   return list
     .map((item) =>
-      [item.word, item.lang ?? '', item.note?.replace(/\s+/g, ' ') ?? '']
+      [
+        item.word.replace(/^(?=\\*#)/, '\\'),
+        item.lang ?? '',
+        item.note?.replace(/\s+/g, ' ') ?? '',
+      ]
         .join('\t')
         .trimEnd(),
     )
@@ -177,8 +185,12 @@ export function importCustomWords(text: string) {
       .split(/\r?\n/)
       .filter((line) => line.trim() && !line.trimStart().startsWith('#'))
       .map((line) => {
-        const [word, lang, ...note] = line.split('\t')
-        return { word, lang: lang?.trim(), note: note.join(' ') }
+        const [word = '', lang, ...note] = line.split('\t')
+        return {
+          word: word.trim().replace(/^\\(?=\\*#)/, ''),
+          lang: lang?.trim(),
+          note: note.join(' '),
+        }
       }),
     Infinity,
   )
