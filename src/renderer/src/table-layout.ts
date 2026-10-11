@@ -82,12 +82,61 @@ function rebind(before: Node, tracked: Sized[], doc: Node): Sized[] {
   })
 }
 
-function mapped(tables: Sized[], tr: Transaction): Sized[] {
+/** Start positions of a table's rows, or of its header cells. */
+function starts(table: Node, pos: number, axis: Axis) {
+  const parent = axis === 'row' ? table : table.firstChild
+  const found: number[] = []
+  parent?.forEach((_, offset) => {
+    found.push(pos + (axis === 'row' ? 1 : 2) + offset)
+  })
+  return found
+}
+
+/** Carry each size to wherever its row or column moved; deleted ones drop. */
+function follow(
+  sizes: number[],
+  before: number[],
+  after: number[],
+  tr: Transaction,
+) {
+  const moved: number[] = []
+  sizes.forEach((size, index) => {
+    const result = size ? tr.mapping.mapResult(before[index] ?? -1, 1) : null
+    const target = result ? after.indexOf(result.pos) : -1
+    if (result && !result.deletedAfter && target >= 0) moved[target] = size
+  })
+  return Array.from(moved, (size) => size ?? 0)
+}
+
+function mapped(tables: Sized[], tr: Transaction, before: Node): Sized[] {
   return tables.flatMap((sized) => {
     const result = tr.mapping.mapResult(sized.pos, 1)
-    return !result.deleted && tr.doc.nodeAt(result.pos)?.type.name === 'table'
-      ? [{ ...sized, pos: result.pos }]
-      : []
+    const table = tr.doc.nodeAt(result.pos)
+    if (result.deleted || table?.type.name !== 'table') return []
+    const old = before.nodeAt(sized.pos)
+    if (!old || old === table) return [{ ...sized, pos: result.pos }]
+    // Rows or columns were inserted or deleted: sizes follow their own row or
+    // column instead of staying at its old index.
+    const axis = (name: Axis, sizes: number[]) =>
+      (
+        name === 'row'
+          ? old.childCount === table.childCount
+          : columnCount(old) === columnCount(table)
+      )
+        ? sizes
+        : follow(
+            sizes,
+            starts(old, sized.pos, name),
+            starts(table, result.pos, name),
+            tr,
+          )
+    return [
+      {
+        pos: result.pos,
+        columns: axis('column', sized.columns),
+        rows: axis('row', sized.rows),
+      },
+    ]
   })
 }
 
@@ -233,7 +282,7 @@ export const tableLayout = Extension.create<{ tabId: string }>({
             if (tr.docChanged) {
               tables = tr.getMeta(richSourceEcho)
                 ? bind(state.doc, stored, rebind(before.doc, tables, state.doc))
-                : mapped(tables, tr)
+                : mapped(tables, tr, before.doc)
               const table = handle && tr.mapping.mapResult(handle.table, 1)
               handle =
                 handle &&

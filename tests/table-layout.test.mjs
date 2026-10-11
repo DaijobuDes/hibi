@@ -125,3 +125,69 @@ test('source sync does not move sizes between tables', () => {
     ],
   )
 })
+
+test('row and column sizes follow inserted and deleted rows and columns', () => {
+  let state = create(
+    paragraph('before'),
+    table(
+      ['a', 'b'],
+      [
+        ['1', '2'],
+        ['3', '4'],
+      ],
+    ),
+  )
+  const at = () => tables(state)[0]
+  state = size(state, at(), 'row', 2, 131)
+  state = size(state, at(), 'column', 1, 200)
+  // Insert a body row above body row 1.
+  const rowStart = (index) => {
+    let start = at() + 1
+    for (let i = 0; i < index; i++)
+      start += state.doc.nodeAt(at()).child(i).nodeSize
+    return start
+  }
+  state = state.apply(
+    state.tr.insert(rowStart(1), row('tableCell', ['n', 'n'])),
+  )
+  assert.deepEqual(styles(state)[0].rows, [
+    '',
+    '',
+    '',
+    '--table-row-height: 131px',
+  ])
+  // Delete the new row again.
+  state = state.apply(state.tr.delete(rowStart(1), rowStart(2)))
+  assert.deepEqual(styles(state)[0].rows, ['', '', '--table-row-height: 131px'])
+  // Insert a column before the first one, in every row.
+  let tr = state.tr
+  state.doc.nodeAt(at()).forEach((_, offset, index) => {
+    tr.insert(
+      tr.mapping.map(at() + 1 + offset + 1),
+      schema.nodes[index ? 'tableCell' : 'tableHeader'].create(
+        null,
+        paragraph('x'),
+      ),
+    )
+  })
+  state = state.apply(tr)
+  assert.deepEqual(styles(state)[0].columns, ['', '', 'width: 200px'])
+  // Delete the sized column.
+  tr = state.tr
+  state.doc.nodeAt(at()).forEach((current, offset) => {
+    const cell =
+      at() +
+      1 +
+      offset +
+      1 +
+      current.child(0).nodeSize +
+      current.child(1).nodeSize
+    tr.delete(
+      tr.mapping.map(cell),
+      tr.mapping.map(cell + current.child(2).nodeSize),
+    )
+  })
+  state = state.apply(tr)
+  assert.deepEqual(styles(state)[0].columns, ['', ''])
+  assert.deepEqual(plugin.getState(state).tables[0].columns, [])
+})
