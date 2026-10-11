@@ -48,19 +48,27 @@ export function entityMarkdown(extension: AnyExtension) {
     })
   if (extension.name === 'link')
     return extension.extend({
-      parseMarkdown: (token: MarkdownToken, helpers: MarkdownParseHelpers) =>
-        helpers.applyMark(
+      parseMarkdown: (token: MarkdownToken, helpers: MarkdownParseHelpers) => {
+        const literal = token.autolink && token.raw?.startsWith('<')
+        return helpers.applyMark(
           'link',
           token.autolink
-            ? [helpers.createTextNode(token.text ?? '')]
+            ? [
+                helpers.createTextNode(
+                  literal
+                    ? (token.text ?? '')
+                    : decodeMarkdownEntities(token.text ?? ''),
+                ),
+              ]
             : helpers.parseInline(token.tokens ?? []),
           {
-            href: token.autolink
+            href: literal
               ? token.href
               : decodeMarkdownEntities(token.href ?? ''),
             title: decodeMarkdownEntities(token.title ?? '') || null,
           },
-        ),
+        )
+      },
       renderMarkdown: (node: JSONContent, helpers: MarkdownRendererHelpers) => {
         const href = encodeLinkAttribute(node.attrs?.href ?? '').replace(
           /[() ]/g,

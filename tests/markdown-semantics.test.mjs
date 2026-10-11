@@ -116,6 +116,7 @@ test('schema-only consumption matches current editor declarations without creati
     '# &copy;\n\n> &amp;copy;\n\n- &nbsp;\n- &#38;lt;',
     '[&copy;](https://example.com/?a=&copy;&b=&amp;copy; "&quot;title&quot;")',
     '<https://example.com/?a=&copy;> and `&copy; &#169;`',
+    'https://x.com/?a=1&amp;b=2 and https://x.com/?a=1&b=2',
     '| &copy; | &#38;lt; |\n|---|---|\n| &nbsp; | &#169; |',
   ]) {
     const input = freeze(tokens(source)),

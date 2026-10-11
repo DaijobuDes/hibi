@@ -1069,6 +1069,37 @@ test('native HTML entities decode once and survive full and cached serialization
   }
 })
 
+test('bare GFM URLs decode entities once without changing link targets', () => {
+  const { core, parser, options } = markdownConfiguration([
+    { markedOptions: { gfm: true } },
+  ])
+  const schema = getSchema(core)
+  const manager = new MarkdownManager({
+    extensions: core,
+    marked: parser,
+    markedOptions: options,
+  })
+  for (const source of [
+    'https://x.com/?a=1&amp;b=2',
+    'https://x.com/?a=1&b=2',
+  ]) {
+    const doc = schema.nodeFromJSON(manager.parse(source))
+    assert.equal(doc.textContent, 'https://x.com/?a=1&b=2')
+    assert.equal(
+      doc.firstChild.firstChild.marks[0].attrs.href,
+      'https://x.com/?a=1&b=2',
+    )
+    for (const blockLocal of [false, true]) {
+      const saved = markdownSerializer(manager, blockLocal)(doc).source
+      assert.equal(
+        saved,
+        '[https://x.com/?a=1&amp;b=2](https://x.com/?a=1&amp;b=2)',
+      )
+      assert.ok(schema.nodeFromJSON(manager.parse(saved)).eq(doc))
+    }
+  }
+})
+
 test('typed and pasted text keeps literal Unicode and interior whitespace', async (t) => {
   const { core, parser, options } = markdownConfiguration([])
   const schema = getSchema(core)
