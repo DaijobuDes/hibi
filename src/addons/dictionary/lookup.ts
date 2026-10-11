@@ -113,7 +113,7 @@ export function plainText(html: string) {
     let resume = at + 1
     let separator = ''
     if (html.startsWith('<!--', at)) {
-      const close = commentCanEnd ? html.indexOf('-->', at + 4) : -1
+      const close: number = commentCanEnd ? html.indexOf('-->', at + 4) : -1
       commentCanEnd = close >= 0
       if (commentCanEnd) end = close + 3
     } else {
