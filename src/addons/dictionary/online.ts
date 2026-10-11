@@ -133,8 +133,7 @@ export function wiktionaryProvider(getText: GetText): DictionaryProvider {
         const text = await page(title)
         if (text === null) continue
         try {
-          const entries = parseWiktionary(text, title, lang)
-          if (entries.length) return entries
+          return parseWiktionary(text, title, lang)
         } catch {
           throw new DictionaryError('unavailable')
         }

@@ -34,9 +34,8 @@ test('dictionary looks up the caret word and replaces it with one undo step in b
   page.setDefaultTimeout(8000)
   await waitForDocumentEditor(app, page)
   const responses = {
-    'https://api.dictionaryapi.dev/api/v2/entries/en/happy': await fixture(
-      'dictionaryapi-happy.json',
-    ),
+    'https://en.wiktionary.org/api/rest_v1/page/definition/happy':
+      await fixture('wiktionary-happy.json'),
     'https://api.datamuse.com/words?rel_syn=happy&max=24': await fixture(
       'datamuse-synonyms-happy.json',
     ),
@@ -82,9 +81,9 @@ test('dictionary looks up the caret word and replaces it with one undo step in b
   const define = page.getByRole('dialog', { name: 'Define “Happy”' })
   await define.getByText('Music makes me feel happy.').waitFor()
   await define.getByRole('heading', { name: 'adjective' }).waitFor()
-  assert.equal(await define.locator('ol').first().locator('li').count(), 2)
+  await define.getByText('Wiktionary · CC BY-SA 4.0').first().waitFor()
   assert.deepEqual(await requests(), [
-    'dictionary https://api.dictionaryapi.dev/api/v2/entries/en/happy',
+    'dictionary https://en.wiktionary.org/api/rest_v1/page/definition/happy',
   ])
   await page.keyboard.press('Escape')
   await define.waitFor({ state: 'detached' })

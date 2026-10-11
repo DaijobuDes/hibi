@@ -7,8 +7,9 @@ export default {
   version: '1.0.0',
   apiVersion: 2,
   description:
-    'Look up English definitions and synonyms. Words you look up are sent to the Free Dictionary API and Datamuse.',
+    'Look up definitions and synonyms in English, Chinese, Cantonese, Japanese, Filipino, and French. Words you look up are sent to Wiktionary and Datamuse.',
   defaultEnabled: false,
   startup: 'background',
+  settings: { category: 'addons', icon: 'book-open' },
   authors: [authors.may],
 } satisfies AddonManifest

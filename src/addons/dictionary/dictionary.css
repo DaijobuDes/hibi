@@ -6,8 +6,16 @@
 .dictionary-results > .ui-button {
   align-self: center;
 }
-.dictionary-meaning h3,
-.dictionary-words h3 {
+.dictionary-results h3 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-ui);
+  font-weight: 600;
+}
+.dictionary-meaning + .dictionary-meaning {
+  margin-top: var(--space-3);
+}
+.dictionary-meaning h4,
+.dictionary-words h4 {
   margin: 0 0 var(--space-1);
   color: var(--muted);
   font-size: var(--text-sm);
@@ -35,7 +43,7 @@
   gap: var(--space-1);
 }
 .dictionary-source {
-  margin: 0;
+  margin: var(--space-1) 0 0;
   color: var(--muted);
   font-size: var(--text-sm);
 }
