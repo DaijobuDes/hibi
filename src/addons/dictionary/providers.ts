@@ -103,7 +103,10 @@ export type Gathered<T> = {
   installable: Lang[]
 }
 
-/** Asks each language's providers in order until one has an answer. */
+/**
+ * Asks installed offline packs for every language first. Online providers run
+ * only when no pack answers, in language order, stopping at the first answer.
+ */
 export async function gather<T>(
   registry: DictionaryRegistry,
   langs: readonly Lang[],
@@ -111,22 +114,34 @@ export async function gather<T>(
   ask: (provider: DictionaryProvider, lang: Lang) => Promise<T | null>,
 ): Promise<Gathered<T>> {
   const result: Gathered<T> = { found: [], installable: [] }
+  const candidates = []
   for (const lang of langs) {
     const providers = await registry.providers(lang, need)
     if (!providers.length && (await registry.installable(lang)))
       result.installable.push(lang)
-    for (const provider of providers) {
-      try {
-        const value = await ask(provider, lang)
-        if (value === null || (Array.isArray(value) && !value.length)) continue
-        result.found.push({ lang, value })
-        break
-      } catch (error) {
-        result.failure ??=
-          error instanceof DictionaryError ? error.reason : 'unavailable'
+    candidates.push({ lang, providers })
+  }
+  for (const kind of ['offline', 'online'] as const) {
+    for (const { lang, providers } of candidates) {
+      for (const provider of providers) {
+        if (provider.kind !== kind) continue
+        try {
+          const value = await ask(provider, lang)
+          if (value === null || (Array.isArray(value) && !value.length))
+            continue
+          result.found.push({ lang, value })
+          break
+        } catch (error) {
+          result.failure ??=
+            error instanceof DictionaryError ? error.reason : 'unavailable'
+        }
       }
+      if (kind === 'online' && result.found.length) break
+    }
+    if (result.found.length) {
+      delete result.failure
+      return result
     }
   }
-  if (result.found.length) delete result.failure
   return result
 }
