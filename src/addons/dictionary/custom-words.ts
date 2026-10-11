@@ -21,7 +21,7 @@ const key = (word: CustomWord) =>
   `${word.word.normalize('NFC').toLowerCase()}\u0000${word.lang ?? ''}`
 
 /** Valid words only, first spelling kept for each word and language. */
-export function customWords(value: unknown): CustomWord[] {
+export function customWords(value: unknown, limit = MAX_WORDS): CustomWord[] {
   if (!Array.isArray(value)) return []
   const seen = new Set<string>()
   const words: CustomWord[] = []
@@ -41,7 +41,7 @@ export function customWords(value: unknown): CustomWord[] {
     if (seen.has(key(entry))) continue
     seen.add(key(entry))
     words.push(Object.freeze(entry))
-    if (words.length === MAX_WORDS) break
+    if (words.length === limit) break
   }
   return words
 }
@@ -107,7 +107,12 @@ export function updateCustomWords(
   const run = saving.then(async () => {
     if (!handle)
       throw new Error('Turn on Dictionary and thesaurus to keep custom words.')
-    const result = await handle.set(customWords(change(words)))
+    const next = customWords(change(words), Infinity)
+    if (next.length > MAX_WORDS)
+      throw new Error(
+        'You can keep up to 5,000 custom words. Remove some to add more.',
+      )
+    const result = await handle.set(next)
     if (result.status === 'conflict')
       throw new Error('Custom words changed in another window. Try again.')
     if (result.status !== 'saved')
@@ -142,7 +147,8 @@ export function mergeCustomWords(
   incoming: readonly CustomWord[],
 ) {
   const merged = new Map(current.map((item) => [key(item), item]))
-  for (const item of customWords(incoming)) merged.set(key(item), item)
+  for (const item of customWords(incoming, Infinity))
+    merged.set(key(item), item)
   return [...merged.values()]
 }
 
@@ -174,6 +180,7 @@ export function importCustomWords(text: string) {
         const [word, lang, ...note] = line.split('\t')
         return { word, lang: lang?.trim(), note: note.join(' ') }
       }),
+    Infinity,
   )
 }
 

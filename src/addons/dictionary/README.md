@@ -38,7 +38,7 @@ Suggestions never send anything online. They work in the formatted editor and in
 
 Add your own words, such as names, slang, or terms from your field, so lookups and suggestions know them. Choose **Add to dictionary** when the side view or **Define word** finds no entry, or run **Add word to dictionary** from the command palette or the editor's right-click menu to add the word at the cursor.
 
-**Settings → Dictionary and thesaurus → Custom words** lists your words. Give a word a language and a note, such as its meaning, or remove it. A word without a language belongs to the first language Hibi tries for it. **Export as text** copies your words with one word per line, followed by a tab, the language code, and the note when they have them. Paste that text and choose **Import text** to add the words on another computer; imported words update matching ones.
+**Settings → Dictionary and thesaurus → Custom words** lists your words. Give a word a language and a note, such as its meaning, or remove it. A word without a language belongs to the first language Hibi tries for it. **Export as text** copies your words with one word per line, followed by a tab, the language code, and the note when they have them. Paste that text and choose **Import text** to add the words on another computer; imported words update matching ones. You can keep up to 5,000 words; a change that would go over is not saved, and the text or word you entered stays so you can trim it.
 
 Custom words are shown as **Your word** in lookups, with your note as the definition. An entry from an installed pack for the same word and language comes first. Custom words are kept with your Hibi settings on this computer, not in a workspace, and are never sent online.
 

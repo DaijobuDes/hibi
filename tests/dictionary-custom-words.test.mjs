@@ -140,6 +140,27 @@ test('queued field edits apply to the word as it is saved', async () => {
   close()
 })
 
+test('custom words refuse to go over capacity without saving part of a change', async () => {
+  const full = Array.from({ length: 4999 }, (_, index) => ({ word: `w${index}` }))
+  const { handle, context } = storage(full)
+  const close = await openCustomWords(context)
+  await assert.rejects(
+    updateCustomWords((current) =>
+      mergeCustomWords(current, importCustomWords('kilig\ngigil')),
+    ),
+    /up to 5,000 custom words/,
+  )
+  assert.equal(listCustomWords().length, 4999)
+  await addCustomWord({ word: 'kilig' })
+  await assert.rejects(addCustomWord({ word: 'gigil' }), /up to 5,000/)
+  assert.equal(handle.snapshot().value.length, 5000)
+  // Editing a word already listed still saves at capacity.
+  await addCustomWord({ word: 'kilig', note: 'giddy' })
+  assert.equal(listCustomWords().at(-1).note, 'giddy')
+  assert.equal(importCustomWords(full.map(({ word }) => word).join('\n') + '\nx').length, 5000)
+  close()
+})
+
 test('custom words keep a newer revision over a late save reply or notification', async () => {
   // A held save reply, as the storage handle delivers it: its snapshot keeps
   // the newer revision that arrived first.
