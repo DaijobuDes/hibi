@@ -88,9 +88,13 @@ test('dictionary parses captured Wiktionary and Datamuse responses', async () =>
     ['sad', 'distressed', 'unhappy', 'dysphoric'],
   )
   assert.deepEqual(
-    parseWords('[{"word":"Happy"},{"word":7},{"word":"glad"}]', 'happy'),
+    parseWords('[{"word":"Happy"},{"word":" "},{"word":"glad"}]', 'happy'),
     ['glad'],
   )
+  assert.deepEqual(parseWords('[]', 'happy'), [])
+  // Malformed members fail the whole answer so it is retried, not cached.
+  for (const text of ['[null]', '[{"word":42}]', '["glad"]', '[[]]'])
+    assert.throws(() => parseWords(text, 'happy'), SyntaxError)
   assert.equal(
     plainText('<a href="/wiki/x">fish</a> &amp; <i>chips</i>&#33; &#x2014;'),
     'fish & chips! —',
@@ -207,6 +211,22 @@ test('dictionary providers map host failures, share pages, and cache answers', a
   assert.deepEqual(requests, [
     'https://api.datamuse.com/words?rel_syn=happy&max=24',
     'https://api.datamuse.com/words?rel_ant=happy&max=24',
+  ])
+
+  // A malformed list is retried; a valid empty list is kept.
+  requests.length = 0
+  const text = (text) => ({ ok: true, value: { text } })
+  responses.push(text('[null]'))
+  await assert.rejects(datamuse.related('odd', 'en', signal), {
+    reason: 'unavailable',
+  })
+  responses.push(text('[]'), text('[]'))
+  assert.equal(await datamuse.related('odd', 'en', signal), null)
+  assert.equal(await datamuse.related('odd', 'en', signal), null)
+  assert.deepEqual(requests, [
+    'https://api.datamuse.com/words?rel_syn=odd&max=24',
+    'https://api.datamuse.com/words?rel_syn=odd&max=24',
+    'https://api.datamuse.com/words?rel_ant=odd&max=24',
   ])
 })
 

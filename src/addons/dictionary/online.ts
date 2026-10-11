@@ -190,11 +190,14 @@ export function wiktionaryProvider(getText: GetText): DictionaryProvider {
 /** Parses a Datamuse word list, dropping the looked-up word itself. */
 export function parseWords(text: string, word: string): string[] {
   const items: unknown = JSON.parse(text)
-  if (!Array.isArray(items)) throw new SyntaxError()
+  if (
+    !Array.isArray(items) ||
+    !items.every((item) => isRecord(item) && typeof item.word === 'string')
+  )
+    throw new SyntaxError()
   const words = new Set<string>()
-  for (const item of items)
+  for (const item of items as { word: string }[])
     if (
-      typeof item?.word === 'string' &&
       item.word.trim() &&
       item.word.length <= 80 &&
       item.word.toLowerCase() !== word.toLowerCase() &&
