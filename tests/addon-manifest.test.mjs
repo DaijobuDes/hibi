@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict'
+import { readdir } from 'node:fs/promises'
+import { join } from 'node:path'
 import test from 'node:test'
+import { build } from 'esbuild'
 import {
   ADDON_API_VERSION,
   compatibleAddonManifest,
 } from '../src/addons/api.ts'
+import { parseAddonNetwork } from '../src/main/host-network.ts'
 
 test('addon manifests require release versions while accepting versioned v1 packages', () => {
   assert.equal(ADDON_API_VERSION, 2)
@@ -20,4 +24,116 @@ test('addon manifests require release versions while accepting versioned v1 pack
       compatibleAddonManifest({ apiVersion, version: '1.0.0' }),
       false,
     )
+})
+
+test('network declarations retain exact public https origins', () => {
+  for (const origins of [
+    [],
+    ['https://en.wiktionary.org', 'https://api.datamuse.com'],
+    ['https://example.com:8443', 'https://xn--bcher-kva.example'],
+  ]) {
+    assert.deepEqual(parseAddonNetwork({ origins }), { origins })
+    assert.notStrictEqual(parseAddonNetwork({ origins }).origins, origins)
+  }
+})
+
+test('network declarations reject malformed metadata and unsafe origins', () => {
+  for (const value of [
+    undefined,
+    null,
+    false,
+    [],
+    {},
+    { origins: null },
+    { origins: 'https://example.com' },
+    { origins: [], extra: true },
+  ])
+    assert.throws(() => parseAddonNetwork(value), /exact public HTTPS origins/)
+  for (const origin of [
+    null,
+    5,
+    {},
+    '',
+    '*',
+    'https://*.example.com',
+    'https://example.*',
+    'http://example.com',
+    'ftp://example.com',
+    '//example.com',
+    'https://example.com/',
+    'https://example.com/path',
+    'https://example.com?query',
+    'https://example.com#fragment',
+    'https://user@example.com',
+    'https://user:pass@example.com',
+    'https://@example.com',
+    'https://example.com\\\\path',
+    ' https://example.com',
+    'https://example.com ',
+    'https://exa\nmple.com',
+    'HTTPS://example.com',
+    'https://EXAMPLE.com',
+    'https://%65xample.com',
+    'https://example.com:443',
+    'https://example.com:0',
+    'https://example.com:65536',
+    'https://127.0.0.1',
+    'https://127.1',
+    'https://2130706433',
+    'https://0x7f000001',
+    'https://0177.0.0.1',
+    'https://10.0.0.1',
+    'https://169.254.1.1',
+    'https://8.8.8.8',
+    'https://[::1]',
+    'https://[fc00::1]',
+    'https://[fe80::1]',
+    'https://[::ffff:127.0.0.1]',
+    'https://[2606:4700:4700::1111]',
+    'https://localhost',
+    'https://intranet',
+    'https://api.localhost',
+    'https://server.local',
+    'https://server.lan',
+    'https://server.internal',
+    'https://home.arpa',
+    'https://router.home.arpa',
+    'https://localhost.',
+    'https://example..com',
+    'https://-example.com',
+    'https://example-.com',
+    'https://under_score.example',
+    `https://${'a'.repeat(64)}.com`,
+  ])
+    assert.throws(
+      () => parseAddonNetwork({ origins: [origin] }),
+      /exact public HTTPS origins/,
+      String(origin),
+    )
+})
+
+test('bundled addon manifests have valid network declarations', async () => {
+  const files = await readdir('src/addons', { recursive: true })
+  const { outputFiles } = await build({
+    entryPoints: files
+      .filter((path) => path.endsWith('manifest.ts'))
+      .map((path) => join('src/addons', path)),
+    outdir: 'out/manifests',
+    bundle: true,
+    write: false,
+    platform: 'node',
+    format: 'esm',
+    loader: { '.md': 'text' },
+  })
+  assert.ok(outputFiles.length > 0)
+  for (const file of outputFiles) {
+    const { default: manifest } = await import(
+      `data:text/javascript;base64,${Buffer.from(file.contents).toString('base64')}`
+    )
+    if (manifest.network !== undefined)
+      assert.doesNotThrow(
+        () => parseAddonNetwork(manifest.network),
+        manifest.id,
+      )
+  }
 })

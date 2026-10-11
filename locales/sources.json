@@ -982,6 +982,9 @@
   "dc273117482b": [
     "src/addons/graph/Panel.tsx"
   ],
+  "5c2a671f5573": [
+    "src/renderer/src/AddonSettings.tsx"
+  ],
   "d835039d17f2": [
     "src/renderer/src/SettingsScreen.tsx"
   ],
@@ -4508,6 +4511,9 @@
   ],
   "2440b28c8988": [
     "src/main/sideload.ts"
+  ],
+  "d62200507764": [
+    "src/main/host-network.ts"
   ],
   "9d855d273e81": [
     "src/main/sideload.ts"

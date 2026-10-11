@@ -32,6 +32,7 @@ import { parseDependencies } from '../shared/dependencies'
 import { parseSyntaxDescriptors } from '../shared/preservation'
 import type { InstalledAddon } from '../shared/sideload'
 import { downloadRepository, repositoryUrl } from './addon-repository'
+import { parseAddonNetwork } from './host-network'
 
 type Package = InstalledAddon & { entry: string; hash: string; files: string[] }
 let installed: Package[] = []
@@ -165,6 +166,9 @@ function manifest(value: unknown): {
     version: data.version,
     authors: data.authors,
     defaultEnabled: false,
+    ...(data.network === undefined
+      ? {}
+      : { network: parseAddonNetwork(data.network) }),
     ...(data.dependencies === undefined
       ? {}
       : { dependencies: parseDependencies(data.dependencies) }),
