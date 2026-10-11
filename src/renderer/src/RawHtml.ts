@@ -11,8 +11,18 @@ import { markdownSyntax } from './markdown-syntax.ts'
 
 let lastCopiedHtml = ''
 const trustedClipboardElements = new WeakSet<Element>()
-const clipboardHtml = (html: string) =>
-  html.replace(/^<meta charset=['"]utf-8['"]>/i, '')
+/** Strip native clipboard envelopes without rewriting the fragment. */
+export function clipboardHtml(html: string) {
+  const fragment = /<!--StartFragment-->([\s\S]*?)<!--EndFragment-->/i.exec(
+    html,
+  )?.[1]
+  if (fragment !== undefined) return fragment
+  return html
+    .replace(/^\s*<html\b[^>]*>([\s\S]*)<\/html>\s*$/i, '$1')
+    .replace(/^\s*<head\b[^>]*>[\s\S]*?<\/head>/i, '')
+    .replace(/^\s*<body\b[^>]*>([\s\S]*)<\/body>\s*$/i, '$1')
+    .replace(/^(?:<meta\b[^>]*>)+/i, '')
+}
 const htmlBreak = /^<br\s*\/?>$/i
 
 const voidTags = new Set(
@@ -151,9 +161,9 @@ export const rawHtml = (['inline', 'block'] as const).map((level) => {
           props: {
             clipboardParser,
             transformPastedHTML(html) {
-              internalPaste =
-                !!lastCopiedHtml && clipboardHtml(html) === lastCopiedHtml
-              return html
+              const fragment = clipboardHtml(html)
+              internalPaste = !!lastCopiedHtml && fragment === lastCopiedHtml
+              return internalPaste ? fragment : html
             },
           },
           view(view) {

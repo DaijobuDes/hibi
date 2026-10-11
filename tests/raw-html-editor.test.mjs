@@ -3,9 +3,13 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
+import { clipboardHtml } from '../src/renderer/src/RawHtml.ts'
 import { electron, waitForDocumentEditor } from './electron.mjs'
 import { clickMenu, replaceRichText, replaceSourceText } from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
+
+const windowsClipboard = (html) =>
+  `<html>\r\n<body>\r\n<!--StartFragment-->${html}<!--EndFragment-->\r\n</body>\r\n</html>`
 
 test('raw HTML stays inert and exact through rich edits, atom deletion, undo, and source edits', {
   timeout: 30000,
@@ -280,6 +284,26 @@ test('raw HTML stays inert and exact through rich edits, atom deletion, undo, an
   await page.evaluate(() => window.hibi.saveDocument(false))
   assert.equal(await readFile(file, 'utf8'), sourceEdited)
 
+  const clipboardDocument = await rich.evaluate((element) =>
+    element.editor.getJSON(),
+  )
+  t.beforeEach(async () => {
+    await rich.evaluate((element, doc) => {
+      element.editor.view.dragging = null
+      element.editor.commands.setContent(doc)
+      element.editor.commands.setTextSelection(1)
+    }, clipboardDocument)
+    // An empty selection records an empty payload, clearing clipboard trust.
+    assert.equal((await copy()).html, '')
+    await app.evaluate(({ clipboard }) => clipboard.clear())
+    await waitForAsync(
+      page,
+      async (markdown) =>
+        (await window.hibi.getDocument()).markdown === markdown,
+      sourceEdited,
+    )
+  })
+
   await t.test('internal copy/paste restores chips', async () => {
     for (const [level, source] of [
       ['inline', '<kbd>y</kbd>'],
@@ -343,10 +367,7 @@ test('raw HTML stays inert and exact through rich edits, atom deletion, undo, an
       })
       await waitForAsync(page, () => window.__nativePaste !== null)
       const pastedHtml = await page.evaluate(() => window.__nativePaste)
-      assert.equal(
-        pastedHtml.replace(/^<meta charset=['"]utf-8['"]>/i, ''),
-        copied.html,
-      )
+      assert.equal(clipboardHtml(pastedHtml), copied.html)
       t.diagnostic(
         `native ${level} clipboard prefix: ${JSON.stringify(pastedHtml.slice(0, pastedHtml.indexOf(copied.html)))}`,
       )
@@ -354,6 +375,30 @@ test('raw HTML stays inert and exact through rich edits, atom deletion, undo, an
         await rich.evaluate((element) => element.editor.getJSON()),
         before,
       )
+      await inert()
+    }
+  })
+
+  await t.test('Windows fragments restore only the copied chips', async () => {
+    for (const level of ['inline', 'block']) {
+      await rich.locator(`[data-raw-html="${level}"]`).first().click()
+      const before = await rich.evaluate((element) => element.editor.getJSON())
+      const copied = await copy()
+      const outside = copied.html.replace('</code>', 'outside</code>')
+      await paste({
+        ...copied,
+        html: windowsClipboard(copied.html)
+          .replace(
+            '<body>',
+            `<head><meta charset="utf-8"></head><body>${outside}`,
+          )
+          .replace('</body>', `${outside}</body>`),
+      })
+      assert.deepEqual(
+        await rich.evaluate((element) => element.editor.getJSON()),
+        before,
+      )
+      assert.equal(await serialize(), sourceEdited)
       await inert()
     }
   })
@@ -440,7 +485,8 @@ test('raw HTML stays inert and exact through rich edits, atom deletion, undo, an
       })
       return editor.getJSON()
     })
-    await paste(await copy())
+    const copied = await copy()
+    await paste({ ...copied, html: windowsClipboard(copied.html) })
     assert.deepEqual(
       await rich.evaluate((element) => element.editor.getJSON()),
       before,
@@ -470,9 +516,11 @@ test('raw HTML stays inert and exact through rich edits, atom deletion, undo, an
           }
           await paste({
             ...copied,
-            html: stale
-              ? copied.html
-              : copied.html.replace('</code>', 'forged</code>'),
+            html: windowsClipboard(
+              stale
+                ? copied.html
+                : copied.html.replace('</code>', 'forged</code>'),
+            ),
           })
           assert.equal(
             await rich.locator(`[data-raw-html="${level}"]`).count(),
