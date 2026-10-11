@@ -1,5 +1,6 @@
 import type { AddonManifest } from '../api'
 import { authors } from '../authors'
+import { packLicenses } from './pack-licenses'
 
 export default {
   id: 'dictionary',
@@ -11,4 +12,5 @@ export default {
   defaultEnabled: false,
   startup: 'background',
   authors: [authors.may],
+  licenses: packLicenses,
 } satisfies AddonManifest

@@ -8,6 +8,7 @@ export async function download(
     maxBytes: number
     signal: AbortSignal
     accept?: string
+    allowedOrigins?: readonly string[]
     write: (chunk: Uint8Array) => void | Promise<void>
     progress?: (bytes: number, total: number | null) => void
     fetch?: typeof fetch
@@ -16,6 +17,8 @@ export async function download(
   let url = addonPackageUrl(source)
   const request = options.fetch ?? fetch
   for (let redirects = 0; redirects <= 5; redirects++) {
+    if (options.allowedOrigins && !options.allowedOrigins.includes(url.origin))
+      throw new Error('The download redirected to an unapproved host.')
     const response = await request(url, {
       signal: options.signal,
       redirect: 'manual',

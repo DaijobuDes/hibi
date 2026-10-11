@@ -1,0 +1,147 @@
+<?xml version='1.0' encoding='utf-8'?>
+<LexicalResource><Lexicon id="oewn" label="Open English Wordnet" language="en" email="english-wordnet@googlegroups.com" license="https://creativecommons.org/licenses/by/4.0" version="2025" url="https://github.com/globalwordnet/english-wordnet"><LexicalEntry id="oewn-Canis_familiaris-n"><Lemma writtenForm="Canis familiaris" partOfSpeech="n" />
+      <Sense id="oewn-canis_familiaris__1.05.00.." synset="oewn-02086723-n" />
+    </LexicalEntry><LexicalEntry id="oewn-child-n"><Lemma writtenForm="child" partOfSpeech="n" />
+      <Form writtenForm="children" />
+      <Sense id="oewn-child__1.18.00.." synset="oewn-09937051-n">
+        </Sense>
+      </LexicalEntry><LexicalEntry id="oewn-dog-n"><Lemma writtenForm="dog" partOfSpeech="n">
+        <Pronunciation variety="GB">dɒɡ</Pronunciation>
+        <Pronunciation variety="US">dɔɡ</Pronunciation>
+      </Lemma>
+      <Sense id="oewn-dog__1.05.00.." synset="oewn-02086723-n" />
+      </LexicalEntry><LexicalEntry id="oewn-domestic_dog-n"><Lemma writtenForm="domestic dog" partOfSpeech="n" />
+      <Sense id="oewn-domestic_dog__1.05.00.." synset="oewn-02086723-n" />
+    </LexicalEntry><LexicalEntry id="oewn-fry-n"><Lemma writtenForm="fry" partOfSpeech="n" />
+      <Sense id="oewn-fry__1.18.00.." synset="oewn-09937051-n" />
+    </LexicalEntry><LexicalEntry id="oewn-go-v"><Lemma writtenForm="go" partOfSpeech="v">
+        <Pronunciation variety="GB">ɡəʊ</Pronunciation>
+        <Pronunciation variety="US">ɡoʊ</Pronunciation>
+        <Pronunciation variety="AU">ɡəʉ</Pronunciation>
+        <Pronunciation variety="NZ">ɡɐʉ</Pronunciation>
+      </Lemma>
+      <Form writtenForm="gone" />
+      <Form writtenForm="went" />
+      <Sense id="oewn-go__2.38.00.." subcat="via via-pp vii vii-pp" synset="oewn-01839438-v">
+        </Sense>
+      </LexicalEntry><LexicalEntry id="oewn-happy-a"><Lemma writtenForm="happy" partOfSpeech="a">
+        <Pronunciation variety="GB">ˈhæpiː</Pronunciation>
+        <Pronunciation variety="US">ˈhæpi</Pronunciation>
+      </Lemma>
+      <Form writtenForm="happier" />
+      <Form writtenForm="happiest" />
+      <Sense id="oewn-happy__3.00.00.." synset="oewn-01151786-a">
+        <SenseRelation relType="antonym" target="oewn-unhappy__3.00.00.." />
+        </Sense>
+      </LexicalEntry><LexicalEntry id="oewn-kid-n"><Lemma writtenForm="kid" partOfSpeech="n" />
+      <Sense id="oewn-kid__1.18.00.." synset="oewn-09937051-n" />
+      </LexicalEntry><LexicalEntry id="oewn-locomote-v"><Lemma writtenForm="locomote" partOfSpeech="v">
+        <Pronunciation variety="GB">ləʊkəˈməʊt</Pronunciation>
+      </Lemma>
+      <Sense id="oewn-locomote__2.38.00.." subcat="via via-pp vii vii-pp" synset="oewn-01839438-v">
+        </Sense>
+    </LexicalEntry><LexicalEntry id="oewn-minor-n"><Lemma writtenForm="minor" partOfSpeech="n">
+        <Pronunciation>ˈmaɪ.nə(ɹ)</Pronunciation>
+      </Lemma>
+      <Sense id="oewn-minor__1.18.00.." synset="oewn-09937051-n" />
+    </LexicalEntry><LexicalEntry id="oewn-mouse-n"><Lemma writtenForm="mouse" partOfSpeech="n">
+        <Pronunciation variety="GB">maʊs</Pronunciation>
+        <Pronunciation variety="US">maʊs</Pronunciation>
+        <Pronunciation variety="CA">mʌʊs</Pronunciation>
+      </Lemma>
+      <Form writtenForm="mice" />
+      <Sense id="oewn-mouse__1.05.00.." synset="oewn-02332897-n">
+        </Sense>
+      </LexicalEntry><LexicalEntry id="oewn-move-v"><Lemma writtenForm="move" partOfSpeech="v">
+        <Pronunciation>muːv</Pronunciation>
+      </Lemma>
+      <Sense id="oewn-move__2.38.03.." subcat="via via-pp vii vii-pp" synset="oewn-01839438-v">
+        </Sense>
+      </LexicalEntry><LexicalEntry id="oewn-nestling-n"><Lemma writtenForm="nestling" partOfSpeech="n">
+        <Pronunciation>ˈnɛstlɪŋ</Pronunciation>
+      </Lemma>
+      <Sense id="oewn-nestling__1.18.00.." synset="oewn-09937051-n" />
+    </LexicalEntry><LexicalEntry id="oewn-nipper-n"><Lemma writtenForm="nipper" partOfSpeech="n">
+        <Pronunciation>ˈnɪpə(ɹ)</Pronunciation>
+      </Lemma>
+      <Sense id="oewn-nipper__1.18.00.." synset="oewn-09937051-n" />
+      </LexicalEntry><LexicalEntry id="oewn-shaver-n"><Lemma writtenForm="shaver" partOfSpeech="n">
+        <Pronunciation variety="GB">ˈʃeɪvə</Pronunciation>
+        <Pronunciation variety="US">ˈʃeɪvɚ</Pronunciation>
+      </Lemma>
+      <Sense id="oewn-shaver__1.18.00.." synset="oewn-09937051-n" />
+      </LexicalEntry><LexicalEntry id="oewn-small_fry-n"><Lemma writtenForm="small fry" partOfSpeech="n" />
+      <Sense id="oewn-small_fry__1.18.01.." synset="oewn-09937051-n" />
+    </LexicalEntry><LexicalEntry id="oewn-stay_in_place-v"><Lemma writtenForm="stay in place" partOfSpeech="v" />
+      <Sense id="oewn-stay_in_place__2.38.00.." subcat="via vii" synset="oewn-01852297-v">
+        <SenseRelation relType="antonym" target="oewn-travel__2.38.00.." />
+        </Sense>
+    </LexicalEntry><LexicalEntry id="oewn-tiddler-n"><Lemma writtenForm="tiddler" partOfSpeech="n" />
+      <Sense id="oewn-tiddler__1.18.00.." synset="oewn-09937051-n" />
+    </LexicalEntry><LexicalEntry id="oewn-tike-n"><Lemma writtenForm="tike" partOfSpeech="n" />
+      <Sense id="oewn-tike__1.18.01.." synset="oewn-09937051-n" />
+    </LexicalEntry><LexicalEntry id="oewn-travel-v"><Lemma writtenForm="travel" partOfSpeech="v">
+        <Pronunciation>ˈtɹævəl</Pronunciation>
+      </Lemma>
+      <Form writtenForm="travelled" />
+      <Form writtenForm="travelling" />
+      <Sense id="oewn-travel__2.38.00.." subcat="via via-pp vii vii-pp" synset="oewn-01839438-v">
+        <SenseRelation relType="antonym" target="oewn-stay_in_place__2.38.00.." />
+        </Sense>
+      </LexicalEntry><LexicalEntry id="oewn-tyke-n"><Lemma writtenForm="tyke" partOfSpeech="n">
+        <Pronunciation>taɪk</Pronunciation>
+      </Lemma>
+      <Sense id="oewn-tyke__1.18.01.." synset="oewn-09937051-n" />
+    </LexicalEntry><LexicalEntry id="oewn-unhappy-a"><Lemma writtenForm="unhappy" partOfSpeech="a">
+        <Pronunciation>ʌnˈhæpi</Pronunciation>
+      </Lemma>
+      <Form writtenForm="unhappier" />
+      <Form writtenForm="unhappiest" />
+      <Sense id="oewn-unhappy__3.00.00.." synset="oewn-01152997-a">
+        <SenseRelation relType="antonym" target="oewn-happy__3.00.00.." />
+        </Sense>
+      </LexicalEntry><LexicalEntry id="oewn-youngster-n"><Lemma writtenForm="youngster" partOfSpeech="n">
+        <Pronunciation variety="GB">ˈjʌŋstə</Pronunciation>
+        <Pronunciation variety="US">ˈjʌŋstɚ</Pronunciation>
+      </Lemma>
+      <Sense id="oewn-youngster__1.18.00.." synset="oewn-09937051-n" />
+    </LexicalEntry><Synset id="oewn-01151786-a" ili="i6282" members="oewn-happy-a" partOfSpeech="a" lexfile="adj.all">
+      <Definition>enjoying or showing or marked by joy or pleasure</Definition>
+      <Example>a happy smile</Example>
+      <Example>spent many happy days on the beach</Example>
+      <Example>a happy marriage</Example>
+    </Synset>
+    <Synset id="oewn-01152997-a" ili="i6288" members="oewn-unhappy-a" partOfSpeech="a" lexfile="adj.all">
+      <Definition>experiencing or marked by or causing sadness or sorrow or discontent</Definition>
+      <Example>unhappy over her departure</Example>
+      <Example>unhappy with her raise</Example>
+      <Example>after the argument they lapsed into an unhappy silence</Example>
+      <Example>had an unhappy time at school</Example>
+      <Example>the unhappy (or sad) news</Example>
+      <Example>he looks so unhappy</Example>
+    </Synset>
+    <Synset id="oewn-01839438-v" ili="i30898" members="oewn-travel-v oewn-go-v oewn-move-v oewn-locomote-v" partOfSpeech="v" lexfile="verb.motion">
+      <Definition>change location; move, travel, or proceed, also metaphorically</Definition>
+      <Example>How fast does your new car go?</Example>
+      <Example>We travelled from Rome to Naples by bus</Example>
+      <Example>The policemen went from door to door looking for the suspect</Example>
+      <Example>The soldiers moved towards the city in an attempt to take it before night fell</Example>
+      <Example>news travelled fast</Example>
+    </Synset>
+    <Synset id="oewn-01852297-v" ili="i30952" members="oewn-stay_in_place-v" partOfSpeech="v" lexfile="verb.motion">
+      <Definition>be stationary</Definition>
+      </Synset>
+    <Synset id="oewn-02086723-n" ili="i46360" members="oewn-dog-n oewn-domestic_dog-n oewn-Canis_familiaris-n" partOfSpeech="n" lexfile="noun.animal">
+      <Definition>a member of the genus Canis (probably descended from the common wolf) that has been domesticated by man since prehistoric times; occurs in many breeds</Definition>
+      <Example>the dog barked all night</Example>
+    </Synset>
+    <Synset id="oewn-02332897-n" ili="i47795" members="oewn-mouse-n" partOfSpeech="n" lexfile="noun.animal">
+      <Definition>any of numerous small rodents typically resembling diminutive rats having pointed snouts and small ears on elongated bodies with slender usually hairless tails</Definition>
+      </Synset>
+    <Synset id="oewn-09937051-n" ili="i88964" members="oewn-child-n oewn-kid-n oewn-youngster-n oewn-minor-n oewn-shaver-n oewn-nipper-n oewn-small_fry-n oewn-tiddler-n oewn-tike-n oewn-tyke-n oewn-fry-n oewn-nestling-n" partOfSpeech="n" lexfile="noun.person">
+      <Definition>a young person of either sex</Definition>
+      <Example>she writes books for children</Example>
+      <Example>they're just kids</Example>
+      <Example>‘tiddler’ is a British term for youngster</Example>
+    </Synset>
+    </Lexicon></LexicalResource>

@@ -52,6 +52,27 @@ test('downloads reject short bodies, streamed overflow and insecure redirects', 
     )
 })
 
+test('dictionary downloads reject redirects outside the fixed source origins', async () => {
+  const requests = []
+  await assert.rejects(
+    download('https://source.test/pack', {
+      maxBytes: 16,
+      allowedOrigins: ['https://source.test'],
+      signal: new AbortController().signal,
+      write: () => {},
+      fetch: async (url) => {
+        requests.push(url.href)
+        return new Response(null, {
+          status: 302,
+          headers: { location: 'https://other.test/pack' },
+        })
+      },
+    }),
+    /unapproved host/,
+  )
+  assert.deepEqual(requests, ['https://source.test/pack'])
+})
+
 test('download cancellation stops before writing further bytes', async () => {
   const controller = new AbortController()
   let writes = 0

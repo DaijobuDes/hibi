@@ -1,0 +1,19 @@
+# CC-Canto
+# A Cantonese dictionary for everyone
+# Version 2017-02-02
+#
+# Copyright (c) 2015-17 Pleco Inc.
+# Distributed under a Creative Commons Attribution-Share Alike 3.0 license (http://creativecommons.org/licenses/by-sa/3.0/)
+#
+# For more information + to submit feedback, see our website at cccanto.org
+#
+# This dictionary is intended to be used in conjunction with the (also open-source) Chinese dictionary CC-CEDICT
+# See mdbg.net to download CC-CEDICT, see cccanto.org to download an open-source list of Cantonese readings for CC-CEDICT
+#
+一世人 一世人 [yi1 shi4 ren2] {jat1 sai3 jan4} /the whole life (of a person); one's entire life; for a lifetime/
+# authentic excerpt of cc-canto 2017-02-02; copyright (c) 2015-17 pleco inc.
+# cc-by-sa-3.0 https://creativecommons.org/licenses/by-sa/3.0/
+# excerpted from https://cantonese.org/cccanto-170202.zip; no entry text corrected.
+陳慧琳 陈慧琳 [chen2 hui4 lin2] {can4 wai6} lam4} /Kelly Chen Wai Lam, a Hong Kong singer/
+乒鈴𠾴唥 乒鈴𠾴唥 [] {ping1 ling1 baang4 laang4} /onomatopoeia, Describe the noise/
+丁 丁 [ding1] {ding1} /fourth of the ten Heavenly Stems 十天干shítiāngān [十天干]/fourth in order/letter "D" or roman "IV" in list "A, B, C", or "I, II, III" etc/butyl/cubes (of food)/adult male/members of a family/a surname/ # adapted from cc-cedict

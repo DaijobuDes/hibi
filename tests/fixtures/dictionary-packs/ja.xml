@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE JMdict [
+<!ENTITY sK "search-only kanji form">
+<!ENTITY abbr "abbreviation">
+<!ENTITY sl "slang">
+<!ENTITY uk "word usually written using kana alone">
+<!ENTITY n "noun (common) (futsuumeishi)">
+<!ENTITY v1 "Ichidan verb">
+<!ENTITY vt "transitive verb">
+]>
+<JMdict>
+<entry>
+<ent_seq>1358280</ent_seq>
+<k_ele>
+<keb>食べる</keb>
+<ke_pri>ichi1</ke_pri>
+<ke_pri>news2</ke_pri>
+<ke_pri>nf25</ke_pri>
+</k_ele>
+<k_ele>
+<keb>喰べる</keb>
+<ke_inf>&sK;</ke_inf>
+</k_ele>
+<r_ele>
+<reb>たべる</reb>
+<re_pri>ichi1</re_pri>
+<re_pri>news2</re_pri>
+<re_pri>nf25</re_pri>
+</r_ele>
+<sense>
+<pos>&v1;</pos>
+<pos>&vt;</pos>
+<gloss>to eat</gloss>
+</sense>
+<sense>
+<pos>&v1;</pos>
+<pos>&vt;</pos>
+<gloss>to live on (e.g. a salary)</gloss>
+<gloss>to live off</gloss>
+<gloss>to subsist on</gloss>
+</sense>
+</entry>
+<entry>
+<ent_seq>1467640</ent_seq>
+<k_ele>
+<keb>猫</keb>
+<ke_pri>ichi1</ke_pri>
+<ke_pri>news1</ke_pri>
+<ke_pri>nf07</ke_pri>
+</k_ele>
+<r_ele>
+<reb>ねこ</reb>
+<re_pri>ichi1</re_pri>
+<re_pri>news1</re_pri>
+<re_pri>nf07</re_pri>
+</r_ele>
+<r_ele>
+<reb>ネコ</reb>
+<re_nokanji/>
+</r_ele>
+<sense>
+<pos>&n;</pos>
+<gloss>cat (esp. the domestic cat, Felis catus)</gloss>
+<gloss>feline</gloss>
+</sense>
+<sense>
+<pos>&n;</pos>
+<gloss>shamisen</gloss>
+</sense>
+<sense>
+<pos>&n;</pos>
+<gloss>geisha</gloss>
+</sense>
+<sense>
+<pos>&n;</pos>
+<xref>猫車</xref>
+<misc>&abbr;</misc>
+<gloss>wheelbarrow</gloss>
+</sense>
+<sense>
+<pos>&n;</pos>
+<xref>猫火鉢</xref>
+<misc>&abbr;</misc>
+<gloss>clay bed-warmer</gloss>
+</sense>
+<sense>
+<pos>&n;</pos>
+<ant>タチ</ant>
+<misc>&uk;</misc>
+<misc>&sl;</misc>
+<gloss>bottom (submissive partner of a homosexual relationship)</gloss>
+</sense>
+</entry>
+</JMdict>
