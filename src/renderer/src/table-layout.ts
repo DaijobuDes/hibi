@@ -1,6 +1,7 @@
 import { Extension } from '@tiptap/core'
 import type { Node } from '@tiptap/pm/model'
 import { Plugin, PluginKey, type Transaction } from '@tiptap/pm/state'
+import type { Mappable } from '@tiptap/pm/transform'
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view'
 import type { TableLayout } from '../../shared/table-layout'
 import { richSourceEcho } from './rich-source-session'
@@ -92,18 +93,26 @@ function starts(table: Node, pos: number, axis: Axis) {
   return found
 }
 
-/** Carry each size to wherever its row or column moved; deleted ones drop. */
+/**
+ * Carry each size to wherever its row or column moved. A replaced one keeps
+ * its index unless the step removed rows or columns; deleted ones drop.
+ */
 function follow(
   sizes: number[],
   before: number[],
   after: number[],
-  tr: Transaction,
+  map: Mappable,
 ) {
   const moved: number[] = []
+  const replaced: number[] = []
   sizes.forEach((size, index) => {
-    const result = size ? tr.mapping.mapResult(before[index] ?? -1, 1) : null
+    const result = size ? map.mapResult(before[index] ?? -1, 1) : null
     const target = result ? after.indexOf(result.pos) : -1
     if (result && !result.deletedAfter && target >= 0) moved[target] = size
+    else if (result && after.length >= before.length) replaced[index] = size
+  })
+  replaced.forEach((size, index) => {
+    moved[index] ??= size
   })
   return Array.from(moved, (size) => size ?? 0)
 }
@@ -124,28 +133,34 @@ function mapped(
     touched.push(result.pos)
     if (result.deleted) return []
     if (!old) return [{ ...sized, pos: result.pos }]
-    // Rows or columns were inserted or deleted: sizes follow their own row or
-    // column instead of staying at its old index.
-    const axis = (name: Axis, sizes: number[]) =>
-      (
-        name === 'row'
-          ? old.childCount === table.childCount
-          : columnCount(old) === columnCount(table)
-      )
-        ? sizes
-        : follow(
-            sizes,
-            starts(old, sized.pos, name),
-            starts(table, result.pos, name),
-            tr,
+    // Step by step, so a paste that first adds columns and then replaces
+    // cells keeps sizes: rows or columns that were inserted or deleted carry
+    // their sizes along instead of leaving them at their old index.
+    let { pos, columns, rows } = sized
+    tr.mapping.maps.forEach((map, step) => {
+      const next = map.mapResult(pos, 1)
+      const from = tr.docs[step]?.nodeAt(pos)
+      const to = (tr.docs[step + 1] ?? tr.doc).nodeAt(next.pos)
+      if (from?.type.name === 'table' && to?.type.name === 'table') {
+        const axis = (name: Axis, sizes: number[]) =>
+          (
+            name === 'row'
+              ? from.childCount === to.childCount
+              : columnCount(from) === columnCount(to)
           )
-    return [
-      {
-        pos: result.pos,
-        columns: axis('column', sized.columns),
-        rows: axis('row', sized.rows),
-      },
-    ]
+            ? sizes
+            : follow(
+                sizes,
+                starts(from, pos, name),
+                starts(to, next.pos, name),
+                map,
+              )
+        columns = axis('column', columns)
+        rows = axis('row', rows)
+      }
+      pos = next.pos
+    })
+    return [{ pos: result.pos, columns, rows }]
   })
 }
 

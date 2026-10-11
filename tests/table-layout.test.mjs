@@ -8,6 +8,8 @@ const require = createRequire(import.meta.url)
 const { Schema } = require('@tiptap/pm/model')
 const { EditorState, PluginKey } = require('@tiptap/pm/state')
 const { Decoration } = require('@tiptap/pm/view')
+const { Fragment } = require('@tiptap/pm/model')
+const { __insertCells, tableNodes } = require('@tiptap/pm/tables')
 
 globalThis.tableLayoutEcho = new PluginKey('documentSourceEcho')
 const bundle = await build({
@@ -237,3 +239,64 @@ test('edits rebuild decorations only for the tables they touch', (t) => {
     rows: ['', '--table-row-height: 40px', ...Array(99).fill('')],
   })
 })
+
+test('a paste that adds columns keeps the widths of the cells it replaces', () => {
+  // prosemirror-tables pastes by growing the table, then replacing cells.
+  const pasting = new Schema({
+    nodes: schema.spec.nodes
+      .remove('table')
+      .remove('tableRow')
+      .remove('tableHeader')
+      .remove('tableCell')
+      .append(tableNodes({ tableGroup: 'block', cellContent: 'paragraph' })),
+  })
+  const cell = (type, text) =>
+    pasting.nodes[type].create(
+      null,
+      pasting.nodes.paragraph.create(null, pasting.text(text)),
+    )
+  const line = (type, cells) =>
+    pasting.nodes.table_row.create(
+      null,
+      cells.map((text) => cell(type, text)),
+    )
+  let state = EditorState.create({
+    schema: pasting,
+    plugins: [plugin],
+    doc: pasting.nodes.doc.create(null, [
+      pasting.nodes.table.create(null, [
+        line('table_header', ['a', 'b', 'c']),
+        line('table_cell', ['1', '2', '3']),
+      ]),
+    ]),
+  })
+  state = size(state, 0, 'column', 0, 110)
+  state = size(state, 0, 'column', 1, 220)
+  state = size(state, 0, 'column', 2, 330)
+  __insertCells(
+    state,
+    (tr) => {
+      state = state.apply(tr)
+    },
+    1,
+    { top: 0, left: 0 },
+    {
+      width: 4,
+      height: 1,
+      rows: [
+        Fragment.from(
+          ['w', 'x', 'y', 'z'].map((text) => cell('table_header', text)),
+        ),
+      ],
+    },
+  )
+  assert.equal(state.doc.firstChild.firstChild.textContent, 'wxyz')
+  assert.deepEqual(plugin.getState(state).tables[0].columns, [110, 220, 330])
+  assert.deepEqual(styles(state)[0].columns, [
+    'width: 110px',
+    'width: 220px',
+    'width: 330px',
+    '',
+  ])
+})
+
