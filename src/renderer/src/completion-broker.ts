@@ -1,8 +1,10 @@
 import type {
   CompletionItem,
   CompletionProvider,
+  CompletionProviderOptions,
   CompletionRequest,
   CompletionUpdate,
+  TypingContext,
 } from '../../shared/completions'
 import type { AddonOwner, Dispose } from '../../shared/foundation-contracts'
 
@@ -22,6 +24,7 @@ type Registration = {
   owner: AddonOwner
   provider: CompletionProvider
   priority: number
+  onAccepted?: CompletionProviderOptions['onAccepted']
 }
 type Job = {
   registration: Registration
@@ -36,6 +39,7 @@ type Session = {
   onUpdate: (update: CompletionUpdate) => void
   jobs: Job[]
   timer: ReturnType<typeof setTimeout>
+  accepted?: boolean
 }
 
 const position = (value: number, length: number) =>
@@ -85,12 +89,35 @@ function snapshot(request: CompletionRequest | null): CompletionRequest | null {
     }),
     before: request.before.slice(-MAX_CONTEXT),
     after: request.after.slice(0, MAX_CONTEXT),
+    ...(request.prose === undefined
+      ? {}
+      : {
+          prose:
+            request.prose &&
+            typeof request.prose.before === 'string' &&
+            typeof request.prose.after === 'string'
+              ? Object.freeze({
+                  before: request.prose.before.slice(-MAX_CONTEXT),
+                  after: request.prose.after.slice(0, MAX_CONTEXT),
+                })
+              : null,
+        }),
     trigger: Object.freeze(
       trigger.kind === 'explicit'
         ? { kind: 'explicit' as const }
         : { kind: 'input' as const, character: trigger.character.slice(0, 8) },
     ),
   })
+}
+
+function sameView(a: CompletionRequest, b: CompletionRequest) {
+  return (
+    a.editor === b.editor &&
+    a.view.documentId === b.view.documentId &&
+    a.view.documentGeneration === b.view.documentGeneration &&
+    a.view.viewId === b.view.viewId &&
+    a.view.viewGeneration === b.view.viewGeneration
+  )
 }
 
 function sameContext(a: CompletionRequest, b: CompletionRequest | null) {
@@ -157,6 +184,101 @@ export class CompletionBroker {
   #active: Session | null = null
   #visible: Session | null = null
   #disposed = false
+  readonly #typing = new Set<(context: TypingContext) => void>()
+  #accepted: { request: CompletionRequest; from: number; to: number } | null =
+    null
+
+  onTypingContext(listener: (context: TypingContext) => void): Dispose {
+    if (this.#disposed) return () => {}
+    this.#typing.add(listener)
+    return () => {
+      this.#typing.delete(listener)
+    }
+  }
+
+  hasTypingListeners(): boolean {
+    return this.#typing.size > 0
+  }
+
+  emitTypingContext(context: TypingContext) {
+    if (this.#disposed || !this.#typing.size) return
+    const request = snapshot({ ...context, trigger: { kind: 'explicit' } })
+    const { from, to, insertedLength } = context.change
+    if (
+      !request ||
+      !Number.isSafeInteger(from) ||
+      from < 0 ||
+      !Number.isSafeInteger(to) ||
+      to < from ||
+      !Number.isSafeInteger(insertedLength) ||
+      insertedLength < 0
+    )
+      return
+    if (context.kind === 'replace') {
+      const accepted = this.#accepted
+      if (
+        !accepted ||
+        !sameView(accepted.request, request) ||
+        from >= accepted.to ||
+        to <= accepted.from
+      )
+        return
+    }
+    this.#accepted = null
+    const { trigger: _trigger, prose: _prose, ...bounded } = request
+    const event = Object.freeze({
+      ...bounded,
+      ...(context.kind === 'replace' ? { before: '', after: '' } : {}),
+      kind: context.kind,
+      change: Object.freeze({ from, to, insertedLength }),
+    })
+    for (const listener of this.#typing) {
+      try {
+        listener(event)
+      } catch {
+        /* One listener cannot prevent another from observing typing. */
+      }
+    }
+  }
+
+  /** Reserve a current, visible item before dispatch; report only after verified success. */
+  prepareAcceptance(
+    request: CompletionRequest,
+    item: CompletionItem,
+  ): Dispose | null {
+    const session = this.#active ?? this.#visible
+    if (
+      !session ||
+      !sameContext(session.request, request) ||
+      !this.#current(session) ||
+      !this.#items(session).includes(item)
+    )
+      return null
+    const job = session.jobs.find((candidate) => candidate.items.includes(item))
+    if (!job || !this.#registrations.has(job.registration.id)) return null
+    const registration = job.registration
+    const epoch = this.#epoch
+    return () => {
+      if (
+        session.accepted ||
+        this.#disposed ||
+        this.#epoch !== epoch ||
+        this.#registrations.get(registration.id) !== registration
+      )
+        return
+      session.accepted = true
+      this.#accepted = {
+        request: session.request,
+        from: item.from,
+        to: item.from + item.insertText.length,
+      }
+      try {
+        registration.onAccepted?.(session.request, item)
+      } catch {
+        /* Feedback must not roll back accepted text. */
+      }
+    }
+  }
 
   hasProviders(): boolean {
     return !this.#disposed && this.#registrations.size > 0
@@ -166,6 +288,7 @@ export class CompletionBroker {
     owner: AddonOwner,
     provider: CompletionProvider,
     priority = 0,
+    options: CompletionProviderOptions = {},
   ): Dispose {
     if (this.#disposed) throw new Error('Completion broker is disposed.')
     if (
@@ -182,6 +305,11 @@ export class CompletionBroker {
       throw new Error('Too many completion providers.')
     if (!Number.isFinite(priority))
       throw new Error('Invalid completion priority.')
+    if (
+      options.onAccepted !== undefined &&
+      typeof options.onAccepted !== 'function'
+    )
+      throw new Error('Invalid completion feedback callback.')
     const id = ++this.#nextId
     this.#registrations.set(id, {
       id,
@@ -190,6 +318,7 @@ export class CompletionBroker {
         activationGeneration: owner.activationGeneration,
       },
       provider,
+      onAccepted: options.onAccepted,
       priority: Math.max(-100, Math.min(100, priority)),
     })
     return () => this.#unregister([id])
@@ -254,6 +383,8 @@ export class CompletionBroker {
     this.#cancel()
     this.#registrations.clear()
     this.#stopped.clear()
+    this.#typing.clear()
+    this.#accepted = null
   }
 
   #unregister(ids: readonly number[]) {

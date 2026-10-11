@@ -1150,7 +1150,32 @@ export function useAddons(
                 cleanups.add(cleanup)
                 return cleanup
               },
-              async registerCompletionProvider(provider) {
+              onTypingContext(listener) {
+                if (disposed) return () => {}
+                let stopped = false
+                let remove = () => {}
+                const cleanup = () => {
+                  stopped = true
+                  remove()
+                  cleanups.delete(cleanup)
+                }
+                cleanups.add(cleanup)
+                void loadCompletionBroker()
+                  .then(({ completionBroker }) => {
+                    if (disposed || stopped) return
+                    remove = completionBroker.onTypingContext((event) => {
+                      if (disposed || stopped) return
+                      try {
+                        listener(event)
+                      } catch (error) {
+                        latest.current.error(error)
+                      }
+                    })
+                  })
+                  .catch((error) => latest.current.error(error))
+                return cleanup
+              },
+              async registerCompletionProvider(provider, options) {
                 if (disposed) throw new Error('This addon has stopped.')
                 if (typeof provider !== 'function')
                   throw new Error('Choose a completion provider function.')
@@ -1159,6 +1184,8 @@ export function useAddons(
                 const remove = completionBroker.register(
                   completionOwner,
                   provider,
+                  0,
+                  options,
                 )
                 const cleanup = () => {
                   remove()

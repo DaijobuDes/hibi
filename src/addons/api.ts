@@ -685,9 +685,14 @@ export type AddonContext = {
     onKeyEvent: (listener: (event: EditorKeyEvent) => void) => () => void
     /** Observe committed typing, including IME composition. Removed on addon stop. */
     onInput: (listener: (event: EditorInputEvent) => void) => () => void
+    /** Safe bounded context after typing, deletion, history, or an IME commit. */
+    onTypingContext: (
+      listener: (event: import('../shared/completions').TypingContext) => void,
+    ) => () => void
     /** Data-only suggestions; provider work is bounded and stopped with this addon. */
     registerCompletionProvider: (
       provider: import('../shared/completions').CompletionProvider,
+      options?: import('../shared/completions').CompletionProviderOptions,
     ) => Promise<() => void>
     /** Plain-text hover content. Work is cancelled when the hovered target changes. */
     registerHoverProvider: (
