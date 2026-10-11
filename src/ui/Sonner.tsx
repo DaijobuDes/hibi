@@ -149,7 +149,7 @@ export function Sonner() {
         const next = index + step
         if (event.key === 'Tab' && (next < 0 || next >= buttons.length))
           restoreFocus()
-        else buttons[(next + buttons.length) % buttons.length].focus()
+        else buttons[(next + buttons.length) % buttons.length]?.focus()
       }}
     >
       {items.map((item) => {
