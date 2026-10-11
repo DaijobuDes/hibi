@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { getSchema, Node } from '@tiptap/core'
+import { Extension, getSchema, Mark, Node } from '@tiptap/core'
 import { Image } from '@tiptap/extension-image'
 import { TableKit } from '@tiptap/extension-table'
 import { TaskItem } from '@tiptap/extension-task-item'
@@ -10,7 +10,10 @@ import { EditorState } from '@tiptap/pm/state'
 import { StarterKit } from '@tiptap/starter-kit'
 import { Marked } from 'marked'
 import { markdownConfiguration } from '../src/renderer/src/markdown.ts'
-import { markdownSerializer } from '../src/renderer/src/markdown-serialization.ts'
+import {
+  markdownSerializer,
+  paragraphEscaper,
+} from '../src/renderer/src/markdown-serialization.ts'
 import { preserveRichSource } from '../src/renderer/src/rich-source-preservation.ts'
 
 const extensions = [
@@ -133,6 +136,114 @@ test('paragraph rules distinguish literal text from node output without splittin
   assert.deepEqual(json, original)
 })
 
+test('paragraph masking skips code marks and verbatim node output', () => {
+  const verbatimMark = Mark.create({
+    name: 'verbatimMark',
+    code: true,
+    renderMarkdown: (_node, helpers) =>
+      `<raw>${helpers.renderChildren()}</raw>`,
+  })
+  const verbatimNode = Node.create({
+    name: 'verbatimNode',
+    group: 'inline',
+    inline: true,
+    code: true,
+    content: 'text*',
+    renderMarkdown: (node, helpers) => helpers.renderChildren(node.content),
+  })
+  const { core, addons, parser, options } = markdownConfiguration([
+    {
+      richExtensions: [
+        Extension.create({
+          name: 'verbatimExtensions',
+          addExtensions: () => [verbatimMark.extend({}), verbatimNode],
+        }),
+      ],
+      paragraphRules: [
+        {
+          characters: '$!',
+          escape(source, { literals }) {
+            for (const [sentinel, character] of literals)
+              source = source.replaceAll(sentinel, `\\${character}`)
+            return source
+          },
+        },
+      ],
+    },
+  ])
+  const extensions = [...core, ...addons]
+  const manager = new MarkdownManager({
+    extensions,
+    marked: parser,
+    markedOptions: options,
+  })
+  const text = '$x$ ![x](y)'
+  const json = {
+    type: 'doc',
+    content: [
+      {
+        type: 'paragraph',
+        content: [
+          { type: 'text', text: '$plain$ ' },
+          { type: 'text', text, marks: [{ type: 'code' }] },
+          { type: 'text', text: ' ' },
+          { type: 'text', text, marks: [{ type: 'verbatimMark' }] },
+          { type: 'text', text: ' ' },
+          { type: 'verbatimNode', content: [{ type: 'text', text }] },
+        ],
+      },
+    ],
+  }
+  const schema = getSchema(extensions)
+  const doc = schema.nodeFromJSON(json)
+  for (const blockLocal of [true, false])
+    assert.equal(
+      markdownSerializer(manager, blockLocal)(doc).source,
+      `\\$plain\\$ \`${text}\` <raw>${text}</raw> ${text}`,
+    )
+})
+
+test('paragraph masking skips serialization and copying when no text needs protection', () => {
+  const renderParagraph = paragraphEscaper(new Marked(), [
+    {
+      paragraphRules: [
+        {
+          characters: '!$',
+          escape(source, { literals }) {
+            assert.equal(literals.size, 0)
+            return source
+          },
+        },
+      ],
+    },
+  ])
+  for (const content of [
+    [{ type: 'text', text: 'ordinary paragraph' }],
+    [{ type: 'text', text: '$x$ ![x](y)', marks: [{ type: 'code' }] }],
+  ]) {
+    const node = {
+      type: 'paragraph',
+      content,
+      toJSON() {
+        assert.fail('paragraph without sensitive text must not be stringified')
+      },
+    }
+    assert.equal(
+      renderParagraph(
+        node,
+        {
+          renderChildren(children) {
+            assert.equal(children, content)
+            return 'rendered'
+          },
+        },
+        { index: 0, level: 0, parentType: 'doc' },
+      ),
+      'rendered',
+    )
+  }
+})
+
 test('literal block prefixes survive full and cached serialization', async (t) => {
   for (const gfm of [false, true]) {
     const { core, addons, parser, options } = markdownConfiguration([
@@ -249,6 +360,40 @@ test('literal block prefixes survive full and cached serialization', async (t) =
       )
     }
   }
+})
+
+test('table headers and cells skip block escapes while retaining flavor rules', () => {
+  const parents = []
+  const { core, addons, parser, options } = markdownConfiguration([
+    {
+      markedOptions: { gfm: true },
+      richExtensions: [TableKit],
+      paragraphRules: [
+        {
+          escape(source, ctx) {
+            parents.push(ctx.parentType)
+            return source
+          },
+        },
+      ],
+    },
+  ])
+  const extensions = [...core, ...addons]
+  const schema = getSchema(extensions)
+  const manager = new MarkdownManager({
+    extensions,
+    marked: parser,
+    markedOptions: options,
+  })
+  const source =
+    '\n| -   | 1. x | --- | #   |\n| --- | ---- | --- | --- |\n| -   | 1. x | --- | #   |\n'
+  const doc = schema.nodeFromJSON(manager.parse(source))
+  for (const blockLocal of [true, false]) {
+    const saved = markdownSerializer(manager, blockLocal)(doc).source
+    assert.equal(saved, source)
+    assert.ok(schema.nodeFromJSON(manager.parse(saved)).eq(doc))
+  }
+  assert.deepEqual(parents, Array(16).fill('table'))
 })
 
 test('gfm delimiter lines are escaped only when they would form a table', async (t) => {

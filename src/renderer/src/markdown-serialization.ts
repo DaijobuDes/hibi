@@ -1,7 +1,10 @@
-import type {
-  JSONContent,
-  MarkdownRendererHelpers,
-  RenderContext,
+import {
+  callOrReturn,
+  flattenExtensions,
+  getExtensionField,
+  type JSONContent,
+  type MarkdownRendererHelpers,
+  type RenderContext,
 } from '@tiptap/core'
 import { ORDERED_LIST_MARKER_PATTERN } from '@tiptap/extension-list'
 import type { MarkdownManager } from '@tiptap/markdown'
@@ -31,9 +34,21 @@ export function paragraphEscaper(
     },
     ...flavors.flatMap((flavor) => flavor.paragraphRules ?? []),
   ]
-  const characters = new Set(
-    rules.flatMap((rule) => [...(rule.characters ?? '')]),
-  )
+  const characters = [
+    ...new Set(rules.flatMap((rule) => [...(rule.characters ?? '')])),
+  ]
+  const verbatim = new Set([
+    'code',
+    ...flattenExtensions(
+      flavors.flatMap((flavor) => flavor.richExtensions ?? []),
+    )
+      .filter((extension) => callOrReturn(getExtensionField(extension, 'code')))
+      .map((extension) => extension.name),
+  ])
+  const needsMasking = (child: JSONContent) =>
+    child.type === 'text' &&
+    !child.marks?.some((mark) => verbatim.has(mark.type)) &&
+    characters.some((character) => child.text?.includes(character))
   return (
     node: JSONContent,
     helpers: MarkdownRendererHelpers,
@@ -41,19 +56,19 @@ export function paragraphEscaper(
   ): string => {
     let content = node.content ?? []
     const literals = new Map<string, string>()
-    if (characters.size) {
+    if (characters.length && content.some(needsMasking)) {
       const original = JSON.stringify(node)
       let prefix = '\uE000'
       while (original.includes(prefix)) prefix += '\uE000'
       const sentinels = new Map(
-        [...characters].map((character, index) => {
+        characters.map((character, index) => {
           const sentinel = `${prefix}${index}\uE001`
           literals.set(sentinel, character)
           return [character, sentinel]
         }),
       )
       content = content.map((child) =>
-        child.type === 'text' && child.text
+        needsMasking(child) && child.text
           ? {
               ...child,
               text: [...child.text]
@@ -67,6 +82,7 @@ export function paragraphEscaper(
     for (const rule of rules) source = rule.escape(source, { ...ctx, literals })
     for (const [sentinel, character] of literals)
       source = source.replaceAll(sentinel, character)
+    if (ctx.parentType === 'table') return source
     return escapeBlockPrefixes(source, parser)
   }
 }
