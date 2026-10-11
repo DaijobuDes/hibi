@@ -1,0 +1,16 @@
+{
+  "zh": [
+    {
+      "partOfSpeech": "Verb",
+      "language": "Chinese",
+      "definitions": [
+        {
+          "definition": "<span class=\"usage-label-sense\" about=\"#mwt6\" typeof=\"mw:Transclusion\"></span> to <a rel=\"mw:WikiLink\" href=\"/wiki/eat\" title=\"eat\">eat</a>"
+        },
+        {
+          "definition": "<span class=\"usage-label-sense\" about=\"#mwt7\" typeof=\"mw:Transclusion\"></span> to <a rel=\"mw:WikiLink\" href=\"/wiki/eat\" title=\"eat\">eat</a> <a rel=\"mw:WikiLink\" href=\"/wiki/cooked\" title=\"cooked\">cooked</a> <a rel=\"mw:WikiLink\" href=\"/wiki/rice\" title=\"rice\">rice</a> without <a rel=\"mw:WikiLink\" href=\"/wiki/rice_water\" title=\"rice water\">rice water</a> <span class=\"mention-gloss-paren\" about=\"#mwt8\" typeof=\"mw:Transclusion\">(</span><span class=\"mention-gloss\" about=\"#mwt8\">in contrast to eating <a rel=\"mw:WikiLink\" href=\"/wiki/congee#English\" title=\"congee\">congee</a></span><span class=\"mention-gloss-paren\" about=\"#mwt8\">)</span>"
+        }
+      ]
+    }
+  ]
+}

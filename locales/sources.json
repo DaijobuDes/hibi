@@ -1255,6 +1255,9 @@
     "src/addons/documentation/ExportDialog.tsx",
     "src/ui/ColorschemeSettings.tsx"
   ],
+  "d0b43f84af18": [
+    "src/addons/dictionary/online.ts"
+  ],
   "a2e7d5bd8495": [
     "src/main/sideload.ts"
   ],
@@ -1280,12 +1283,6 @@
     "src/addons/dictionary/index.tsx"
   ],
   "0daae4bccd6c": [
-    "src/addons/dictionary/index.tsx"
-  ],
-  "60745c9e2a79": [
-    "src/addons/dictionary/index.tsx"
-  ],
-  "2e1c806794a0": [
     "src/addons/dictionary/index.tsx"
   ],
   "837dbb2c66b1": [
@@ -1545,6 +1542,9 @@
   ],
   "59ff98e399dd": [
     "src/renderer/src/registration-batch.ts"
+  ],
+  "05c17b18b9ab": [
+    "src/addons/dictionary/providers.ts"
   ],
   "4fc52a3c4c55": [
     "src/addons/diagnostics/Settings.tsx"
@@ -2378,8 +2378,20 @@
   "100436457fde": [
     "src/shared/hotkeys.ts"
   ],
+  "4d4f7db4c997": [
+    "src/addons/dictionary/index.tsx"
+  ],
+  "07b880bac371": [
+    "src/addons/dictionary/index.tsx"
+  ],
   "c7d5009dc83d": [
     "src/renderer/src/AddonSettings.tsx"
+  ],
+  "bc2ef03180e4": [
+    "src/addons/dictionary/index.tsx"
+  ],
+  "7ba22bb19b67": [
+    "src/addons/dictionary/index.tsx"
   ],
   "198b85e15987": [
     "src/renderer/src/DependencySettings.tsx"
@@ -3170,6 +3182,9 @@
   "2cb4007f6fbe": [
     "src/addons/diagnostics/Settings.tsx"
   ],
+  "ee6f9df95bd1": [
+    "src/addons/dictionary/index.tsx"
+  ],
   "b1a1e8e3cf7c": [
     "src/addons/diagnostics/Settings.tsx"
   ],
@@ -3846,6 +3861,9 @@
   ],
   "9e0c50a4c600": [
     "src/renderer/src/VersionHistory.tsx"
+  ],
+  "37da11d0e772": [
+    "src/addons/dictionary/Settings.tsx"
   ],
   "942087cc2d41": [
     "src/renderer/src/AddonViewContent.tsx",
@@ -5633,14 +5651,23 @@
   "39965152019f": [
     "src/addons/markdown/flavor-info.ts"
   ],
+  "40c6dcaf04d9": [
+    "src/addons/dictionary/online.ts"
+  ],
   "19734a1b58ca": [
     "src/renderer/src/SettingsScreen.tsx"
   ],
   "653913ac0e67": [
     "src/addons/word-count/manifest.ts"
   ],
-  "7d3f67a6b854": [
-    "src/addons/dictionary/index.tsx"
+  "b46cf2c0bdf2": [
+    "src/addons/dictionary/Settings.tsx"
+  ],
+  "533d38547683": [
+    "src/addons/dictionary/Settings.tsx"
+  ],
+  "c61f9932e721": [
+    "src/addons/dictionary/Settings.tsx"
   ],
   "95a0dabb7bc7": [
     "src/addons/git/Panel.tsx"
@@ -6009,6 +6036,9 @@
   ],
   "7f659c8c45d8": [
     "src/addons/frontmatter/Properties.tsx"
+  ],
+  "539904894032": [
+    "src/addons/dictionary/index.tsx"
   ],
   "d25d00eae8e4": [
     "src/addons/_shared/format-renderer.tsx"

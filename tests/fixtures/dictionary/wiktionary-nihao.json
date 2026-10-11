@@ -1,0 +1,33 @@
+{
+  "zh": [
+    {
+      "partOfSpeech": "Interjection",
+      "language": "Chinese",
+      "definitions": [
+        {
+          "definition": "<a rel=\"mw:WikiLink\" href=\"/wiki/hello\" title=\"hello\">hello</a>; <a rel=\"mw:WikiLink\" href=\"/wiki/hi\" title=\"hi\">hi</a>",
+          "parsedExamples": [
+            {
+              "translation": "<span lang=\"zh-Latn\" style=\"color:var(--wikt-palette-darkgrey, #54595d)\"><i><b>Nǐ hǎo</b>, hǎojiǔbùjiàn.</i></span> <span style=\"color:var(--wikt-palette-forestgreen, #235923); font-size:80%;\"><span typeof=\"mw:Entity\">[</span>Pinyin<span typeof=\"mw:Entity\">]</span></span>",
+              "example": "<link rel=\"mw:PageProp/Category\" href=\"./Category:Mandarin_terms_with_usage_examples\" about=\"#mwt6\">"
+            }
+          ],
+          "examples": [
+            "<link rel=\"mw:PageProp/Category\" href=\"./Category:Mandarin_terms_with_usage_examples\" about=\"#mwt6\">"
+          ]
+        }
+      ]
+    }
+  ],
+  "ja": [
+    {
+      "partOfSpeech": "Interjection",
+      "language": "Japanese",
+      "definitions": [
+        {
+          "definition": "<span class=\"usage-label-sense\" about=\"#mwt40\" typeof=\"mw:Transclusion\"></span> <a rel=\"mw:WikiLink\" href=\"/wiki/hi\" title=\"hi\">hi</a>, <a rel=\"mw:WikiLink\" href=\"/wiki/hello\" title=\"hello\">hello</a>"
+        }
+      ]
+    }
+  ]
+}

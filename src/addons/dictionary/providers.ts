@@ -94,3 +94,39 @@ export function createRegistry() {
   }
 }
 export type DictionaryRegistry = ReturnType<typeof createRegistry>
+
+export type Gathered<T> = {
+  found: { lang: Lang; value: T }[]
+  /** The first failure, reported only when nothing was found. */
+  failure?: DictionaryFailure
+  /** Languages with no usable provider whose offline pack can be installed. */
+  installable: Lang[]
+}
+
+/** Asks each language's providers in order until one has an answer. */
+export async function gather<T>(
+  registry: DictionaryRegistry,
+  langs: readonly Lang[],
+  need: 'lookup' | 'related',
+  ask: (provider: DictionaryProvider, lang: Lang) => Promise<T | null>,
+): Promise<Gathered<T>> {
+  const result: Gathered<T> = { found: [], installable: [] }
+  for (const lang of langs) {
+    const providers = await registry.providers(lang, need)
+    if (!providers.length && (await registry.installable(lang)))
+      result.installable.push(lang)
+    for (const provider of providers) {
+      try {
+        const value = await ask(provider, lang)
+        if (value === null || (Array.isArray(value) && !value.length)) continue
+        result.found.push({ lang, value })
+        break
+      } catch (error) {
+        result.failure ??=
+          error instanceof DictionaryError ? error.reason : 'unavailable'
+      }
+    }
+  }
+  if (result.found.length) delete result.failure
+  return result
+}
