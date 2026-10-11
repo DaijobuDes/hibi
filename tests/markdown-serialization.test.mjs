@@ -48,17 +48,17 @@ test('literal block prefixes survive full and cached serialization', async (t) =
       ),
       '\\#',
       '\\######',
-      '\\#\theading',
-      '\\#\u00a0heading',
-      '\\#\u2003heading',
+      ['\\#\theading', '#&Tab;heading'],
+      ['\\#\u00a0heading', '#&nbsp;heading'],
+      ['\\#\u2003heading', '#&emsp;heading'],
       '1\\. item',
       '0\\) item',
       '999999999\\. item',
       '1234567890\\. item',
       '1\\.',
       '2\\)',
-      '1\\.\titem',
-      '1\\.\u00a0item',
+      ['1\\.\titem', '1.&Tab;item'],
+      ['1\\.\u00a0item', '1.&nbsp;item'],
       'a\\. item',
       'iii\\) item',
       '\\- item',
@@ -218,11 +218,10 @@ test('retained soft breaks escape prefixes on every paragraph line', async (t) =
   ]) {
     await t.test(JSON.stringify(source), () => {
       const doc = schema.nodeFromJSON(manager.parse(source))
-      for (const blockLocal of [true, false]) {
-        const saved = markdownSerializer(manager, blockLocal)(doc).source
-        assert.equal(saved, source)
-        assert.ok(schema.nodeFromJSON(manager.parse(saved)).eq(doc))
-      }
+      // Exercise literal newlines before the entity adapter encodes invisible text.
+      const saved = manager.serialize(doc.toJSON())
+      assert.equal(saved, source)
+      assert.ok(schema.nodeFromJSON(manager.parse(saved)).eq(doc))
     })
   }
 })
@@ -457,6 +456,15 @@ test('native HTML entities decode once and survive full and cached serialization
     ['lone nonbreaking space', '&nbsp;', '\u00a0', '&nbsp;'],
     ['lone numeric space', '&#160;', '\u00a0', '&nbsp;'],
     ['lone hexadecimal space', '&#xA0;', '\u00a0', '&nbsp;'],
+    ['literal nonbreaking space', '\u00a0', '\u00a0', '&nbsp;'],
+    ['lone newline', '&#10;', '\n', '&NewLine;'],
+    ['lone tab', '&Tab;', '\t', '&Tab;'],
+    [
+      'edge nonbreaking spaces',
+      '&nbsp;text&nbsp;',
+      '\u00a0text\u00a0',
+      '&nbsp;text&nbsp;',
+    ],
     ['visible named pair', '&NotEqualTilde;', '\u2242\u0338', '\u2242\u0338'],
     ['em space', 'a&emsp;b', 'a\u2003b', 'a&emsp;b'],
     [

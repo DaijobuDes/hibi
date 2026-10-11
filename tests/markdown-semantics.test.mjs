@@ -111,6 +111,12 @@ test('schema-only consumption matches current editor declarations without creati
     '![photo](image.png "caption")',
     'one\n\n\n\ntwo',
     'é 👩🏽‍💻 &amp; &#13;',
+    '&copy; &#169; &#xA9; &#38;lt; &amp;copy;',
+    '&nbsp;\n\n**&nbsp;**\n\na&NewLine;b',
+    '# &copy;\n\n> &amp;copy;\n\n- &nbsp;\n- &#38;lt;',
+    '[&copy;](https://example.com/?a=&copy;&b=&amp;copy; "&quot;title&quot;")',
+    '<https://example.com/?a=&copy;> and `&copy; &#169;`',
+    '| &copy; | &#38;lt; |\n|---|---|\n| &nbsp; | &#169; |',
   ]) {
     const input = freeze(tokens(source)),
       serialized = JSON.stringify(input),
@@ -149,6 +155,7 @@ test('public task tokenizer output consumes without native source re-lexing', ()
     readFull = fullParser()
   for (const source of [
     '- [ ] todo\n- [x] done',
+    '- [ ] &copy; &#38;lt;\n- [x] **&nbsp;**',
     '- [ ] **bold** H~2~O\n  - [x] nested\n  - ordinary',
     '> - [ ] quote task\n> - [x] complete',
     '- [ ] task\n- ordinary',

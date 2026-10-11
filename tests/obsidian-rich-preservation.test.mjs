@@ -7,7 +7,7 @@ import { getSchema } from '@tiptap/core'
 import { MarkdownManager } from '@tiptap/markdown'
 import { StarterKit } from '@tiptap/starter-kit'
 import { preserveRichSource } from '../src/renderer/src/rich-source-preservation.ts'
-import { electron } from './electron.mjs'
+import { electron, waitForDocumentEditor } from './electron.mjs'
 import { clickMenu } from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
 
@@ -38,9 +38,11 @@ test('rich edits and autosave preserve untouched Obsidian syntax', {
   const folder = await mkdtemp(join(tmpdir(), 'hibi-obsidian-rich-'))
   const file = join(folder, 'note.md')
   const spacing = 'Spacing: one&nbsp;two and three\u00a0four.'
+  const entities =
+    'Entities: &copy; &#169; &#xA9; &#38;lt; &amp;copy; and `&copy;`.'
   const original =
     '# Notes\n\n> [!tip] Keep this callout.\n\n[[assets/some.svg]]\n\n- [ ] pending\n\n' +
-    spacing +
+    `${spacing}\n\n${entities}` +
     '\n\n&nbsp;\n\na\nb\n\nSource: keep this text.\n'
   await writeFile(file, original)
   const app = await electron.launch({
@@ -53,7 +55,7 @@ test('rich edits and autosave preserve untouched Obsidian syntax', {
   const page = await app.firstWindow()
   page.setDefaultTimeout(7000)
   const rich = page.getByRole('textbox', { name: 'Document editor' })
-  await rich.waitFor()
+  await waitForDocumentEditor(app, page)
   await page.evaluate(() =>
     localStorage.setItem(
       'hibi:autosave',
@@ -61,13 +63,14 @@ test('rich edits and autosave preserve untouched Obsidian syntax', {
     ),
   )
   await page.reload()
-  await rich.waitFor()
+  await waitForDocumentEditor(app, page)
   await app.evaluate(({ dialog }, path) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] })
   }, file)
   await clickMenu(app, 'Open…')
   await page.getByRole('tab', { name: 'note.md' }).waitFor()
   await rich.getByText('Source: keep this text.').waitFor()
+  await waitForDocumentEditor(app, page)
   const loaded = await rich.evaluate((element) => ({
     text: element.textContent,
     serialized: element.editor.getMarkdown(),
@@ -77,6 +80,12 @@ test('rich edits and autosave preserve untouched Obsidian syntax', {
     loaded.serialized.includes('Spacing: one&nbsp;two and three&nbsp;four.'),
   )
   assert.ok(loaded.serialized.includes('\n\n&nbsp;\n\n'))
+  assert.ok(loaded.text.includes('Entities: © © © &lt; &copy; and &copy;.'))
+  assert.ok(
+    loaded.serialized.includes(
+      'Entities: © © © &amp;lt; &amp;copy; and `&copy;`.',
+    ),
+  )
   await rich.getByText('Source: keep this text.').click()
   await page.keyboard.press('Enter')
   await waitForAsync(page, async () => (await window.hibi.getDocument()).dirty)
@@ -85,6 +94,7 @@ test('rich edits and autosave preserve untouched Obsidian syntax', {
   assert.match(changed, /\[\[assets\/some\.svg\]\]/)
   assert.match(changed, /> \[!tip\] Keep this callout\./)
   assert.ok(changed.includes(spacing))
+  assert.ok(changed.includes(entities))
   assert.ok(changed.includes('\n\na\nb\n\n'))
   await waitForAsync(page, async () => !(await window.hibi.getDocument()).dirty)
   assert.equal(await readFile(file, 'utf8'), changed)
@@ -96,6 +106,7 @@ test('rich edits and autosave preserve untouched Obsidian syntax', {
   await waitForAsync(page, async () => !(await window.hibi.getDocument()).dirty)
   const checked = await readFile(file, 'utf8')
   assert.ok(checked.includes(spacing))
+  assert.ok(checked.includes(entities))
   assert.ok(checked.includes('\n\n&nbsp;\n\n'))
   assert.ok(checked.includes('\n\na\nb\n\n'))
   assert.match(checked, /- \[x\] pending/)
