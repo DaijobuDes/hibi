@@ -81,6 +81,8 @@ test('dictionary looks up the caret word and replaces it with one undo step in b
   const define = page.getByRole('dialog', { name: 'Define “Happy”' })
   await define.getByText('Music makes me feel happy.').waitFor()
   await define.getByRole('heading', { name: 'adjective' }).waitFor()
+  await define.getByRole('heading', { name: 'noun' }).waitFor()
+  await define.getByRole('heading', { name: 'verb' }).waitFor()
   await define.getByText('Wiktionary · CC BY-SA 4.0').first().waitFor()
   assert.deepEqual(await requests(), [
     'dictionary https://en.wiktionary.org/api/rest_v1/page/definition/happy',

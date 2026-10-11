@@ -212,12 +212,9 @@ function Results({
             </section>
           )
         // Cantonese can share Wiktionary's Chinese entries; show them once.
-        const entries = value.filter((entry) => {
-          const key = `${entry.source.name}:${entry.lang}`
-          if (shown.has(key)) return false
-          shown.add(key)
-          return true
-        })
+        const key = (entry: Entry) => `${entry.source.name}:${entry.lang}`
+        const entries = value.filter((entry) => !shown.has(key(entry)))
+        for (const entry of entries) shown.add(key(entry))
         const [first] = entries
         if (!first) return null
         return (
