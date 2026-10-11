@@ -8,6 +8,7 @@ import { TaskList } from '@tiptap/extension-task-list'
 import { MarkdownManager } from '@tiptap/markdown'
 import { EditorState } from '@tiptap/pm/state'
 import { StarterKit } from '@tiptap/starter-kit'
+import { Marked } from 'marked'
 import { markdownConfiguration } from '../src/renderer/src/markdown.ts'
 import { markdownSerializer } from '../src/renderer/src/markdown-serialization.ts'
 import { preserveRichSource } from '../src/renderer/src/rich-source-preservation.ts'
@@ -23,6 +24,256 @@ const schema = getSchema(extensions)
 const manager = new MarkdownManager({
   extensions,
   markedOptions: { gfm: true },
+})
+
+test('literal block prefixes survive full and cached serialization', async (t) => {
+  for (const gfm of [false, true]) {
+    const { core, addons, parser, options } = markdownConfiguration([
+      {
+        markedOptions: { gfm },
+        richExtensions: gfm ? [TableKit, TaskList, TaskItem] : [],
+      },
+    ])
+    const extensions = [...core, ...addons]
+    const schema = getSchema(extensions)
+    const manager = new MarkdownManager({
+      extensions,
+      marked: parser,
+      markedOptions: options,
+    })
+    for (const fixture of [
+      ...Array.from(
+        { length: 6 },
+        (_, index) => `\\${'#'.repeat(index + 1)} heading`,
+      ),
+      '\\#',
+      '\\######',
+      '\\#\theading',
+      '\\#\u00a0heading',
+      '\\#\u2003heading',
+      '1\\. item',
+      '0\\) item',
+      '999999999\\. item',
+      '1234567890\\. item',
+      '1\\.',
+      '2\\)',
+      '1\\.\titem',
+      '1\\.\u00a0item',
+      'a\\. item',
+      'iii\\) item',
+      '\\- item',
+      '\\+ item',
+      '\\* item',
+      '\\-',
+      '\\+',
+      '\\*',
+      '\\---',
+      '\\-----',
+      '\\- - -',
+      ['\\***', '\\*\\*\\*'],
+      ['\\___', '\\_\\_\\_'],
+      ['\\* * *', '\\* \\* \\*'],
+      ['\\_ _ _', '\\_ \\_ \\_'],
+      ['\\```js', '\\`\\`\\`js'],
+      ['\\~~~js', '\\~\\~\\~js'],
+      ['\\>quote', '&gt;quote'],
+      ['\\> quote', '&gt; quote'],
+      ['\\<script>', '&lt;script&gt;'],
+      ['\\<!-- comment -->', '&lt;!-- comment --&gt;'],
+      ['\\<?pi?>', '&lt;?pi?&gt;'],
+      ['\\<!DOCTYPE html>', '&lt;!DOCTYPE html&gt;'],
+      ['\\<![CDATA[text]]>', '&lt;!\\[CDATA\\[text\\]\\]&gt;'],
+      ['\\<div>', '&lt;div&gt;'],
+      ['\\</div>', '&lt;/div&gt;'],
+      ['\\<custom-tag>', '&lt;custom-tag&gt;'],
+      ['- \\[ ] task', '- \\[ \\] task'],
+      ['- \\[x] task', '- \\[x\\] task'],
+      ['\\- [ ] task', '\\- \\[ \\] task'],
+      ['\\[label]: /url', '\\[label\\]: /url'],
+      '> \\# heading',
+      '- \\# heading',
+      '1. 2\\. item',
+      '- parent\n  - \\+ item',
+      '\\# **bold**',
+      ['**\\#** heading', '**#** heading'],
+      '  \\# heading',
+      '   \\- item',
+      '#hashtag',
+      '####### heading',
+      '1.5',
+      '1.item',
+      '1)item',
+      'a.',
+      'iii)',
+      '-word',
+      '+word',
+      '--',
+      '---word',
+      '===',
+      '===word',
+      '| ordinary | text |',
+      '| --- | --- |',
+      'text # heading and 1. item',
+      '`# heading`',
+      '`1. item`',
+      ['~~~md\n# heading\n1. item\n~~~', '```md\n# heading\n1. item\n```'],
+      ['text\n\\# heading', 'text # heading'],
+      ['text\n\\===', 'text ==='],
+      ['text\n\\---', 'text ---'],
+      'text  \n\\# heading',
+      'text  \n1\\. item',
+      'text  \n\\===',
+      'text  \n\\--',
+      'text  \n\\---',
+    ]) {
+      const [source, expected = source] = Array.isArray(fixture)
+        ? fixture
+        : [fixture]
+      await t.test(
+        `${gfm ? 'gfm' : 'commonmark'}: ${JSON.stringify(source)}`,
+        () => {
+          const doc = schema.nodeFromJSON(manager.parse(source))
+          for (const blockLocal of [true, false]) {
+            const saved = markdownSerializer(manager, blockLocal)(doc).source
+            assert.equal(saved, expected)
+            assert.ok(schema.nodeFromJSON(manager.parse(saved)).eq(doc))
+          }
+        },
+      )
+    }
+  }
+})
+
+test('gfm delimiter lines are escaped only when they would form a table', async (t) => {
+  for (const gfm of [false, true]) {
+    const { core, addons, parser, options } = markdownConfiguration([
+      { markedOptions: { gfm }, richExtensions: gfm ? [TableKit] : [] },
+    ])
+    const extensions = [...core, ...addons]
+    const schema = getSchema(extensions)
+    const manager = new MarkdownManager({
+      extensions,
+      marked: parser,
+      markedOptions: options,
+    })
+    for (const [source, table] of [
+      ['| a | b |  \n| \\--- | --- |', true],
+      ['a | b  \n\\--- | ---', true],
+      ['a | b  \n:\\--- | ---:', true],
+      ['plain  \n\\---|', true],
+      ['| one |  \n|\\---|', true],
+      ['text  \n| a | b |  \n| \\--- | --- |', true],
+      ['| a | b |  \n|\\---|', true],
+      ['plain  \n\\---|---', false],
+      ['| a | b |  \n| --- | word |', false],
+      ['plain  \n| --- | --- | --- |', false],
+      ['a | b  \nword | word', false],
+    ]) {
+      await t.test(
+        `${gfm ? 'gfm' : 'commonmark'}: ${JSON.stringify(source)}`,
+        () => {
+          const doc = schema.nodeFromJSON(manager.parse(source))
+          const expected = gfm && table ? source : source.replace('\\-', '-')
+          for (const blockLocal of [true, false]) {
+            const saved = markdownSerializer(manager, blockLocal)(doc).source
+            assert.equal(saved, expected)
+            assert.ok(schema.nodeFromJSON(manager.parse(saved)).eq(doc))
+          }
+        },
+      )
+    }
+  }
+})
+
+test('retained soft breaks escape prefixes on every paragraph line', async (t) => {
+  const { core, addons, options } = markdownConfiguration([
+    { markedOptions: { gfm: true }, richExtensions: [TableKit] },
+  ])
+  const extensions = [...core, ...addons]
+  const schema = getSchema(extensions)
+  // Keep newlines instead of the rich lexer's whitespace normalization.
+  const manager = new MarkdownManager({
+    extensions,
+    marked: new Marked(options),
+    markedOptions: options,
+  })
+  for (const source of [
+    'text\n\\# heading',
+    'text\n\\###### heading',
+    'text\n1\\. item',
+    'text\n1\\) item',
+    'text\n\\- item',
+    'text\n\\+ item',
+    'text\n\\* item',
+    'text\n\\=',
+    'text\n\\===',
+    'text\n\\--',
+    'text\n\\---',
+    'text\n\\- - -',
+    '| a | b |\n| \\--- | --- |',
+    'text\n| a | b |\n| \\--- | --- |',
+    'text\n#hashtag',
+    'text\n1.5',
+    'text\n| ordinary | text |',
+  ]) {
+    await t.test(JSON.stringify(source), () => {
+      const doc = schema.nodeFromJSON(manager.parse(source))
+      for (const blockLocal of [true, false]) {
+        const saved = markdownSerializer(manager, blockLocal)(doc).source
+        assert.equal(saved, source)
+        assert.ok(schema.nodeFromJSON(manager.parse(saved)).eq(doc))
+      }
+    })
+  }
+})
+
+test('untouched escaped prefixes retain their original source bytes', () => {
+  const { core, addons, parser, options } = markdownConfiguration([
+    { markedOptions: { gfm: true }, richExtensions: [TableKit] },
+  ])
+  const extensions = [...core, ...addons]
+  const schema = getSchema(extensions)
+  const manager = new MarkdownManager({
+    extensions,
+    marked: parser,
+    markedOptions: options,
+  })
+  for (const construct of [
+    '\\# heading',
+    '001\\. item',
+    '\\- - -',
+    'text\n\\# heading',
+    'text\n\\===',
+    '\\<div>',
+    '| a | b |  \n\\| --- | --- |',
+  ]) {
+    const original = `${construct.replaceAll('\n', '\r\n')}\r\n\r\nelsewhere\r\n`
+    const before = schema.nodeFromJSON(manager.parse(original))
+    const after = schema.nodes.doc.create(null, [
+      before.firstChild,
+      schema.nodes.paragraph.create(null, schema.text('edited elsewhere')),
+    ])
+    for (const blockLocal of [true, false]) {
+      const serialize = markdownSerializer(manager, blockLocal)
+      const baseline = serialize(before).source
+      assert.equal(
+        preserveRichSource(original, baseline, baseline, (candidate) =>
+          schema.nodeFromJSON(manager.parse(candidate)).eq(before),
+        ),
+        original,
+      )
+      assert.equal(
+        preserveRichSource(
+          original,
+          baseline,
+          serialize(after).source,
+          (candidate) =>
+            schema.nodeFromJSON(manager.parse(candidate)).eq(after),
+        ),
+        original.replace('elsewhere', 'edited elsewhere'),
+      )
+    }
+  }
 })
 
 test('cached serialization matches the full manager through contextual blocks and 160 edits', () => {

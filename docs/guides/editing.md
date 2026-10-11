@@ -34,6 +34,8 @@ Select text, then choose a toolbar action. In side-by-side view, formatting acti
 
 In Normal view and its side-by-side preview, soft line breaks and surrounding spaces or tabs display as a single space, including inside task items. Repeated spaces and tabs elsewhere keep their width.
 
+escaped block prefixes such as `\# heading` and `1\. item` remain literal text when you edit and save in normal view.
+
 In formatted view, the active text block shows subtle Markdown hints for heading levels, bold, italic, strikethrough, and inline code. They follow the cursor and disappear when focus leaves the formatted editor or you select several blocks. Code blocks keep their literal text without extra hints.
 
 These markers are visual hints, not editable characters or a verbatim view of the original delimiters. They are excluded from copied text, saved Markdown, and exports. Use source view to edit the syntax itself. To hide the hints, turn off **Settings → Editor → Writing → Show Markdown markers**. The setting is on by default and persists on this device.
