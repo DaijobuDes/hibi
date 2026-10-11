@@ -276,17 +276,31 @@ test('tray preserves drafts, restores the same renderer and cancels unsafe quits
   delete env.ELECTRON_RUN_AS_NODE
   const secondary = spawn(
     executable,
-    [resolve('.'), `--user-data-dir=${profile}`, '--hibi-test'],
+    [
+      resolve('.'),
+      `--user-data-dir=${profile}`,
+      '--hibi-test',
+      ...child.spawnargs.filter((argument) => argument === '--no-sandbox'),
+    ],
     {
       env,
       detached: process.platform !== 'win32',
-      stdio: 'ignore',
+      stdio: ['ignore', 'ignore', 'pipe'],
       windowsHide: true,
     },
   )
+  let secondaryErrors = ''
+  secondary.stderr.setEncoding('utf8').on('data', (chunk) => {
+    secondaryErrors = (secondaryErrors + chunk).slice(-4096)
+  })
   const secondaryClosed = once(secondary, 'close')
   secondaryProcesses.push({ child: secondary, closed: secondaryClosed })
-  await waitForElectronShutdown(secondary, secondaryClosed)
+  try {
+    await waitForElectronShutdown(secondary, secondaryClosed)
+  } catch (error) {
+    if (secondaryErrors) t.diagnostic(secondaryErrors)
+    throw error
+  }
   assert.equal(secondary.exitCode, 0)
   await waitVisible(app, true)
   assert.deepEqual(await windowState(app), original)
