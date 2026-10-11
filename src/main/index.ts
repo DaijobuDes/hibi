@@ -462,11 +462,20 @@ const addonHotkeys = new AddonHotkeys(
   process.platform,
   hotkeys,
 )
+let backgroundSettingsReady = false
+let pendingBackgroundSettings = false
+function deliverBackgroundSettings() {
+  if (!backgroundSettingsReady || !pendingBackgroundSettings || !mainWindow)
+    return
+  pendingBackgroundSettings = false
+  mainWindow.webContents.send(BACKGROUND_CHANNELS.settings)
+}
 const background = new BackgroundMode({
   open: showMainWindow,
   settings: () => {
+    pendingBackgroundSettings = true
     showMainWindow()
-    mainWindow?.webContents.send(BACKGROUND_CHANNELS.settings)
+    deliverBackgroundSettings()
   },
   hasQuickNote: () => !!addonHotkeys.command(QUICK_NOTE_COMMAND),
   quickNote: () => {
@@ -703,12 +712,14 @@ function createWindow(): void {
   window.on('blur', stopRecording)
   window.webContents.on('did-start-loading', stopRecording)
   window.webContents.on('did-start-loading', () => {
+    backgroundSettingsReady = false
     globalShortcuts.clear()
     addonHotkeys.clearRegistrations()
     installMenu()
   })
   window.webContents.on('did-start-loading', () => analysisService.cancel())
   window.webContents.on('render-process-gone', () => {
+    backgroundSettingsReady = false
     stopRecording()
     globalShortcuts.clear()
     addonHotkeys.clearRegistrations()
@@ -717,6 +728,7 @@ function createWindow(): void {
     analysisService.cancel()
   })
   window.on('closed', () => {
+    backgroundSettingsReady = false
     recordingHotkey = false
     addonHotkeys.clearRegistrations()
     installMenu()
@@ -1162,6 +1174,10 @@ if (!app.requestSingleInstanceLock()) {
             throw error
           }
         })
+      handle(BACKGROUND_CHANNELS.settingsReady, () => {
+        backgroundSettingsReady = true
+        deliverBackgroundSettings()
+      })
       handle(BACKGROUND_CHANNELS.get, () => background.enabled)
       handle(BACKGROUND_CHANNELS.set, async (_event, value: unknown) => {
         const enabled = await background.save(value)

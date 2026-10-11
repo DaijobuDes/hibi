@@ -179,6 +179,7 @@ if (process.isMainFrame) {
   }
   for (const pending of [startupDocument, startupAddons, startupKnown])
     void pending.catch(() => {})
+  let backgroundSettingsReady = false
   contextBridge.exposeInMainWorld('hibi', {
     registerGlobalShortcut: (id, accelerator, token) =>
       ipcRenderer.invoke(
@@ -204,6 +205,12 @@ if (process.isMainFrame) {
     onOpenSettings: (callback) => {
       const listener = () => callback()
       transport.on(BACKGROUND_CHANNELS.settings, listener)
+      if (!backgroundSettingsReady) {
+        backgroundSettingsReady = true
+        void transport
+          .invoke(BACKGROUND_CHANNELS.settingsReady)
+          .catch(console.error)
+      }
       return () =>
         transport.removeListener(BACKGROUND_CHANNELS.settings, listener)
     },

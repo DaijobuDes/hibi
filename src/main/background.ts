@@ -28,7 +28,13 @@ export class BackgroundMode {
     } catch {
       this.value = false
     }
-    this.refresh()
+    try {
+      this.refresh()
+    } catch (error) {
+      this.value = false
+      this.dispose()
+      console.error('Could not create the background tray:', error)
+    }
   }
 
   save(input: unknown): Promise<boolean> {
@@ -37,11 +43,18 @@ export class BackgroundMode {
     const writing = this.writing
       .catch(() => {})
       .then(async () => {
-        await writeFile(`${this.path}.tmp`, JSON.stringify(input), {
-          mode: 0o600,
-        })
-        await rename(`${this.path}.tmp`, this.path)
+        const candidate = input && !this.tray ? this.createTray() : null
+        try {
+          await writeFile(`${this.path}.tmp`, JSON.stringify(input), {
+            mode: 0o600,
+          })
+          await rename(`${this.path}.tmp`, this.path)
+        } catch (error) {
+          candidate?.destroy()
+          throw error
+        }
         this.value = input
+        if (candidate) this.tray = candidate
         this.refresh()
         return this.enabled
       })
@@ -49,26 +62,30 @@ export class BackgroundMode {
     return writing
   }
 
-  refresh() {
-    if (!this.value) {
-      this.dispose()
-      return
+  private createTray() {
+    const name =
+      process.platform === 'darwin'
+        ? 'trayTemplate.png'
+        : process.platform === 'win32'
+          ? 'tray.ico'
+          : 'tray.png'
+    const tray = new Tray(
+      app.isPackaged
+        ? join(process.resourcesPath, 'icons', name)
+        : join(app.getAppPath(), 'build', name),
+    )
+    try {
+      tray.setToolTip('Hibi')
+      if (process.platform === 'win32') tray.on('click', this.actions.open)
+      tray.setContextMenu(this.menu())
+      return tray
+    } catch (error) {
+      tray.destroy()
+      throw error
     }
-    if (!this.tray) {
-      const name =
-        process.platform === 'darwin'
-          ? 'trayTemplate.png'
-          : process.platform === 'win32'
-            ? 'tray.ico'
-            : 'tray.png'
-      this.tray = new Tray(
-        app.isPackaged
-          ? join(process.resourcesPath, 'icons', name)
-          : join(app.getAppPath(), 'build', name),
-      )
-      this.tray.setToolTip('Hibi')
-      if (process.platform === 'win32') this.tray.on('click', this.actions.open)
-    }
+  }
+
+  private menu() {
     const menu = Menu.buildFromTemplate([
       { label: 'Open Hibi', click: this.actions.open },
       ...(this.actions.hasQuickNote()
@@ -80,8 +97,14 @@ export class BackgroundMode {
     ])
     if (getUiCase() === 'lowercase')
       for (const item of menu.items) item.label = item.label.toLocaleLowerCase()
+    return menu
+  }
+
+  refresh() {
+    if (!this.value) this.dispose()
+    else if (!this.tray) this.tray = this.createTray()
     // Linux needs the context menu assigned again after command availability changes.
-    this.tray.setContextMenu(menu)
+    else this.tray.setContextMenu(this.menu())
   }
 
   dispose() {
