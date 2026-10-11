@@ -20,6 +20,8 @@ type NativeAddon = {
     warnings?: string[]
   }>
   stop?: () => void
+  /** Run in the main process when this addon's global shortcut fires, instead of showing the main window. Keys are local shortcut ids. */
+  globalShortcuts?: Record<string, () => void | Promise<void>>
   /** Trusted read-only handlers. No user-file changes or dialogs; private compilation caches are allowed. */
   queries?: Record<
     string,
@@ -39,6 +41,7 @@ type NativeAddon = {
 **Properties**
 
 - [id](#id)
+- [globalShortcuts](#globalshortcuts)
 - [queries](#queries)
 - [methods](#methods)
 
@@ -57,9 +60,19 @@ type NativeAddon = {
 id: string
 ```
 
-### queries
+### globalShortcuts
 
 Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L921)
+
+Run in the main process when this addon's global shortcut fires, instead of showing the main window. Keys are local shortcut ids.
+
+```typescript
+globalShortcuts?: Record<string, () => void | Promise<void>>
+```
+
+### queries
+
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L923)
 
 Trusted read-only handlers. No user-file changes or dialogs; private compilation caches are allowed.
 
@@ -74,7 +87,7 @@ Related: [NativeAddonContext](NativeAddonContext.md).
 
 ### methods
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L925)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L927)
 
 ```typescript
 methods: Record<
