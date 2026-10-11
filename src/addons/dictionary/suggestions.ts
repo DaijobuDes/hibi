@@ -3,6 +3,7 @@ import type {
   CompletionProvider,
 } from '../../shared/completions.ts'
 import type { AddonContext } from '../api.ts'
+import { type CustomWord, listCustomWords, yours } from './custom-words.ts'
 import { latinLangs, matchCase } from './lookup.ts'
 import { completeAll } from './offline.ts'
 import type { Lang } from './providers.ts'
@@ -138,13 +139,14 @@ export type Complete = (
 ) => Promise<{ lang: Lang; words: string[] }[]>
 
 /**
- * Word completions from the installed packs of every suggestion language, in
- * one request per keystroke; nothing is sent online.
+ * Word completions from the user's words, then the installed packs of every
+ * suggestion language in one request per keystroke; nothing is sent online.
  */
 export function dictionaryCompletions(
   complete: Complete,
   preferences: () => TypingPreferences,
   languageName: (lang: Lang) => string,
+  custom: () => readonly CustomWord[] = () => [],
 ): CompletionProvider {
   return async (request, signal) => {
     const { anchor, head } = request.selection
@@ -161,12 +163,33 @@ export function dictionaryCompletions(
       if (signal.aborted) throw error
     }
     signal.throwIfAborted()
-    const ranked = rankWords(prefix, found)
+    // The user's words come before pack words for the same prefix.
+    const typed = prefix.toLowerCase()
+    const mine = custom()
+      .filter(
+        ({ word, lang }) =>
+          (!lang || settings.languages.includes(lang)) &&
+          word.length > prefix.length &&
+          word.toLowerCase().startsWith(typed),
+      )
+      .map(({ word }) => word)
+      .sort((left, right) => left.length - right.length)
+    const taken = new Set(mine.map((word) => word.toLowerCase()))
+    const ranked = [
+      ...mine.map((word) => ({ word, lang: null })),
+      ...rankWords(prefix, found).filter(
+        ({ word }) => !taken.has(word.toLowerCase()),
+      ),
+    ].slice(0, MAX_ITEMS)
     const several = settings.languages.length > 1
     return ranked.map(
       ({ word, lang }): CompletionItem => ({
         label: word,
-        ...(several ? { detail: languageName(lang) } : {}),
+        ...(lang === null
+          ? { detail: yours.label }
+          : several
+            ? { detail: languageName(lang) }
+            : {}),
         insertText: matchCase(prefix, word),
         from: head - prefix.length,
         to: head,
@@ -189,6 +212,7 @@ export function watchSuggestions(context: AddonContext) {
               completeAll(context.native, langs, prefix, signal, limit),
             readTyping,
             (lang) => languageNames[lang],
+            listCustomWords,
           ),
         )
         .catch(() => undefined)
