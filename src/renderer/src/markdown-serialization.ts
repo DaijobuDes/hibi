@@ -72,8 +72,12 @@ export function paragraphEscaper(
     let prefix = ''
     if (characters.length && content.some(needsMasking)) {
       prefix = '\uE000'
-      const hasPrefix = (child: JSONContent): boolean =>
-        !!child.text?.includes(prefix) || !!child.content?.some(hasPrefix)
+      const hasPrefix = (value: unknown): boolean =>
+        typeof value === 'string'
+          ? value.includes(prefix)
+          : !!value &&
+            typeof value === 'object' &&
+            Object.values(value).some(hasPrefix)
       while (content.some(hasPrefix)) prefix += '\uE000'
       const sentinels = new Map(
         characters.map((character, index) => {
