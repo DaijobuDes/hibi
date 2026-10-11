@@ -13,6 +13,7 @@ import type { MarkdownFlavor } from '../../addons/api'
 import { contextualTokens } from '../../shared/markdown-semantic-tokens.ts'
 import { documentImage } from './DocumentImage.ts'
 import { markdownConfiguration } from './markdown.ts'
+import { richTextToken } from './markdown-entities.ts'
 import { markdownSyntax } from './markdown-syntax.ts'
 
 export type MarkdownSemantics = Readonly<{
@@ -107,6 +108,7 @@ export function createMarkdownSemantics(
             continue
           }
           const token = value as Token
+          richTextToken(token)
           if (
             token.type === 'html' &&
             (typeof window === 'undefined' || !window.DOMParser)

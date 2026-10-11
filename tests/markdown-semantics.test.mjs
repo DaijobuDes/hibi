@@ -15,6 +15,11 @@ import { EditorState } from '@tiptap/pm/state'
 import { Marked } from 'marked'
 import { alertMarkdown } from '../src/addons/markdown/alerts.ts'
 import { GithubAlert } from '../src/addons/markdown/GithubAlert.ts'
+import {
+  ObsidianHighlight,
+  obsidianMarkdown,
+  WikiLink,
+} from '../src/addons/markdown/obsidian.ts'
 import { Subscript, Subtext } from '../src/addons/text-extras/nodes.ts'
 import { textExtrasMarkdown } from '../src/addons/text-extras/syntax.ts'
 import { documentImage } from '../src/renderer/src/DocumentImage.ts'
@@ -24,6 +29,11 @@ import { createMarkdownSemantics } from '../src/renderer/src/markdown-semantics.
 import { markdownSyntax } from '../src/renderer/src/markdown-syntax.ts'
 
 const flavors = [
+  {
+    id: 'markdown.obsidian',
+    richExtensions: [ObsidianHighlight, WikiLink],
+    export: { extensions: [obsidianMarkdown] },
+  },
   {
     id: 'github-markdown.github',
     markedOptions: { gfm: true },
@@ -44,7 +54,12 @@ const flavors = [
 ]
 const context = { before: false, after: false }
 const tokens = (source, taskGrammar = false) => {
-  const parser = new Marked({ gfm: true }, alertMarkdown, textExtrasMarkdown)
+  const parser = new Marked(
+    { gfm: true },
+    alertMarkdown,
+    textExtrasMarkdown,
+    obsidianMarkdown,
+  )
   if (taskGrammar)
     new MarkdownManager({
       marked: parser,
@@ -111,6 +126,15 @@ test('schema-only consumption matches current editor declarations without creati
     '![photo](image.png "caption")',
     'one\n\n\n\ntwo',
     'é 👩🏽‍💻 &amp; &#13;',
+    '&copy; &#169; &#xA9; &#38;lt; &amp;copy;',
+    '&nbsp;\n\n**&nbsp;**\n\na&NewLine;b',
+    '# &copy;\n\n> &amp;copy;\n\n- &nbsp;\n- &#38;lt;',
+    '[&copy;](https://example.com/?a=&copy;&b=&amp;copy; "&quot;title&quot;")',
+    '<https://example.com/?a=&copy;> and `&copy; &#169;`',
+    'https://x.com/?a=1&amp;b=2 and https://x.com/?a=1&b=2',
+    '==&copy;== and [[a|lab&copy;]]',
+    '==&amp;copy;== and [[a|lab&#38;copy;]]',
+    '| &copy; | &#38;lt; |\n|---|---|\n| &nbsp; | &#169; |',
   ]) {
     const input = freeze(tokens(source)),
       serialized = JSON.stringify(input),
@@ -149,6 +173,7 @@ test('public task tokenizer output consumes without native source re-lexing', ()
     readFull = fullParser()
   for (const source of [
     '- [ ] todo\n- [x] done',
+    '- [ ] &copy; &#38;lt;\n- [x] **&nbsp;**',
     '- [ ] **bold** H~2~O\n  - [x] nested\n  - ordinary',
     '> - [ ] quote task\n> - [x] complete',
     '- [ ] task\n- ordinary',
