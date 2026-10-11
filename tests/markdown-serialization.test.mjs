@@ -15,12 +15,20 @@ import { MarkdownManager } from '@tiptap/markdown'
 import { EditorState } from '@tiptap/pm/state'
 import { StarterKit } from '@tiptap/starter-kit'
 import { Marked } from 'marked'
+import {
+  ObsidianHighlight,
+  obsidianMarkdown,
+  WikiLink,
+} from '../src/addons/markdown/obsidian.ts'
 import { markdownConfiguration } from '../src/renderer/src/markdown.ts'
 import {
   markdownSerializer,
   paragraphEscaper,
 } from '../src/renderer/src/markdown-serialization.ts'
-import { preserveRichSource } from '../src/renderer/src/rich-source-preservation.ts'
+import {
+  preserveRichSource,
+  sameRichSourceDocument,
+} from '../src/renderer/src/rich-source-preservation.ts'
 
 const extensions = [
   StarterKit.configure({ trailingNode: false }),
@@ -46,14 +54,14 @@ test('flavor paragraph rules compose before core escaping with render context', 
             return source.replaceAll('?', '\\?')
           },
         },
-        { escape: (source) => source.replaceAll('!', '\\!') },
+        { escape: (source) => source.replaceAll(':', '\\:') },
       ],
     },
     {
       paragraphRules: [
         {
           escape(source) {
-            assert.equal(source, '# why\\?\\!')
+            assert.equal(source, '# why\\?\\:')
             return source
           },
         },
@@ -66,7 +74,7 @@ test('flavor paragraph rules compose before core escaping with render context', 
     marked: parser,
     markedOptions: options,
   })
-  const source = '\\# why\\?\\!\n\n> \\# why\\?\\!'
+  const source = '\\# why\\?\\:\n\n> \\# why\\?\\:'
   const doc = schema.nodeFromJSON(manager.parse(source))
   for (const blockLocal of [true, false]) {
     const saved = markdownSerializer(manager, blockLocal)(doc).source
@@ -74,10 +82,10 @@ test('flavor paragraph rules compose before core escaping with render context', 
     assert.ok(schema.nodeFromJSON(manager.parse(saved)).eq(doc))
   }
   assert.deepEqual(seen, [
-    ['# why?!', 'doc'],
-    ['# why?!', 'blockquote'],
-    ['# why?!', 'doc'],
-    ['# why?!', 'blockquote'],
+    ['# why?:', 'doc'],
+    ['# why?:', 'blockquote'],
+    ['# why?:', 'doc'],
+    ['# why?:', 'blockquote'],
   ])
 })
 
@@ -221,8 +229,11 @@ test('paragraph rule failures name the flavor and abort serialization', async (t
     ['non-string', () => undefined],
     [
       'drop sentinel',
-      (source, { literals }) =>
-        source.replaceAll(literals.keys().next().value, ''),
+      (source, { literals }) => {
+        for (const sentinel of literals.keys())
+          source = source.replaceAll(sentinel, '')
+        return source
+      },
     ],
     ['damage sentinel', (source) => source.replaceAll('\uE001', '')],
   ]) {
@@ -628,7 +639,7 @@ test('leading indentation remains paragraph text through numeric entities', asyn
     marked: parser,
     markedOptions: options,
   })
-  for (const [source, text] of [
+  for (const [source, text, expected = source] of [
     ['&#32;   code', '    code'],
     ['&#32;       code', '        code'],
     ['&#9;code', '\tcode'],
@@ -648,16 +659,19 @@ test('leading indentation remains paragraph text through numeric entities', asyn
       ])
       for (const blockLocal of [true, false]) {
         const saved = markdownSerializer(configured, blockLocal)(doc).source
-        assert.equal(saved, source)
+        assert.equal(saved, expected)
         assert.ok(schema.nodeFromJSON(configured.parse(saved)).eq(doc))
       }
     })
   }
-  for (const source of ['> &#9;code', '- &#32;   code']) {
+  for (const [source, expected = source] of [
+    ['> &#9;code'],
+    ['- &#32;   code'],
+  ]) {
     const doc = schema.nodeFromJSON(configured.parse(source))
     for (const blockLocal of [true, false]) {
       const saved = markdownSerializer(configured, blockLocal)(doc).source
-      assert.equal(saved, source)
+      assert.equal(saved, expected)
       assert.ok(schema.nodeFromJSON(configured.parse(saved)).eq(doc))
     }
   }
@@ -746,11 +760,17 @@ test('retained soft breaks escape prefixes on every paragraph line', async (t) =
     'text\n| ordinary | text |',
   ]) {
     await t.test(JSON.stringify(source), () => {
-      const doc = schema.nodeFromJSON(manager.parse(source))
-      for (const blockLocal of [true, false]) {
-        const saved = markdownSerializer(manager, blockLocal)(doc).source
-        assert.equal(saved, source)
-        assert.ok(schema.nodeFromJSON(manager.parse(saved)).eq(doc))
+      for (const ending of ['\n', '\r\n']) {
+        const doc = schema.nodeFromJSON(
+          manager.parse(source.replaceAll('\n', ending)),
+        )
+        for (const blockLocal of [true, false]) {
+          const serialize = markdownSerializer(manager, blockLocal)
+          const saved = serialize(doc).source
+          assert.equal(saved, source)
+          assert.ok(schema.nodeFromJSON(manager.parse(saved)).eq(doc))
+          assert.equal(serialize(doc).source, source)
+        }
       }
     })
   }
@@ -963,6 +983,525 @@ test('rich soft breaks render as spaces and retain their source after an unrelat
     schema.nodeFromJSON(manager.parse('```\na\nb\n```')).firstChild.textContent,
     'a\nb',
   )
+})
+
+test('native HTML entities decode once and survive full and cached serialization', async (t) => {
+  const { core, parser, options } = markdownConfiguration([])
+  const schema = getSchema(core)
+  const manager = new MarkdownManager({
+    extensions: core,
+    marked: parser,
+    markedOptions: options,
+  })
+  for (const [name, source, text, saved, href] of [
+    ['named', '&copy;', '©', '©'],
+    ['decimal', '&#169;', '©', '©'],
+    ['hexadecimal', '&#xA9;', '©', '©'],
+    ['ampersand', '&amp;', '&', '&amp;'],
+    ['encoded named entity', '&amp;copy;', '&copy;', '&amp;copy;'],
+    ['numeric ampersand', '&#38;copy;', '&copy;', '&amp;copy;'],
+    ['encoded numeric entity', '&amp;#169;', '&#169;', '&amp;#169;'],
+    ['numeric angle entity', '&#38;lt;', '&lt;', '&amp;lt;'],
+    ['nonbreaking space', 'a&nbsp;b', 'a\u00a0b', 'a\u00a0b'],
+    ['lone nonbreaking space', '&nbsp;', '\u00a0', '&nbsp;'],
+    ['lone numeric space', '&#160;', '\u00a0', '&nbsp;'],
+    ['lone hexadecimal space', '&#xA0;', '\u00a0', '&nbsp;'],
+    ['lone newline', '&#10;', '\n', '&NewLine;'],
+    ['lone tab', '&Tab;', '\t', '&Tab;'],
+    [
+      'edge nonbreaking spaces',
+      '&nbsp;text&nbsp;',
+      '\u00a0text\u00a0',
+      '&nbsp;text&nbsp;',
+    ],
+    ['visible named pair', '&NotEqualTilde;', '\u2242\u0338', '\u2242\u0338'],
+    ['em space', 'a&emsp;b', 'a\u2003b', 'a\u2003b'],
+    ['zero width space', 'a&ZeroWidthSpace;b', 'a\u200bb', 'a\u200bb'],
+    ['word joiner', 'a&NoBreak;b', 'a\u2060b', 'a\u2060b'],
+    ['numeric newline', 'a&#10;b', 'a\nb', 'a&NewLine;b'],
+    ['numeric carriage return', 'a&#13;b', 'a\rb', 'a&#13;b'],
+    ['numeric CRLF', 'a&#13;&#10;b', 'a\r\nb', 'a&#13;&NewLine;b'],
+    ['tab', 'a&Tab;b', 'a\tb', 'a\tb'],
+    ['bold nbsp', '**&nbsp;**', '\u00a0', '**&nbsp;**'],
+    ['nbsp paragraphs', '&nbsp;\n\n&nbsp;', '\u00a0\u00a0', '&nbsp;\n\n&nbsp;'],
+    ['escaped ampersand', '\\&copy;', '&copy;', '&amp;copy;'],
+    ['missing semicolon', '&copy', '&copy', '&amp;copy'],
+    ['unknown entity', '&unknown;', '&unknown;', '&amp;unknown;'],
+    ['numeric limit', '&#0000000169;', '&#0000000169;', '&amp;#0000000169;'],
+    ['invalid numeric', '&#0; &#xD800;', '\ufffd \ufffd', '\ufffd \ufffd'],
+    [
+      'inline punctuation',
+      '&lt;x&gt;&ast;&lowbar;&lbrack;&bsol;',
+      '<x>*_[\\',
+      '&lt;x&gt;\\*\\_\\[\\\\',
+    ],
+    ['heading marker', '&num; heading', '# heading', '\\# heading'],
+    ['bullet marker', '&minus; item', '− item', '− item'],
+    ['ascii bullet marker', '&#45; item', '- item', '\\- item'],
+    ['ordered marker', '1&period; item', '1. item', '1\\. item'],
+    ['decoded indentation', '&#32;&#32;&#32;&#32;x', '    x', '&#32;   x'],
+    ['literal image opener', '&excl;[x](foo)', '!x', '\\![x](foo)'],
+    ['code image opener', '`!`[x](foo)', '!x', '`!`[x](foo)'],
+    ['code image syntax', '`![x](foo)`', '![x](foo)', '`![x](foo)`'],
+    ['ordinary exclamation', 'done&excl;', 'done!', 'done!'],
+    ['code nbsp', '`a\u00a0b`', 'a\u00a0b', '`a\u00a0b`'],
+    [
+      'code span',
+      '`&copy; &#169; &nbsp;`',
+      '&copy; &#169; &nbsp;',
+      '`&copy; &#169; &nbsp;`',
+    ],
+    [
+      'code block',
+      '```\n&copy; &#169; &nbsp;\n```',
+      '&copy; &#169; &nbsp;',
+      '```\n&copy; &#169; &nbsp;\n```',
+    ],
+    [
+      'link text',
+      '[&copy;](https://example.com)',
+      '©',
+      '[©](https://example.com)',
+      'https://example.com',
+    ],
+    [
+      'link URL',
+      '[link](https://example.com/?a=&copy;&b=&amp;copy;)',
+      'link',
+      '[link](https://example.com/?a=©&amp;b=&amp;copy;)',
+      'https://example.com/?a=©&b=&copy;',
+    ],
+    [
+      'numeric link URL',
+      '[link](https://example.com/&#169;/&#xA9;)',
+      'link',
+      '[link](https://example.com/©/©)',
+      'https://example.com/©/©',
+    ],
+    [
+      'tab in link URL',
+      '[link](https://example.com/a&#9;b)',
+      'link',
+      '[link](https://example.com/a&Tab;b)',
+      'https://example.com/a\tb',
+    ],
+    [
+      'link URL delimiters',
+      '[link](https://example.com/a&#32;b&#41;c)',
+      'link',
+      '[link](https://example.com/a&#32;b&rpar;c)',
+      'https://example.com/a b)c',
+    ],
+    [
+      'autolink entities stay literal',
+      '<https://example.com/?a=&copy;>',
+      'https://example.com/?a=&copy;',
+      '[https://example.com/?a=&amp;copy;](https://example.com/?a=&amp;copy;)',
+      'https://example.com/?a=&copy;',
+    ],
+    [
+      'link title',
+      '[&copy;](https://example.com "&copy; &quot;title&quot; &amp;copy;")',
+      '©',
+      '[©](https://example.com "© &quot;title&quot; &amp;copy;")',
+      'https://example.com',
+    ],
+  ]) {
+    await t.test(name, () => {
+      const before = schema.nodeFromJSON(manager.parse(source))
+      assert.equal(before.textContent, text)
+      if (href)
+        assert.equal(before.firstChild.firstChild.marks[0].attrs.href, href)
+      for (const blockLocal of [false, true]) {
+        const serialize = markdownSerializer(manager, blockLocal)
+        const output = serialize(before).source
+        assert.equal(output, saved)
+        const after = schema.nodeFromJSON(manager.parse(output))
+        assert.ok(after.eq(before), output)
+        assert.equal(serialize(after).source, output)
+      }
+    })
+  }
+})
+
+test('paragraph edge protection preserves masked marks and leaves code literal', () => {
+  const { core, parser, options } = markdownConfiguration([])
+  const schema = getSchema(core)
+  const manager = new MarkdownManager({
+    extensions: core,
+    marked: parser,
+    markedOptions: options,
+  })
+  const bold = schema.nodes.doc.create(null, [
+    schema.nodes.paragraph.create(
+      null,
+      schema.text('\u00a0!hi\u00a0', [schema.marks.bold.create()]),
+    ),
+  ])
+  const code = schema.nodes.doc.create(null, [
+    schema.nodes.paragraph.create(
+      null,
+      schema.text('a\t\n\tb', [schema.marks.code.create()]),
+    ),
+  ])
+  const lines = schema.nodes.doc.create(null, [
+    schema.nodes.paragraph.create(null, [
+      schema.text('first\t'),
+      schema.nodes.hardBreak.create(),
+      schema.text('\tsecond\u00a0'),
+    ]),
+  ])
+  for (const blockLocal of [false, true]) {
+    const serialize = markdownSerializer(manager, blockLocal)
+    assert.equal(serialize(bold).source, '**&nbsp;!hi&nbsp;**')
+    assert.ok(
+      schema.nodeFromJSON(manager.parse(serialize(bold).source)).eq(bold),
+    )
+    assert.equal(serialize(code).source, '`a\t\n\tb`')
+    assert.ok(
+      schema.nodeFromJSON(manager.parse(serialize(lines).source)).eq(lines),
+    )
+  }
+})
+
+test('string and object code marks keep literal text during encoding', () => {
+  const { core, parser, options } = markdownConfiguration([])
+  const manager = new MarkdownManager({
+    extensions: core,
+    marked: parser,
+    markedOptions: options,
+  })
+  markdownSerializer(manager, false)
+  const text = '![x](y)\n&copy;'
+  for (const mark of ['code', { type: 'code' }]) {
+    const node = { type: 'text', text, marks: [mark] }
+    assert.equal(manager.renderNodeToMarkdown(node), text)
+    const content = [node]
+    assert.equal(
+      paragraphEscaper(parser, [])(
+        { type: 'paragraph', content },
+        {
+          renderChildren(children) {
+            assert.equal(children, content)
+            return '`![x](y)`'
+          },
+        },
+        { index: 0, level: 0, parentType: 'doc' },
+      ),
+      '`![x](y)`',
+    )
+  }
+})
+
+test('flavor token children decode entity text and wikilink labels once', () => {
+  const { core, addons, parser, options } = markdownConfiguration([
+    {
+      id: 'markdown.obsidian',
+      richExtensions: [ObsidianHighlight, WikiLink],
+      export: { extensions: [obsidianMarkdown] },
+    },
+  ])
+  const extensions = [...core, ...addons]
+  const schema = getSchema(extensions)
+  const manager = new MarkdownManager({
+    extensions,
+    marked: parser,
+    markedOptions: options,
+  })
+  for (const [source, text, expected] of [
+    ['==&copy;==', '©', '==©=='],
+    ['==&amp;copy;==', '&copy;', '==&amp;copy;=='],
+    ['[[a|lab&copy;]]', 'lab©', '[[a|lab©]]'],
+    ['[[a|lab&#38;copy;]]', 'lab&copy;', '[[a|lab&amp;copy;]]'],
+  ]) {
+    const doc = schema.nodeFromJSON(manager.parse(source))
+    assert.equal(doc.textContent, text)
+    const mark = doc.firstChild.firstChild.marks[0]
+    if (mark.type.name === 'obsidianWikiLink')
+      assert.equal(mark.attrs.label, text)
+    for (const blockLocal of [false, true]) {
+      const saved = markdownSerializer(manager, blockLocal)(doc).source
+      assert.equal(saved, expected)
+      assert.ok(schema.nodeFromJSON(manager.parse(saved)).eq(doc))
+    }
+  }
+})
+
+test('bare GFM URLs decode entities once without changing link targets', () => {
+  const { core, parser, options } = markdownConfiguration([
+    { markedOptions: { gfm: true } },
+  ])
+  const schema = getSchema(core)
+  const manager = new MarkdownManager({
+    extensions: core,
+    marked: parser,
+    markedOptions: options,
+  })
+  for (const source of [
+    'https://x.com/?a=1&amp;b=2',
+    'https://x.com/?a=1&b=2',
+  ]) {
+    const doc = schema.nodeFromJSON(manager.parse(source))
+    assert.equal(doc.textContent, 'https://x.com/?a=1&b=2')
+    assert.equal(
+      doc.firstChild.firstChild.marks[0].attrs.href,
+      'https://x.com/?a=1&b=2',
+    )
+    for (const blockLocal of [false, true]) {
+      const saved = markdownSerializer(manager, blockLocal)(doc).source
+      assert.equal(
+        saved,
+        '[https://x.com/?a=1&amp;b=2](https://x.com/?a=1&amp;b=2)',
+      )
+      assert.ok(schema.nodeFromJSON(manager.parse(saved)).eq(doc))
+    }
+  }
+})
+
+test('typed and pasted text keeps literal Unicode and interior whitespace', async (t) => {
+  const { core, parser, options } = markdownConfiguration([])
+  const schema = getSchema(core)
+  const manager = new MarkdownManager({
+    extensions: core,
+    marked: parser,
+    markedOptions: options,
+  })
+  for (const [name, text, expected = text] of [
+    ['emoji joiners', '👨‍👩‍👧 family'],
+    ['ideographic space', '日本\u3000語'],
+    ['interior tab', 'a\tb'],
+    ['interior nonbreaking space', 'a\u00a0b'],
+    ['soft hyphen', 'co\u00adop'],
+    ['right-to-left mark', 'שלום\u200f!'],
+    ['thin space', 'a\u2009b'],
+    ['byte order mark', '\ufeffbom'],
+    ['edge nonbreaking spaces', '\u00a0text\u00a0', '&nbsp;text&nbsp;'],
+    ['trailing tab', 'text\t', 'text&Tab;'],
+    ['nonbreaking space only', '\u00a0', '&nbsp;'],
+  ]) {
+    await t.test(name, () => {
+      for (const paste of [false, true]) {
+        const state = EditorState.create({
+          schema,
+          doc: schema.nodeFromJSON(manager.parse('before')),
+        })
+        const transaction = paste
+          ? state.tr.replaceWith(1, 7, schema.text(text))
+          : state.tr.insertText(text, 1, 7)
+        const doc = state.apply(transaction).doc
+        for (const blockLocal of [false, true]) {
+          const serialize = markdownSerializer(manager, blockLocal)
+          serialize(state.doc)
+          const saved = serialize(doc).source
+          assert.equal(saved, expected)
+          assert.ok(schema.nodeFromJSON(manager.parse(saved)).eq(doc))
+        }
+      }
+    })
+  }
+})
+
+test('typing an exclamation before a link keeps the link', () => {
+  const { core, parser, options } = markdownConfiguration([])
+  const schema = getSchema(core)
+  const manager = new MarkdownManager({
+    extensions: core,
+    marked: parser,
+    markedOptions: options,
+  })
+  const state = EditorState.create({
+    schema,
+    doc: schema.nodeFromJSON(manager.parse('[x](foo)')),
+  })
+  const doc = state.apply(state.tr.insert(1, schema.text('!'))).doc
+  for (const blockLocal of [false, true]) {
+    const saved = markdownSerializer(manager, blockLocal)(doc).source
+    assert.equal(saved, '\\![x](foo)')
+    assert.ok(schema.nodeFromJSON(manager.parse(saved)).eq(doc))
+  }
+})
+
+test('rich insertions at normalized delimiters preserve source only with a unique full parse', () => {
+  for (const source of ['_em_', '**bold**', '~~strike~~']) {
+    const original = `${source}\r\n\r\nelsewhere\r\n`
+    const before = schema.nodeFromJSON(manager.parse(original))
+    const state = EditorState.create({ schema, doc: before })
+    for (const atEnd of [false, true]) {
+      const after = state.apply(
+        state.tr.insertText('!', atEnd ? before.firstChild.nodeSize - 1 : 1),
+      ).doc
+      const preserved = preserveRichSource(
+        original,
+        manager.serialize(before.toJSON()),
+        manager.serialize(after.toJSON()),
+        (candidate) => schema.nodeFromJSON(manager.parse(candidate)).eq(after),
+      )
+      const text = before.firstChild.textContent
+      assert.equal(
+        preserved,
+        original.replace(text, atEnd ? `${text}!` : `!${text}`),
+      )
+    }
+  }
+  assert.equal(
+    preserveRichSource('_em_', '*em*', '*em!*', () => false),
+    null,
+  )
+  assert.equal(
+    preserveRichSource('m_*', 'm*', 'm!*', () => true),
+    null,
+    'one-sided anchors must not choose between multiple proven source edits',
+  )
+})
+
+test('normalized delimiter edits find nearby anchors after more than 32 earlier matches', () => {
+  const original = `${'day\n\n'.repeat(40)}_y_\n`
+  const before = schema.nodeFromJSON(manager.parse(original))
+  const state = EditorState.create({ schema, doc: before })
+  const after = state.apply(
+    state.tr.insertText('!', before.content.size - 1),
+  ).doc
+  assert.equal(
+    preserveRichSource(
+      original,
+      manager.serialize(before.toJSON()),
+      manager.serialize(after.toJSON()),
+      (candidate) => schema.nodeFromJSON(manager.parse(candidate)).eq(after),
+    ),
+    original.replace('_y_', '_y!_'),
+  )
+})
+
+test('occurrence order preserves edits after a table shrinks during serialization', () => {
+  const pad = (text) => text + ' '.repeat(60)
+  const table = [
+    `| ${pad('a')} | ${pad('b')} |`,
+    `|${'-'.repeat(62)}|${'-'.repeat(62)}|`,
+    ...Array.from(
+      { length: 300 },
+      (_, index) => `| ${pad(`c${index}`)} | ${pad('d')} |`,
+    ),
+  ].join('\n')
+  const items = Array.from({ length: 20 }, () => '- _y_')
+  const original = `${table}\n\n${items.join('\n')}\n`
+  const before = schema.nodeFromJSON(manager.parse(original))
+  const state = EditorState.create({ schema, doc: before })
+  let occurrence = 0
+  let position = -1
+  before.descendants((node, at) => {
+    if (node.isText && node.text === 'y' && ++occurrence === 10)
+      position = at + 1
+  })
+  assert.notEqual(position, -1)
+  const after = state.apply(state.tr.insertText('!', position)).doc
+  let parses = 0
+  const preserved = preserveRichSource(
+    original,
+    manager.serialize(before.toJSON()),
+    manager.serialize(after.toJSON()),
+    (candidate) => {
+      parses++
+      return schema.nodeFromJSON(manager.parse(candidate)).eq(after)
+    },
+    7,
+  )
+  items[9] = '- _y!_'
+  assert.equal(preserved, `${table}\n\n${items.join('\n')}\n`)
+  assert.ok(parses <= 7, 'one of eight parses is reserved for the baseline')
+})
+
+test('plain CRLF paragraphs preserve exact line endings when q becomes qq', () => {
+  const original = 'p\r\n\r\nq'
+  const before = schema.nodeFromJSON(manager.parse(original))
+  const state = EditorState.create({ schema, doc: before })
+  const after = state.apply(
+    state.tr.insertText('q', before.content.size - 1),
+  ).doc
+  assert.equal(
+    preserveRichSource(
+      original,
+      manager.serialize(before.toJSON()),
+      manager.serialize(after.toJSON()),
+      (candidate) => schema.nodeFromJSON(manager.parse(candidate)).eq(after),
+    ),
+    'p\r\n\r\nqq',
+  )
+})
+
+test('source preservation caps distinct candidate parses including failures', () => {
+  for (const throws of [false, true]) {
+    const candidates = new Set()
+    let parses = 0
+    const result = preserveRichSource(
+      `${'day\n\n'.repeat(40)}_y_\n`,
+      `${'day\n\n'.repeat(40)}*y*`,
+      `${'day\n\n'.repeat(40)}*y!*`,
+      (candidate) => {
+        parses++
+        assert.ok(!candidates.has(candidate), 'candidate parsed more than once')
+        candidates.add(candidate)
+        if (throws) throw new Error('invalid candidate')
+        return false
+      },
+    )
+    assert.equal(result, null)
+    assert.equal(parses, 8)
+  }
+})
+
+test('fenced preview spelling caches never mask semantic or custom-grammar changes', () => {
+  const names = ['typstBlock', 'mermaidBlock', 'customBlock']
+  const schema = getSchema([
+    StarterKit,
+    ...names.map((name) =>
+      Node.create({
+        name,
+        group: 'block',
+        atom: true,
+        addAttributes: () => ({
+          source: { default: '' },
+          raw: { default: '' },
+          semantic: { default: '' },
+        }),
+      }),
+    ),
+  ])
+  const document = (name, attrs, marks = []) =>
+    schema.nodes.doc.create(null, [
+      schema.nodes.paragraph.create(null, schema.text('untouched')),
+      schema.nodes[name].create(attrs, null, marks),
+    ])
+  for (const name of names) {
+    const expected = document(name, { source: 'new', raw: 'old fence' })
+    const parsed = document(name, { source: 'new', raw: 'new fence' })
+    assert.equal(sameRichSourceDocument(parsed, expected, false), false)
+    assert.equal(
+      sameRichSourceDocument(parsed, expected, true),
+      name !== 'customBlock',
+    )
+    assert.equal(
+      sameRichSourceDocument(parsed, document(name, { source: 'new' }), true),
+      name !== 'customBlock',
+      'newly inserted previews have an empty spelling cache',
+    )
+    for (const different of [
+      document(name, { source: 'other', raw: 'new fence' }),
+      document(name, { source: 'new', raw: 'new fence', semantic: 'changed' }),
+      document(name, { source: 'new', raw: 'new fence' }, [
+        schema.marks.bold.create(),
+      ]),
+      document(name === 'typstBlock' ? 'mermaidBlock' : 'typstBlock', {
+        source: 'new',
+        raw: 'new fence',
+      }),
+      schema.nodes.doc.create(null, [
+        schema.nodes.paragraph.create(null, schema.text('changed')),
+        parsed.lastChild,
+      ]),
+      schema.nodes.doc.create(null, [parsed.lastChild]),
+    ])
+      assert.equal(sameRichSourceDocument(different, expected, true), false)
+  }
 })
 
 test('undeclared serializers retain the full-document path and custom document joining', () => {

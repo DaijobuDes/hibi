@@ -2,7 +2,7 @@
 
 # EditorViewsApi
 
-Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L427)
+Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L429)
 
 <details>
 <summary>Declaration</summary>
@@ -52,7 +52,7 @@ type EditorViewsApi = {
 
 ### list
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L429)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L431)
 
 Mounted editor instances; one instance is available in the current layout.
 
@@ -66,7 +66,7 @@ Related: [ViewTarget](ViewTarget.md).
 
 ### getActive
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L430)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L432)
 
 ```typescript
 getActive: () => import('../shared/foundation-contracts').ViewTarget | null
@@ -78,7 +78,7 @@ Related: [ViewTarget](ViewTarget.md).
 
 ### getSelection
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L431)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L433)
 
 ```typescript
 getSelection: (
@@ -98,7 +98,7 @@ Related: [ViewTarget](ViewTarget.md), [OperationResult](OperationResult.md), [Ed
 
 ### setSelection
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L435)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L437)
 
 Does not focus the editor. Requires its current view generation and content version.
 
@@ -120,7 +120,7 @@ Related: [EditorViewSelection](EditorViewSelection.md), [OperationResult](Operat
 
 ### reveal
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L438)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L440)
 
 ```typescript
 reveal: (
@@ -140,7 +140,7 @@ Related: [EditorViewPosition](EditorViewPosition.md), [OperationResult](Operatio
 
 ### onDidChangeActive
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L441)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L443)
 
 ```typescript
 onDidChangeActive: (
@@ -162,7 +162,7 @@ Related: [ViewTarget](ViewTarget.md).
 
 ### onDidChangeSelection
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L446)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L448)
 
 ```typescript
 onDidChangeSelection: (
