@@ -8,58 +8,22 @@ import {
   MAX_ADDON_FILE_BYTES,
   validAddonPath,
 } from '../shared/addon-package.ts'
+import { download } from './download.ts'
 import { openBoundedZip } from './zip-reader.ts'
-
 /** No cookies, credentials, or code execution; redirects must remain HTTPS. */
 export async function downloadAddon(
   value: unknown,
 ): Promise<{ zip: Buffer; host: string }> {
-  let url = addonPackageUrl(value)
-  const signal = AbortSignal.timeout(20000)
-  for (let redirects = 0; redirects <= 5; redirects++) {
-    const response = await fetch(url, {
-      signal,
-      redirect: 'manual',
-      headers: { Accept: 'application/zip' },
-    })
-    if ([301, 302, 303, 307, 308].includes(response.status)) {
-      await response.body?.cancel()
-      const location = response.headers.get('location')
-      if (!location || redirects === 5)
-        throw new Error(
-          'The addon download redirects too many times. Use a direct download URL.',
-        )
-      url = addonPackageUrl(new URL(location, url).href)
-      continue
-    }
-    if (!response.ok || !response.body) {
-      await response.body?.cancel()
-      throw new Error(
-        `Could not download the addon (${response.status}). Check the URL and try again.`,
-      )
-    }
-    if (Number(response.headers.get('content-length')) > MAX_ADDON_BYTES) {
-      await response.body.cancel()
-      throw new Error('The addon download exceeds the 25 MiB limit.')
-    }
-    const parts: Uint8Array[] = []
-    let bytes = 0
-    const reader = response.body.getReader()
-    try {
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        bytes += value.length
-        if (bytes > MAX_ADDON_BYTES)
-          throw new Error('The addon download exceeds the 25 MiB limit.')
-        parts.push(value)
-      }
-    } finally {
-      await reader.cancel()
-    }
-    return { zip: Buffer.concat(parts), host: url.host }
-  }
-  throw new Error('Could not download the addon. Check the URL and try again.')
+  const parts: Uint8Array[] = []
+  const result = await download(addonPackageUrl(value).href, {
+    maxBytes: MAX_ADDON_BYTES,
+    signal: AbortSignal.timeout(20000),
+    accept: 'application/zip',
+    write: (chunk) => {
+      parts.push(chunk)
+    },
+  })
+  return { zip: Buffer.concat(parts), host: new URL(result.url).host }
 }
 
 /** Extract only bounded regular files into an owned, empty staging directory. */
