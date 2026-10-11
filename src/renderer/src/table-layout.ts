@@ -108,13 +108,22 @@ function follow(
   return Array.from(moved, (size) => size ?? 0)
 }
 
-function mapped(tables: Sized[], tr: Transaction, before: Node): Sized[] {
+/** Follow sized tables through an edit, noting the tables it changed. */
+function mapped(
+  tables: Sized[],
+  tr: Transaction,
+  before: Node,
+  touched: number[],
+): Sized[] {
   return tables.flatMap((sized) => {
     const result = tr.mapping.mapResult(sized.pos, 1)
     const table = tr.doc.nodeAt(result.pos)
-    if (result.deleted || table?.type.name !== 'table') return []
+    if (table?.type.name !== 'table') return []
     const old = before.nodeAt(sized.pos)
-    if (!old || old === table) return [{ ...sized, pos: result.pos }]
+    if (old === table) return [{ ...sized, pos: result.pos }]
+    touched.push(result.pos)
+    if (result.deleted) return []
+    if (!old) return [{ ...sized, pos: result.pos }]
     // Rows or columns were inserted or deleted: sizes follow their own row or
     // column instead of staying at its old index.
     const axis = (name: Axis, sizes: number[]) =>
@@ -140,16 +149,22 @@ function mapped(tables: Sized[], tr: Transaction, before: Node): Sized[] {
   })
 }
 
-function decorate(doc: Node, tables: Sized[], handle: Handle | null) {
-  if (!tables.length && !handle) return DecorationSet.empty
+/** Size and resize-handle decorations of the table at `pos`. */
+function tableDecorations(
+  doc: Node,
+  pos: number,
+  sized: Sized | undefined,
+  handle: Handle | null,
+) {
   const decorations: Decoration[] = []
+  const table = doc.nodeAt(pos)
+  if (table?.type.name !== 'table') return decorations
   const node = (from: number, to: Node, attrs: Record<string, string>) =>
     decorations.push(Decoration.node(from, from + to.nodeSize, attrs))
-  for (const sized of tables) {
-    const table = doc.nodeAt(sized.pos)!
+  if (sized) {
     const columns = columnCount(table)
     if (sized.columns.some(Boolean))
-      node(sized.pos, table, {
+      node(pos, table, {
         'data-columns-sized':
           sized.columns.length >= columns &&
           sized.columns.slice(0, columns).every(Boolean)
@@ -157,7 +172,7 @@ function decorate(doc: Node, tables: Sized[], handle: Handle | null) {
             : 'some',
       })
     table.forEach((row, offset, index) => {
-      const start = sized.pos + 1 + offset
+      const start = pos + 1 + offset
       if (sized.rows[index])
         node(start, row, {
           style: `--table-row-height: ${sized.rows[index]}px`,
@@ -171,10 +186,9 @@ function decorate(doc: Node, tables: Sized[], handle: Handle | null) {
         })
     })
   }
-  const table = handle && doc.nodeAt(handle.table)
-  if (handle && table?.type.name === 'table')
+  if (handle?.table === pos)
     table.forEach((row, offset, index) => {
-      const start = handle.table + 1 + offset
+      const start = pos + 1 + offset
       row.forEach((cell, cellOffset, column) => {
         if ((handle.axis === 'row' ? index : column) === handle.index)
           node(start + 1 + cellOffset, cell, {
@@ -182,7 +196,57 @@ function decorate(doc: Node, tables: Sized[], handle: Handle | null) {
           })
       })
     })
-  return DecorationSet.create(doc, decorations)
+  return decorations
+}
+
+function decorate(doc: Node, tables: Sized[], handle: Handle | null) {
+  if (!tables.length && !handle) return DecorationSet.empty
+  const positions = new Set(tables.map((sized) => sized.pos))
+  if (handle) positions.add(handle.table)
+  return DecorationSet.create(
+    doc,
+    [...positions].flatMap((pos) =>
+      tableDecorations(
+        doc,
+        pos,
+        tables.find((sized) => sized.pos === pos),
+        handle,
+      ),
+    ),
+  )
+}
+
+/** Rebuild the tables at `positions`; other tables keep their decorations. */
+function redecorate(
+  decorations: DecorationSet,
+  doc: Node,
+  positions: number[],
+  tables: Sized[],
+  handle: Handle | null,
+) {
+  for (const pos of new Set(positions)) {
+    const table = doc.nodeAt(pos)
+    if (table?.type.name !== 'table') continue
+    const end = pos + table.nodeSize
+    decorations = decorations
+      .remove(
+        decorations
+          .find(pos, end)
+          .filter(
+            (decoration) => decoration.from >= pos && decoration.to <= end,
+          ),
+      )
+      .add(
+        doc,
+        tableDecorations(
+          doc,
+          pos,
+          tables.find((sized) => sized.pos === pos),
+          handle,
+        ),
+      )
+  }
+  return decorations
 }
 
 function layout(state: State, doc: Node): TableLayout[] {
@@ -278,12 +342,23 @@ export const tableLayout = Extension.create<{ tabId: string }>({
           apply(tr, previous, before, state) {
             const meta = tr.getMeta(key) as Meta | undefined
             if (!meta && !tr.docChanged) return previous
-            let { tables, stored, handle, commits } = previous
+            let { tables, stored, handle, commits, decorations } = previous
+            // Tables whose decorations need rebuilding; null rebuilds all.
+            let dirty: number[] | null = []
             if (tr.docChanged) {
-              tables = tr.getMeta(richSourceEcho)
-                ? bind(state.doc, stored, rebind(before.doc, tables, state.doc))
-                : mapped(tables, tr, before.doc)
-              const table = handle && tr.mapping.mapResult(handle.table, 1)
+              if (tr.getMeta(richSourceEcho)) {
+                tables = bind(
+                  state.doc,
+                  stored,
+                  rebind(before.doc, tables, state.doc),
+                )
+                dirty = null
+              } else {
+                tables = mapped(tables, tr, before.doc, dirty)
+                decorations = decorations.map(tr.mapping, tr.doc)
+              }
+              const from = handle?.table ?? -1
+              const table = handle && tr.mapping.mapResult(from, 1)
               handle =
                 handle &&
                 table &&
@@ -291,12 +366,22 @@ export const tableLayout = Extension.create<{ tabId: string }>({
                 state.doc.nodeAt(table.pos)?.type.name === 'table'
                   ? { ...handle, table: table.pos }
                   : null
+              if (
+                handle &&
+                before.doc.nodeAt(from) !== state.doc.nodeAt(handle.table)
+              )
+                dirty?.push(handle.table)
             }
             if (meta?.load) {
               stored = meta.load
               tables = bind(state.doc, stored, tables)
+              dirty = null
             }
-            if (meta?.handle !== undefined) handle = meta.handle
+            if (meta?.handle !== undefined) {
+              if (handle) dirty?.push(handle.table)
+              handle = meta.handle
+              if (handle) dirty?.push(handle.table)
+            }
             if (meta?.size) {
               const { table, axis, index, value, commit } = meta.size
               const existing = tables.find((sized) => sized.pos === table)
@@ -309,13 +394,16 @@ export const tableLayout = Extension.create<{ tabId: string }>({
               sized[axis === 'column' ? 'columns' : 'rows'] = sizes
               tables = [...tables.filter((other) => other !== existing), sized]
               if (commit) commits++
+              dirty?.push(table)
             }
             return {
               tables,
               stored,
               handle,
               commits,
-              decorations: decorate(state.doc, tables, handle),
+              decorations: dirty
+                ? redecorate(decorations, state.doc, dirty, tables, handle)
+                : decorate(state.doc, tables, handle),
             }
           },
         },

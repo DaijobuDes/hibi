@@ -7,6 +7,7 @@ import { build } from 'esbuild'
 const require = createRequire(import.meta.url)
 const { Schema } = require('@tiptap/pm/model')
 const { EditorState, PluginKey } = require('@tiptap/pm/state')
+const { Decoration } = require('@tiptap/pm/view')
 
 globalThis.tableLayoutEcho = new PluginKey('documentSourceEcho')
 const bundle = await build({
@@ -190,4 +191,49 @@ test('row and column sizes follow inserted and deleted rows and columns', () => 
   state = state.apply(tr)
   assert.deepEqual(styles(state)[0].columns, ['', ''])
   assert.deepEqual(plugin.getState(state).tables[0].columns, [])
+})
+
+test('edits rebuild decorations only for the tables they touch', (t) => {
+  const body = Array.from({ length: 100 }, (_, index) => [`${index}`, 'x'])
+  let state = create(
+    paragraph('before'),
+    ...Array.from({ length: 50 }, (_, index) =>
+      table([`h${index}`, 'b'], body),
+    ),
+  )
+  for (const pos of tables(state)) {
+    state = size(state, pos, 'column', 0, 120)
+    state = size(state, pos, 'row', 1, 40)
+  }
+  // Each table: the table itself, one header cell, and one row.
+  const perTable = 3
+  const node = t.mock.method(Decoration, 'node')
+  for (let index = 0; index < 20; index++)
+    state = state.apply(state.tr.insertText('x', 1))
+  assert.equal(node.mock.callCount(), 0)
+  assert.equal(plugin.getState(state).decorations.find().length, 50 * perTable)
+
+  const [first] = tables(state)
+  const hover = (table, index) =>
+    state.apply(
+      state.tr.setMeta(plugin, {
+        handle: table === null ? null : { table, axis: 'column', index },
+      }),
+    )
+  state = hover(first, 0)
+  // The hovered column has one cell in each of the 101 rows.
+  assert.equal(node.mock.callCount(), perTable + 101)
+  node.mock.resetCalls()
+  state = state.apply(state.tr.insertText('y', first + 4))
+  assert.equal(node.mock.callCount(), perTable + 101)
+  node.mock.resetCalls()
+  state = state.apply(state.tr.insertText('z', tables(state)[1] + 4))
+  assert.equal(node.mock.callCount(), perTable)
+  node.mock.resetCalls()
+  state = hover(null)
+  assert.equal(node.mock.callCount(), perTable)
+  assert.deepEqual(styles(state)[1], {
+    columns: ['width: 120px', ''],
+    rows: ['', '--table-row-height: 40px', ...Array(99).fill('')],
+  })
 })
