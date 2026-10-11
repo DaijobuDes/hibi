@@ -1318,6 +1318,7 @@
   "0ab4d0cee3a1": "Remove {value1}",
   "139c1c54bff5": "Remove “{value1}”",
   "78487e18eec0": "Removes learned words and phrase counts from this device after confirmation. Dictionary packs and custom words are kept.",
+  "298b2b23d1af": "Removing {name} will also stop {value2}. Their enabled settings will be kept. Document editing stays available.",
   "3064d79a295c": "Rename",
   "e69e7cdd4d17": "Rename document",
   "2a134aab8b4d": "Rename document…",

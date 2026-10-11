@@ -4111,6 +4111,9 @@
   "78487e18eec0": [
     "src/addons/autocomplete/Settings.tsx"
   ],
+  "298b2b23d1af": [
+    "src/renderer/src/addons.ts"
+  ],
   "3064d79a295c": [
     "src/renderer/src/workspace-menu.ts"
   ],
