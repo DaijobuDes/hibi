@@ -365,6 +365,26 @@ test('dictionary retries malformed answers instead of caching them', async () =>
   assert.equal(requests.length, 5)
 })
 
+test('dictionary caches empty Wiktionary pages but retries malformed sections', async () => {
+  const requests = []
+  const responses = [
+    '{"en":"broken"}',
+    '{"en":[{"definitions":[{"definition":7}]}]}',
+    '{}',
+  ]
+  const wiktionary = wiktionaryProvider(async (request) => {
+    requests.push(request.url)
+    return { ok: true, value: { text: responses.shift() } }
+  })
+  for (const _ of [1, 2])
+    await assert.rejects(wiktionary.lookup('happy', 'en', signal), {
+      reason: 'unavailable',
+    })
+  assert.deepEqual(await wiktionary.lookup('happy', 'en', signal), [])
+  assert.deepEqual(await wiktionary.lookup('happy', 'en', signal), [])
+  assert.equal(requests.length, 3)
+})
+
 test('dictionary tries the capitalized page when the lowercase one lacks the language', async () => {
   const requests = []
   const responses = {
