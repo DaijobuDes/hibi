@@ -11,6 +11,7 @@ import {
   type AddonStorageChange,
 } from '../shared/addon-storage'
 import { ANALYSIS_CHANNELS } from '../shared/analysis'
+import { BACKGROUND_CHANNELS } from '../shared/background'
 import { APPEARANCE_CHANNEL } from '../shared/colorschemes'
 import { DEPENDENCY_CHANNELS } from '../shared/dependencies'
 import {
@@ -196,6 +197,15 @@ if (process.isMainFrame) {
       ipcRenderer.on(GLOBAL_SHORTCUT_CHANNELS.invoked, listener)
       return () =>
         ipcRenderer.removeListener(GLOBAL_SHORTCUT_CHANNELS.invoked, listener)
+    },
+    getBackgroundMode: () => transport.invoke(BACKGROUND_CHANNELS.get),
+    setBackgroundMode: (enabled) =>
+      transport.invoke(BACKGROUND_CHANNELS.set, enabled),
+    onOpenSettings: (callback) => {
+      const listener = () => callback()
+      transport.on(BACKGROUND_CHANNELS.settings, listener)
+      return () =>
+        transport.removeListener(BACKGROUND_CHANNELS.settings, listener)
     },
     getUpdateState: () => transport.invoke(UPDATE_CHANNELS.get),
     setUpdateChannel: (channel) =>

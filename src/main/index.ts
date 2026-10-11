@@ -27,6 +27,7 @@ import {
 } from '../shared/addon-hotkeys'
 import { ADDON_STORAGE_CHANNELS } from '../shared/addon-storage'
 import { ANALYSIS_CHANNELS } from '../shared/analysis'
+import { BACKGROUND_CHANNELS, QUICK_NOTE_COMMAND } from '../shared/background'
 import { APPEARANCE_CHANNEL } from '../shared/colorschemes'
 import { DEPENDENCY_CHANNELS } from '../shared/dependencies'
 import {
@@ -88,6 +89,7 @@ import {
 } from './addons'
 import { analysisService } from './analysis'
 import { appearanceColors, loadAppearance, saveAppearance } from './appearance'
+import { BackgroundMode } from './background'
 import {
   autosaveDocument,
   closeDocumentTab,
@@ -460,6 +462,19 @@ const addonHotkeys = new AddonHotkeys(
   process.platform,
   hotkeys,
 )
+const background = new BackgroundMode({
+  open: showMainWindow,
+  settings: () => {
+    showMainWindow()
+    mainWindow?.webContents.send(BACKGROUND_CHANNELS.settings)
+  },
+  hasQuickNote: () => !!addonHotkeys.command(QUICK_NOTE_COMMAND),
+  quickNote: () => {
+    const command = addonHotkeys.command(QUICK_NOTE_COMMAND)
+    if (command)
+      mainWindow?.webContents.send(ADDON_HOTKEY_CHANNELS.invoke, command)
+  },
+})
 let addonHotkeysLoading: Promise<void> | null = null
 const loadAddonHotkeys = () => {
   if (!addonHotkeysLoading) {
@@ -470,6 +485,16 @@ const loadAddonHotkeys = () => {
 }
 let pendingGlobalShortcut: { id: string; accelerator: string } | null = null
 const externalFiles: string[] = []
+function showMainWindow() {
+  if (!mainWindow) createWindow()
+  if (!mainWindow) return
+  if (mainWindow.isMinimized()) mainWindow.restore()
+  if (testing) mainWindow.showInactive()
+  else {
+    mainWindow.show()
+    mainWindow.focus()
+  }
+}
 function queueExternalFiles(paths: string[]) {
   for (const path of paths) {
     if (!externalFiles.includes(path)) externalFiles.push(path)
@@ -504,7 +529,10 @@ if (process.env.NODE_ENV_ELECTRON_VITE === 'development')
       app.quit()
     }
   })
-app.on('will-quit', () => globalShortcuts.clear())
+app.on('will-quit', () => {
+  globalShortcuts.clear()
+  background.dispose()
+})
 
 function invokeGlobalShortcut(invocation: GlobalShortcutInvocation) {
   const { id, token } = invocation
@@ -795,6 +823,11 @@ function createWindow(): void {
     if (allowClose) return
     event.preventDefault()
     if (confirmingClose) return
+    if (background.enabled && !quitting) {
+      window.hide()
+      return
+    }
+    if (quitting && background.enabled && !window.isVisible()) showMainWindow()
     confirmingClose = true
     void (async () => {
       await flushRenderer()
@@ -963,7 +996,7 @@ function installMenu(): void {
           role: process.platform === 'darwin' ? 'close' : 'quit',
           ...(process.platform === 'darwin'
             ? { accelerator: 'CmdOrCtrl+Shift+W' }
-            : {}),
+            : { accelerator: 'CmdOrCtrl+Q' }),
         },
       ],
     },
@@ -1036,6 +1069,7 @@ function installMenu(): void {
     lowercase(built.items)
   }
   Menu.setApplicationMenu(built)
+  background.refresh()
 }
 
 if (!app.requestSingleInstanceLock()) {
@@ -1058,14 +1092,15 @@ if (!app.requestSingleInstanceLock()) {
   )
   app.on('second-instance', (_event, argv, cwd) => {
     queueExternalFiles(externalFileArguments(argv, cwd, !app.isPackaged))
-    if (testing) return
-    if (!mainWindow) createWindow()
-    if (mainWindow?.isMinimized()) mainWindow.restore()
-    mainWindow?.show()
-    mainWindow?.focus()
+    showMainWindow()
   })
   app.on('activate', () => {
     if (!mainWindow) createWindow()
+    else if (
+      background.enabled &&
+      BrowserWindow.getAllWindows().every((window) => !window.isVisible())
+    )
+      showMainWindow()
   })
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit()
@@ -1098,6 +1133,7 @@ if (!app.requestSingleInstanceLock()) {
         hotkeysReady,
         addonsReady,
         startupSpan('ui-case', loadUiCase),
+        background.load(),
         documentReady,
         workspacePending,
       ])
@@ -1126,6 +1162,12 @@ if (!app.requestSingleInstanceLock()) {
             throw error
           }
         })
+      handle(BACKGROUND_CHANNELS.get, () => background.enabled)
+      handle(BACKGROUND_CHANNELS.set, async (_event, value: unknown) => {
+        const enabled = await background.save(value)
+        if (!enabled && mainWindow && !mainWindow.isVisible()) showMainWindow()
+        return enabled
+      })
       handle(UPDATE_CHANNELS.get, getUpdateState, updatesReady)
       handle(
         UPDATE_CHANNELS.channel,

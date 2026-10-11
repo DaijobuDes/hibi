@@ -25,6 +25,7 @@ import {
   type ViewRegistration,
 } from '../../addons/api'
 import type { AddonHotkeyRegistration } from '../../shared/addon-hotkeys'
+import { QUICK_NOTE_COMMAND } from '../../shared/background'
 import {
   documentExtension,
   isMarkdownDocument,
@@ -1944,7 +1945,9 @@ export function useAddons(
       visibleCommands
         .filter(
           (command) =>
-            command.defaultShortcut || command.menu?.location === 'app',
+            command.defaultShortcut ||
+            command.menu?.location === 'app' ||
+            command.id === QUICK_NOTE_COMMAND,
         )
         .map((command) => [
           command.id,

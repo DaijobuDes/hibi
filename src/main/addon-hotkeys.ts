@@ -174,6 +174,11 @@ export class AddonHotkeys {
       }))
   }
 
+  command(id: string): AddonCommandInvocation | undefined {
+    const registration = this.registrations.get(id)
+    return registration && { id, token: registration.token, source: 'menu' }
+  }
+
   resolve(shortcut: string): AddonCommandInvocation | undefined {
     const invocation = this.commandsByShortcut.get(shortcut)
     return invocation && { ...invocation }

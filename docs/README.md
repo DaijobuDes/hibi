@@ -18,6 +18,7 @@ Start with [editing](guides/editing.md), or choose a topic below.
 ## Make Hibi yours
 
 - [Settings and addons](guides/settings.md)
+- [Running in the background](features/background.md)
 - [Addon dependencies and toolchains](features/dependencies.md)
 - [Performance diagnostics](features/diagnostics.md)
 - [Local diagnostic reports](features/local-logs.md)

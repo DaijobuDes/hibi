@@ -775,6 +775,9 @@
   "97ebc02f32f0": [
     "src/main/workspace-settings.ts"
   ],
+  "e77e7823e59a": [
+    "src/main/background.ts"
+  ],
   "83e12ba9ce92": [
     "src/main/workspace-settings.ts"
   ],
@@ -875,6 +878,9 @@
   ],
   "31a8910a7cf4": [
     "src/renderer/src/DocumentTabs.tsx"
+  ],
+  "81e1850c6c08": [
+    "src/renderer/src/HibiSettings.tsx"
   ],
   "2cae577523a5": [
     "src/renderer/src/CodeSyntaxSettings.tsx",
@@ -2047,6 +2053,9 @@
   "c7a8f9cd36ee": [
     "src/addons/frontmatter/Properties.tsx"
   ],
+  "c910d474dcd7": [
+    "src/renderer/src/HibiSettings.tsx"
+  ],
   "b949c922b6ef": [
     "src/addons/git/index.tsx",
     "src/addons/git/manifest.ts"
@@ -2610,6 +2619,9 @@
   "5720aebea161": [
     "src/addons/documentation/options.ts"
   ],
+  "801c0e70112e": [
+    "src/renderer/src/HibiSettings.tsx"
+  ],
   "566c3a93a25f": [
     "src/renderer/src/main.tsx"
   ],
@@ -2957,6 +2969,9 @@
   "4643fac966e8": [
     "src/addons/frontmatter/Properties.tsx"
   ],
+  "c116a4594ad5": [
+    "src/main/background.ts"
+  ],
   "a25d48f8077d": [
     "src/renderer/src/WorkspaceSidebar.tsx",
     "src/renderer/src/main.tsx"
@@ -3164,6 +3179,9 @@
   ],
   "48b28302e75c": [
     "src/renderer/src/FormatsSettings.tsx"
+  ],
+  "4dfb4b4c8f10": [
+    "src/main/background.ts"
   ],
   "54ae80c30bea": [
     "src/renderer/src/WorkspaceSettings.tsx"
@@ -3575,6 +3593,7 @@
     "src/addons/ui-preview/index.tsx"
   ],
   "b3eb37acb66b": [
+    "src/main/background.ts",
     "src/main/index.ts"
   ],
   "eb4cdebd82bf": [
@@ -4060,6 +4079,7 @@
     "src/addons/diagnostics/Settings.tsx"
   ],
   "74a883a037bc": [
+    "src/main/background.ts",
     "src/main/index.ts",
     "src/renderer/src/SettingsScreen.tsx",
     "src/renderer/src/Titlebar.tsx"
