@@ -30,6 +30,8 @@ See the [addon API reference](../../development/addon-api-reference/README.md).
 - [AddonState](../../development/addon-api-reference/AddonState.md)
 - [SourcePreservation](../../development/addon-api-reference/SourcePreservation.md)
 - [MarkdownProjection](../../development/addon-api-reference/MarkdownProjection.md)
+- [MarkdownParagraphRuleContext](../../development/addon-api-reference/MarkdownParagraphRuleContext.md)
+- [MarkdownParagraphRule](../../development/addon-api-reference/MarkdownParagraphRule.md)
 - [MarkdownFlavor](../../development/addon-api-reference/MarkdownFlavor.md)
 - [RenderedMarkdown](../../development/addon-api-reference/RenderedMarkdown.md)
 - [DocumentPreviewProps](../../development/addon-api-reference/DocumentPreviewProps.md)

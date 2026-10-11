@@ -13,6 +13,7 @@ import type { MarkdownFlavor } from '../../addons/api'
 import { contextualTokens } from '../../shared/markdown-semantic-tokens.ts'
 import { documentImage } from './DocumentImage.ts'
 import { markdownConfiguration } from './markdown.ts'
+import { richTextToken } from './markdown-entities.ts'
 import { markdownSyntax } from './markdown-syntax.ts'
 import { preserveInlineHtml } from './RawHtml.ts'
 
@@ -109,6 +110,7 @@ export function createMarkdownSemantics(
             continue
           }
           const token = value as Token
+          richTextToken(token)
           if (token.type === 'taskList' && !schema.nodes.taskList) return null
           // Native TaskList has its own lexical grammar; plain Marked lists
           // would silently become ordinary bullets without that tokenizer.

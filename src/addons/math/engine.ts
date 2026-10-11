@@ -8,7 +8,13 @@ import type { MarkedExtension } from 'marked'
 import { isMarkdownDocument } from '../../shared/document-types'
 import type { AddonContext } from '../api'
 import { mathStyles } from './styles'
-import { blockMath, inlineMath, mathFlavor, mathTokens } from './syntax'
+import {
+  blockMath,
+  blockMathStart,
+  inlineMath,
+  mathFlavor,
+  mathTokens,
+} from './syntax'
 
 const options = {
   throwOnError: false,
@@ -184,7 +190,7 @@ export function startMath(context: AddonContext) {
     markdownTokenizer: {
       name: 'blockMath',
       level: 'block',
-      start: (source) => source.indexOf('$$'),
+      start: blockMathStart,
       tokenize: blockMath,
     },
     addInputRules() {

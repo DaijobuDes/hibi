@@ -19,6 +19,7 @@ const manager = new MarkdownManager({
 
 for (const source of [
   '<kbd>x</kbd>',
+  '<kbd>&copy;</kbd>',
   'a <span class="x">b</span> c',
   '<div>\nx\n</div>',
   '<!-- comment -->',
@@ -63,6 +64,22 @@ for (const source of [
     }
   })
 }
+
+test('entities adjacent to html chips decode while chip source stays raw', () => {
+  const doc = schema.nodeFromJSON(
+    manager.parse('&copy;<kbd>&copy;</kbd>&#169;'),
+  )
+  doc.check()
+  assert.equal(doc.firstChild.child(0).text, '©')
+  assert.equal(doc.firstChild.child(1).type.name, 'rawHtmlInline')
+  assert.equal(doc.firstChild.child(1).attrs.source, '<kbd>&copy;</kbd>')
+  assert.equal(doc.firstChild.child(2).text, '©')
+  for (const blockLocal of [true, false]) {
+    const source = markdownSerializer(manager, blockLocal)(doc).source
+    assert.equal(source, '©<kbd>&copy;</kbd>©')
+    assert.ok(schema.nodeFromJSON(manager.parse(source)).eq(doc))
+  }
+})
 
 test('inline and block html are selectable atoms, while br keeps its source spelling', () => {
   const inline = schema.nodeFromJSON(manager.parse('<kbd>x</kbd>')).firstChild

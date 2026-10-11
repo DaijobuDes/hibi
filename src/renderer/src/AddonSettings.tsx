@@ -49,6 +49,11 @@ export function AddonMetadata({ manifest }: { manifest: AddonManifest }) {
       <span>{sentenceCase(addonRegistry.origin(manifest.id))}</span>
       <span>{sentenceCase(manifest.kind ?? 'Extension')}</span>
       <span>v{manifest.version}</span>
+      {!!manifest.network?.origins.length && (
+        <span>
+          {`Connects to: ${manifest.network.origins.map((origin) => new URL(origin).host).join(', ')}`}
+        </span>
+      )}
       {manifest.authors?.map((author) => (
         <span
           key={author.discordId ?? author.github ?? author.displayName}
