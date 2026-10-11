@@ -96,6 +96,22 @@ test('the update notice opens About at the update status by click or keyboard', 
       document.activeElement?.getAttribute('aria-label') ===
       'A Hibi update is available. Open update settings.',
   )
+  // Plain Tab never enters the stack; inside it, Tab and arrows move between buttons.
+  assert.deepEqual(
+    await toast
+      .locator('button')
+      .evaluateAll((buttons) => buttons.map((button) => button.tabIndex)),
+    [-1, -1],
+  )
+  await page.keyboard.press('Tab')
+  await page.waitForFunction(
+    () =>
+      document.activeElement?.getAttribute('aria-label') === 'Dismiss notice',
+  )
+  await page.keyboard.press('ArrowLeft')
+  await page.waitForFunction(() =>
+    document.activeElement?.classList.contains('toast-action'),
+  )
   await page.keyboard.press('Escape')
   await toast.waitFor({ state: 'detached' })
   assert.equal(await settings.isVisible(), true)

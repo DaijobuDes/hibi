@@ -104,6 +104,30 @@ export function Sonner() {
         if (!event.currentTarget.contains(event.relatedTarget))
           returnFocus.current = event.relatedTarget
       }}
+      // Buttons stay out of the Tab order; once Focus notifications enters the
+      // stack, arrows cycle its buttons and Tab past either end returns focus.
+      onKeyDown={(event) => {
+        const step = {
+          ArrowDown: 1,
+          ArrowRight: 1,
+          ArrowUp: -1,
+          ArrowLeft: -1,
+          Tab: event.shiftKey ? -1 : 1,
+        }[event.key]
+        if (!step || event.altKey || event.ctrlKey || event.metaKey) return
+        const buttons = [
+          ...event.currentTarget.querySelectorAll<HTMLElement>(
+            '.toast:not([data-closing="true"]) button',
+          ),
+        ]
+        const index = buttons.indexOf(document.activeElement as HTMLElement)
+        if (index < 0) return
+        event.preventDefault()
+        const next = index + step
+        if (event.key === 'Tab' && (next < 0 || next >= buttons.length))
+          restoreFocus()
+        else buttons[(next + buttons.length) % buttons.length].focus()
+      }}
     >
       {items.map((item) => {
         const Icon =
@@ -156,6 +180,7 @@ export function Sonner() {
                 <Button
                   variant="ghost"
                   className="toast-action"
+                  tabIndex={-1}
                   aria-label={`${/[.!?…]$/.test(message) ? message : `${message}.`} ${sentenceCase(item.action.label)}.`}
                 >
                   {sentenceCase(item.action.label)}
@@ -163,6 +188,7 @@ export function Sonner() {
               )}
             </div>
             <IconButton
+              tabIndex={-1}
               aria-label={
                 item.variant === 'error' ? 'Dismiss error' : 'Dismiss notice'
               }
