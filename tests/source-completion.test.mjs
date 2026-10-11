@@ -134,6 +134,37 @@ test('source completions stream, accept in one undo step, and retract on provide
   await source.press('Escape')
   await page.locator('.cm-tooltip-autocomplete').waitFor({ state: 'hidden' })
 
+  // An open slash menu keeps its keys; completions stay closed.
+  const slash = page.getByRole('listbox', { name: 'Slash commands' })
+  await source.press('Enter')
+  await page.keyboard.type('/')
+  await slash.waitFor()
+  const slashRequests = await page.evaluate(
+    () => window.completionProbe.requests.length,
+  )
+  await page.keyboard.type('quo')
+  await slash.getByRole('option', { name: /Quotes/ }).waitFor()
+  await page.evaluate(
+    () =>
+      new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve)),
+      ),
+  )
+  assert.equal(
+    await page.locator('.cm-tooltip-autocomplete').isVisible(),
+    false,
+  )
+  assert.equal(
+    await page.evaluate(() => window.completionProbe.requests.length),
+    slashRequests,
+  )
+  await source.press('Escape')
+  await slash.waitFor({ state: 'hidden' })
+  for (let i = 0; i < 5; i++) await source.press('Backspace')
+  await page.waitForFunction(
+    async () => (await window.hibi.getDocument()).markdown === 'ab',
+  )
+
   await source.press('Control+Space')
   await page
     .locator('.cm-tooltip-autocomplete .cm-completionLabel', {
