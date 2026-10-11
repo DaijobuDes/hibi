@@ -28,13 +28,48 @@ test('addon manifests require release versions while accepting versioned v1 pack
 
 test('network declarations retain exact public https origins', () => {
   for (const origins of [
-    [],
+    ['https://example.com'],
+    Array.from(
+      { length: 16 },
+      (_, index) => `https://host${index}.example.com`,
+    ),
     ['https://en.wiktionary.org', 'https://api.datamuse.com'],
     ['https://example.com:8443', 'https://xn--bcher-kva.example'],
   ]) {
     assert.deepEqual(parseAddonNetwork({ origins }), { origins })
     assert.notStrictEqual(parseAddonNetwork({ origins }).origins, origins)
   }
+})
+
+test('network declarations reject empty origin lists', () => {
+  assert.throws(
+    () => parseAddonNetwork({ origins: [] }),
+    /exact public HTTPS origins/,
+  )
+})
+
+test('network declarations reject duplicate origins', () => {
+  assert.throws(
+    () =>
+      parseAddonNetwork({
+        origins: ['https://example.com', 'https://example.com'],
+      }),
+    /exact public HTTPS origins/,
+  )
+})
+
+test('network declarations reject more than 16 origins', () => {
+  for (const length of [17, 100_000])
+    assert.throws(
+      () =>
+        parseAddonNetwork({
+          origins: Array.from(
+            { length },
+            (_, index) => `https://host${index}.example.com`,
+          ),
+        }),
+      /exact public HTTPS origins/,
+    )
 })
 
 test('network declarations reject malformed metadata and unsafe origins', () => {

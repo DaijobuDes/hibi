@@ -316,7 +316,10 @@ export function parseAddonNetwork(
   const { origins } = value as Record<string, unknown>
   if (
     Object.keys(value).some((key) => key !== 'origins') ||
-    !Array.isArray(origins)
+    !Array.isArray(origins) ||
+    origins.length < 1 ||
+    origins.length > 16 ||
+    new Set(origins).size !== origins.length
   )
     return invalid()
   for (const origin of origins) {
