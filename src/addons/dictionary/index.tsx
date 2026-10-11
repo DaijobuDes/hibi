@@ -11,7 +11,10 @@ import {
   WifiOff,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import type { CommandExecutionContext } from '../../shared/foundation-contracts'
+import type {
+  CommandExecutionContext,
+  ViewTarget,
+} from '../../shared/foundation-contracts'
 import { defineAddon } from '../api'
 import { Button, PanelMessage } from '../ui'
 import css from './dictionary.css?inline'
@@ -279,39 +282,72 @@ export default defineAddon({
       create: async () =>
         (await import('./source')).trackSourceViews(sourceViews),
     })
+    // ponytail: extensions are not told which view they belong to, so split
+    // panes are matched through core's `data-side`, which is also their view
+    // ID. Use a view ID from core once extensions receive one.
+    const inView = (dom: Element, view: ViewTarget) => {
+      const pane = dom.closest<HTMLElement>('.editor-page')
+      return (
+        dom.isConnected &&
+        !!pane &&
+        (pane.dataset.side ?? view.viewId) === view.viewId
+      )
+    }
     async function target(invocation: CommandExecutionContext) {
       // Palette and shortcut invocations capture the view but not its selection.
       const view = invocation.view ?? context.editorViews.getActive()
-      const active = view && context.editorViews.getSelection(view)
+      if (!view) return null
+      const active = context.editorViews.getSelection(view)
       const selection =
-        invocation.selection ?? (active?.ok ? active.value : null)
+        invocation.selection ?? (active.ok ? active.value : null)
       if (!selection) return null
       const from = Math.min(selection.anchor, selection.head)
       const to = Math.max(selection.anchor, selection.head)
+      const at = (dom: Element, anchor: number, head: number) =>
+        inView(dom, view) &&
+        anchor === selection.anchor &&
+        head === selection.head
+      let found: LookupTarget | null = null
+      let dom: Element | undefined
       if (selection.editor === 'rich') {
-        for (const editor of richEditors) {
-          const current = editor.state.selection
-          if (
+        const editor = [...richEditors].find(
+          (editor) =>
             !editor.isDestroyed &&
-            editor.view.dom.isConnected &&
-            current.anchor === selection.anchor &&
-            current.head === selection.head
-          )
-            return richTarget(editor, from, to)
-        }
-        return null
-      }
-      const { sourceTarget } = await import('./source')
-      for (const view of sourceViews) {
-        const current = view.state.selection.main
-        if (
-          view.dom.isConnected &&
-          current.anchor === selection.anchor &&
-          current.head === selection.head
+            at(
+              editor.view.dom,
+              editor.state.selection.anchor,
+              editor.state.selection.head,
+            ),
         )
-          return sourceTarget(view, from, to)
+        found = editor ? richTarget(editor, from, to) : null
+        dom = editor?.view.dom
+      } else {
+        const { sourceTarget } = await import('./source')
+        const editor = [...sourceViews].find((editor) =>
+          at(
+            editor.dom,
+            editor.state.selection.main.anchor,
+            editor.state.selection.main.head,
+          ),
+        )
+        found = editor ? sourceTarget(editor, from, to) : null
+        dom = editor?.dom
       }
-      return null
+      if (!found || !dom) return null
+      const { replace } = found
+      return {
+        ...found,
+        // getSelection fails once the view, document, or its generation changes.
+        replace: (text: string) => {
+          const current = context.editorViews.getSelection(view)
+          return (
+            current.ok &&
+            current.value.editor === selection.editor &&
+            inView(dom, view) &&
+            replace(text)
+          )
+        },
+      }
     }
     async function lookUp(
       invocation: CommandExecutionContext,

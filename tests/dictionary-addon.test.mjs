@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { electron, waitForDocumentEditor } from './electron.mjs'
-import { clickMenu, pressShortcut } from './keyboard.mjs'
+import { clickMenu, pressShortcut, splitTab } from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
 
 const fixture = (name) =>
@@ -154,4 +154,150 @@ test('dictionary looks up the caret word and replaces it with one undo step in b
     async () =>
       (await window.hibi.getDocument()).markdown === 'I am Happy today',
   )
+})
+
+test('dictionary replaces the word in the split pane it was invoked from', {
+  timeout: 90000,
+}, async (t) => {
+  const profile = await mkdtemp(join(tmpdir(), 'hibi-dictionary-split-'))
+  const left = join(profile, 'left.md')
+  const right = join(profile, 'right.md')
+  await writeFile(left, 'Happy')
+  await writeFile(right, 'Sad')
+  await writeFile(
+    join(profile, 'addons.json'),
+    JSON.stringify({ dictionary: true }),
+  )
+  const app = await electron.launch({
+    args: [resolve('.'), `--user-data-dir=${profile}`],
+  })
+  t.after(async () => {
+    await app.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => ({ response: 1 })
+    })
+    await app.close()
+    await rm(profile, { recursive: true, force: true })
+  })
+  const page = await app.firstWindow()
+  page.setDefaultTimeout(8000)
+  await waitForDocumentEditor(app, page)
+  const responses = {
+    'https://api.datamuse.com/words?rel_syn=happy&max=24': await fixture(
+      'datamuse-synonyms-happy.json',
+    ),
+  }
+  await app.evaluate(({ ipcMain }, responses) => {
+    ipcMain.removeHandler('host-network:get-text')
+    ipcMain.handle('host-network:get-text', (_event, _owner, request) => {
+      const text = responses[request.url]
+      return text === undefined
+        ? { ok: false, code: 'http-status', status: 404 }
+        : { ok: true, value: { url: request.url, status: 200, text } }
+    })
+  }, responses)
+  const open = async (file, name) => {
+    await app.evaluate(({ dialog }, path) => {
+      dialog.showOpenDialog = async () => ({
+        canceled: false,
+        filePaths: [path],
+      })
+    }, file)
+    await clickMenu(app, 'Open…')
+    await waitForAsync(
+      page,
+      async (name) => (await window.hibi.getDocument()).name === name,
+      name,
+    )
+    await waitForDocumentEditor(app, page)
+  }
+  await open(left, 'left.md')
+  await open(right, 'right.md')
+  const rightId = await page
+    .getByRole('tab', { name: 'right.md' })
+    .evaluate((tab) => tab.closest('[data-tab-key]').dataset.tabKey)
+  await page.getByRole('tab', { name: 'left.md' }).click()
+  await waitForAsync(
+    page,
+    async () => (await window.hibi.getDocument()).name === 'left.md',
+  )
+  await splitTab(app, page, rightId)
+  const panes = {
+    left: page.locator('.editor-page[data-side="left"]'),
+    right: page.locator('.editor-page[data-side="right"]'),
+  }
+  const focusPane = async (side, editor) => {
+    await editor.click()
+    await page.waitForFunction(
+      (side) =>
+        document
+          .querySelector(`.editor-page[data-side="${side}"]`)
+          ?.getAttribute('data-active') === 'true',
+      side,
+    )
+  }
+  const markdown = async (side, editor) => {
+    await focusPane(side, editor(side))
+    return (await page.evaluate(() => window.hibi.getDocument())).markdown
+  }
+  const pick = async () => {
+    const synonyms = page.getByRole('dialog', { name: 'Synonyms for “Happy”' })
+    await synonyms.getByRole('button', { name: 'glad', exact: true }).click()
+    await synonyms.waitFor({ state: 'detached' })
+  }
+
+  // Both carets sit at the same offset, so only view identity tells them apart.
+  const rich = (side) => panes[side].locator('.rich-pane .tiptap')
+  for (const side of ['right', 'left']) {
+    await focusPane(side, rich(side))
+    await rich(side).evaluate((element) =>
+      element.editor.commands.setTextSelection(3),
+    )
+  }
+  await rich('left').press('Shift+F10')
+  await page
+    .getByRole('menu', { name: 'Editor actions' })
+    .getByRole('menuitem', { name: /^Find synonyms/ })
+    .click()
+  await pick()
+  await waitForAsync(
+    page,
+    () =>
+      document.querySelector('.editor-page[data-side="left"] .tiptap')
+        ?.textContent === 'Glad',
+  )
+  assert.equal(await rich('right').textContent(), 'Sad')
+  assert.equal(await markdown('right', rich), 'Sad')
+  assert.equal(await markdown('left', rich), 'Glad')
+  await rich('left').evaluate((element) => element.editor.commands.undo())
+  await waitForAsync(
+    page,
+    async () => (await window.hibi.getDocument()).markdown === 'Happy',
+  )
+
+  const source = (side) => panes[side].locator('.cm-content')
+  for (const side of ['left', 'right']) {
+    await focusPane(side, rich(side))
+    await page.getByRole('button', { name: 'Source view', exact: true }).click()
+    await page.waitForFunction(
+      (side) =>
+        document.querySelector(`.editor-page[data-side="${side}"] .cm-content`)
+          ?.isContentEditable,
+      side,
+    )
+  }
+  for (const side of ['right', 'left']) {
+    await focusPane(side, source(side))
+    await source(side).press(
+      process.platform === 'darwin' ? 'Meta+ArrowUp' : 'Control+Home',
+    )
+    for (let step = 0; step < 3; step++) await source(side).press('ArrowRight')
+  }
+  await pressShortcut(app, 'Shift+F7')
+  await pick()
+  await waitForAsync(
+    page,
+    async () => (await window.hibi.getDocument()).markdown === 'Glad',
+  )
+  assert.equal(await source('right').textContent(), 'Sad')
+  assert.equal(await markdown('right', source), 'Sad')
 })
