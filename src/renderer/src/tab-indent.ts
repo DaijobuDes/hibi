@@ -1,5 +1,5 @@
 import { Extension } from '@tiptap/core'
-import { Plugin } from '@tiptap/pm/state'
+import { Plugin, TextSelection } from '@tiptap/pm/state'
 
 export const indentUnits = ['\t', '  ', '    '] as const
 type Preferences = { enabled: boolean; unit: (typeof indentUnits)[number] }
@@ -97,24 +97,39 @@ export const TabIndent = Extension.create({
         const unit = detectIndentUnit(text.split('\n'))
         if (!outdent && from === to) tr.insertText(unit, from)
         else {
-          const lines = [
-            from === start ? 0 : text.lastIndexOf('\n', from - start - 1) + 1,
-          ]
-          for (
-            let line = text.indexOf('\n', lines[0]) + 1;
-            line > 0 && line < to - start;
-            line = text.indexOf('\n', line) + 1
-          )
-            lines.push(line)
+          // One replacement for every line: per-line steps would each keep a whole-block copy.
+          const head =
+            from === start ? 0 : text.lastIndexOf('\n', from - start - 1) + 1
+          let end = text.indexOf('\n', Math.max(head, to - start - 1))
+          if (end < 0) end = text.length
           const width = unit === '\t' ? 4 : unit.length
-          for (const line of lines.reverse())
-            if (!outdent) tr.insertText(unit, start + line)
-            else {
-              const indent = new RegExp(`^(?:\t| {1,${width}})`).exec(
-                text.slice(line),
-              )?.[0].length
-              if (indent) tr.delete(start + line, start + line + indent)
+          const leading = new RegExp(`^(?:\t| {1,${width}})`)
+          const lines = text.slice(head, end).split('\n')
+          const deltas = lines.map((line) =>
+            outdent ? -(leading.exec(line)?.[0].length ?? 0) : unit.length,
+          )
+          if (deltas.every((delta) => !delta)) return true
+          // Shift a position by the lines before it; never past its own line start.
+          const map = (pos: number) => {
+            let line = start + head,
+              moved = pos
+            for (const [index, delta] of deltas.entries()) {
+              if (pos < line) break
+              moved += Math.max(delta, line - pos)
+              line += lines[index].length + 1
             }
+            return moved
+          }
+          const { anchor, head: caret } = state.selection
+          tr.insertText(
+            lines
+              .map((line, index) =>
+                outdent ? line.slice(-deltas[index]) : unit + line,
+              )
+              .join('\n'),
+            start + head,
+            start + end,
+          ).setSelection(TextSelection.create(tr.doc, map(anchor), map(caret)))
         }
       } else {
         // Leading whitespace would turn into an indented code block on save.

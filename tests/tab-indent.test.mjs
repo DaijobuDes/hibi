@@ -109,6 +109,35 @@ test('Tab indents source and code, keeps lists and tables, and Escape then Tab l
   await page.keyboard.press('Tab')
   assert.equal((await richState()).text, '  x\n  y')
 
+  // A 1 MB selection indents in one edit instead of one block copy per line.
+  const lines = 16384
+  const big = Array.from({ length: lines }, (_, line) =>
+    `${line}`.padEnd(63, 'x'),
+  ).join('\n')
+  await setRich(`<pre><code>${big}</code></pre>`, {
+    from: 1,
+    to: big.length + 1,
+  })
+  const started = performance.now()
+  await page.keyboard.press('Tab')
+  const indented = await rich.evaluate((element) => {
+    const { state } = element.editor
+    const text = state.doc.firstChild.textContent
+    return {
+      length: text.length,
+      every: text.split('\n').every((line) => /^\t\d+x+$/.test(line)),
+      from: state.selection.from,
+      to: state.selection.to,
+    }
+  })
+  assert.ok(performance.now() - started < 10000)
+  assert.deepEqual(indented, {
+    length: big.length + lines,
+    every: true,
+    from: 2,
+    to: big.length + lines + 1,
+  })
+
   // Lists and tables keep their own Tab behavior.
   await listTab()
   const cell = () =>
