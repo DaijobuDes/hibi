@@ -103,7 +103,7 @@ import {
   type SourceReferenceResult,
   type SourceReferenceSyntax,
 } from './source-view'
-import { sourceIndent, tabIndent } from './tab-indent'
+import { sourceIndentation, tabIndent } from './tab-indent'
 import { textProjection } from './text-projection'
 
 const highlighting = HighlightStyle.define([
@@ -837,21 +837,12 @@ export function SourceEditor({
         return false
       // An open menu declines Tab briefly after appearing; never indent beneath it.
       if (completionStatus(view.state) === 'active') return true
-      const unit =
-        view.state.field(sourceIndent)?.unit ?? tabIndent.snapshot().unit
-      if (view.state.facet(indentUnit) !== unit)
-        view.dispatch({
-          effects: indentation.current.reconfigure([
-            sourceIndent,
-            indentUnit.of(unit),
-          ]),
-        })
       if (
         command === indentLess ||
         view.state.selection.ranges.some((range) => !range.empty)
       )
         return command(view)
-      view.dispatch(view.state.replaceSelection(unit), {
+      view.dispatch(view.state.replaceSelection(view.state.facet(indentUnit)), {
         scrollIntoView: true,
         userEvent: 'input',
       })
@@ -888,7 +879,7 @@ export function SourceEditor({
           language.of(markdown()),
           sourceAnnotationExtension,
           autocompletion({ override: [sourceCompletions] }),
-          indentation.current.of(sourceIndent),
+          indentation.current.of(sourceIndentation(tabIndent.snapshot().unit)),
           keymap.of([
             { key: 'Tab', run: acceptCompletion },
             {
@@ -1481,6 +1472,17 @@ export function SourceEditor({
       canceled = true
     }
   }, [bridge, sourceExtensions])
+  useEffect(
+    () =>
+      tabIndent.subscribe(() =>
+        view.current?.dispatch({
+          effects: indentation.current.reconfigure(
+            sourceIndentation(tabIndent.snapshot().unit),
+          ),
+        }),
+      ),
+    [],
+  )
   useEffect(() => {
     view.current?.dispatch({
       effects: editable.current.reconfigure([

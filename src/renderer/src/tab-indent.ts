@@ -1,3 +1,4 @@
+import { indentUnit } from '@codemirror/language'
 import { StateField, type Text } from '@codemirror/state'
 import { Extension } from '@tiptap/core'
 import { Plugin, TextSelection } from '@tiptap/pm/state'
@@ -78,6 +79,15 @@ export const sourceIndent = StateField.define<Indented>({
     return next
   },
 })
+
+/** Source Tab and toolbar indentation: the file's own style, else the preferred unit. */
+export const sourceIndentation = (preferred: string) => [
+  sourceIndent,
+  indentUnit.compute(
+    [sourceIndent],
+    (state) => state.field(sourceIndent)?.unit ?? preferred,
+  ),
+]
 
 /** Rich-text Tab: lists and tables first, then code indentation, then a mid-line tab. */
 export const TabIndent = Extension.create({

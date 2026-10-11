@@ -214,6 +214,27 @@ test('Tab indents source and code, keeps lists and tables, and Escape then Tab l
   })
   await source.waitFor()
 
+  // Toolbar indentation uses Tab's unit and follows edits to the file.
+  const toolbarIndent = async (text, expected) => {
+    await replaceSourceText(page, source, text)
+    await source.press('ControlOrMeta+End')
+    const inline = page.locator(
+      '.editor-toolbar > button[data-toolbar-id="format.indent"]',
+    )
+    if (await inline.count()) await inline.click()
+    else {
+      await page
+        .getByRole('button', { name: 'More formatting actions' })
+        .click()
+      await page
+        .locator('.toolbar-menu button[data-toolbar-id="format.indent"]')
+        .click()
+    }
+    await saved(expected)
+  }
+  await toolbarIndent('    one\ntwo', '    one\n    two')
+  await toolbarIndent('\tone\ntwo', '\tone\n\ttwo')
+
   // Source: insert at the caret, then indent and outdent selected lines.
   await replaceSourceText(page, source, 'one\ntwo')
   await source.press('Home')
