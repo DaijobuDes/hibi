@@ -137,6 +137,7 @@ const parseParagraph = (editor: Editor, source: string) =>
 const grammarPreservingRich = new Map([
   ['word-count.text', 'word-count'],
   ['block-drag.handle', 'block-drag'],
+  ['dictionary.lookup', 'dictionary'],
   ['math.editing', 'math'],
   ['slash-commands.menu', 'slash-commands'],
   ['tags.highlights', 'tags'],
