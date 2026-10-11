@@ -10,7 +10,6 @@ Letter shortcuts and punctuation on letter keys follow your active keyboard layo
 | --- | --- |
 | `Cmd/Ctrl+K` | Search commands and settings |
 | `Cmd/Ctrl+F` | Find text in the current note |
-| `Cmd/Ctrl+Shift+N` | Focus the newest notification |
 | `Cmd/Ctrl+/` | Show or hide the sidebar |
 | `Cmd/Ctrl+N` | New note |
 | `Cmd/Ctrl+O` | Open a file |
@@ -23,6 +22,8 @@ Letter shortcuts and punctuation on letter keys follow your active keyboard layo
 | `Cmd/Ctrl+[` / `]` | Go back / forward |
 | `Cmd/Ctrl+Shift+[` / `]` | Normal / Source view |
 | `Cmd/Ctrl+Shift+\` | Side-by-side view |
+
+**Focus notifications** moves keyboard focus to the newest notification. It has no shortcut by default; run it from the command palette or assign one under **Settings → Hotkeys**.
 
 ## Undo and redo
 

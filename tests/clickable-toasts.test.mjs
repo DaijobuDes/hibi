@@ -71,13 +71,25 @@ test('the update notice opens About at the update status by click or keyboard', 
   })
   await toast.waitFor({ state: 'detached' })
 
-  // Keyboard: the hotkey focuses the newest notice, Escape dismisses it and returns focus.
+  // Keyboard: Focus notifications ships unbound; once bound it focuses the newest notice.
   await page.getByRole('tab', { name: 'Editor', exact: true }).click()
   const tab = page.getByRole('tab', { name: 'Editor', exact: true })
   await tab.focus()
   await notify()
   await toast.waitFor()
   const focus = `${process.platform === 'darwin' ? 'Meta' : 'Control'}+Shift+N`
+  const hotkeys = await page.evaluate(() => window.hibi.getHotkeys())
+  assert.equal(hotkeys['focus-notifications'], '')
+  await pressShortcut(app, focus)
+  await page.evaluate(() => new Promise(requestAnimationFrame))
+  assert.equal(
+    await tab.evaluate((element) => element === document.activeElement),
+    true,
+  )
+  await page.evaluate((next) => window.hibi.saveHotkeys(next), {
+    ...hotkeys,
+    'focus-notifications': `${process.platform === 'darwin' ? 'meta' : 'ctrl'}+shift+n`,
+  })
   await pressShortcut(app, focus)
   await page.waitForFunction(
     () =>

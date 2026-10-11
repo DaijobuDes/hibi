@@ -26,7 +26,7 @@ export const actions = [
     id: 'focus-notifications',
     label: 'Focus notifications',
     category: 'app',
-    key: 'shift+n',
+    key: '',
   },
   {
     id: 'previous-tab',
