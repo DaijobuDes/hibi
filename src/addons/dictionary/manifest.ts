@@ -15,11 +15,6 @@ export default {
     origins: [
       'https://en.wiktionary.org',
       'https://api.datamuse.com',
-      'https://en-word.net',
-      'https://www.mdbg.net',
-      'https://cantonese.org',
-      'https://www.edrdg.org',
-      'https://kaikki.org',
     ],
   },
   settings: { category: 'addons', icon: 'book-open' },
