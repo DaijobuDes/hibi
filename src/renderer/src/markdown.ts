@@ -15,6 +15,7 @@ import {
 } from './list-tokenizer-prefix.ts'
 import { MarkdownMarkExit } from './markdown-markers.ts'
 import { markdownSyntax } from './markdown-syntax.ts'
+import { preserveHtml, preserveInlineHtml, rawHtml } from './RawHtml.ts'
 import { installSyntaxPreferences } from './syntax-parser.ts'
 
 export { projectMarkdown } from './markdown-projection.ts'
@@ -35,7 +36,7 @@ export function markdownConfiguration(
     RendererOutput = string,
   > extends BaseLexer<ParserOutput, RendererOutput> {
     inlineTokens(source: string, tokens?: Token[]) {
-      const result = super.inlineTokens(source, tokens)
+      const result = preserveInlineHtml(super.inlineTokens(source, tokens))
       // Custom task tokens hide children from walkTokens; normalize at creation.
       for (const token of result)
         if (token.type === 'text')
@@ -76,6 +77,7 @@ export function markdownConfiguration(
             taskItems ? parseEmptyTaskItems(extension) : extension,
           )
           .map(guardNativeListTokenizer)
+          .map(preserveHtml)
           .map(guardNativeInputRules) ?? []
       )
     },
@@ -100,6 +102,7 @@ export function markdownConfiguration(
     }),
     ...(history ? [history] : []),
     ...literalMarkdown,
+    ...rawHtml,
   ]
   const addons = flavors
     .flatMap((flavor) => flavor.richExtensions ?? [])
@@ -108,6 +111,7 @@ export function markdownConfiguration(
       taskItems ? parseEmptyTaskItems(extension) : extension,
     )
     .map(guardNativeListTokenizer)
+    .map(preserveHtml)
     .map(guardNativeInputRules)
   return { parser, options, core, addons }
 }

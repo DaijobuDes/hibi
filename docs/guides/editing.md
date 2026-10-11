@@ -10,7 +10,9 @@ While you type in the source pane, the formatted pane may catch up shortly after
 
 Choose your starting view under **Settings → Editor → Layout → Default view**. Only views supported by the current [format](../editing/formats.md) are available. You can switch from the toolbar or use a [keyboard shortcut](../editing/typing-and-shortcuts.md).
 
-Switching views preserves your source. Normal view stays editable regardless of character count or word count. Hibi keeps untouched Markdown when you edit formatted text and rejects an edit if it cannot prove the resulting source is safe. Use Source view for syntax the formatted editor cannot preserve, including some raw HTML and reference definitions.
+Switching views preserves your source. Normal view stays editable regardless of character count or word count. Hibi keeps untouched Markdown when you edit formatted text and rejects an edit if it cannot prove the resulting source is safe. Use Source view for syntax the formatted editor cannot preserve, including reference definitions.
+
+Raw HTML appears as a monospace source chip or box in Normal view. Hibi preserves the markup without running it or turning it into live HTML. Click a chip or box to select it, then press Delete or Backspace to remove it as a unit. Use Source view to edit the HTML itself. A chip can include surrounding Markdown formatting to keep the whole fragment intact. When HTML surrounds several Markdown blocks, its opening and closing fragments appear in separate boxes, and you can edit the Markdown between them. Plain `<br>` tags remain line breaks and keep their original spelling when saved.
 
 When you use an input method, choosing and revising candidates remains one undo step even if you pause between candidates. Each new composition starts a separate undo step in both source and formatted views.
 
