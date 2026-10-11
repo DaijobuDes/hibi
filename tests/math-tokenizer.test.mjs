@@ -182,6 +182,9 @@ test('full and cached math serialization preserve literal dollars and equations'
     '\\$x$ and $x$',
     '$x$\\$',
     '\\$$x$',
+    '\\$5 or \\$y$ total',
+    '\\$$$x$',
+    'a \\$5 then \\$x$ more',
     '$x$ and $5 and $10',
     '$x+y$ and $$z$$',
     '$$x$$',
@@ -194,7 +197,9 @@ test('full and cached math serialization preserve literal dollars and equations'
         doc.check()
         for (const blockLocal of [false, true]) {
           const saved = markdownSerializer(manager, blockLocal)(doc).source
-          assert.ok(schema.nodeFromJSON(manager.parse(saved)).eq(doc), saved)
+          const reparsed = schema.nodeFromJSON(manager.parse(saved))
+          assert.equal(reparsed.textContent, doc.textContent, saved)
+          assert.ok(reparsed.eq(doc), saved)
           if (source.includes('$5 and $10'))
             assert.ok(saved.includes('$5 and $10'), saved)
           if (source.includes('`$x$`'))
