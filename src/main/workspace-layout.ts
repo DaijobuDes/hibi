@@ -88,14 +88,20 @@ async function replace(
 ) {
   const layout = await readLayout(root)
   if (!(await change(layout))) return
-  let text = `${JSON.stringify(layout, null, 2)}\n`
+  let size = Buffer.byteLength(`${JSON.stringify(layout, null, 2)}\n`)
   // Keep the file readable: drop the least recently written documents first.
-  for (const path of Object.keys(layout.documents)) {
-    if (Buffer.byteLength(text) <= WORKSPACE_LAYOUT_LIMIT) break
+  // Each entry's share is its line, indented four spaces deeper than its own
+  // serialization, plus a ",\n" separator; the file is serialized once more.
+  for (const [path, entry] of Object.entries(layout.documents)) {
+    if (size <= WORKSPACE_LAYOUT_LIMIT) break
     if (path === keep) continue
+    const value = JSON.stringify(entry, null, 2)
+    size -=
+      Buffer.byteLength(`    ${JSON.stringify(path)}: ${value},\n`) +
+      4 * (value.split('\n').length - 1)
     delete layout.documents[path]
-    text = `${JSON.stringify(layout, null, 2)}\n`
   }
+  const text = `${JSON.stringify(layout, null, 2)}\n`
   if (Buffer.byteLength(text) > WORKSPACE_LAYOUT_LIMIT)
     throw new Error('These table sizes are too large to save.')
   await writeWorkspaceText(root, WORKSPACE_LAYOUT, text)

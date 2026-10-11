@@ -209,6 +209,55 @@ test('table layout stays under its read limit by dropping old documents', async 
   assert.deepEqual(Object.keys((await stored(root)).documents), kept)
 })
 
+test('table layout eviction serializes the whole file a bounded number of times', async (t) => {
+  const root = await workspace(t)
+  await mkdir(join(root, '.hibi'))
+  const documents = {}
+  for (let index = 0; index < 4800; index++)
+    documents[`notes/${index}.md`] = { tables: [table(`0:${index}`, [120])] }
+  await writeFile(
+    join(root, '.hibi/layout.json'),
+    JSON.stringify({ version: 1, documents }, null, 2),
+  )
+  // Every stored document exists without creating thousands of files.
+  const metadata = join(root, '.hibi')
+  const fast = load({
+    lstat: (path, ...rest) =>
+      path.startsWith(metadata) ? lstat(path, ...rest) : Promise.resolve({}),
+  })
+  const tables = Array.from({ length: 45 }, (_, index) =>
+    table(`${index}:a`, [120], Array(1000).fill(48)),
+  )
+  const stringify = JSON.stringify
+  let whole = 0
+  t.mock.method(JSON, 'stringify', (value, ...rest) => {
+    if (value?.documents) whole++
+    return stringify(value, ...rest)
+  })
+  const started = performance.now()
+  await fast.writeTableLayout(root, 'a.md', tables)
+  const elapsed = performance.now() - started
+  t.mock.restoreAll()
+  assert.ok(whole <= 2, `${whole} whole-file serializations`)
+  assert.ok(elapsed < 2000, `${Math.round(elapsed)} ms`)
+  const { size } = await stat(join(root, '.hibi/layout.json'))
+  assert.ok(size <= 1048576)
+  const kept = Object.keys((await stored(root)).documents)
+  assert.equal(kept.at(-1), 'a.md')
+  assert.ok(kept.length > 1)
+  // Evicting one fewer document would not have fit.
+  const evicted = 4800 - (kept.length - 1)
+  const fuller = {
+    version: 1,
+    documents: Object.fromEntries([
+      ...Object.entries(documents).slice(evicted - 1),
+      ['a.md', { tables }],
+    ]),
+  }
+  assert.ok(Buffer.byteLength(`${JSON.stringify(fuller, null, 2)}\n`) > 1048576)
+  assert.deepEqual(await fast.readTableLayout(root, 'a.md'), tables)
+})
+
 test('table layout recovers from an oversized file', async (t) => {
   const root = await workspace(t)
   await mkdir(join(root, '.hibi'))
