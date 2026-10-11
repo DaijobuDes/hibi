@@ -90,7 +90,11 @@ test('custom words round-trip through plain text', () => {
     { word: 'gemütlich', lang: 'de' },
   ])
   // Words starting with `#` are not read back as comments.
-  const tags = [{ word: '#hashtag', lang: 'en' }, { word: '\\#odd' }, { word: 'C#' }]
+  const tags = [
+    { word: '#hashtag', lang: 'en' },
+    { word: '\\#odd' },
+    { word: 'C#' },
+  ]
   const tagText = exportCustomWords(tags)
   assert.equal(tagText, '\\#hashtag\ten\n\\\\#odd\nC#')
   assert.deepEqual(importCustomWords(tagText), tags)
@@ -136,7 +140,10 @@ test('queued field edits apply to the word as it is saved', async () => {
   const [item] = listCustomWords()
   // A note blur, then a language change before the note is saved.
   await Promise.all([
-    editCustomWord(item, ({ note: _old, ...rest }) => ({ ...rest, note: 'new' })),
+    editCustomWord(item, ({ note: _old, ...rest }) => ({
+      ...rest,
+      note: 'new',
+    })),
     editCustomWord(item, (current) => ({ ...current, lang: 'tl' })),
   ])
   assert.deepEqual(listCustomWords(), [
@@ -146,7 +153,9 @@ test('queued field edits apply to the word as it is saved', async () => {
 })
 
 test('custom words refuse to go over capacity without saving part of a change', async () => {
-  const full = Array.from({ length: 4999 }, (_, index) => ({ word: `w${index}` }))
+  const full = Array.from({ length: 4999 }, (_, index) => ({
+    word: `w${index}`,
+  }))
   const { handle, context } = storage(full)
   const close = await openCustomWords(context)
   await assert.rejects(
@@ -162,7 +171,10 @@ test('custom words refuse to go over capacity without saving part of a change', 
   // Editing a word already listed still saves at capacity.
   await addCustomWord({ word: 'kilig', note: 'giddy' })
   assert.equal(listCustomWords().at(-1).note, 'giddy')
-  assert.equal(importCustomWords(full.map(({ word }) => word).join('\n') + '\nx').length, 5000)
+  assert.equal(
+    importCustomWords(full.map(({ word }) => word).join('\n') + '\nx').length,
+    5000,
+  )
   close()
 })
 
@@ -283,5 +295,62 @@ test('custom words come before pack words in suggestions', async () => {
       ['happenstance', 'Your word'],
       ['happen', undefined],
     ],
+  )
+})
+
+test('custom word suggestions match NFC prefixes and list each word once', async () => {
+  const provider = dictionaryCompletions(
+    async (_langs, prefix) => [
+      {
+        lang: 'fr',
+        words: ['bonjour', 'écolier'].filter((word) =>
+          word.startsWith(prefix.normalize('NFC')),
+        ),
+      },
+    ],
+    () => ({ suggest: true, tabAccepts: true, languages: ['fr', 'en'] }),
+    (lang) => lang,
+    () => [
+      { word: 'école' },
+      { word: 'bonjour', lang: 'fr' },
+      { word: 'Bonjour', lang: 'en' },
+    ],
+  )
+  const ask = (before) =>
+    provider(
+      {
+        view: {
+          documentId: 'document',
+          documentGeneration: 1,
+          viewId: 'view',
+          viewGeneration: 1,
+        },
+        contentVersion: 1,
+        editor: 'source',
+        documentLength: before.length,
+        selection: { anchor: before.length, head: before.length },
+        before,
+        after: '',
+        trigger: { kind: 'input', character: before.at(-1) },
+      },
+      signal,
+    )
+  // Typed in decomposed form: `e` and a combining acute accent.
+  const decomposed = 'Une e\u0301co'
+  assert.deepEqual(
+    (await ask(decomposed)).map(({ label, detail, from, to }) => [
+      label,
+      detail,
+      from,
+      to,
+    ]),
+    [
+      ['école', 'Your word', 4, 8],
+      ['écolier', 'fr', 4, 8],
+    ],
+  )
+  assert.deepEqual(
+    (await ask('bon')).map(({ label, detail }) => [label, detail]),
+    [['bonjour', 'Your word']],
   )
 })

@@ -101,7 +101,7 @@ export function rankWords(
   prefix: string,
   found: readonly { lang: Lang; words: readonly string[] }[],
 ) {
-  const typed = prefix.toLowerCase()
+  const typed = prefix.normalize('NFC').toLowerCase()
   const capital = prefix[0] !== prefix[0]?.toLowerCase()
   const quality = (word: string, lang: Lang) =>
     Number(!word.toLowerCase().startsWith(typed)) * 4 +
@@ -163,23 +163,25 @@ export function dictionaryCompletions(
       if (signal.aborted) throw error
     }
     signal.throwIfAborted()
-    // The user's words come before pack words for the same prefix.
-    const typed = prefix.toLowerCase()
+    // The user's words come before pack words for the same prefix, once each
+    // across languages. Keys are compared in NFC; the typed prefix keeps its
+    // own length for the replaced range.
+    const fold = (word: string) => word.normalize('NFC').toLowerCase()
+    const typed = fold(prefix)
+    const taken = new Set<string>()
     const mine = custom()
       .filter(
         ({ word, lang }) =>
           (!lang || settings.languages.includes(lang)) &&
-          word.length > prefix.length &&
-          word.toLowerCase().startsWith(typed),
+          fold(word) !== typed &&
+          fold(word).startsWith(typed),
       )
       .map(({ word }) => word)
       .sort((left, right) => left.length - right.length)
-    const taken = new Set(mine.map((word) => word.toLowerCase()))
+      .filter((word) => !taken.has(fold(word)) && taken.add(fold(word)))
     const ranked = [
       ...mine.map((word) => ({ word, lang: null })),
-      ...rankWords(prefix, found).filter(
-        ({ word }) => !taken.has(word.toLowerCase()),
-      ),
+      ...rankWords(prefix, found).filter(({ word }) => !taken.has(fold(word))),
     ].slice(0, MAX_ITEMS)
     const several = settings.languages.length > 1
     return ranked.map(

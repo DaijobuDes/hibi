@@ -137,7 +137,9 @@ export function editCustomWord(
   change: (current: CustomWord) => CustomWord,
 ) {
   return updateCustomWords((current) =>
-    current.map((item) => (sameCustomWord(item, original) ? change(item) : item)),
+    current.map((item) =>
+      sameCustomWord(item, original) ? change(item) : item,
+    ),
   )
 }
 
