@@ -108,7 +108,10 @@ export function FormatsSettings({
   const formats = addons.filter(
     ({ manifest }) =>
       manifest.fileExtensions?.length &&
-      states.some((state) => state.id === manifest.id && state.enabled),
+      states.some(
+        (state) =>
+          state.id === manifest.id && state.enabled && !state.blockedBy?.length,
+      ),
   )
   const matching = formats.filter(({ manifest }) =>
     `${manifest.name} ${manifest.fileExtensions?.map((extension) => `.${extension}`).join(' ')}`

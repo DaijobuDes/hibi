@@ -176,7 +176,10 @@ export function SettingsScreen({
     settingsPages.snapshot,
   )
   const extraPages = registered.pages.filter((page) =>
-    addonStates.some((state) => state.id === page.owner && state.enabled),
+    addonStates.some(
+      (state) =>
+        state.id === page.owner && state.enabled && !state.blockedBy?.length,
+    ),
   )
   const searchable = [
     ...indexed,
@@ -205,7 +208,10 @@ export function SettingsScreen({
     (addon) =>
       (!!addon.manifest.fileExtensions?.length || addon.Settings) &&
       addonStates.some(
-        (state) => state.id === addon.manifest.id && state.enabled,
+        (state) =>
+          state.id === addon.manifest.id &&
+          state.enabled &&
+          !state.blockedBy?.length,
       ),
   )
   const items: SidebarItem[] = settingsNavigation(
