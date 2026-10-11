@@ -1510,6 +1510,9 @@
   "b07a24db4354": [
     "src/renderer/src/EditorToolbar.tsx"
   ],
+  "faac854ffc99": [
+    "src/renderer/src/DocumentTabs.tsx"
+  ],
   "f5d8a4fcbe0e": [
     "src/addons/block-drag/manifest.ts"
   ],
@@ -3449,6 +3452,10 @@
   ],
   "ac81d61ec2b5": [
     "src/renderer/src/DependencySettings.tsx"
+  ],
+  "34ad0a098e65": [
+    "src/renderer/src/Editor.tsx",
+    "src/renderer/src/SourceEditor.tsx"
   ],
   "95d3d7e8feed": [
     "src/renderer/src/AddonHotkeySettings.tsx",

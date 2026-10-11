@@ -194,8 +194,28 @@ test('Tab indents source and code, keeps lists and tables, and Escape then Tab l
   await page.keyboard.press('Shift+Tab')
   assert.equal(await cell(), 'a')
 
+  // Escape then Tab leaves without a time limit; another key disarms it.
+  const exitHelp = 'Press Escape, then Tab, to leave the editor.'
+  assert.equal(await rich.getAttribute('aria-description'), exitHelp)
+  // A timed window opened by this Escape would have closed long ago.
+  const escapeAMinuteAgo = async () => {
+    await page.evaluate(() => {
+      const now = Date.now
+      Date.now = () => now() - 60000
+      window.restoreNow = () => {
+        Date.now = now
+      }
+    })
+    await page.keyboard.press('Escape')
+    await page.evaluate(() => window.restoreNow())
+  }
   await setRich('<p>ab</p>', 3)
   await page.keyboard.press('Escape')
+  await page.keyboard.type('x')
+  await page.keyboard.press('Tab')
+  assert.deepEqual(await richState(), { text: 'abx\t', from: 5, to: 5 })
+  await setRich('<p>ab</p>', 3)
+  await escapeAMinuteAgo()
   await page.keyboard.press('Shift+Tab')
   assert.equal(await focusIn('.tiptap'), false)
   assert.equal((await richState()).text, 'ab')
@@ -282,7 +302,8 @@ test('Tab indents source and code, keeps lists and tables, and Escape then Tab l
   await source.press('Tab')
   await saved('  one\n  two')
   assert.equal(await focusIn('.source-pane'), true)
-  await source.press('Escape')
+  assert.equal(await source.getAttribute('aria-description'), exitHelp)
+  await escapeAMinuteAgo()
   await source.press('Tab')
   assert.equal(await focusIn('.source-pane'), false)
   await saved('  one\n  two')

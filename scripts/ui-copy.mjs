@@ -13,6 +13,7 @@ const displayFields = new Set([
   'tooltip',
   'placeholder',
   'aria-label',
+  'aria-description',
   'alt',
   'buttonLabel',
   'confirmLabel',

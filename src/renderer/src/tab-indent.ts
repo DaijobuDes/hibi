@@ -95,25 +95,30 @@ export const TabIndent = Extension.create({
   // After list and table keymaps, which keep their own Tab behavior.
   priority: 50,
   addProseMirrorPlugins() {
-    // Like CodeMirror: an Escape no menu used lets the next Tab within two seconds move focus.
-    let until = 0
+    // Like CodeMirror: an Escape no menu used lets the next Tab move focus. Untimed,
+    // so nobody has to hurry; another key or leaving the editor disarms it.
+    let armed = false
     return [
       new Plugin({
         props: {
           handleKeyDown: (_view, event) => {
-            if (event.key === 'Escape') until = Date.now() + 2000
+            if (event.key === 'Escape') armed = true
             return false
           },
           handleDOMEvents: {
             keydown: (_view, event) => {
-              const escaped = event.key === 'Tab' && Date.now() <= until
+              const escaped = event.key === 'Tab' && armed
               if (
                 !['Escape', 'Shift', 'Control', 'Alt', 'Meta'].includes(
                   event.key,
                 )
               )
-                until = 0
+                armed = false
               return escaped
+            },
+            blur: () => {
+              armed = false
+              return false
             },
           },
         },

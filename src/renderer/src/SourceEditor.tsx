@@ -551,6 +551,7 @@ export function SourceEditor({
         ),
         EditorView.contentAttributes.of({
           'aria-label': markdownMode ? 'Markdown editor' : `${label} editor`,
+          'aria-description': 'Press Escape, then Tab, to leave the editor.',
         }),
       ]
     }
@@ -571,6 +572,7 @@ export function SourceEditor({
       character: string
     } | null = null
     let closingCompletion = false
+    let escaped = false
     const captureCompletion = (
       trigger: CompletionRequest['trigger'],
     ): CompletionRequest | null => {
@@ -889,6 +891,19 @@ export function SourceEditor({
             },
           ]),
           EditorView.domEventHandlers({
+            keydown(event, view) {
+              // CodeMirror arms Tab focus for two seconds after an unhandled Escape;
+              // keep it armed until another key or blur so nobody has to hurry.
+              if (!['Shift', 'Control', 'Alt', 'Meta'].includes(event.key))
+                escaped = false
+              if (event.key === 'Escape')
+                queueMicrotask(() => {
+                  if (event.defaultPrevented) return
+                  view.setTabFocusMode(Infinity)
+                  escaped = true
+                })
+              return false
+            },
             beforeinput(event) {
               if (
                 event.inputType !== 'historyUndo' &&
@@ -901,6 +916,8 @@ export function SourceEditor({
                 : bridge.redo()
             },
             blur(_event, view) {
+              if (escaped) view.setTabFocusMode(false)
+              escaped = false
               const selection = view.state.selection
               if (selection.ranges.some((range) => range.empty && range.assoc))
                 view.dispatch({
