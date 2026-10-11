@@ -207,6 +207,36 @@ test('Tab indents source and code, keeps lists and tables, and Escape then Tab l
   assert.equal(await focusIn('.tiptap'), false)
   assert.equal((await richState()).text, 'x')
   await listTab()
+  // Code in a first item keeps focus too, like the item's text.
+  for (const [list, item] of [
+    ['bulletList', 'listItem'],
+    ['taskList', 'taskItem'],
+  ]) {
+    const text = (text) => ({ type: 'text', text })
+    await setRich(
+      {
+        type: 'doc',
+        content: [
+          {
+            type: list,
+            content: [
+              {
+                type: item,
+                content: [
+                  { type: 'paragraph', content: [text('a')] },
+                  { type: 'codeBlock', content: [text('x')] },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      6,
+    )
+    await page.keyboard.press('Tab')
+    assert.equal(await focusIn('.tiptap'), true)
+    assert.equal((await richState()).text, 'a|x')
+  }
 
   await settings(async ({ indents, view }) => {
     await indents.check()

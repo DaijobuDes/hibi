@@ -126,12 +126,14 @@ export const TabIndent = Extension.create({
       const { state, view } = this.editor
       const { $from, $to, from, to } = state.selection
       const code = $from.parent.type.name === 'codeBlock'
-      if (!code)
+      const { enabled } = tabIndent.snapshot()
+      // Code indents its own lines; otherwise, and with indenting off, items keep Tab.
+      if (!code || !enabled)
         for (let depth = $from.depth; depth > 0; depth--)
           if (['listItem', 'taskItem'].includes($from.node(depth).type.name))
             // Keep focus when an item cannot move farther.
             return true
-      if (!tabIndent.snapshot().enabled) return false
+      if (!enabled) return false
       if (!$from.sameParent($to) || !$from.parent.isTextblock) return true
       const tr = state.tr
       if (code) {
