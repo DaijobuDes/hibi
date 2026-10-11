@@ -12,8 +12,7 @@ import {
 type GetText = (request: HostTextRequest) => Promise<HostTextResult>
 
 /** Response text, or null when the service has no page for the request. */
-async function read(getText: GetText, url: string, signal: AbortSignal) {
-  if (signal.aborted) throw new DictionaryError('unavailable')
+async function read(getText: GetText, url: string) {
   let result: HostTextResult
   try {
     result = await getText({ url })
@@ -33,6 +32,11 @@ async function read(getText: GetText, url: string, signal: AbortSignal) {
           ? 'offline'
           : 'unavailable',
   )
+}
+
+/** Closing the dialog stops follow-up requests; the host cannot cancel one in flight. */
+function stopIfAborted(signal: AbortSignal) {
+  if (signal.aborted) throw new DictionaryError('unavailable')
 }
 
 /** Successful answers are kept for the session; failures are retried. */
@@ -117,7 +121,6 @@ export function wiktionaryProvider(getText: GetText): DictionaryProvider {
     read(
       getText,
       `https://en.wiktionary.org/api/rest_v1/page/definition/${encodeURIComponent(term)}`,
-      new AbortController().signal,
     ),
   )
   return {
@@ -126,11 +129,12 @@ export function wiktionaryProvider(getText: GetText): DictionaryProvider {
     kind: 'online',
     languages: ['en', 'zh', 'yue', 'ja', 'tl', 'fr'],
     async lookup(term, lang, signal) {
-      if (signal.aborted) throw new DictionaryError('unavailable')
       // Page titles are case-sensitive; a capital is usually sentence case.
       const lower = term.toLowerCase()
       for (const title of lower === term ? [term] : [lower, term]) {
+        stopIfAborted(signal)
         const text = await page(title)
+        stopIfAborted(signal)
         if (text === null) continue
         try {
           return parseWiktionary(text, title, lang)
@@ -167,7 +171,6 @@ export function datamuseProvider(getText: GetText): DictionaryProvider {
     read(
       getText,
       `https://api.datamuse.com/words?${query}&max=24`,
-      new AbortController().signal,
     ),
   )
   const source: Source = {
@@ -182,10 +185,11 @@ export function datamuseProvider(getText: GetText): DictionaryProvider {
     languages: ['en'],
     lookup: async () => [],
     async related(term, _lang, signal): Promise<Related | null> {
-      if (signal.aborted) throw new DictionaryError('unavailable')
       const key = encodeURIComponent(term.toLowerCase())
       const words = async (relation: 'syn' | 'ant') => {
+        stopIfAborted(signal)
         const text = await list(`rel_${relation}=${key}`)
+        stopIfAborted(signal)
         if (text === null) return []
         try {
           return parseWords(text, term)

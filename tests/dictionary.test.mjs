@@ -288,3 +288,29 @@ test('dictionary sends nothing online when an installed offline pack answers', a
   assert.deepEqual(calls, ['pack:en', 'online:tl', 'online:fr'])
   assert.equal(result.found[0].value[0].source.name, 'online')
 })
+
+test('dictionary sends no follow-up request after the lookup is closed', async () => {
+  const requests = []
+  let controller = new AbortController()
+  const getText = async (request) => {
+    requests.push(request.url)
+    controller.abort()
+    return { ok: false, code: 'http-status', status: 404 }
+  }
+  await assert.rejects(
+    datamuseProvider(getText).related('happy', 'en', controller.signal),
+    DictionaryError,
+  )
+  assert.deepEqual(requests, [
+    'https://api.datamuse.com/words?rel_syn=happy&max=24',
+  ])
+  requests.length = 0
+  controller = new AbortController()
+  await assert.rejects(
+    wiktionaryProvider(getText).lookup('Happy', 'en', controller.signal),
+    DictionaryError,
+  )
+  assert.deepEqual(requests, [
+    'https://en.wiktionary.org/api/rest_v1/page/definition/happy',
+  ])
+})
