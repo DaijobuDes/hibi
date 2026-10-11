@@ -460,6 +460,9 @@
     "src/renderer/src/AddonHotkeySettings.tsx",
     "src/renderer/src/HotkeySettings.tsx"
   ],
+  "e825f1937d21": [
+    "src/addons/dictionary/PackSettings.tsx"
+  ],
   "d353a99eb455": [
     "src/addons/diagnostics/Settings.tsx"
   ],
@@ -5580,6 +5583,9 @@
   "fe199528850a": [
     "src/addons/dictionary/PackSettings.tsx"
   ],
+  "7786cacd2ef2": [
+    "src/addons/dictionary/PackSettings.tsx"
+  ],
   "b0291a853226": [
     "src/main/file-associations.ts"
   ],
@@ -6293,6 +6299,9 @@
   ],
   "1954f44f1495": [
     "src/renderer/src/Titlebar.tsx"
+  ],
+  "905425b01a19": [
+    "src/addons/dictionary/PackSettings.tsx"
   ],
   "928195cef709": [
     "src/renderer/src/Titlebar.tsx"

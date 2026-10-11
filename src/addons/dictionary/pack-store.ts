@@ -111,7 +111,13 @@ export class PackStore {
     if (!recovery) {
       recovery = (async () => {
         const path = await packDirectory(this.root, id)
-        const previous = join(await directory(this.root), `.previous-${id}`)
+        const base = await directory(this.root)
+        const scratch = join(base, `.install-${id}`)
+        if (await exists(scratch)) {
+          await directory(scratch)
+          await rm(scratch, { recursive: true })
+        }
+        const previous = join(base, `.previous-${id}`)
         if (await exists(previous)) {
           await directory(previous)
           if (!(await exists(path))) await rename(previous, path)

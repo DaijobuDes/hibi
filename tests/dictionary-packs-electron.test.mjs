@@ -7,7 +7,7 @@ import { gzipSync } from 'node:zlib'
 import { packs } from '../src/addons/dictionary/packs.ts'
 import { electron, waitForDocumentEditor } from './electron.mjs'
 import { clickMenu } from './keyboard.mjs'
-import { waitForAsync } from './poll.mjs'
+import { APP_STATE_TIMEOUT, waitForAsync } from './poll.mjs'
 
 async function launch(profile, bytes) {
   const app = await electron.launch({
@@ -15,13 +15,8 @@ async function launch(profile, bytes) {
   })
   try {
     await app.evaluate(
-      ({ ipcMain }, { url, bytes }) => {
-        globalThis.dictionaryOnlineRequests = []
-        ipcMain.removeHandler('host-network:get-text')
-        ipcMain.handle('host-network:get-text', (_event, owner, request) => {
-          globalThis.dictionaryOnlineRequests.push({ owner, url: request.url })
-          throw new Error('online dictionary network forbidden')
-        })
+      ({ dialog }, { url, bytes }) => {
+        dialog.showMessageBox = async () => ({ response: 1 })
         globalThis.dictionaryPackRequests = []
         globalThis.fetch = async (input) => {
           const requested = String(input)
@@ -36,10 +31,26 @@ async function launch(profile, bytes) {
       { url: packs.zh.sources[0].url, bytes: bytes ? Array.from(bytes) : null },
     )
     const page = await app.firstWindow()
+    page.setDefaultTimeout(APP_STATE_TIMEOUT)
     await waitForDocumentEditor(app, page)
+    await app.evaluate(({ ipcMain }) => {
+      globalThis.dictionaryOnlineRequests = []
+      ipcMain.removeHandler('host-network:get-text')
+      ipcMain.handle('host-network:get-text', (_event, owner, request) => {
+        globalThis.dictionaryOnlineRequests.push({ owner, url: request.url })
+        throw new Error('online dictionary network forbidden')
+      })
+    })
     return { app, page }
   } catch (error) {
-    await app.close()
+    try {
+      await app.close()
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        'dictionary pack launch and cleanup failed',
+      )
+    }
     throw error
   }
 }
@@ -63,6 +74,10 @@ const lookup = (page) =>
 
 test('pack dialog install, offline definition, profile restart, path rejection and uninstall', async (t) => {
   const profile = await mkdtemp(join(tmpdir(), 'hibi-dictionary-packs-'))
+  await writeFile(
+    join(profile, 'addons.json'),
+    JSON.stringify({ dictionary: true }),
+  )
   let app
   t.after(async () => {
     await app?.close()
@@ -76,7 +91,6 @@ test('pack dialog install, offline definition, profile restart, path rejection a
   let launched = await launch(profile, bytes)
   app = launched.app
   let page = launched.page
-  await page.evaluate(() => window.hibi.setAddonEnabled('dictionary', true))
   await waitForPack(page, 'absent')
   await clickMenu(app, 'Command palette')
   const palette = page.getByRole('dialog', { name: /^command palette$/i })
@@ -90,13 +104,15 @@ test('pack dialog install, offline definition, profile restart, path rejection a
     name: /offline language packs/i,
   })
   const row = packDialog.locator('[data-setting-id="dictionary-pack-zh"]')
-  const installButton = row.getByRole('button', { name: /^install pack$/i })
+  const installButton = row.locator('button#dictionary-pack-zh')
   await waitForAsync(
     page,
     () =>
       document.querySelector('button#dictionary-pack-zh')?.disabled === false,
   )
-  const description = await row.locator('.setting-description').innerText()
+  const description = await row
+    .locator('#dictionary-pack-zh-description')
+    .innerText()
   assert.ok(description.includes('www.mdbg.net'))
   assert.ok(description.includes(packs.zh.sources[0].name))
   assert.ok(description.includes(packs.zh.sources[0].license))
@@ -122,7 +138,12 @@ test('pack dialog install, offline definition, profile restart, path rejection a
   }
   await installButton.click()
   await waitForPack(page, 'installed')
-  await row.getByRole('button', { name: /^update$/i }).waitFor()
+  await waitForAsync(
+    page,
+    () =>
+      document.querySelector('button#dictionary-pack-zh')?.textContent ===
+      'Update',
+  )
   await page.keyboard.press('Escape')
   await packDialog.waitFor({ state: 'detached' })
   const entries = await lookup(page)

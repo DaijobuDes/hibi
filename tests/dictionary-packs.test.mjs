@@ -396,6 +396,11 @@ test('interrupted update recovery is shared by concurrent lists and lookups', as
   const before = await snapshot(ctx.root)
   await ctx.store.close()
   await rename(join(ctx.root, 'zh'), join(ctx.root, '.previous-zh'))
+  await mkdir(join(ctx.root, '.install-zh'))
+  await writeFile(
+    join(ctx.root, '.install-zh', 'source-0'),
+    'interrupted download',
+  )
   const recovered = new PackStore(ctx.root, pathToFileURL(worker), () => {
     throw new Error('network forbidden')
   })

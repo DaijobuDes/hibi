@@ -12,7 +12,7 @@ A Node worker thread recognizes gzip/ZIP headers and streams source records into
 
 The manifest records language, format version, installation date, source URLs, source version/date headers, licenses, download sizes and SHA-256 hashes, entry/key counts, conversion time, and output sizes/hashes. SHA-256 detects incomplete or changed local files; it is not a publisher signature. Source authenticity relies on the fixed official HTTPS origins.
 
-A complete new pack replaces the old directory by rename. The old directory remains available for rollback if replacement fails; startup recovers an interrupted replacement. Failed or canceled updates preserve the installed pack. Uninstall unloads the worker's index and removes the pack. Disabling the addon stops active work but retains installed packs.
+A complete new pack replaces the old directory by rename. The old directory remains available for rollback if replacement fails; startup recovers an interrupted replacement and removes unfinished staging downloads. Failed or canceled updates preserve the installed pack. Uninstall unloads the worker's index and removes the pack. Disabling the addon stops active work but retains installed packs.
 
 The store serializes mutations and suppresses lookups during installation or removal. Concurrent initial lookups share one checksum verification. Generation checks stop stale verification from reopening a pack during mutation or shutdown. Lookup availability resumes when the operation finishes.
 

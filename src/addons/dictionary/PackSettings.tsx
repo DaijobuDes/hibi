@@ -102,6 +102,7 @@ export function PackSettings() {
               <ControlRow>
                 <Button
                   id={`dictionary-pack-${id}`}
+                  aria-label={`${installed ? 'Update' : 'Install'} ${languageNames[id]} pack`}
                   disabled={busy || !state}
                   onClick={() => void act('installPack', id)}
                 >
@@ -109,6 +110,7 @@ export function PackSettings() {
                 </Button>
                 {(installed || state?.phase === 'error') && (
                   <Button
+                    aria-label={`Uninstall ${languageNames[id]} pack`}
                     disabled={busy}
                     onClick={() => void act('uninstallPack', id)}
                   >
@@ -117,6 +119,7 @@ export function PackSettings() {
                 )}
                 {active && (
                   <Button
+                    aria-label={`Cancel ${languageNames[id]} pack installation`}
                     disabled={pending}
                     onClick={() => void act('cancelPack', id)}
                   >
