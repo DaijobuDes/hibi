@@ -185,6 +185,80 @@ test('rich soft breaks render as spaces and retain their source after an unrelat
   )
 })
 
+test('native HTML entities decode once and survive full and cached serialization', async (t) => {
+  const { core, parser, options } = markdownConfiguration([])
+  const schema = getSchema(core)
+  const manager = new MarkdownManager({
+    extensions: core,
+    marked: parser,
+    markedOptions: options,
+  })
+  for (const [name, source, text, saved, href] of [
+    ['named', '&copy;', '©', '©'],
+    ['decimal', '&#169;', '©', '©'],
+    ['hexadecimal', '&#xA9;', '©', '©'],
+    ['ampersand', '&amp;', '&', '&amp;'],
+    ['encoded named entity', '&amp;copy;', '&copy;', '&amp;copy;'],
+    ['numeric ampersand', '&#38;copy;', '&copy;', '&amp;copy;'],
+    ['encoded numeric entity', '&amp;#169;', '&#169;', '&amp;#169;'],
+    ['numeric angle entity', '&#38;lt;', '&lt;', '&amp;lt;'],
+    ['nonbreaking space', 'a&nbsp;b', 'a\u00a0b', 'a&nbsp;b'],
+    ['lone nonbreaking space', '&nbsp;', '\u00a0', '&nbsp;'],
+    ['lone numeric space', '&#160;', '\u00a0', '&nbsp;'],
+    ['lone hexadecimal space', '&#xA0;', '\u00a0', '&nbsp;'],
+    ['visible named pair', '&NotEqualTilde;', '\u2242\u0338', '\u2242\u0338'],
+    ['em space', 'a&emsp;b', 'a\u2003b', 'a&emsp;b'],
+    [
+      'code span',
+      '`&copy; &#169; &nbsp;`',
+      '&copy; &#169; &nbsp;',
+      '`&copy; &#169; &nbsp;`',
+    ],
+    [
+      'code block',
+      '```\n&copy; &#169; &nbsp;\n```',
+      '&copy; &#169; &nbsp;',
+      '```\n&copy; &#169; &nbsp;\n```',
+    ],
+    [
+      'link text',
+      '[&copy;](https://example.com)',
+      '©',
+      '[©](https://example.com)',
+      'https://example.com',
+    ],
+    [
+      'link URL',
+      '[link](https://example.com/?a=&copy;&b=&amp;copy;)',
+      'link',
+      '[link](https://example.com/?a=©&amp;b=&amp;copy;)',
+      'https://example.com/?a=©&b=&copy;',
+    ],
+    [
+      'numeric link URL',
+      '[link](https://example.com/&#169;/&#xA9;)',
+      'link',
+      '[link](https://example.com/©/©)',
+      'https://example.com/©/©',
+    ],
+  ]) {
+    await t.test(name, () => {
+      const before = schema.nodeFromJSON(manager.parse(source))
+      assert.equal(before.textContent, text)
+      if (href)
+        assert.equal(before.firstChild.firstChild.marks[0].attrs.href, href)
+      for (const blockLocal of [false, true]) {
+        const serialize = markdownSerializer(manager, blockLocal)
+        const output = serialize(before).source
+        assert.equal(output, saved)
+        const after = schema.nodeFromJSON(manager.parse(output))
+        assert.ok(after.eq(before), output)
+        assert.equal(serialize(after).source, output)
+      }
+    })
+  }
+})
+
 test('undeclared serializers retain the full-document path and custom document joining', () => {
   let generation = 0
   const CustomDocument = Node.create({
