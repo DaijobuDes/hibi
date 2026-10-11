@@ -41,6 +41,7 @@ function fixture(t, overrides = {}) {
   const credentials = new Map([['demo:token', 'host-only-secret']])
   const host = new HostNetwork({
     currentOwner: (id) => owners.get(id) ?? null,
+    declaredOrigins: overrides.declaredOrigins,
     isWindowLive: (key) => windows.has(key),
     grantDestination: async (grant, signal) => {
       destinations.push(grant)
@@ -152,6 +153,213 @@ test('a destination grant precedes dns and a successful get pins its resolved ad
   assert.deepEqual(lookups, ['example.test'])
   assert.deepEqual(privateGrants, [])
   assert.deepEqual(transports[0].address, publicAddress)
+})
+
+test('declared public origins allow repeated gets without destination dialogs', async (t) => {
+  const { host, destinations, privateGrants, transports } = fixture(t, {
+    declaredOrigins: (id) => (id === 'demo' ? ['https://example.test'] : []),
+  })
+  for (const path of ['/one', '/two?q=word'])
+    assert.equal(
+      (
+        await host.request('demo', windowKey, {
+          url: `https://example.test${path}`,
+        })
+      ).ok,
+      true,
+    )
+  assert.deepEqual(destinations, [])
+  assert.deepEqual(privateGrants, [])
+  assert.equal(transports.length, 2)
+  assert.ok(
+    transports.every(
+      ({ address, bearer }) =>
+        address === publicAddress && bearer === undefined,
+    ),
+  )
+  assert.equal(
+    (await host.request('other', windowKey, { url: 'https://example.test/' }))
+      .ok,
+    true,
+  )
+  assert.equal(destinations.length, 1)
+})
+
+test('undeclared hosts, subdomains, and ports still need destination approval', async (t) => {
+  const { host, destinations, lookups, transports } = fixture(t, {
+    declaredOrigins: () => ['https://example.test:8443'],
+    grantDestination: async () => false,
+  })
+  assert.equal(
+    (
+      await host.request('demo', windowKey, {
+        url: 'https://example.test:8443/word',
+      })
+    ).ok,
+    true,
+  )
+  for (const url of [
+    'https://example.test/',
+    'https://example.test:8444/',
+    'https://sub.example.test:8443/',
+    'https://example.test.evil.test:8443/',
+  ])
+    failure(await host.request('demo', windowKey, { url }), 'permission-denied')
+  assert.equal(destinations.length, 4)
+  assert.deepEqual(lookups, ['example.test'])
+  assert.equal(transports.length, 1)
+})
+
+test('declared redirects skip dialogs but each undeclared hop still prompts', async (t) => {
+  const { host, destinations, transports } = fixture(t, {
+    declaredOrigins: () => ['https://example.test'],
+    transport: async (url) => {
+      if (url.pathname === '/start')
+        return response(302, '', { location: '/same-origin' })
+      if (url.pathname === '/same-origin')
+        return response(302, '', { location: 'https://other.test/first' })
+      if (url.pathname === '/first')
+        return response(302, '', { location: '/final' })
+      return response(200, 'redirected')
+    },
+  })
+  assert.equal(
+    (
+      await host.request('demo', windowKey, {
+        url: 'https://example.test/start',
+      })
+    ).ok,
+    true,
+  )
+  assert.deepEqual(
+    destinations.map(({ url, redirectFrom }) => ({ url, redirectFrom })),
+    [
+      {
+        url: 'https://other.test/first',
+        redirectFrom: 'https://example.test/same-origin',
+      },
+      {
+        url: 'https://other.test/final',
+        redirectFrom: 'https://other.test/first',
+      },
+    ],
+  )
+  assert.equal(transports.length, 4)
+})
+
+test('declared origins never bypass credential approval', async (t) => {
+  let applied = false
+  const { host, destinations, lookups, transports } = fixture(t, {
+    declaredOrigins: () => ['https://example.test'],
+    grantDestination: async () => false,
+    applyCredential: async () => {
+      applied = true
+    },
+  })
+  failure(
+    await host.request('demo', windowKey, {
+      url: 'https://example.test/account',
+      credentialKey: 'token',
+    }),
+    'permission-denied',
+  )
+  assert.equal(destinations.length, 1)
+  assert.equal(destinations[0].credentialKey, 'token')
+  assert.equal(applied, false)
+  assert.deepEqual(lookups, [])
+  assert.deepEqual(transports, [])
+})
+
+test('declared origins resolving to private addresses retain both grants', async (t) => {
+  for (const address of [
+    { address: '10.0.0.1', family: 4 },
+    { address: '127.0.0.1', family: 4 },
+    { address: '169.254.1.1', family: 4 },
+    { address: '::1', family: 6 },
+    { address: 'fc00::1', family: 6 },
+    { address: 'fe80::1', family: 6 },
+    { address: '::ffff:127.0.0.1', family: 6 },
+  ]) {
+    for (const approveDestination of [false, true]) {
+      const { host, destinations, privateGrants, transports } = fixture(t, {
+        declaredOrigins: () => ['https://example.test'],
+        resolve: async () => [address],
+        grantDestination: async () => approveDestination,
+        grantPrivateAddress: async () => false,
+      })
+      failure(
+        await host.request('demo', windowKey, { url: 'https://example.test/' }),
+        'permission-denied',
+      )
+      assert.equal(destinations.length, 1)
+      assert.equal(privateGrants.length, Number(approveDestination))
+      assert.deepEqual(transports, [])
+    }
+  }
+})
+
+test('declared origins recheck dns on same-origin redirects and pin public answers', async (t) => {
+  let lookups = 0
+  const privateAddress = { address: '127.0.0.1', family: 4 }
+  const { host, destinations, privateGrants, transports } = fixture(t, {
+    declaredOrigins: () => ['https://example.test'],
+    resolve: async () =>
+      ++lookups === 1 ? [privateAddress, publicAddress] : [privateAddress],
+    transport: async () => response(302, '', { location: '/private' }),
+    grantPrivateAddress: async () => false,
+  })
+  failure(
+    await host.request('demo', windowKey, {
+      url: 'https://example.test/start',
+    }),
+    'permission-denied',
+  )
+  assert.equal(destinations.length, 1)
+  assert.equal(destinations[0].url, 'https://example.test/private')
+  assert.equal(privateGrants.length, 1)
+  assert.equal(transports.length, 1)
+  assert.deepEqual(transports[0].address, publicAddress)
+})
+
+test('disabled declarations and owners expiring during dns cannot grant access', async (t) => {
+  const { host, owners, destinations, lookups, transports } = fixture(t, {
+    declaredOrigins: () => ['https://example.test'],
+    resolve: async () => {
+      owners.set('other', { addonId: 'other', activationGeneration: 2 })
+      return [publicAddress]
+    },
+  })
+  owners.delete('demo')
+  for (const id of ['demo', 'other'])
+    failure(
+      await host.request(id, windowKey, { url: 'https://example.test/' }),
+      'stale',
+    )
+  assert.deepEqual(destinations, [])
+  assert.deepEqual(lookups, ['example.test'])
+  assert.deepEqual(transports, [])
+})
+
+test('renderer input cannot supply declarations or change the get operation', async (t) => {
+  const { host, destinations, lookups } = fixture(t, {
+    declaredOrigins: () => ['https://example.test'],
+  })
+  for (const extra of [
+    { origins: ['https://other.test'] },
+    { network: { origins: ['https://other.test'] } },
+    { method: 'POST' },
+    { body: 'word' },
+    { headers: { Authorization: 'Bearer secret' } },
+  ])
+    failure(
+      await host.request('demo', windowKey, {
+        url: 'https://example.test/',
+        ...extra,
+      }),
+      'invalid-request',
+    )
+  assert.deepEqual(destinations, [])
+  assert.deepEqual(lookups, [])
 })
 
 test('denied destination, missing owner, and dead window never reach transport', async (t) => {

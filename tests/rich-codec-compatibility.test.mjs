@@ -163,13 +163,14 @@ test('rich codec attachments invalidate plain certificates and source outline as
     editor.view.focus()
   })
   await page.keyboard.insertText('s')
-  // Every paragraph must use the new codec, including unchanged earlier blocks.
+  // The codec still serializes every block; the source proof keeps untouched bytes.
   const encoded =
     '# title\n\n&#115;teady words\n\n&#109;iddle words\n\n&#104;ellos'
+  const changed = initial.replace('hello', '&#104;ellos')
   await waitForAsync(
     page,
-    async (encoded) => (await window.hibi.getDocument()).markdown === encoded,
-    encoded,
+    async (expected) => (await window.hibi.getDocument()).markdown === expected,
+    changed,
   )
   assert.equal(
     await page.evaluate(() => {
@@ -180,7 +181,7 @@ test('rich codec attachments invalidate plain certificates and source outline as
   )
   await clickMenu(app, 'Save')
   await waitForAsync(page, async () => !(await window.hibi.getDocument()).dirty)
-  assert.equal(await readFile(file, 'utf8'), encoded)
+  assert.equal(await readFile(file, 'utf8'), changed)
   // Native save completion precedes the renderer's busy/command cleanup.
   await page.waitForFunction(
     () =>
@@ -199,8 +200,8 @@ test('rich codec attachments invalidate plain certificates and source outline as
   await pressShortcut(app, `${mod}+Shift+z`)
   await waitForAsync(
     page,
-    async (encoded) => (await window.hibi.getDocument()).markdown === encoded,
-    encoded,
+    async (expected) => (await window.hibi.getDocument()).markdown === expected,
+    changed,
   )
 
   await page.getByRole('button', { name: /^source view$/i }).click()
@@ -232,7 +233,7 @@ test('rich codec attachments invalidate plain certificates and source outline as
     () => document.querySelector('.tiptap')?.editor?.isEditable,
   )
   assert.equal(await page.evaluate(() => window.paragraphCodecEditor), null)
-  // Removing the codec leaves existing entity spellings untouched on later edits.
+  // Removing the codec still leaves untouched source intact on later edits.
   await page.evaluate(() => {
     const editor = document.querySelector('.tiptap').editor
     const end = editor.state.doc.content.size - 1
@@ -243,6 +244,6 @@ test('rich codec attachments invalidate plain certificates and source outline as
   await waitForAsync(
     page,
     async (expected) => (await window.hibi.getDocument()).markdown === expected,
-    `${encoded}x`,
+    `${changed}x`,
   )
 })

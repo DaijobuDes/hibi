@@ -385,19 +385,59 @@ test('typst documents and markdown blocks preview locally, export, and preserve 
   await page.waitForFunction(
     () => document.querySelector('.tiptap')?.editor?.isEditable,
   )
-  await page
-    .getByRole('button', { name: /^edit typst block$/i, exact: true })
-    .click()
-  const dialog = page.getByRole('dialog', {
-    name: /^edit typst block$/i,
-    exact: true,
-  })
-  await dialog.getByLabel(/^typst source$/i, { exact: true }).fill('$ x^3 $')
-  await dialog.getByRole('button', { name: /^apply$/i, exact: true }).click()
-  await waitForAsync(page, async () =>
-    (await window.hibi.getDocument()).markdown.includes('$ x^3 $'),
-  )
-  assert.match((await read()).markdown, /```typst\n\$ x\^3 \$\n```/)
+  for (const equation of ['$ x^3 $', '$ x^4 $']) {
+    await page
+      .getByRole('button', { name: /^edit typst block$/i, exact: true })
+      .click()
+    const dialog = page.getByRole('dialog', {
+      name: /^edit typst block$/i,
+      exact: true,
+    })
+    await dialog.getByLabel(/^typst source$/i, { exact: true }).fill(equation)
+    await dialog.getByRole('button', { name: /^apply$/i, exact: true }).click()
+    const expected = markdown.replace(
+      '$ sum_(k=1)^n k = (n(n+1))/2 $',
+      equation,
+    )
+    await waitForAsync(
+      page,
+      async (expected) =>
+        (await window.hibi.getDocument()).markdown === expected,
+      expected,
+    )
+    await clickMenu(app, 'Save')
+    await waitForAsync(
+      page,
+      async () => !(await window.hibi.getDocument()).dirty,
+    )
+    assert.equal(await readFile(join(notes, 'blocks.md'), 'utf8'), expected)
+    await waitForDocumentEditor(app, page)
+  }
+  for (const [command, equation] of [
+    ['undo', '$ x^3 $'],
+    ['redo', '$ x^4 $'],
+  ]) {
+    await page.evaluate((command) => {
+      document.querySelector('.tiptap').editor.commands[command]()
+    }, command)
+    const expected = markdown.replace(
+      '$ sum_(k=1)^n k = (n(n+1))/2 $',
+      equation,
+    )
+    await waitForAsync(
+      page,
+      async (expected) =>
+        (await window.hibi.getDocument()).markdown === expected,
+      expected,
+    )
+    await clickMenu(app, 'Save')
+    await waitForAsync(
+      page,
+      async () => !(await window.hibi.getDocument()).dirty,
+    )
+    assert.equal(await readFile(join(notes, 'blocks.md'), 'utf8'), expected)
+    await waitForDocumentEditor(app, page)
+  }
   await page.getByAltText('Typst block preview', { exact: true }).waitFor()
   const output = join(root, 'doc.html')
   await app.evaluate(({ dialog }, path) => {
@@ -471,7 +511,10 @@ test('typst documents and markdown blocks preview locally, export, and preserve 
     await page.locator('.tiptap').getAttribute('contenteditable'),
     'true',
   )
-  assert.match((await read()).markdown, /\$ x\^3 \$/)
+  assert.equal(
+    (await read()).markdown,
+    markdown.replace('$ sum_(k=1)^n k = (n(n+1))/2 $', '$ x^4 $'),
+  )
   await tree
     .getByRole('treeitem', { name: /^report\.typ$/i, exact: true })
     .click()

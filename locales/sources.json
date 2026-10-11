@@ -1008,6 +1008,9 @@
   "dc273117482b": [
     "src/addons/graph/Panel.tsx"
   ],
+  "5c2a671f5573": [
+    "src/renderer/src/AddonSettings.tsx"
+  ],
   "d835039d17f2": [
     "src/renderer/src/SettingsScreen.tsx"
   ],
@@ -1581,6 +1584,9 @@
   "3ec6ee9e87d8": [
     "src/renderer/src/main.tsx"
   ],
+  "ca114cdd27c2": [
+    "src/renderer/src/markdown-serialization.ts"
+  ],
   "02cdaabfca80": [
     "src/renderer/src/workspace-menu.ts"
   ],
@@ -1883,6 +1889,9 @@
   ],
   "6b0ceb1d091c": [
     "src/addons/frontmatter/Settings.tsx"
+  ],
+  "32dbf91fa8e4": [
+    "src/renderer/src/markdown-serialization.ts"
   ],
   "3dc9f569422d": [
     "src/addons/vim/Settings.tsx"
@@ -2948,6 +2957,9 @@
   ],
   "6cb9762ada13": [
     "src/shared/markdown-source-model.ts"
+  ],
+  "7719f6c0f5d8": [
+    "src/renderer/src/markdown-serialization.ts"
   ],
   "07fea37695a6": [
     "src/ui/ColorschemeSettings.tsx"
@@ -4687,6 +4699,9 @@
   "2440b28c8988": [
     "src/main/sideload.ts"
   ],
+  "d62200507764": [
+    "src/main/host-network.ts"
+  ],
   "9d855d273e81": [
     "src/main/sideload.ts"
   ],
@@ -5614,6 +5629,9 @@
   "fdc9b79d6691": [
     "src/renderer/src/WorkspacesSidebar.tsx"
   ],
+  "61ca68c66e7a": [
+    "src/renderer/src/markdown-serialization.ts"
+  ],
   "a710c2b90913": [
     "src/renderer/src/DocumentTabs.tsx",
     "src/renderer/src/Titlebar.tsx"
@@ -6158,7 +6176,7 @@
   "507e6dce93ec": [
     "src/renderer/src/main.tsx"
   ],
-  "12823d9e7b10": [
+  "4d6dd9306250": [
     "src/main/sideload.ts"
   ],
   "229213386c16": [

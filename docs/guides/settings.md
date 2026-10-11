@@ -58,6 +58,8 @@ Choose a category above the list to show only features, formats, themes, or impo
 
 Click anywhere on an addon row outside its controls to read its documentation. On a addon’s settings page, click its title. The row’s enable switch and remove button work separately.
 
+**Connects to** lists an addon's declared HTTPS hosts in its row and settings. Enabling it approves credential-free GET requests to those exact origins. Redirects outside the declared origins, requests with credentials, and requests to local or private addresses still prompt. Hibi only honors declarations in the manifest reviewed by its main process.
+
 ### Install an addon
 
 1. Choose **Hibi garden** to browse [available addons](https://hibi.garden/addons).
