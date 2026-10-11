@@ -104,27 +104,33 @@ export const TabIndent = Extension.create({
           if (end < 0) end = text.length
           const width = unit === '\t' ? 4 : unit.length
           const leading = new RegExp(`^(?:\t| {1,${width}})`)
-          const lines = text.slice(head, end).split('\n')
-          const deltas = lines.map((line) =>
-            outdent ? -(leading.exec(line)?.[0].length ?? 0) : unit.length,
-          )
-          if (deltas.every((delta) => !delta)) return true
+          // Characters each line gains, negative when outdenting.
+          const lines = text
+            .slice(head, end)
+            .split('\n')
+            .map((line) => ({
+              line,
+              delta: outdent
+                ? -(leading.exec(line)?.[0].length ?? 0)
+                : unit.length,
+            }))
+          if (lines.every(({ delta }) => !delta)) return true
           // Shift a position by the lines before it; never past its own line start.
           const map = (pos: number) => {
-            let line = start + head,
+            let at = start + head,
               moved = pos
-            for (const [index, delta] of deltas.entries()) {
-              if (pos < line) break
-              moved += Math.max(delta, line - pos)
-              line += lines[index].length + 1
+            for (const { line, delta } of lines) {
+              if (pos < at) break
+              moved += Math.max(delta, at - pos)
+              at += line.length + 1
             }
             return moved
           }
           const { anchor, head: caret } = state.selection
           tr.insertText(
             lines
-              .map((line, index) =>
-                outdent ? line.slice(-deltas[index]) : unit + line,
+              .map(({ line, delta }) =>
+                outdent ? line.slice(-delta) : unit + line,
               )
               .join('\n'),
             start + head,
