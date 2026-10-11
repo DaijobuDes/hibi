@@ -536,6 +536,10 @@ test('native HTML entities decode once and survive full and cached serialization
     ['bullet marker', '&minus; item', '− item', '− item'],
     ['ascii bullet marker', '&#45; item', '- item', '\\- item'],
     ['ordered marker', '1&period; item', '1. item', '1\\. item'],
+    ['decoded indentation', '&#32;&#32;&#32;&#32;x', '    x', '&#32;   x'],
+    ['literal image opener', '&excl;[x](foo)', '!x', '\\![x](foo)'],
+    ['code image opener', '`!`[x](foo)', '!x', '`!`[x](foo)'],
+    ['ordinary exclamation', 'done&excl;', 'done!', 'done!'],
     ['code nbsp', '`a\u00a0b`', 'a\u00a0b', '`a\u00a0b`'],
     [
       'code span',
@@ -606,6 +610,26 @@ test('native HTML entities decode once and survive full and cached serialization
         assert.equal(serialize(after).source, output)
       }
     })
+  }
+})
+
+test('typing an exclamation before a link keeps the link', () => {
+  const { core, parser, options } = markdownConfiguration([])
+  const schema = getSchema(core)
+  const manager = new MarkdownManager({
+    extensions: core,
+    marked: parser,
+    markedOptions: options,
+  })
+  const state = EditorState.create({
+    schema,
+    doc: schema.nodeFromJSON(manager.parse('[x](foo)')),
+  })
+  const doc = state.apply(state.tr.insert(1, schema.text('!'))).doc
+  for (const blockLocal of [false, true]) {
+    const saved = markdownSerializer(manager, blockLocal)(doc).source
+    assert.equal(saved, '\\![x](foo)')
+    assert.ok(schema.nodeFromJSON(manager.parse(saved)).eq(doc))
   }
 })
 
