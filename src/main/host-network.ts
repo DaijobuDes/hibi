@@ -300,7 +300,7 @@ function localName(hostname: string): boolean {
   return (
     !name.includes('.') ||
     name === 'localhost' ||
-    /(?:^|\.)(?:localhost|local|lan|internal|home\.arpa)$/.test(name)
+    /\.(?:localhost|local|lan|internal|home\.arpa)$/.test(name)
   )
 }
 
@@ -337,6 +337,7 @@ export function parseAddonNetwork(
       url.port === '0' ||
       isIP(url.hostname) ||
       localName(url.hostname) ||
+      url.hostname === 'home.arpa' ||
       url.hostname.length > 253 ||
       !url.hostname
         .split('.')
