@@ -29,14 +29,21 @@ test('side view follows the caret offline, replaces in one undo step, and pack s
     await app.close()
     await rm(profile, { recursive: true, force: true })
   })
-  const bytes = gzipSync(
-    await readFile(
-      new URL('./fixtures/dictionary-packs/en.xml', import.meta.url),
-    ),
-  )
+  const fixture = async (name) =>
+    Array.from(
+      gzipSync(
+        await readFile(
+          new URL(`./fixtures/dictionary-packs/${name}`, import.meta.url),
+        ),
+      ),
+    )
+  const downloads = {
+    [packs.en.sources[0].url]: await fixture('en.xml'),
+    [packs.de.sources[0].url]: await fixture('de.jsonl'),
+  }
   // Only the pack download may use the network; lookups must never reach it.
   await app.evaluate(
-    ({ dialog }, { url, bytes, path }) => {
+    ({ dialog }, { downloads, path }) => {
       dialog.showMessageBox = async () => ({ response: 1 })
       dialog.showOpenDialog = async () => ({
         canceled: false,
@@ -46,14 +53,14 @@ test('side view follows the caret offline, replaces in one undo step, and pack s
       globalThis.fetch = async (input) => {
         const requested = String(input)
         globalThis.packRequests.push(requested)
-        if (requested !== url)
-          throw new Error(`network forbidden: ${requested}`)
+        const bytes = downloads[requested]
+        if (!bytes) throw new Error(`network forbidden: ${requested}`)
         return new Response(new Uint8Array(bytes), {
           headers: { 'content-length': String(bytes.length) },
         })
       }
     },
-    { url: packs.en.sources[0].url, bytes: Array.from(bytes), path: file },
+    { downloads, path: file },
   )
   const page = await app.firstWindow()
   page.setDefaultTimeout(APP_STATE_TIMEOUT)
@@ -67,6 +74,13 @@ test('side view follows the caret offline, replaces in one undo step, and pack s
     })
   })
   const online = () => app.evaluate(() => globalThis.onlineRequests)
+  const nextFrames = () =>
+    page.evaluate(
+      () =>
+        new Promise((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(resolve)),
+        ),
+    )
   const markdown = async () =>
     (await page.evaluate(() => window.hibi.getDocument())).markdown
 
@@ -262,6 +276,86 @@ test('side view follows the caret offline, replaces in one undo step, and pack s
     (await window.hibi.getDocument()).markdown.endsWith(' zq happy'),
   )
 
+  // Slash commands win over word suggestions.
+  const slash = page.getByRole('listbox', { name: 'Slash commands' })
+  await rich.evaluate((element) => element.editor.commands.focus('end'))
+  await page.keyboard.press('Enter')
+  await page.keyboard.type('/tab')
+  await slash.getByRole('option', { name: /^Table/ }).waitFor()
+  await nextFrames()
+  assert.equal(await menu.isVisible(), false)
+  await page.keyboard.press('Enter')
+  await rich.locator('table').waitFor()
+  assert.doesNotMatch(await markdown(), /\/table/)
+  await waitForAsync(page, async () => {
+    const { markdown } = await window.hibi.getDocument()
+    if (markdown.endsWith(' zq happy')) return true
+    document.querySelector('.tiptap').editor.commands.undo()
+    return false
+  })
+
+  // Code-mixed writing: German joins English, tagged by language, in one
+  // native request per keystroke.
+  await page.evaluate(() =>
+    window.hibi.invokeAddon('dictionary', 'installPack', 'de'),
+  )
+  await waitForAsync(page, async () => {
+    const states = await window.hibi.queryAddon('dictionary', 'packs')
+    return states.find((state) => state.id === 'de')?.phase === 'installed'
+  })
+  await toggle('dictionary-suggest-de')
+  await rich.evaluate((element) => element.editor.commands.focus('end'))
+  await page.keyboard.type(' sch')
+  await menu
+    .getByRole('option', { name: /^schön/ })
+    .filter({ hasText: 'German' })
+    .waitFor()
+  await page.keyboard.press('Escape')
+  await menu.waitFor({ state: 'hidden' })
+  const latencies = []
+  for (let sample = 0; sample < 5; sample++) {
+    await page.keyboard.type(' ha')
+    await page.evaluate(() => {
+      // Keystroke to rendered suggestion, measured inside the window.
+      window.suggestionLatency = new Promise((resolve) => {
+        let start
+        document.addEventListener(
+          'keydown',
+          () => {
+            start = performance.now()
+          },
+          { capture: true, once: true },
+        )
+        const observer = new MutationObserver(() => {
+          const shown = document.querySelector(
+            '[aria-label="Completions"]:popover-open [role="option"]',
+          )
+          if (start === undefined || !shown?.textContent?.startsWith('happy'))
+            return
+          observer.disconnect()
+          resolve(performance.now() - start)
+        })
+        observer.observe(document.body, { childList: true, subtree: true })
+      })
+    })
+    await page.keyboard.type('p')
+    latencies.push(await page.evaluate(() => window.suggestionLatency))
+    await menu
+      .getByRole('option', { name: /^happy/ })
+      .filter({ hasText: 'English' })
+      .first()
+      .waitFor()
+    await page.keyboard.press('Enter')
+    await waitForAsync(page, async () =>
+      (await window.hibi.getDocument()).markdown.endsWith(' happy'),
+    )
+  }
+  latencies.sort((left, right) => left - right)
+  t.diagnostic(
+    `keystroke to suggestion (ms): ${latencies.map((ms) => ms.toFixed(1)).join(', ')}`,
+  )
+  assert.ok(latencies[2] < 500, `median ${latencies[2]} ms`)
+
   // Source view: the same Tab preference, then Tab accepts once turned back on.
   await page.getByRole('button', { name: 'Source view', exact: true }).click()
   await waitForDocumentEditor(app, page, { name: 'Markdown editor' })
@@ -276,13 +370,13 @@ test('side view follows the caret offline, replaces in one undo step, and pack s
     await page.keyboard.type(text)
   }
   await typeAtEnd(' hap')
-  await options.filter({ hasText: /^happy$/ }).waitFor()
+  await options.filter({ hasText: /^happy(English)?$/ }).waitFor()
   await page.keyboard.press('Tab')
   assert.equal(await tabs(), 3)
   assert.match(await markdown(), / happy hap$/)
   await toggle('dictionary-tab-accepts', { name: 'Markdown editor' })
   await typeAtEnd('p')
-  await options.filter({ hasText: /^happy$/ }).waitFor()
+  await options.filter({ hasText: /^happy(English)?$/ }).waitFor()
   await page.keyboard.press('Tab')
   await waitForAsync(page, async () =>
     (await window.hibi.getDocument()).markdown.endsWith(' happy happy'),
@@ -291,5 +385,17 @@ test('side view follows the caret offline, replaces in one undo step, and pack s
   await page.keyboard.type(' zq')
   await page.keyboard.press('Tab')
   assert.equal(await tabs(), 4)
+
+  // Source view: the slash menu wins too.
+  await page.keyboard.press('Enter')
+  await page.keyboard.type('/tab')
+  await slash.getByRole('option', { name: /^Table/ }).waitFor()
+  await nextFrames()
+  assert.equal(await options.first().isVisible(), false)
+  await page.keyboard.press('Enter')
+  await waitForAsync(page, async () => {
+    const { markdown } = await window.hibi.getDocument()
+    return markdown.includes('| ') && !markdown.includes('/table')
+  })
   assert.deepEqual(await online(), searched)
 })
