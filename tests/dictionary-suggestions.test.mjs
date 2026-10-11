@@ -104,7 +104,31 @@ test('suggestions take the Latin word being typed at the caret', () => {
   assert.equal(prefixAt('I am ha', ''), null)
   assert.equal(prefixAt('I am hap', 'py'), null)
   assert.equal(prefixAt('猫が好きで', ''), null)
-  assert.equal(prefixAt('#tag', ''), 'tag')
+  assert.equal(prefixAt('"*hap', ''), 'hap')
+  assert.equal(prefixAt('see [hap', ''), 'hap')
+})
+
+test('suggestions skip commands, code, links, and urls', () => {
+  for (const before of [
+    '/tab',
+    'text\n/tab',
+    '#tag',
+    '@sam',
+    ':smi',
+    '\\hap',
+    '&amp',
+    '[[wik',
+    '[link](exa',
+    'see https://exa',
+    'www.exa',
+    'path/to/fil',
+    'run `npm ins',
+    '```\nconst val',
+    '~~~js\nfoo\nbar baz',
+  ])
+    assert.equal(prefixAt(before, ''), null, before)
+  assert.equal(prefixAt('```\ncode\n```\nhap', ''), 'hap')
+  assert.equal(prefixAt('`code` and hap', ''), 'hap')
 })
 
 test('suggestions rank preferred language, single words, case, and length', () => {

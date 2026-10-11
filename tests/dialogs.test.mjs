@@ -440,6 +440,38 @@ test('shared dialogs validate input, trap focus, queue, and clean up by addon ow
   await page
     .getByRole('dialog', { name: /aborting work/i })
     .waitFor({ state: 'detached' })
+  // Abort listeners must not settle a queued sibling before shutdown cancels it.
+  for (const shutdown of ['dispose', 'stop']) {
+    await page.evaluate(() => {
+      const { service, createElement } = window.dialogTest
+      const scope = service.scope()
+      let queued
+      const active = scope.api.open({
+        title: 'racing dialog',
+        content: ({ signal }) => {
+          signal.addEventListener('abort', () => queued.close('chosen'))
+          return createElement('p', null, 'racing')
+        },
+      })
+      queued = scope.api.open({ title: 'queued sibling', content: () => null })
+      window.race = {
+        scope,
+        results: Promise.all([active, queued].map((handle) => handle.result)),
+      }
+    })
+    await page.getByRole('dialog', { name: /racing dialog/i }).waitFor()
+    assert.deepEqual(
+      await page.evaluate(async (shutdown) => {
+        const { service } = window.dialogTest
+        if (shutdown === 'dispose') window.race.scope.dispose()
+        else service.stop()
+        service.start()
+        return window.race.results
+      }, shutdown),
+      [null, null],
+      shutdown,
+    )
+  }
   // A notice shown as a dialog settles must not open inside the removed modal.
   const pageErrors = []
   page.on('pageerror', (error) => pageErrors.push(error.message))
@@ -484,4 +516,23 @@ test('shared dialogs validate input, trap focus, queue, and clean up by addon ow
   assert.match(await page.locator('.toast').innerText(), /Other notice/)
   await page.evaluate(() => window.dialogTest.otherToasts.dispose())
   await page.locator('.sonner').waitFor({ state: 'hidden' })
+  // A reload skips React unmount; window teardown must still dismiss dialogs.
+  await page.evaluate(() => {
+    const { dialogs, createElement } = window.dialogTest
+    dialogs.open({
+      title: 'reloading dialog',
+      content: ({ signal }) => {
+        signal.addEventListener('abort', () =>
+          sessionStorage.setItem('dialogAborted', 'yes'),
+        )
+        return createElement('p', null, 'reloading')
+      },
+    })
+  })
+  await page.getByRole('dialog', { name: /reloading dialog/i }).waitFor()
+  await page.reload()
+  assert.equal(
+    await page.evaluate(() => sessionStorage.getItem('dialogAborted')),
+    'yes',
+  )
 })

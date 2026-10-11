@@ -108,16 +108,19 @@ const separates =
 export function plainText(html: string) {
   let text = ''
   let copied = 0
-  let commentCanEnd = true
   let at = html.indexOf('<')
   while (at >= 0) {
     let end = -1
     let resume = at + 1
     let separator = ''
+    // Unterminated comments, CDATA and doctypes run to the end of input.
     if (html.startsWith('<!--', at)) {
-      const close: number = commentCanEnd ? html.indexOf('-->', at + 4) : -1
-      commentCanEnd = close >= 0
-      if (commentCanEnd) end = close + 3
+      const close = html.indexOf('-->', at + 4)
+      end = close < 0 ? html.length : close + 3
+    } else if (html[at + 1] === '!') {
+      // HTML reads CDATA and doctypes as comments that end at the first `>`.
+      const close = html.indexOf('>', at + 2)
+      end = close < 0 ? html.length : close + 1
     } else {
       tagName.lastIndex = at + 1
       const name = tagName.exec(html)?.[1]

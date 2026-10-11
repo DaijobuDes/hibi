@@ -87,3 +87,52 @@ test('side view prefers installed packs and groups synonyms by meaning', async (
     { label: 'adjective · feeling pleasure', words: ['glad'] },
   ])
 })
+
+test('cache-only related words send nothing when a pending request fails meanwhile', async () => {
+  const sent = []
+  let failAntonyms
+  const datamuse = datamuseProvider(({ url }) => {
+    sent.push(url)
+    if (sent.length > 2) throw new Error(`network stubbed: ${url}`)
+    if (url.includes('rel_syn'))
+      return Promise.resolve({ ok: true, value: { text: '[{"word":"glad"}]' } })
+    return new Promise((_resolve, reject) => {
+      failAntonyms = () => reject(new Error('offline'))
+    })
+  })
+  const fetching = datamuse.related('happy', 'en', signal)
+  while (!failAntonyms) await new Promise((resolve) => setImmediate(resolve))
+  const cached = datamuse.related('happy', 'en', signal, true)
+  failAntonyms()
+  await assert.rejects(fetching, { reason: 'unavailable' })
+  assert.equal(await cached, null)
+  assert.equal(await datamuse.related('happy', 'en', signal, true), null)
+  assert.deepEqual(sent, [
+    'https://api.datamuse.com/words?rel_syn=happy&max=24',
+    'https://api.datamuse.com/words?rel_ant=happy&max=24',
+  ])
+})
+
+test('side view offers every missing pack even when an online source covers the language', async () => {
+  const registry = online(async () => {
+    throw new Error('network stubbed')
+  })
+  for (const lang of ['en', 'tl'])
+    registry.register({
+      id: `offline-${lang}`,
+      label: lang,
+      kind: 'offline',
+      languages: [lang],
+      installed: () => false,
+      lookup: async () => [],
+    })
+  const result = await lookUpSide(
+    registry,
+    'happy',
+    ['en', 'tl'],
+    false,
+    signal,
+  )
+  assert.deepEqual(result.definitions.installable, ['en', 'tl'])
+  assert.deepEqual(result.thesaurus.installable, ['en', 'tl'])
+})

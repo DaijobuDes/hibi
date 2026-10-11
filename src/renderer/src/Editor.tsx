@@ -67,7 +67,7 @@ import { Button } from '../../ui/Controls'
 import { DocumentNotice } from '../../ui/DocumentNotice'
 import { performanceDiagnostics } from '../../ui/diagnostics'
 import { addonRegistry } from './addon-registry'
-import { completionBroker } from './completion-broker'
+import { completionBroker, otherPopupOpen } from './completion-broker'
 import { documentImage } from './DocumentImage'
 import { documentEdits } from './document-edits'
 import { editorDocument } from './document-formats'
@@ -750,10 +750,12 @@ export function MarkdownEditor({
       menu.inert = true
       menu.setAttribute('aria-hidden', 'true')
       if (open()) menu.hidePopover()
-      for (const [name, value] of previous) {
-        if (value === null) view.dom.removeAttribute(name)
-        else view.dom.setAttribute(name, value)
-      }
+      // Another popup that took over the editor keeps its attributes.
+      if (view.dom.getAttribute('aria-controls') === menu.id)
+        for (const [name, value] of previous) {
+          if (value === null) view.dom.removeAttribute(name)
+          else view.dom.setAttribute(name, value)
+        }
       previous = new Map()
     }
     const dismiss = () => {
@@ -782,7 +784,8 @@ export function MarkdownEditor({
         markdownSyntax.version() !== context.syntaxVersion ||
         !editor.isEditable ||
         view.composing ||
-        !view.hasFocus()
+        !view.hasFocus() ||
+        otherPopupOpen(view.dom, menu)
       )
         return null
       const target = documentRuntime.captureActiveView()

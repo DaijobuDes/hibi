@@ -88,9 +88,13 @@ test('dictionary parses captured Wiktionary and Datamuse responses', async () =>
     ['sad', 'distressed', 'unhappy', 'dysphoric'],
   )
   assert.deepEqual(
-    parseWords('[{"word":"Happy"},{"word":7},{"word":"glad"}]', 'happy'),
+    parseWords('[{"word":"Happy"},{"word":" "},{"word":"glad"}]', 'happy'),
     ['glad'],
   )
+  assert.deepEqual(parseWords('[]', 'happy'), [])
+  // Malformed members fail the whole answer so it is retried, not cached.
+  for (const text of ['[null]', '[{"word":42}]', '["glad"]', '[[]]'])
+    assert.throws(() => parseWords(text, 'happy'), SyntaxError)
   assert.equal(
     plainText('<a href="/wiki/x">fish</a> &amp; <i>chips</i>&#33; &#x2014;'),
     'fish & chips! —',
@@ -99,7 +103,11 @@ test('dictionary parses captured Wiktionary and Datamuse responses', async () =>
   assert.equal(plainText('<a title="x > y">word</a>s'), 'words')
   assert.equal(plainText("<p>one</p><p data-x='>'>two</p>"), 'one two')
   assert.equal(plainText('&lt;b&gt;<!-- <i> -->x'), '<b>x')
-  assert.equal(plainText('a < b <!-- x <i>y</i>'), 'a < b <!-- x y')
+  assert.equal(plainText('a < b <!-- x <i>y</i>'), 'a < b')
+  assert.equal(plainText('x<!--hidden'), 'x')
+  assert.equal(plainText('x<![CDATA[hidden'), 'x')
+  assert.equal(plainText('x<![CDATA[hidden]]> y'), 'x y')
+  assert.equal(plainText('<!doctype html>x'), 'x')
   assert.equal(plainText('<a "x> <b>y</b>'), '<a "x> y')
 })
 
@@ -107,11 +115,15 @@ test('dictionary strips malformed markup in linear time', () => {
   for (const html of [
     `<${'a'.repeat(64000)}`,
     '<a '.repeat(21000),
-    '<!--'.repeat(16000),
     `<a ${'"x" <'.repeat(12000)}`,
   ]) {
     const started = performance.now()
     assert.equal(plainText(html), html.replace(/\s+/g, ' ').trim())
+    assert.ok(performance.now() - started < 50, `${html.slice(0, 8)}…`)
+  }
+  for (const html of ['<!--'.repeat(16000), '<!'.repeat(32000)]) {
+    const started = performance.now()
+    assert.equal(plainText(`x${html}`), 'x')
     assert.ok(performance.now() - started < 50, `${html.slice(0, 8)}…`)
   }
 })
@@ -207,6 +219,22 @@ test('dictionary providers map host failures, share pages, and cache answers', a
   assert.deepEqual(requests, [
     'https://api.datamuse.com/words?rel_syn=happy&max=24',
     'https://api.datamuse.com/words?rel_ant=happy&max=24',
+  ])
+
+  // A malformed list is retried; a valid empty list is kept.
+  requests.length = 0
+  const text = (text) => ({ ok: true, value: { text } })
+  responses.push(text('[null]'))
+  await assert.rejects(datamuse.related('odd', 'en', signal), {
+    reason: 'unavailable',
+  })
+  responses.push(text('[]'), text('[]'))
+  assert.equal(await datamuse.related('odd', 'en', signal), null)
+  assert.equal(await datamuse.related('odd', 'en', signal), null)
+  assert.deepEqual(requests, [
+    'https://api.datamuse.com/words?rel_syn=odd&max=24',
+    'https://api.datamuse.com/words?rel_syn=odd&max=24',
+    'https://api.datamuse.com/words?rel_ant=odd&max=24',
   ])
 })
 

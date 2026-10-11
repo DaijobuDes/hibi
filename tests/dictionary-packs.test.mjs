@@ -527,6 +527,21 @@ test('cancel and close abort active download; busy operations reject; retry succ
   assert.deepEqual(await readdir(ctx.root), ['zh'])
 })
 
+test('legacy uncompressed french and tagalog manifest urls remain accepted', async (t) => {
+  const ctx = await setup(t)
+  for (const id of ['fr', 'tl']) {
+    const { manifest } = await install(ctx.store, id)
+    const legacy = structuredClone(manifest)
+    legacy.sources[0].url = packs[id].sources[0].url.slice(0, -3)
+    legacy.sources[0].bytes = packs[id].sources[0].maxBytes + 1
+    assert.ok(legacy.sources[0].url.endsWith('.jsonl'))
+    assert.equal(validateManifest(legacy, id), legacy)
+    const oversized = structuredClone(legacy)
+    oversized.sources[0].bytes = (id === 'fr' ? 768 : 256) * 1024 * 1024 + 1
+    assert.throws(() => validateManifest(oversized, id), /damaged or outdated/)
+  }
+})
+
 test('manifest rejects altered provenance, counts, timestamps and hashes; lookup input is bounded', async (t) => {
   const ctx = await setup(t)
   const { manifest } = await install(ctx.store, 'zh')
@@ -576,6 +591,14 @@ test('manifest rejects altered provenance, counts, timestamps and hashes; lookup
     id: 'zh',
     word: '猫',
   })
+  for (const [id, word] of [
+    ['fr', 'école'],
+    ['ja', 'が'],
+  ])
+    assert.deepEqual(lookupInput({ id, word: word.normalize('NFD') }), {
+      id,
+      word,
+    })
   for (const value of [
     null,
     { id: 'zh', word: '' },

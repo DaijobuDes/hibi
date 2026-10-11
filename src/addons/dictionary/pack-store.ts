@@ -266,6 +266,7 @@ export class PackStore {
         try {
           const result = await download(source.url, {
             maxBytes: source.maxBytes,
+            expectedBytes: source.bytes,
             allowedOrigins: [new URL(source.url).origin],
             signal: cancel,
             stallTimeoutMs: 60_000,

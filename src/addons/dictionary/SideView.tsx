@@ -109,7 +109,8 @@ export function SideView({
   registry: DictionaryRegistry
   target: (view: ViewTarget) => Promise<Target | null>
   failures: Record<DictionaryFailure, Failure>
-  install: () => void
+  /** Resolves once the pack dialog closes. */
+  install: () => Promise<unknown>
 }) {
   const [follow, setFollow] = useState(true)
   const [search, setSearch] = useState('')
@@ -201,7 +202,12 @@ export function SideView({
         )}
         <div>
           {installable && (
-            <Button onClick={install}>
+            <Button
+              onClick={async () => {
+                await install()
+                setAttempt((count) => count + 1)
+              }}
+            >
               <Download size={14} aria-hidden="true" />
               {`Install ${languageNames[installable]} pack`}
             </Button>

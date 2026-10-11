@@ -319,12 +319,13 @@ export default defineAddon({
       id: INSTALL_PACK_COMMAND,
       label: 'Dictionary: install offline pack',
       keywords: 'dictionary language download offline',
-      run: () => {
-        context.dialogs.open({
+      // Resolves when the dialog closes, so callers can look up again.
+      run: async () => {
+        await context.dialogs.open({
           title: 'Offline language packs',
           size: 'wide',
           content: () => <PackSettings />,
-        })
+        }).result
       },
     })
     const richEditors = new Set<Editor>()
@@ -500,7 +501,7 @@ export default defineAddon({
           target={sideTarget}
           failures={failures}
           install={() =>
-            void context.commands
+            context.commands
               .execute(INSTALL_PACK_COMMAND)
               .catch(() => context.notify(notices.noPacks.message))
           }

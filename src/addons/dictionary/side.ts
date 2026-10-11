@@ -46,7 +46,14 @@ export async function lookUpSide(
         cached(provider, cachedOnly),
       )) ?? null,
   )
-  return { definitions, thesaurus }
+  // Online answers do not replace a pack: offer every missing one.
+  const installable: Lang[] = []
+  for (const lang of langs)
+    if (await registry.installable(lang)) installable.push(lang)
+  return {
+    definitions: { ...definitions, installable },
+    thesaurus: { ...thesaurus, installable },
+  }
 }
 
 /** Synonyms grouped by the meaning they share, labeled with its first gloss. */

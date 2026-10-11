@@ -333,6 +333,7 @@ export class PackIndex {
       throw error
     }
   }
+  // Requires serialized worker jobs so eviction cannot close an active handle.
   private async using<T>(
     id: PackId,
     directory: string,
@@ -375,17 +376,22 @@ export class PackIndex {
         limit >= 1 &&
         limit <= PACK_LIMITS.results,
     )
+    prefix = prefix.normalize('NFC')
     if (!prefix) return []
     return this.using(id, directory, (loaded) => {
       const keys = loaded.normalized?.keys ?? loaded.keys
       const query = normalize(id, prefix)
       const results: string[] = []
+      let previous: string | undefined
       for (
         let i = lowerBound(keys, query);
         i < keys.length && keys[i]!.startsWith(query) && results.length < limit;
         i++
-      )
+      ) {
+        if (keys[i] === previous) continue
         results.push(loaded.keys[loaded.normalized?.rows[i] ?? i]!)
+        previous = keys[i]
+      }
       return results
     })
   }
@@ -426,6 +432,7 @@ export class PackIndex {
   ): Promise<PackEntry[]> {
     validateId(id)
     requireValid(text(word, PACK_LIMITS.key))
+    word = word.normalize('NFC')
     if (!word.length) return []
     return this.using(id, directory, (loaded) => this.entries(loaded, word))
   }

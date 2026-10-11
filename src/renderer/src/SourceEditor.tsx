@@ -67,7 +67,7 @@ import {
 import { Button } from '../../ui/Controls'
 import { DocumentNotice } from '../../ui/DocumentNotice'
 import { codeHighlighter, codeLanguages } from './code-languages'
-import { completionBroker } from './completion-broker'
+import { completionBroker, otherPopupOpen } from './completion-broker'
 import { documentEdits } from './document-edits'
 import { editorDocument } from './document-formats'
 import { documentProjections } from './document-projections'
@@ -641,6 +641,7 @@ export function SourceEditor({
         view.current !== editor ||
         !editor.hasFocus ||
         editor.composing ||
+        otherPopupOpen(editor.contentDOM) ||
         !context.editTarget ||
         context.disabled ||
         !context.inputReady ||

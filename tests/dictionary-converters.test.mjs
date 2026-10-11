@@ -181,6 +181,28 @@ test('french retains accent marks in lowercase aliases and excludes tagalog reco
   assert.deepEqual(entries[0].keys, ['École', 'école'])
 })
 
+test('converter stores nfc headwords and aliases from decomposed french and kana', async (t) => {
+  const french = await temporary(
+    t,
+    JSON.stringify({
+      word: 'École'.normalize('NFD'),
+      lang_code: 'fr',
+      senses: [{ glosses: ['school'] }],
+    }),
+  )
+  const japanese = await temporary(
+    t,
+    '<JMdict><entry><k_ele><keb>学生</keb></k_ele><r_ele><reb>がくせい</reb></r_ele><sense><gloss>student</gloss></sense></entry><entry><r_ele><reb>が</reb></r_ele><sense><gloss>moth</gloss></sense></entry></JMdict>',
+  )
+  const [fr] = await collect('fr', [french])
+  assert.equal(fr.word, 'École')
+  assert.deepEqual(fr.keys, ['École', 'école'])
+  const ja = await collect('ja', [japanese])
+  assert.deepEqual(ja[0].keys, ['学生', 'がくせい'])
+  assert.equal(ja[1].word, 'が')
+  assert.deepEqual(ja[1].keys, ['が'])
+})
+
 test('tagalog collects entry and sense synonyms/antonyms, skips empty and foreign senses', async (t) => {
   const path = await temporary(
     t,

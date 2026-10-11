@@ -67,7 +67,7 @@ await writeFile(join(root, 'package.json'), '{"type":"module"}')
 const { PackIndex, writePack, PACK_LIMITS } = await import(
   pathToFileURL(join(root, 'pack-index.js'))
 )
-const { PackWorker } = await import(
+const { PackWorker, completionPrefix } = await import(
   pathToFileURL(join(root, 'pack-runtime.js'))
 )
 const entry = (word, keys = [], definition = 'meaning') => ({
@@ -356,6 +356,47 @@ test('french lowercase aliases preserve exact accents', async (t) => {
   assert.equal((await index.lookup('fr', dir, 'ÉCOLE'))[0].word, 'école')
   assert.deepEqual(await index.lookup('fr', dir, 'ecole'), [])
 })
+test('lookup and completion accept nfd french and voiced kana', async (t) => {
+  const index = new PackIndex()
+  t.after(() => index.unload())
+  const worker = new PackWorker(pathToFileURL(join(root, 'worker.mjs')))
+  t.after(() => worker.close())
+  for (const [id, word, prefix] of [
+    ['fr', 'école', 'é'],
+    ['ja', 'がくせい', 'が'],
+  ]) {
+    const dir = await directory(t)
+    await writePack(id, entries([entry(word)]), dir)
+    const nfdWord = word.normalize('NFD')
+    const nfdPrefix = prefix.normalize('NFD')
+    assert.equal(completionPrefix(` ${nfdPrefix} `), prefix)
+    assert.equal((await index.lookup(id, dir, nfdWord))[0].word, word)
+    assert.deepEqual(await index.complete(id, dir, nfdPrefix), [word])
+    assert.equal((await worker.lookup(id, dir, nfdWord))[0].word, word)
+    assert.deepEqual(await worker.complete(id, dir, nfdPrefix), [word])
+  }
+})
+
+test('completion skips case aliases without consuming limit slots', async (t) => {
+  const dir = await directory(t)
+  await writePack(
+    'fr',
+    entries([
+      entry('Paris', ['paris']),
+      entry('paris', [], 'another sense'),
+      entry('partir'),
+    ]),
+    dir,
+  )
+  const index = new PackIndex()
+  t.after(() => index.unload())
+  assert.deepEqual(await index.complete('fr', dir, 'pa', 2), [
+    'Paris',
+    'partir',
+  ])
+  assert.deepEqual(await index.complete('fr', dir, 'PA', 1), ['Paris'])
+})
+
 test('preloaded prefix search bounds results and normalizes source spelling and reading keys', async (t) => {
   const index = new PackIndex()
   t.after(() => index.unload())
