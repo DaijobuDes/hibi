@@ -22,6 +22,12 @@ export function addonPackageUrl(value: unknown): URL {
     throw new Error(
       'Enter an HTTPS URL for an addon ZIP file or Git repository.',
     )
+  return downloadUrl(value)
+}
+
+export function downloadUrl(value: unknown): URL {
+  if (typeof value !== 'string' || value.length > 8192)
+    throw new Error('Enter an HTTPS URL for the download.')
   const url = new URL(value)
   if (url.protocol !== 'https:' || url.username || url.password)
     throw new Error('Use an HTTPS URL without a username or password.')

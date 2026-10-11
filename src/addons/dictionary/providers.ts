@@ -50,6 +50,13 @@ export interface DictionaryProvider {
     signal: AbortSignal,
     cachedOnly?: boolean,
   ): Promise<Entry[]>
+  /** Prefix matches retain source spelling. Defaults to 8 results, at most 32. */
+  complete?(
+    prefix: string,
+    lang: Lang,
+    signal: AbortSignal,
+    limit?: number,
+  ): Promise<string[]>
   /** Null means no related words were found. `cachedOnly` works as in `lookup`. */
   related?(
     term: string,

@@ -78,12 +78,12 @@ export const packs: Record<PackId, { label: string; sources: PackSource[] }> = {
     sources: [
       {
         name: 'French Wiktionary via Kaikki',
-        url: 'https://kaikki.org/dictionary/French/kaikki.org-dictionary-French.jsonl',
+        url: 'https://kaikki.org/dictionary/French/kaikki.org-dictionary-French.jsonl.gz',
         license: 'CC BY-SA 4.0 / GFDL',
         licenseUrl: 'https://kaikki.org/dictionary/French/',
         version: 'rolling',
-        bytes: 583677104,
-        maxBytes: 768 * mib,
+        bytes: 58232930,
+        maxBytes: 96 * mib,
       },
     ],
   },
@@ -92,12 +92,12 @@ export const packs: Record<PackId, { label: string; sources: PackSource[] }> = {
     sources: [
       {
         name: 'Wiktionary via Kaikki',
-        url: 'https://kaikki.org/dictionary/Tagalog/kaikki.org-dictionary-Tagalog.jsonl',
+        url: 'https://kaikki.org/dictionary/Tagalog/kaikki.org-dictionary-Tagalog.jsonl.gz',
         license: 'CC BY-SA 4.0 / GFDL',
         licenseUrl: 'https://kaikki.org/dictionary/Tagalog/',
         version: 'rolling',
-        bytes: 130506107,
-        maxBytes: 256 * mib,
+        bytes: 16281409,
+        maxBytes: 32 * mib,
       },
     ],
   },
@@ -169,10 +169,16 @@ export function validateManifest(value: unknown, id: PackId): PackManifest {
     item.sources.length !== packs[id].sources.length ||
     item.sources.some((source, i) => {
       const expected = packs[id].sources[i]
+      const legacy =
+        (id === 'fr' || id === 'tl') &&
+        source?.url === expected?.url.slice(0, -3)
       return (
         !expected ||
-        !file(source, expected.maxBytes) ||
-        source.url !== expected.url ||
+        !file(
+          source,
+          legacy ? (id === 'fr' ? 768 : 256) * mib : expected.maxBytes,
+        ) ||
+        (!legacy && source.url !== expected.url) ||
         source.name !== expected.name ||
         source.license !== expected.license ||
         source.licenseUrl !== expected.licenseUrl ||

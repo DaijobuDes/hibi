@@ -1,15 +1,38 @@
 import type { AddonContext } from '../api'
 import type { PackEntry } from './pack-converters'
-import { type PackState, packIds, packs } from './packs.ts'
+import { packIds, packs } from './packs.ts'
 import {
   DictionaryError,
   type DictionaryProvider,
   type Source,
 } from './providers.ts'
+import { writeRecentPack } from './settings.ts'
 
 export function createOfflineProviders(
   native: AddonContext['native'],
 ): DictionaryProvider[] {
+  async function query<T>(
+    method: string,
+    input: unknown,
+    signal: AbortSignal,
+  ): Promise<T> {
+    signal.throwIfAborted()
+    let abort = () => {}
+    const canceled = new Promise<never>((_resolve, reject) => {
+      abort = () => reject(signal.reason)
+      signal.addEventListener('abort', abort, { once: true })
+    })
+    try {
+      const result = await Promise.race([
+        native.query<T>(method, input),
+        canceled,
+      ])
+      signal.throwIfAborted()
+      return result
+    } finally {
+      signal.removeEventListener('abort', abort)
+    }
+  }
   return packIds.map((id) => {
     const spec = packs[id]
     const source: Source = {
@@ -27,27 +50,20 @@ export function createOfflineProviders(
       }[id],
     }
     async function read(term: string, signal: AbortSignal) {
-      signal.throwIfAborted()
-      const entries = await native.query<PackEntry[]>('packLookup', {
-        id,
-        word: term,
-      })
-      signal.throwIfAborted()
-      return entries
+      return query<PackEntry[]>('packLookup', { id, word: term }, signal)
     }
     const provider: DictionaryProvider = {
       id: `offline-${id}`,
       label: spec.label,
       kind: 'offline',
       languages: [id],
-      async installed() {
-        const states = await native.query<PackState[]>('packs')
-        return !!states.find((state) => state.id === id && state.manifest)
-      },
+      installed: () => native.query<boolean>('packInstalled', id),
       async lookup(term, lang, signal) {
         if (lang !== id) return []
         try {
-          return (await read(term, signal)).flatMap((entry) =>
+          const entries = await read(term, signal)
+          if (entries.length) writeRecentPack(id)
+          return entries.flatMap((entry) =>
             entry.meanings.map((meaning) => ({
               term: entry.word,
               lang,
@@ -71,6 +87,22 @@ export function createOfflineProviders(
                   : source,
             })),
           )
+        } catch (error) {
+          if (signal.aborted) throw error
+          throw new DictionaryError('unavailable')
+        }
+      },
+      async complete(prefix, lang, signal, limit = 8) {
+        signal.throwIfAborted()
+        if (lang !== id || !prefix.trim()) return []
+        try {
+          const words = await query<string[]>(
+            'packComplete',
+            { id, prefix, limit },
+            signal,
+          )
+          if (words.length) writeRecentPack(id)
+          return words
         } catch (error) {
           if (signal.aborted) throw error
           throw new DictionaryError('unavailable')

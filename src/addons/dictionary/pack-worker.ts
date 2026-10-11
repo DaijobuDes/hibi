@@ -1,6 +1,7 @@
 import { parentPort } from 'node:worker_threads'
 import { convertEntries } from './pack-converters'
 import { type PackId, PackIndex, validateId, writePack } from './pack-index'
+import { completionLimit, completionPrefix } from './pack-runtime'
 
 const port = parentPort
 if (!port) throw new Error('Dictionary worker requires parent port')
@@ -15,13 +16,23 @@ port.on(
     files: string[]
     directory: string
     word: string
+    prefix: string
+    limit?: number
   }) => {
     queue = queue.then(async () => {
       try {
         let result: unknown
-        if (job.type === 'unload') await index.unload()
-        else {
+        if (job.type === 'unload') {
+          if (job.id !== undefined) validateId(job.id)
+          await index.unload(job.id)
+        } else {
           validateId(job.id)
+          if (
+            typeof job.directory !== 'string' ||
+            !job.directory ||
+            job.directory.length > 4096
+          )
+            throw new Error('Invalid dictionary directory')
           if (job.type === 'convert') {
             if (
               !Array.isArray(job.files) ||
@@ -38,9 +49,19 @@ port.on(
               (entries) =>
                 port.postMessage({ seq: job.seq, progress: entries }),
             )
-          } else if (job.type === 'lookup')
+          } else if (job.type === 'lookup') {
+            if (typeof job.word !== 'string' || job.word.length > 256)
+              throw new Error('Invalid dictionary word')
             result = await index.lookup(job.id, job.directory, job.word)
-          else throw new Error('Invalid dictionary operation')
+          } else if (job.type === 'preload')
+            await index.preload(job.id, job.directory)
+          else if (job.type === 'complete') {
+            const prefix = completionPrefix(job.prefix)
+            const limit = completionLimit(job.limit)
+            result = prefix
+              ? await index.complete(job.id, job.directory, prefix, limit)
+              : []
+          } else throw new Error('Invalid dictionary operation')
         }
         port.postMessage({ seq: job.seq, result })
       } catch (error) {

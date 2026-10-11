@@ -17,6 +17,7 @@ export async function downloadAddon(
   const parts: Uint8Array[] = []
   const result = await download(addonPackageUrl(value).href, {
     maxBytes: MAX_ADDON_BYTES,
+    parseUrl: addonPackageUrl,
     signal: AbortSignal.timeout(20000),
     accept: 'application/zip',
     write: (chunk) => {
