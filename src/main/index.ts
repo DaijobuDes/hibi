@@ -84,6 +84,7 @@ import {
   loadAddons,
   readAddonDocumentation,
   removeAddon,
+  runNativeGlobalShortcut,
   setAddonDeactivationHandler,
 } from './addons'
 import { analysisService } from './analysis'
@@ -507,6 +508,16 @@ if (process.env.NODE_ENV_ELECTRON_VITE === 'development')
 app.on('will-quit', () => globalShortcuts.clear())
 
 function invokeGlobalShortcut(invocation: GlobalShortcutInvocation) {
+  // Native handlers own their window, so the main window stays where it is.
+  void runNativeGlobalShortcut(invocation.id).then(
+    (handled) => {
+      if (!handled) showGlobalShortcut(invocation)
+    },
+    (error: unknown) => console.error('global shortcut failed:', error),
+  )
+}
+
+function showGlobalShortcut(invocation: GlobalShortcutInvocation) {
   const { id, token } = invocation
   const openingWindow = !mainWindow
   if (openingWindow) {

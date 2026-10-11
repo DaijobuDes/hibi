@@ -257,6 +257,17 @@ export async function convertImport(
   return addon.import(files)
 }
 
+/** Run an enabled native handler for a global shortcut id such as `quick-note.capture`. */
+export async function runNativeGlobalShortcut(id: string): Promise<boolean> {
+  const [owner = '', local = ''] = id.split('.')
+  if (getAddonActivationGeneration(owner) === null) return false
+  const handlers = (await nativeAddon(owner))?.globalShortcuts
+  const handler = handlers && Object.hasOwn(handlers, local) && handlers[local]
+  if (!handler) return false
+  await handler()
+  return true
+}
+
 export async function enableAddon(
   id: unknown,
   value: unknown,

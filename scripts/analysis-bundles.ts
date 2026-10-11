@@ -40,27 +40,34 @@ export function analysisBundles(): Plugin {
     },
   }
 }
-export function analysisPreload(): Plugin {
+/** Bundle each extra preload as one file; sandboxed preloads cannot load chunks. */
+export function sandboxPreloads(): Plugin {
+  const entries = {
+    'analysis.cjs': 'src/preload/analysis.ts',
+    'quick-note.cjs': 'src/addons/quick-note/preload.ts',
+  }
   return {
-    name: 'analysis-preload',
+    name: 'sandbox-preloads',
     async generateBundle() {
-      const result = await build({
-        entryPoints: ['src/preload/analysis.ts'],
-        bundle: true,
-        format: 'cjs',
-        platform: 'node',
-        external: ['electron'],
-        write: false,
-        metafile: true,
-        target: 'node24',
-      })
-      for (const file of Object.keys(result.metafile.inputs))
-        this.addWatchFile(resolve(file))
-      this.emitFile({
-        type: 'asset',
-        fileName: 'analysis.cjs',
-        source: result.outputFiles[0]!.text,
-      })
+      for (const [fileName, entry] of Object.entries(entries)) {
+        const result = await build({
+          entryPoints: [entry],
+          bundle: true,
+          format: 'cjs',
+          platform: 'node',
+          external: ['electron'],
+          write: false,
+          metafile: true,
+          target: 'node24',
+        })
+        for (const file of Object.keys(result.metafile.inputs))
+          this.addWatchFile(resolve(file))
+        this.emitFile({
+          type: 'asset',
+          fileName,
+          source: result.outputFiles[0]!.text,
+        })
+      }
     },
   }
 }

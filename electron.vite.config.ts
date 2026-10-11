@@ -1,7 +1,7 @@
 import { isAbsolute, relative, resolve, sep } from 'node:path'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'electron-vite'
-import { analysisBundles, analysisPreload } from './scripts/analysis-bundles'
+import { analysisBundles, sandboxPreloads } from './scripts/analysis-bundles'
 import { writeLicenses } from './scripts/licenses'
 import {
   diagnosticsBuild,
@@ -47,7 +47,7 @@ export default defineConfig({
     },
   },
   preload: {
-    plugins: [analysisPreload()],
+    plugins: [sandboxPreloads()],
     build: {
       externalizeDeps: false,
       rollupOptions: { output: { format: 'cjs', entryFileNames: 'index.cjs' } },
@@ -56,7 +56,16 @@ export default defineConfig({
   renderer: {
     plugins: [react(), startupBundle(), diagnosticArtifacts.renderer],
     worker: { format: 'es', plugins: () => [diagnosticArtifacts.worker()] },
-    build: { target: 'chrome152', minify: 'esbuild' },
+    build: {
+      target: 'chrome152',
+      minify: 'esbuild',
+      rollupOptions: {
+        input: {
+          index: resolve('src/renderer/index.html'),
+          'quick-note': resolve('src/renderer/quick-note.html'),
+        },
+      },
+    },
     server: { host: '127.0.0.1' },
   },
 })

@@ -1,5 +1,6 @@
 .quick-note-form {
   display: flex;
+  flex: 1;
   flex-direction: column;
   gap: 0.875rem;
 }
@@ -10,12 +11,17 @@
   gap: 0.375rem;
 }
 
-.quick-note-form textarea {
-  min-height: 12rem;
-  resize: vertical;
+.quick-note-form label:has(textarea) {
+  flex: 1;
 }
 
-.quick-note-form [role="alert"] {
+.quick-note-form textarea {
+  flex: 1;
+  min-height: 6rem;
+  resize: none;
+}
+
+.quick-note-window [role="alert"] {
   margin: 0;
   color: var(--status-danger);
 }
@@ -34,4 +40,40 @@
 
 .quick-note-target .select-control {
   min-width: min(100%, 18rem);
+}
+
+.quick-note-window {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 100vh;
+  padding: var(--space-4);
+}
+
+.quick-note-window header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.quick-note-window h1 {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.quick-note-window header p,
+.quick-note-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.quick-note-status {
+  margin: 0;
+}
+
+.quick-note-status:empty {
+  display: none;
 }

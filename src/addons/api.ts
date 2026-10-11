@@ -917,6 +917,8 @@ export type NativeAddon = {
     warnings?: string[]
   }>
   stop?: () => void
+  /** Run in the main process when this addon's global shortcut fires, instead of showing the main window. Keys are local shortcut ids. */
+  globalShortcuts?: Record<string, () => void | Promise<void>>
   /** Trusted read-only handlers. No user-file changes or dialogs; private compilation caches are allowed. */
   queries?: Record<
     string,
