@@ -5694,6 +5694,9 @@
   "20cfcb2cec56": [
     "src/main/links.ts"
   ],
+  "f716923c808e": [
+    "src/addons/dictionary/custom-words.ts"
+  ],
   "3dd128ad70f4": [
     "src/addons/autocomplete/Settings.tsx",
     "src/addons/autocomplete/index.tsx"
