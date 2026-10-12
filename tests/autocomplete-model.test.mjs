@@ -235,12 +235,12 @@ test('next-word gate requires five observations and seventy percent of all evide
   }
 })
 
-test('weak or fully corrected matching contexts block shorter-context fallback', () => {
+test('unknown, weak or fully corrected contexts block shorter-context fallback', () => {
   const request = { ...session, prefix: '', context: ['that', 'was'] }
   for (const corrected of [false, true]) {
     const model = createPersonalModel({ now: () => 1_000_000 })
     learn(model, 'usual', 100, { context: ['it', 'was'] })
-    assert.deepEqual(words(model, request), ['usual'])
+    assert.deepEqual(words(model, request), [])
     learn(model, 'wild', 1, {
       context: request.context,
       kind: corrected ? 'accepted' : 'typed',

@@ -408,40 +408,33 @@ export function createPersonalModel(options: PersonalModelOptions = {}) {
       if (request.enabled === false || !limit) return []
       const context = contextWords(request.context)
       const time = now()
-      for (let length = context.length; length > 0; length--) {
-        const candidates = new Map<string, PersonalSuggestion>()
-        let matched = false
-        for (const lang of langs)
-          for (const row of buckets.get(
-            bucketKey(request.scope, lang, context.slice(-length), ''),
-          ) ?? []) {
-            matched = true
-            const score = (row.count - 2 * row.corrections) * decay(row, time)
-            if (score <= 0) continue
-            const key = wordKey(row.word)
-            if (score > (candidates.get(key)?.score ?? 0))
-              candidates.set(key, {
-                word: row.word,
-                lang,
-                score,
-                source: 'personal',
-              })
-          }
-        const ranked = [...candidates.values()].sort(
-          (a, b) => b.score - a.score,
-        )
-        const first = ranked[0]
-        if (!matched) continue
-        const total = ranked.reduce((sum, item) => sum + item.score, 0)
-        // A rejected longer context must not fall back to a broader habit.
-        return first &&
-          first.score >= 5 &&
-          first.score >= 0.7 * total &&
-          first.score >= 2 * (ranked[1]?.score ?? 0)
-          ? [first]
-          : []
-      }
-      return []
+      if (!context.length) return []
+      const candidates = new Map<string, PersonalSuggestion>()
+      for (const lang of langs)
+        for (const row of buckets.get(
+          bucketKey(request.scope, lang, context, ''),
+        ) ?? []) {
+          const score = (row.count - 2 * row.corrections) * decay(row, time)
+          if (score <= 0) continue
+          const key = wordKey(row.word)
+          if (score > (candidates.get(key)?.score ?? 0))
+            candidates.set(key, {
+              word: row.word,
+              lang,
+              score,
+              source: 'personal',
+            })
+        }
+      const ranked = [...candidates.values()].sort((a, b) => b.score - a.score)
+      const first = ranked[0]
+      if (!first) return []
+      const total = ranked.reduce((sum, item) => sum + item.score, 0)
+      // A rejected longer context must not fall back to a broader habit.
+      return first.score >= 5 &&
+        first.score >= 0.7 * total &&
+        first.score >= 2 * (ranked[1]?.score ?? 0)
+        ? [first]
+        : []
     }
     const candidates = new Map<string, PersonalSuggestion>()
     const baseline = (request.baseline ?? [])
