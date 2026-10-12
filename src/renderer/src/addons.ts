@@ -70,7 +70,12 @@ import { onEditorInput, onEditorKeyEvent } from './editor-events'
 import { countEditorInteractionProvider } from './editor-interaction-presence'
 import { createEditorViewScope, editorViewRegistry } from './editor-view-api'
 import { explorerDecorations } from './explorer-decorations'
-import { flavors, renderMarkdown, renderMarkdownAsync } from './flavors'
+import {
+  flavors,
+  type RegisteredFlavor,
+  renderMarkdown,
+  renderMarkdownAsync,
+} from './flavors'
 import { projectMarkdown } from './markdown-projection'
 import { markdownSyntax } from './markdown-syntax'
 import { registrationBatch } from './registration-batch'
@@ -183,6 +188,47 @@ type Environment = Omit<
     source: CommandExecutionContext['source'],
   ) => CommandExecutionContext
   isCommandContextCurrent?: (context: CommandExecutionContext) => boolean
+}
+
+/** Editor props derived from the addon host. Stable identities keep typing from rebuilding the editor's snapshot. */
+export function useEditorAddons(
+  host: Pick<ReturnType<typeof useAddons>, 'catalog' | 'states'>,
+  availableFlavors: readonly RegisteredFlavor[],
+) {
+  const knownFlavors = useMemo(
+    () => [
+      ...host.catalog.flatMap((addon) =>
+        (addon.flavors ?? []).map((flavor) => ({
+          ...flavor,
+          id: `${addon.manifest.id}.${flavor.id}`,
+          addonId: addon.manifest.id,
+        })),
+      ),
+      ...availableFlavors.filter(
+        (flavor) =>
+          !host.catalog.some((addon) =>
+            addon.flavors?.some(
+              (known) => `${addon.manifest.id}.${known.id}` === flavor.id,
+            ),
+          ),
+      ),
+    ],
+    [host.catalog, availableFlavors],
+  )
+  const manifests = useMemo(
+    () => host.catalog.map((addon) => addon.manifest),
+    [host.catalog],
+  )
+  const enabledAddons = useMemo(
+    () =>
+      new Set(
+        host.states
+          .filter((state) => state.enabled && !state.blockedBy?.length)
+          .map((state) => state.id),
+      ),
+    [host.states],
+  )
+  return { knownFlavors, manifests, enabledAddons }
 }
 
 export function useAddons(

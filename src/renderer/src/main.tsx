@@ -70,7 +70,7 @@ import { AddonTab } from './AddonTab'
 import { AddonViewContent } from './AddonViewContent'
 import { addonRegistry } from './addon-registry'
 import { addonViews } from './addon-views'
-import { addons, useAddons } from './addons'
+import { addons, useAddons, useEditorAddons } from './addons'
 import { useAutosave } from './autosave'
 import { CommandPalette, type PaletteCommand } from './CommandPalette'
 import { colorschemes } from './colorschemes'
@@ -80,7 +80,7 @@ import {
   documentRuntime,
   observeDocumentErrors,
 } from './document-runtime'
-import { sameDocumentShell } from './document-shell'
+import { subscribeDocumentShell } from './document-shell'
 import type { ViewMode } from './Editor'
 import { loadCursor } from './EditorCursor'
 import { EditorToolbar } from './EditorToolbar'
@@ -342,17 +342,19 @@ function App() {
       }),
     [],
   )
-  useLayoutEffect(() => {
-    return documentRuntime.subscribe((next, changes) => {
-      currentDocument.current = next
-      // Save acknowledgments update the baseline even when dirty stays true.
-      if (!changes || !sameDocumentShell(shellDocument.current, next)) {
-        shellDocument.current = next
-        setDocument(next)
-      }
-      editorDocument.publish(next, changes)
-    })
-  }, [])
+  useLayoutEffect(
+    () =>
+      subscribeDocumentShell(
+        documentRuntime,
+        shellDocument,
+        setDocument,
+        (next, changes) => {
+          currentDocument.current = next
+          editorDocument.publish(next, changes)
+        },
+      ),
+    [],
+  )
   useEffect(
     () =>
       observeDocumentErrors((error) =>
@@ -2078,38 +2080,9 @@ function App() {
     }
   }
 
-  const knownFlavors = useMemo(
-    () => [
-      ...addonHost.catalog.flatMap((addon) =>
-        (addon.flavors ?? []).map((flavor) => ({
-          ...flavor,
-          id: `${addon.manifest.id}.${flavor.id}`,
-          addonId: addon.manifest.id,
-        })),
-      ),
-      ...availableFlavors.filter(
-        (flavor) =>
-          !addonHost.catalog.some((addon) =>
-            addon.flavors?.some(
-              (known) => `${addon.manifest.id}.${known.id}` === flavor.id,
-            ),
-          ),
-      ),
-    ],
-    [addonHost.catalog, availableFlavors],
-  )
-  const manifests = useMemo(
-    () => addonHost.catalog.map((addon) => addon.manifest),
-    [addonHost.catalog],
-  )
-  const enabledAddons = useMemo(
-    () =>
-      new Set(
-        addonHost.states
-          .filter((state) => state.enabled && !state.blockedBy?.length)
-          .map((state) => state.id),
-      ),
-    [addonHost.states],
+  const { knownFlavors, manifests, enabledAddons } = useEditorAddons(
+    addonHost,
+    availableFlavors,
   )
   const [flavorStatus, setFlavorStatus] = useState<DocumentFlavorStatus>({
     label: 'markdown',
