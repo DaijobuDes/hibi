@@ -445,7 +445,7 @@ test('startup loads unordered dependencies and missing consumers while culling o
   )
 })
 
-test('installation and startup share admission for reserved ids, privileges, and pending resources', async (t) => {
+test('installation rejects reserved ids, privileges, and pending resources before review', async (t) => {
   const h = await host(t)
   await h.loadAddons()
   const source = join(h.state.root, 'sources')
@@ -475,8 +475,62 @@ test('installation and startup share admission for reserved ids, privileges, and
   const installed = join(h.state.root, 'installed-addons')
   for (const manifest of invalid) await fixture(installed, manifest, true)
   const notices = await h.loadInstalledAddons([details('markdown')])
-  assert.equal(notices.length, invalid.length - 1)
-  assert.deepEqual(h.installedAddons(), [])
+  assert.equal(notices.length, 1)
+  assert.match(notices[0], /modal-claim/)
+  assert.deepEqual(
+    h
+      .installedAddons()
+      .map((addon) => addon.manifest.id)
+      .sort(),
+    invalid
+      .filter((manifest) => !['markdown', 'modal-claim'].includes(manifest.id))
+      .map((manifest) => manifest.id)
+      .sort(),
+  )
+  for (const addon of h.installedAddons()) {
+    assert.deepEqual(addon.themes, [])
+    assert.equal(addon.manifest.defaultEnabled, false)
+    for (const key of ['styles', 'themes', 'native', 'importer', 'windows'])
+      assert.equal(Object.hasOwn(addon.manifest, key), false)
+  }
+})
+
+test('installed folders with ignored styles and native keys remain listed without notices', async (t) => {
+  const h = await host(t)
+  const input = JSON.parse(
+    await readFile(
+      fileURLToPath(
+        new URL('./fixtures/addon-manifests/installed.json', import.meta.url),
+      ),
+      'utf8',
+    ),
+  )
+  const expected = JSON.parse(
+    await readFile(
+      fileURLToPath(
+        new URL(
+          './fixtures/addon-manifests/installed-expected.json',
+          import.meta.url,
+        ),
+      ),
+      'utf8',
+    ),
+  )
+  await fixture(
+    join(h.state.root, 'installed-addons'),
+    {
+      ...input,
+      styles: [],
+      native: null,
+    },
+    true,
+  )
+  await h.loadAddons()
+  assert.deepEqual(h.getAddonStartupNotices(), [])
+  const [addon] = h.installedAddons()
+  assert.deepEqual(addon.manifest, expected.manifest)
+  assert.deepEqual(addon.themes, expected.themes)
+  assert.equal(stateOf(h, input.id).enabled, false)
 })
 
 test('installer accepts the full typst notice but keeps the 64 kib manifest boundary', async (t) => {

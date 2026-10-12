@@ -88,6 +88,7 @@ export function parseAddonManifest(value: unknown): ParsedAddonManifest {
           !string(license.name, 100) ||
           !string(license.license, 100) ||
           !string(license.text, MAX_ADDON_MANIFEST_BYTES) ||
+          // Installed manifests hit the file cap first; future compiled manifests need this byte check.
           new TextEncoder().encode(license.text).length >
             MAX_ADDON_MANIFEST_BYTES,
       ))
@@ -277,7 +278,19 @@ export function parseAddonManifest(value: unknown): ParsedAddonManifest {
 export function admitInstalledAddon(
   value: unknown,
   compiledIds: readonly string[],
+  phase: 'install' | 'load' = 'install',
 ): { manifest: AddonManifest; entry: string; themes: ColorschemeInput[] } {
+  if (phase === 'load' && value && typeof value === 'object') {
+    const data = value as Record<string, unknown>
+    value = {
+      ...data,
+      styles: undefined,
+      native: undefined,
+      importer: undefined,
+      windows: undefined,
+      ...(data.kind === 'extension' ? { themes: undefined } : {}),
+    }
+  }
   const parsed = parseAddonManifest(value)
   const data = value as Record<string, unknown>
   if (compiledIds.includes(parsed.manifest.id))

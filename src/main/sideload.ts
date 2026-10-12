@@ -31,7 +31,11 @@ import { downloadRepository, repositoryUrl } from './addon-repository'
 type Package = InstalledAddon & { entry: string; hash: string; files: string[] }
 let installed: Package[] = []
 const root = () => join(app.getPath('userData'), 'installed-addons')
-async function readManifest(folder: string, compiledIds: readonly string[]) {
+async function readManifest(
+  folder: string,
+  compiledIds: readonly string[],
+  phase: 'install' | 'load' = 'install',
+) {
   const path = join(folder, 'hibi-addon.json')
   const stat = await lstat(path)
   if (
@@ -45,6 +49,7 @@ async function readManifest(folder: string, compiledIds: readonly string[]) {
   return admitInstalledAddon(
     JSON.parse(await readFile(path, 'utf8')),
     compiledIds,
+    phase,
   )
 }
 function descriptor(data: Omit<Package, 'url'>): Package {
@@ -92,7 +97,7 @@ export async function loadInstalledAddons(
     try {
       const folder = join(root(), entry.name)
       const [data, record] = await Promise.all([
-        readManifest(folder, builtinIds),
+        readManifest(folder, builtinIds, 'load'),
         readFile(join(folder, '.hibi-install.json'), 'utf8').then((text) =>
           JSON.parse(text),
         ),

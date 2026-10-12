@@ -122,6 +122,51 @@ test('installed admission rejects compiled ids and privileged declarations regar
   }
 })
 
+test('loading existing packages ignores old unknown declarations without admitting new installs', () => {
+  for (const key of ['styles', 'themes', 'native', 'importer', 'windows']) {
+    for (const value of [
+      null,
+      [],
+      {},
+      false,
+      '../ignored',
+      ['../ignored'],
+      42,
+    ]) {
+      const input = { ...base, [key]: value }
+      assert.deepEqual(
+        admitInstalledAddon(input, [], 'load'),
+        admitInstalledAddon(base, []),
+      )
+      assert.deepEqual(input[key], value)
+      assert.throws(() => admitInstalledAddon(input, []))
+    }
+  }
+  const input = {
+    ...themePackage,
+    styles: [],
+    native: null,
+    importer: {},
+    windows: false,
+  }
+  assert.deepEqual(
+    admitInstalledAddon(input, [], 'load'),
+    admitInstalledAddon(themePackage, []),
+  )
+  for (const input of [
+    { ...base, apiVersion: 3 },
+    { ...base, entry: '../entry.js' },
+    { ...base, capabilities: ['modalEditing'] },
+    { ...themePackage, themes: ['theme.json'] },
+    { ...themePackage, themes: null },
+  ])
+    assert.throws(() => admitInstalledAddon(input, [], 'load'))
+  assert.throws(
+    () => admitInstalledAddon(base, ['sample'], 'load'),
+    /built-in addon/,
+  )
+})
+
 test('styles retain package order and enforce path, uniqueness, and count limits', () => {
   const styles = Array.from(
     { length: 16 },
