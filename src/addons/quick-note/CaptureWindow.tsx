@@ -133,9 +133,7 @@ export function CaptureWindow({ Editor, native, close }: AddonWindowProps) {
     const draft: Draft = { markdown: value }
     const write = writing.current
       .catch(() => {})
-      .then(() =>
-        native.invoke<{ keptAs: string | null }>('saveDraft', draft),
-      )
+      .then(() => native.invoke<{ keptAs: string | null }>('saveDraft', draft))
       .then(
         ({ keptAs }) => {
           failures.current = 0
