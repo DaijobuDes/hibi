@@ -80,6 +80,7 @@ import {
   onAddonWindowClosed,
   openAddonWindow,
   refreshAddonWindowColors,
+  releaseAddonWindows,
 } from './addon-windows'
 import {
   currentAddonOwner,
@@ -515,6 +516,8 @@ app.on('open-file', (event, path) => {
 })
 app.on('before-quit', () => {
   quitting = true
+  // With no main window to confirm, kept-alive addon windows must not block quitting.
+  if (!mainWindow) releaseAddonWindows()
 })
 let devRestartRequested = false
 function cancelDevRestart() {
@@ -842,6 +845,7 @@ function createWindow(): void {
         }
         discardChanges()
         allowClose = true
+        if (quitting || installed) releaseAddonWindows()
         if (!installed) {
           if (quitting) app.quit()
           else window.close()
@@ -880,6 +884,8 @@ function createWindow(): void {
     )
     mainWindow = null
     if (process.platform !== 'darwin' || quitting) globalShortcuts.clear()
+    // Hidden addon windows must not keep Hibi running where closing it quits.
+    if (process.platform !== 'darwin') releaseAddonWindows(true)
   })
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   window.webContents.on('will-frame-navigate', (event) => {

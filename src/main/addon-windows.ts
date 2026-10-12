@@ -37,13 +37,15 @@ const MAX_INPUT = 64 * 1024
 // ponytail: fixed idle limit; a hidden editor window holds about 160 MB. Make it an option if an addon needs a different trade-off.
 const KEEP_ALIVE_MS = 10 * 60 * 1000
 const entries = new Map<string, Entry>()
-const opening = new Map<string, Promise<void>>()
+/** Creations in progress; `show` keeps the strongest visibility requested meanwhile. */
+const opening = new Map<
+  string,
+  { addonId: string; show: boolean; done: Promise<void> }
+>()
+/** Bumped when an addon's windows are torn down, so pending creations stop. */
+const epochs = new Map<string, number>()
 const closedListeners = new Set<(addonId: string, id: string) => void>()
 let writing: Promise<void> = Promise.resolve()
-let quitting = false
-app.on('before-quit', () => {
-  quitting = true
-})
 
 const key = (addonId: string, id: string) => `${addonId}/${id}`
 
@@ -124,14 +126,15 @@ async function placement(windowKey: string, options: Options) {
   if (previous && fits(previous, area)) return previous
   const width = Math.min(options.size.width, area.width)
   const height = Math.min(options.size.height, area.height)
+  const y =
+    area.y +
+    (options.position === 'cursor-display'
+      ? area.height * 0.18
+      : (area.height - height) / 2)
   return {
     x: Math.round(area.x + (area.width - width) / 2),
-    y: Math.round(
-      area.y +
-        (options.position === 'cursor-display'
-          ? area.height * 0.18
-          : (area.height - height) / 2),
-    ),
+    // A tall window moves up rather than past the bottom of the work area.
+    y: Math.round(Math.min(y, area.y + area.height - height)),
     width,
     height,
   }
@@ -168,11 +171,29 @@ function reveal(entry: Entry) {
   window.focus()
 }
 
-async function create(addonId: string, name: string, options: Options) {
+/** Close for good, bypassing keepAlive and any beforeunload handler in the window. */
+function destroy(entry: Entry) {
+  entry.release = true
+  clearTimeout(entry.idle)
+  if (entry.window.isDestroyed()) return
+  rememberBounds(key(entry.addonId, entry.id), entry.window.getBounds())
+  entry.window.destroy()
+}
+
+async function create(
+  addonId: string,
+  name: string,
+  options: Options,
+  request: { show: boolean },
+) {
   const windowKey = key(addonId, options.id)
   const panel = options.panel && process.platform === 'darwin'
+  const epoch = epochs.get(addonId) ?? 0
+  const bounds = await placement(windowKey, options)
+  if ((epochs.get(addonId) ?? 0) !== epoch)
+    throw new Error('This addon was disabled. Enable it to open its windows.')
   const window = new BrowserWindow({
-    ...(await placement(windowKey, options)),
+    ...bounds,
     minWidth: 240,
     minHeight: 240,
     show: false,
@@ -212,7 +233,7 @@ async function create(addonId: string, name: string, options: Options) {
     platform: process.platform,
     window,
     keepAlive: options.keepAlive,
-    hidden: !options.show,
+    hidden: !request.show,
     release: false,
   }
   entries.set(windowKey, entry)
@@ -233,19 +254,18 @@ async function create(addonId: string, name: string, options: Options) {
   })
   window.on('close', (event) => {
     rememberBounds(windowKey, window.getBounds())
-    if (!entry.keepAlive || entry.release || quitting) return
+    // Quitting and disabling destroy windows directly; this only hides.
+    if (!entry.keepAlive || entry.release) return
     event.preventDefault()
     window.hide()
     clearTimeout(entry.idle)
-    entry.idle = setTimeout(() => {
-      entry.release = true
-      window.close()
-    }, KEEP_ALIVE_MS)
+    entry.idle = setTimeout(() => destroy(entry), KEEP_ALIVE_MS)
     if (entry.hidden) return
     entry.hidden = true
     notifyClosed(entry)
   })
   window.on('closed', () => {
+    clearTimeout(entry.idle)
     if (entries.get(windowKey) !== entry) return
     entries.delete(windowKey)
     if (!entry.hidden) notifyClosed(entry)
@@ -267,17 +287,20 @@ export async function openAddonWindow(
     return
   }
   const pending = opening.get(windowKey)
-  if (pending) return pending
-  if (
-    [...entries.values()].filter((entry) => entry.addonId === addonId).length >=
-    MAX_WINDOWS
-  )
+  if (pending) {
+    if (options.show) pending.show = true
+    return pending.done
+  }
+  const open = (list: Iterable<{ addonId: string }>) =>
+    [...list].filter((item) => item.addonId === addonId).length
+  if (open(entries.values()) + open(opening.values()) >= MAX_WINDOWS)
     throw new Error('This addon already has eight windows open.')
-  const next = create(addonId, name, options).finally(() =>
+  const request = { addonId, show: options.show, done: Promise.resolve() }
+  opening.set(windowKey, request)
+  request.done = create(addonId, name, options, request).finally(() =>
     opening.delete(windowKey),
   )
-  opening.set(windowKey, next)
-  return next
+  return request.done
 }
 
 export function focusAddonWindow(addonId: string, id: unknown): void {
@@ -289,13 +312,17 @@ export function closeAddonWindow(addonId: string, id: unknown): void {
   if (typeof id === 'string') entries.get(key(addonId, id))?.window.close()
 }
 
-/** Close every window of an addon, including kept-alive ones. */
+/** Tear down every window of an addon, including kept-alive and pending ones. */
 export function closeAddonWindows(addonId: string): void {
-  for (const entry of entries.values())
-    if (entry.addonId === addonId) {
-      entry.release = true
-      entry.window.close()
-    }
+  epochs.set(addonId, (epochs.get(addonId) ?? 0) + 1)
+  for (const entry of [...entries.values()])
+    if (entry.addonId === addonId) destroy(entry)
+}
+
+/** Call once quitting is confirmed, or with `hidden` when only hidden windows would keep Hibi running. */
+export function releaseAddonWindows(hidden = false): void {
+  for (const entry of [...entries.values()])
+    if (!hidden || entry.hidden) destroy(entry)
 }
 
 /** Follow appearance changes in window backgrounds and Hibi-drawn window controls. */
