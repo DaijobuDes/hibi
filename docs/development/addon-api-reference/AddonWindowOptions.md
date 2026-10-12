@@ -23,6 +23,10 @@ type AddonWindowOptions = {
   alwaysOnTop?: boolean
   /** On macOS, float over full-screen apps on every Space and take keyboard focus without bringing Hibi forward. Ignored elsewhere. */
   panel?: boolean
+  /** Closing hides the window and keeps its renderer, so reopening is immediate. Disabling the addon or quitting still closes it. */
+  keepAlive?: boolean
+  /** Set to false to prepare the window without showing it, for example at idle. Defaults to true. */
+  show?: boolean
   /** JSON value passed to the window component. Limited to 64 KB. */
   input?: unknown
 }
@@ -41,6 +45,8 @@ type AddonWindowOptions = {
 - [titleBar](#titlebar)
 - [alwaysOnTop](#alwaysontop)
 - [panel](#panel)
+- [keepAlive](#keepalive)
+- [show](#show)
 - [input](#input)
 
 ## Properties
@@ -115,9 +121,29 @@ On macOS, float over full-screen apps on every Space and take keyboard focus wit
 panel?: boolean
 ```
 
-### input
+### keepAlive
 
 Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/shared/addon-windows.ts#L28)
+
+Closing hides the window and keeps its renderer, so reopening is immediate. Disabling the addon or quitting still closes it.
+
+```typescript
+keepAlive?: boolean
+```
+
+### show
+
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/shared/addon-windows.ts#L30)
+
+Set to false to prepare the window without showing it, for example at idle. Defaults to true.
+
+```typescript
+show?: boolean
+```
+
+### input
+
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/shared/addon-windows.ts#L32)
 
 JSON value passed to the window component. Limited to 64 KB.
 
