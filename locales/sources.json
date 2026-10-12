@@ -1779,6 +1779,9 @@
   "2d65a6a59c86": [
     "src/renderer/src/addons.ts"
   ],
+  "7ef28b085afa": [
+    "src/addons/ui-preview/index.tsx"
+  ],
   "9da3210f6338": [
     "src/renderer/src/RecoveryScreen.tsx"
   ],
@@ -3559,6 +3562,9 @@
   "29d05e904395": [
     "src/shared/hotkeys.ts"
   ],
+  "c85807ee9dcb": [
+    "src/addons/ui-preview/index.tsx"
+  ],
   "6a9084025c4b": [
     "src/renderer/src/WorkspaceSidebar.tsx"
   ],
@@ -3801,6 +3807,9 @@
   "97694af2695d": [
     "src/addons/_shared/format-renderer.tsx",
     "src/addons/_shared/local-preview.tsx"
+  ],
+  "dff035fbcd5f": [
+    "src/addons/ui-preview/index.tsx"
   ],
   "54689c5d0e3e": [
     "src/renderer/src/HibiSettings.tsx"
@@ -5315,6 +5324,9 @@
   "8572af154dbc": [
     "src/main/addons.ts"
   ],
+  "2fb4a91a3476": [
+    "src/renderer/src/addons.ts"
+  ],
   "36568e2b608a": [
     "src/main/addons.ts"
   ],
@@ -5575,6 +5587,9 @@
   "ecce9bbe9bbe": [
     "src/main/addon-download.ts"
   ],
+  "4c1532864ab1": [
+    "src/renderer/src/WindowEditor.tsx"
+  ],
   "fad38e891406": [
     "src/main/licenses.ts"
   ],
@@ -5657,6 +5672,9 @@
   ],
   "20cfcb2cec56": [
     "src/main/links.ts"
+  ],
+  "5470a94f5135": [
+    "src/preload/addon-window.ts"
   ],
   "c04f0fb5e9da": [
     "src/addons/ui-preview/index.tsx"
@@ -6472,6 +6490,9 @@
   ],
   "acf7f505b27e": [
     "src/addons/documentation/ExportDialog.tsx"
+  ],
+  "9121a9ed1cc9": [
+    "src/renderer/src/window-desktop.ts"
   ],
   "507e6dce93ec": [
     "src/renderer/src/main.tsx"

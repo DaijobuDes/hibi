@@ -2,7 +2,7 @@
 
 # AddonWindowOptions
 
-Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/shared/addon-windows.ts#L13)
+Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/shared/addon-windows.ts#L15)
 
 <details>
 <summary>Declaration</summary>
@@ -53,7 +53,7 @@ type AddonWindowOptions = {
 
 ### id
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/shared/addon-windows.ts#L15)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/shared/addon-windows.ts#L17)
 
 Local window ID. Opening the same ID again focuses the existing window.
 
@@ -63,7 +63,7 @@ id: string
 
 ### title
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/shared/addon-windows.ts#L17)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/shared/addon-windows.ts#L19)
 
 Defaults to the addon name.
 
@@ -73,7 +73,7 @@ title?: string
 
 ### size
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/shared/addon-windows.ts#L19)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/shared/addon-windows.ts#L21)
 
 Initial content size in pixels. Hibi keeps the size the user last chose on each display.
 
@@ -83,7 +83,7 @@ size?: { width: number; height: number }
 
 ### position
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/shared/addon-windows.ts#L21)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/shared/addon-windows.ts#L23)
 
 `cursor-display` opens near the top of the display with the pointer; `center` centers on that display. Defaults to `center`.
 
@@ -93,7 +93,7 @@ position?: 'cursor-display' | 'center'
 
 ### titleBar
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/shared/addon-windows.ts#L23)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/shared/addon-windows.ts#L25)
 
 `hibi` replaces the system title bar with Hibi's compact bar and window controls, as in the main window. Defaults to `native`.
 
@@ -103,7 +103,7 @@ titleBar?: 'native' | 'hibi'
 
 ### alwaysOnTop
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/shared/addon-windows.ts#L25)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/shared/addon-windows.ts#L27)
 
 Keep the window above other applications.
 
@@ -113,7 +113,7 @@ alwaysOnTop?: boolean
 
 ### panel
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/shared/addon-windows.ts#L27)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/shared/addon-windows.ts#L29)
 
 On macOS, float over full-screen apps on every Space and take keyboard focus without bringing Hibi forward. Ignored elsewhere.
 
@@ -123,7 +123,7 @@ panel?: boolean
 
 ### keepAlive
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/shared/addon-windows.ts#L29)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/shared/addon-windows.ts#L31)
 
 Closing hides the window and keeps its renderer for ten minutes, so reopening is immediate. Disabling the addon or quitting still closes it.
 
@@ -133,7 +133,7 @@ keepAlive?: boolean
 
 ### show
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/shared/addon-windows.ts#L31)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/shared/addon-windows.ts#L33)
 
 Set to false to prepare the window without showing it, for example at idle. Defaults to true.
 
@@ -143,7 +143,7 @@ show?: boolean
 
 ### input
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/shared/addon-windows.ts#L33)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/shared/addon-windows.ts#L35)
 
 JSON value passed to the window component. Limited to 64 KB.
 

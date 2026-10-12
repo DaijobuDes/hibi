@@ -7,9 +7,11 @@ import {
   type Rectangle,
   screen,
 } from 'electron'
-import type {
-  AddonWindowContext,
-  AddonWindowOptions,
+import type { AddonState } from '../addons/api'
+import {
+  ADDON_WINDOW_CHANNELS,
+  type AddonWindowContext,
+  type AddonWindowOptions,
 } from '../shared/addon-windows'
 import { appearanceColors, titleBarColors } from './appearance'
 import { isTrustedRendererUrl } from './security'
@@ -353,6 +355,13 @@ export function refreshAddonWindowColors(): void {
     if (titleBar === 'hibi' && process.platform !== 'darwin')
       window.setTitleBarOverlay(titleBarColors())
   }
+}
+
+/** Editor windows, including hidden kept-alive ones, start and stop addons with the main window's settings. */
+export function sendAddonWindowStates(states: AddonState[]): void {
+  for (const { window } of entries.values())
+    if (!window.webContents.isDestroyed())
+      window.webContents.send(ADDON_WINDOW_CHANNELS.statesChanged, states)
 }
 
 export function onAddonWindowClosed(

@@ -40,6 +40,7 @@ function saveError(status: string) {
 export default defineAddon({
   manifest,
   windows: {
+    editor: ({ Editor }) => <Editor label="Preview note" />,
     preview: ({ close }) => (
       <section
         style={{
@@ -411,6 +412,19 @@ export default defineAddon({
           title: 'Addon window preview',
           titleBar: 'hibi',
           size: { width: 480, height: 320 },
+        })
+      },
+    })
+    context.commands.register({
+      id: 'open-editor-window',
+      label: 'Open editor window preview',
+      keywords: 'addon window editor toolbar',
+      run: async () => {
+        await context.windows.open({
+          id: 'editor',
+          title: 'Editor preview',
+          titleBar: 'hibi',
+          size: { width: 640, height: 480 },
         })
       },
     })

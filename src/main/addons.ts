@@ -68,6 +68,15 @@ const generations = new Map<string, number>()
 let onAddonDeactivated: (id: string, generation: number) => Promise<void> =
   async () => {}
 
+let onAddonStatesChanged: (states: AddonState[]) => void = () => {}
+
+/** Called after each accepted addon state change. */
+export function setAddonStatesHandler(
+  handler: (states: AddonState[]) => void,
+): void {
+  onAddonStatesChanged = handler
+}
+
 /** Register host cleanup before addon state changes are accepted. */
 export function setAddonDeactivationHandler(
   handler: (id: string, generation: number) => Promise<void>,
@@ -396,7 +405,9 @@ async function savePreferences(
   await rename(`${path}.tmp`, path)
   enabled = next
   await deactivateUnavailable(before)
-  return getAddonStates()
+  const states = getAddonStates()
+  onAddonStatesChanged(states)
+  return states
 }
 
 async function deactivateUnavailable(before: readonly AddonState[]) {

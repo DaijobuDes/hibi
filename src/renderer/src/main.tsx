@@ -70,7 +70,7 @@ import { AddonTab } from './AddonTab'
 import { AddonViewContent } from './AddonViewContent'
 import { addonRegistry } from './addon-registry'
 import { addonViews } from './addon-views'
-import { addons, useAddons } from './addons'
+import { addons, useAddons, useEditorAddons } from './addons'
 import { useAutosave } from './autosave'
 import { CommandPalette, type PaletteCommand } from './CommandPalette'
 import { colorschemes } from './colorschemes'
@@ -80,12 +80,12 @@ import {
   documentRuntime,
   observeDocumentErrors,
 } from './document-runtime'
-import { sameDocumentShell } from './document-shell'
+import { subscribeDocumentShell } from './document-shell'
 import type { ViewMode } from './Editor'
-import { loadCursor } from './EditorCursor'
 import { EditorToolbar } from './EditorToolbar'
 import { isEditorCommandTargetCurrent } from './editor-command-targets'
 import { setEditorCommandMenu } from './editor-interaction-presence'
+import { editorPreferences, useEditorPreference } from './editor-preferences'
 import { FlavorPicker } from './FlavorPicker'
 import { FormatEditor } from './FormatEditor'
 import {
@@ -97,7 +97,7 @@ import {
 } from './flavors'
 import { LoadingScreen } from './LoadingScreen'
 import { installRendererDiagnostics } from './local-diagnostics'
-import { projectMarkdown } from './markdown-projection'
+import { transformMarkdown } from './markdown-projection'
 import {
   type OutlineHeading,
   type OutlineRequest,
@@ -342,17 +342,19 @@ function App() {
       }),
     [],
   )
-  useLayoutEffect(() => {
-    return documentRuntime.subscribe((next, changes) => {
-      currentDocument.current = next
-      // Save acknowledgments update the baseline even when dirty stays true.
-      if (!changes || !sameDocumentShell(shellDocument.current, next)) {
-        shellDocument.current = next
-        setDocument(next)
-      }
-      editorDocument.publish(next, changes)
-    })
-  }, [])
+  useLayoutEffect(
+    () =>
+      subscribeDocumentShell(
+        documentRuntime,
+        shellDocument,
+        setDocument,
+        (next, changes) => {
+          currentDocument.current = next
+          editorDocument.publish(next, changes)
+        },
+      ),
+    [],
+  )
   useEffect(
     () =>
       observeDocumentErrors((error) =>
@@ -740,28 +742,18 @@ function App() {
     ...rightSidebarResize,
     onCollapse: closeRightSidebar,
   }
-  const [cursorSettings, setCursorSettings] = useState(loadCursor)
-  const [showLineNumbers, setShowLineNumbers] = useState(
-    () => localStorage.getItem('line-numbers') === 'true',
+  const [cursorSettings, setCursorSettings] = useEditorPreference(
+    editorPreferences.cursor,
   )
-  const [spellCheck, setSpellCheck] = useState(
-    () => localStorage.getItem('spell-check') !== 'false',
+  const [showLineNumbers, setShowLineNumbers] = useEditorPreference(
+    editorPreferences.lineNumbers,
   )
-  const [showMarkdownMarkers, setShowMarkdownMarkers] = useState(
-    () => localStorage.getItem('markdown-markers') !== 'false',
+  const [spellCheck, setSpellCheck] = useEditorPreference(
+    editorPreferences.spellCheck,
   )
-  useEffect(() => {
-    localStorage.setItem('markdown-markers', String(showMarkdownMarkers))
-  }, [showMarkdownMarkers])
-  useEffect(() => {
-    localStorage.setItem('spell-check', String(spellCheck))
-  }, [spellCheck])
-  useEffect(() => {
-    localStorage.setItem('line-numbers', String(showLineNumbers))
-  }, [showLineNumbers])
-  useEffect(() => {
-    localStorage.setItem('cursor-settings', JSON.stringify(cursorSettings))
-  }, [cursorSettings])
+  const [showMarkdownMarkers, setShowMarkdownMarkers] = useEditorPreference(
+    editorPreferences.markers,
+  )
   function captureAddonCommandContext(
     source: CommandExecutionContext['source'],
   ): CommandExecutionContext {
@@ -879,14 +871,13 @@ function App() {
         const document = currentDocument.current
         if (busyRef.current || !document)
           throw new Error('The document is busy. Try again in a moment.')
-        const source = options
-          ? projectMarkdown(
-              document.markdown,
-              addonHost.markdownExtensions,
-            ).serialize(options.body)
-          : document.markdown
-        const markdown = transform(source)
-        if (markdown === null || markdown === document.markdown) return
+        const markdown = transformMarkdown(
+          document.markdown,
+          addonHost.markdownExtensions,
+          transform,
+          options,
+        )
+        if (markdown === null) return
         updateMarkdown(markdown)
         setResetEditor((value) => value + 1)
       },
@@ -2079,38 +2070,9 @@ function App() {
     }
   }
 
-  const knownFlavors = useMemo(
-    () => [
-      ...addonHost.catalog.flatMap((addon) =>
-        (addon.flavors ?? []).map((flavor) => ({
-          ...flavor,
-          id: `${addon.manifest.id}.${flavor.id}`,
-          addonId: addon.manifest.id,
-        })),
-      ),
-      ...availableFlavors.filter(
-        (flavor) =>
-          !addonHost.catalog.some((addon) =>
-            addon.flavors?.some(
-              (known) => `${addon.manifest.id}.${known.id}` === flavor.id,
-            ),
-          ),
-      ),
-    ],
-    [addonHost.catalog, availableFlavors],
-  )
-  const manifests = useMemo(
-    () => addonHost.catalog.map((addon) => addon.manifest),
-    [addonHost.catalog],
-  )
-  const enabledAddons = useMemo(
-    () =>
-      new Set(
-        addonHost.states
-          .filter((state) => state.enabled && !state.blockedBy?.length)
-          .map((state) => state.id),
-      ),
-    [addonHost.states],
+  const { knownFlavors, manifests, enabledAddons } = useEditorAddons(
+    addonHost,
+    availableFlavors,
   )
   const [flavorStatus, setFlavorStatus] = useState<DocumentFlavorStatus>({
     label: 'markdown',

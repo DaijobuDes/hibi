@@ -2,7 +2,7 @@
 
 # AddonWindowProps
 
-Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L630)
+Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L638)
 
 Props for a component in `Addon.windows`. It runs in a separate renderer with only these APIs.
 
@@ -20,6 +20,8 @@ type AddonWindowProps = {
   }
   /** Close this window. */
   close: () => void
+  /** Hibi's editor and formatting toolbar for one untitled Markdown note. Rendering it starts the enabled editor addons in this window. */
+  Editor: ComponentType<AddonWindowEditorProps>
 }
 ```
 
@@ -30,6 +32,7 @@ type AddonWindowProps = {
 **Properties**
 
 - [input](#input)
+- [Editor](#editor)
 
 **Methods**
 
@@ -41,7 +44,7 @@ type AddonWindowProps = {
 
 ### input
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L632)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L640)
 
 The JSON input passed to `windows.open`.
 
@@ -49,11 +52,23 @@ The JSON input passed to `windows.open`.
 input: unknown
 ```
 
+### Editor
+
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L649)
+
+Hibi's editor and formatting toolbar for one untitled Markdown note. Rendering it starts the enabled editor addons in this window.
+
+```typescript
+Editor: ComponentType<AddonWindowEditorProps>
+```
+
+Related: [AddonWindowEditorProps](AddonWindowEditorProps.md).
+
 ## Methods
 
 ### native.query
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L635)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L643)
 
 ```typescript
 native.query: <T = unknown>(method: string, input?: unknown) => Promise<T>
@@ -70,7 +85,7 @@ native.query: <T = unknown>(method: string, input?: unknown) => Promise<T>
 
 ### native.invoke
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L636)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L644)
 
 ```typescript
 native.invoke: <T = unknown>(method: string, input?: unknown) => Promise<T>
@@ -87,7 +102,7 @@ native.invoke: <T = unknown>(method: string, input?: unknown) => Promise<T>
 
 ### close
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L639)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L647)
 
 Close this window.
 
@@ -96,3 +111,7 @@ close: () => void
 ```
 
 **Returns:** <code>void</code>
+
+## Related types
+
+[AddonWindowEditorProps](AddonWindowEditorProps.md).

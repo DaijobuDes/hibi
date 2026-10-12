@@ -1,9 +1,13 @@
-import { type ReactNode, StrictMode } from 'react'
+import { lazy, type ReactNode, StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import type { Addon, AddonManifest, AddonWindowProps } from '../../addons/api'
 import type {
-  AddonWindowBridge,
+  Addon,
+  AddonWindowEditorProps,
+  AddonWindowProps,
+} from '../../addons/api'
+import type {
   AddonWindowContext,
+  AddonWindowGlobal,
 } from '../../shared/addon-windows'
 import { errorMessage } from '../../shared/errors'
 import {
@@ -12,19 +16,20 @@ import {
   createColorschemeStore,
 } from '../../ui/colorschemes'
 import './styles.css'
+import { windowDesktop } from './window-desktop'
 import '../../ui/ui-case'
 
 declare global {
   interface Window {
-    hibiAddonWindow: AddonWindowBridge
+    hibiAddonWindow: AddonWindowGlobal
   }
 }
 
-// Only compiled addons can provide window content; this renderer never calls start().
-const manifests = import.meta.glob<AddonManifest>(
-  ['../../addons/*/manifest.ts', '../../useraddons/*/manifest.ts'],
-  { eager: true, import: 'default' },
-)
+// Take the bridge before any addon module loads. This module's imports contain no
+// addon code, and afterwards the global answers only `context` and `close`.
+const bridge = window.hibiAddonWindow.seal()
+// Only compiled addons can provide window content. Only the owner's module loads
+// here, found by folder; other addons load with the editor.
 const implementations = import.meta.glob<Addon>(
   ['../../addons/*/index.{ts,tsx}', '../../useraddons/*/index.{ts,tsx}'],
   { import: 'default' },
@@ -43,7 +48,6 @@ window.addEventListener('storage', (event) => {
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () =>
   applyActivePalette(palette),
 )
-const bridge = window.hibiAddonWindow
 const root = createRoot(document.getElementById('root') as HTMLElement)
 const request = async <T,>(pending: Promise<unknown>) => {
   try {
@@ -73,20 +77,34 @@ function show(children: ReactNode) {
 }
 
 async function render() {
+  if (!bridge) throw new Error('This addon window is unavailable.')
   context = await bridge.context()
   const { addonId, id, input } = context
-  const path = Object.keys(manifests).find(
-    (candidate) => manifests[candidate]?.id === addonId,
-  )
-  const directory = path?.slice(0, path.lastIndexOf('/'))
-  const load =
-    implementations[`${directory}/index.ts`] ??
-    implementations[`${directory}/index.tsx`]
-  const windows = load && (await load()).windows
+  const load = ['addons', 'useraddons']
+    .flatMap((root) =>
+      ['ts', 'tsx'].map((ext) => `../../${root}/${addonId}/index.${ext}`),
+    )
+    .map((path) => implementations[path])
+    .find(Boolean)
+  const addon = load && (await load())
+  const windows = addon?.manifest.id === addonId ? addon.windows : undefined
   // Only own keys: an id such as "constructor" must not reach Object.prototype.
   const Content =
     windows && Object.hasOwn(windows, id) ? windows[id] : undefined
   if (!Content) throw new Error('This addon window is unavailable.')
+  // The editor host's modules expect window.hibi; give them a privilege-free stand-in.
+  const Editor = lazy(async () => {
+    Object.defineProperty(window, 'hibi', {
+      value: windowDesktop(bridge),
+      configurable: true,
+    })
+    const { WindowEditor } = await import('./WindowEditor')
+    return {
+      default: (props: AddonWindowEditorProps) => (
+        <WindowEditor {...props} subscribeStates={bridge.onStates} />
+      ),
+    }
+  })
   const props: AddonWindowProps = {
     input,
     native: {
@@ -94,6 +112,7 @@ async function render() {
       invoke: (method, value) => request(bridge.invoke(method, value)),
     },
     close: () => void bridge.close(),
+    Editor,
   }
   show(<Content {...props} />)
 }

@@ -6,6 +6,7 @@ import {
   certifyVisualEcho,
   editorDocumentUpdates,
   sameDocumentShell,
+  subscribeDocumentShell,
 } from '../src/renderer/src/document-shell.ts'
 
 const document = (overrides = {}) => ({
@@ -34,15 +35,14 @@ test('typing keeps shell metadata stable while every canonical edit reaches subs
       throw error
     },
   })
-  let current = runtime.activate(document())
+  const current = { current: runtime.activate(document()) }
   const session = runtime.session()
-  runtime.subscribe((next, changes) => {
-    notices.push(next)
-    if (!changes || !sameDocumentShell(current, next)) {
-      current = next
-      shell.push(next)
-    }
-  })
+  subscribeDocumentShell(
+    runtime,
+    current,
+    (next) => shell.push(next),
+    (next) => notices.push(next),
+  )
   session.counters(true)
   for (let i = 0; i < 100; i++) {
     const at = session.snapshot().utf16Length

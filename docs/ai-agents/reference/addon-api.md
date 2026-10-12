@@ -62,6 +62,7 @@ See the [addon API reference](../../development/addon-api-reference/README.md).
 - [SettingsPage](../../development/addon-api-reference/SettingsPage.md)
 - [SettingsApi](../../development/addon-api-reference/SettingsApi.md)
 - [AddonWindowHandle](../../development/addon-api-reference/AddonWindowHandle.md)
+- [AddonWindowEditorProps](../../development/addon-api-reference/AddonWindowEditorProps.md)
 - [AddonWindowProps](../../development/addon-api-reference/AddonWindowProps.md)
 - [AddonContext](../../development/addon-api-reference/AddonContext.md)
 - [Addon](../../development/addon-api-reference/Addon.md)

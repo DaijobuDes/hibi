@@ -4,7 +4,7 @@ An addon compiled with Hibi can open its own desktop windows, such as a capture 
 
 ## Define the window content
 
-List window components by local ID in the `windows` field of your addon. Hibi loads your addon module in the new window and renders the component. It never calls `start` there, so commands, shortcuts, settings, and other registrations from `start` do not exist in the window.
+List window components by local ID in the `windows` field of your addon. Hibi loads your addon module in the new window and renders the component. It finds the module by folder, so the folder must be named after your manifest `id`. It does not call your addon's `start` there, so commands, shortcuts, settings, and other registrations from `start` do not exist in the window. A window that shows Hibi's editor is the one exception for document addons, described below.
 
 ```tsx
 import { type AddonWindowProps, defineAddon } from '../api'
@@ -29,6 +29,29 @@ export default defineAddon({
 The component receives only [AddonWindowProps](../addon-api-reference/AddonWindowProps.md): the JSON `input` given to `open`, your addon's own native queries and methods, and `close`. The window has no `window.hibi` bridge, so it cannot read documents, change the workspace, or call another addon's native handlers. Shared controls from `../ui` and Hibi's colorscheme work as they do in the main window. Dialogs, toasts, and tooltips from `AddonContext` are not available.
 
 Native handlers called from a window receive that window as the parent for dialogs. Their document actions still apply to the main window, so keep window handlers to work that does not depend on the open document.
+
+## Show Hibi's editor
+
+Render `props.Editor` to give a window Hibi's editor and formatting toolbar for one untitled Markdown note. It reads `defaultValue` once and reports each change through `onChange`; the note exists only in memory until your addon saves it, for example with a native method.
+
+```tsx
+function Capture({ Editor, native, close }: AddonWindowProps) {
+  const text = useRef('')
+  return (
+    <>
+      <Editor label="Note" onChange={(markdown) => (text.current = markdown)} />
+      <button onClick={() => void native.invoke('save', text.current).then(close)}>Save</button>
+    </>
+  )
+}
+```
+
+The first render starts an editor host inside the window:
+
+- The editor uses the same Markdown format, flavors, syntax, and code languages as the main window. To provide them, Hibi starts the enabled addons that an untitled Markdown document needs in the main window. Background addons, command-activated addons, and sideloaded packages never start in a window. Their `start` runs with the same `AddonContext` as in the main window, so registrations made there apply only inside that window. Turning an addon on or off in settings starts or stops it in open and hidden editor windows too.
+- The window has no access to Hibi's desktop bridge. Its `window.hibi` is a local stand-in: edits stay in the window's memory, addon states are read from the main process, workspace lookups return nothing, event listeners never fire, and every other request is refused with "not available in this window". Through this stand-in, code in the window cannot read or change files, the open document, or the workspace, and the window never runs workspace content. Your own native methods remain reachable from the window, so they can still save files, as in the example above.
+- The addons started for the editor run in your window's renderer, as all enabled addons share the main renderer. When the window opens, before any addon code loads, Hibi takes the window's bridge out of the global scope, so other addons cannot call your native handlers through it. This is not a sandbox: code in the same renderer can still reach your component and its props. Treat your window's native methods as available to every addon that runs in the window, just as they are to every addon in the main window.
+- Appearance, colorschemes, cursor style, spell check, line numbers, Markdown marker, and toolbar preferences come from the user's settings, and changes apply to open windows.
 
 ## Open and control a window
 
