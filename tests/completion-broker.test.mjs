@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { CompletionBroker } from '../src/renderer/src/completion-broker.ts'
+import { EditorState } from '@codemirror/state'
+import {
+  CompletionBroker,
+  lazyCompletionProse,
+} from '../src/renderer/src/completion-broker.ts'
 import {
   safeCompletionContext,
   sourceProseAllowed,
@@ -257,6 +261,132 @@ test('range feedback discards changed views, unseen content versions, and stoppe
     broker.emitTypingContext(context)
     assert.deepEqual(events, [], action)
   }
+})
+
+test('no subscribers leave prose getters unread', () => {
+  const broker = new CompletionBroker()
+  let reads = 0
+  const captured = request()
+  Object.defineProperty(captured, 'prose', {
+    enumerable: true,
+    get() {
+      reads++
+      throw new Error('unexpected prose scan')
+    },
+  })
+  broker.request(
+    () => captured,
+    () => captured,
+    () => {},
+  )
+  broker.emitTypingContext(
+    Object.assign(captured, {
+      kind: 'input',
+      change: { from: 2, to: 2, insertedLength: 1 },
+    }),
+  )
+  assert.equal(reads, 0)
+})
+
+test('providers ignoring prose do not scan during publication or acceptance', async () => {
+  const broker = new CompletionBroker()
+  let reads = 0
+  const captured = request()
+  Object.defineProperty(captured, 'prose', {
+    enumerable: true,
+    get() {
+      reads++
+      throw new Error('unexpected prose scan')
+    },
+  })
+  broker.register(owner('legacy'), (input) => {
+    assert.equal(input.before, 'abc')
+    return [item('word')]
+  })
+  const shown = await collect(broker, captured).final
+  assert.equal(shown.items.length, 1)
+  broker.prepareAcceptance(shown.request, shown.items[0])()
+  assert.equal(reads, 0)
+  assert.ok(Object.isFrozen(shown.request))
+})
+
+test('safe prose scan uses captured editor state once across providers', async () => {
+  let state = EditorState.create({
+    doc: 'original words',
+    selection: { anchor: 14 },
+  })
+  const capturedState = state
+  let scans = 0
+  const prose = lazyCompletionProse(() => {
+    scans++
+    return safeCompletionContext(
+      capturedState.doc.toString(),
+      capturedState.selection.main.head,
+    )
+  })
+  const captured = request()
+  Object.defineProperty(captured, 'prose', { enumerable: true, get: prose })
+  const broker = new CompletionBroker()
+  const seen = []
+  for (const id of ['one', 'two'])
+    broker.register(owner(id), (input) => {
+      seen.push(input.prose, input.prose)
+      return []
+    })
+  state = state.update({
+    changes: { from: 0, to: 14, insert: 'changed words' },
+  }).state
+  await collect(broker, captured).final
+  assert.equal(state.doc.toString(), 'changed words')
+  assert.equal(scans, 1)
+  assert.equal(seen[0].before, 'original words')
+  assert.ok(seen.every((value) => value === seen[0]))
+  assert.ok(Object.isFrozen(seen[0]))
+})
+
+test('lazy prose caches excluded and missing context as well', () => {
+  for (const value of [null, undefined]) {
+    let scans = 0
+    const prose = lazyCompletionProse(() => {
+      scans++
+      return value
+    })
+    assert.equal(prose(), value)
+    assert.equal(prose(), value)
+    assert.equal(scans, 1)
+  }
+})
+
+test('typing listeners do not read the unused completion prose property', () => {
+  const broker = new CompletionBroker()
+  const captured = request()
+  Object.defineProperty(captured, 'prose', {
+    enumerable: true,
+    get() {
+      throw new Error('unused prose getter')
+    },
+  })
+  const events = []
+  broker.onTypingContext((event) => events.push(event))
+  broker.emitTypingContext(
+    Object.assign(captured, {
+      kind: 'input',
+      change: { from: 2, to: 2, insertedLength: 1 },
+    }),
+  )
+  assert.equal(events.length, 1)
+  assert.equal(events[0].before, 'abc')
+  assert.equal('prose' in events[0], false)
+})
+
+test('ordinary prose data keeps immutable snapshot semantics', async () => {
+  const broker = new CompletionBroker()
+  broker.register(owner('one'), () => [])
+  const original = { before: 'original', after: 'words' }
+  const shown = await collect(broker, request({ prose: original })).final
+  original.before = 'changed'
+  assert.deepEqual(shown.request.prose, { before: 'original', after: 'words' })
+  assert.ok(Object.isFrozen(shown.request.prose))
 })
 
 test('safe prose is bounded separately from legacy completion context', async () => {

@@ -45,9 +45,41 @@ type Session = {
 const position = (value: number, length: number) =>
   Number.isSafeInteger(value) && value >= 0 && value <= length
 
-function snapshot(request: CompletionRequest | null): CompletionRequest | null {
+/** Capture safe prose once, only when a consumer reads it. */
+export function lazyCompletionProse(capture: () => CompletionRequest['prose']) {
+  let captured = false
+  let prose: CompletionRequest['prose']
+  return () => {
+    if (!captured) {
+      const value = capture()
+      prose =
+        value === undefined
+          ? undefined
+          : value &&
+              typeof value.before === 'string' &&
+              typeof value.after === 'string'
+            ? Object.freeze({
+                before: value.before.slice(-MAX_CONTEXT),
+                after: value.after.slice(0, MAX_CONTEXT),
+              })
+            : null
+      captured = true
+    }
+    return prose
+  }
+}
+
+function snapshot(
+  request: CompletionRequest | TypingContext | null,
+  typing = false,
+): CompletionRequest | null {
   if (!request) return null
-  const { view, selection, trigger, documentLength, contentVersion } = request
+  const { view, selection, documentLength, contentVersion } = request
+  const trigger = typing
+    ? { kind: 'explicit' as const }
+    : 'trigger' in request
+      ? request.trigger
+      : null
   if (
     !view ||
     !selection ||
@@ -73,7 +105,7 @@ function snapshot(request: CompletionRequest | null): CompletionRequest | null {
       (trigger.kind !== 'input' || typeof trigger.character !== 'string'))
   )
     return null
-  return Object.freeze({
+  const bounded: CompletionRequest = {
     view: Object.freeze({
       documentId: view.documentId,
       documentGeneration: view.documentGeneration,
@@ -89,25 +121,20 @@ function snapshot(request: CompletionRequest | null): CompletionRequest | null {
     }),
     before: request.before.slice(-MAX_CONTEXT),
     after: request.after.slice(0, MAX_CONTEXT),
-    ...(request.prose === undefined
-      ? {}
-      : {
-          prose:
-            request.prose &&
-            typeof request.prose.before === 'string' &&
-            typeof request.prose.after === 'string'
-              ? Object.freeze({
-                  before: request.prose.before.slice(-MAX_CONTEXT),
-                  after: request.prose.after.slice(0, MAX_CONTEXT),
-                })
-              : null,
-        }),
     trigger: Object.freeze(
       trigger.kind === 'explicit'
         ? { kind: 'explicit' as const }
         : { kind: 'input' as const, character: trigger.character.slice(0, 8) },
     ),
-  })
+  }
+  if (!typing && 'prose' in request) {
+    const prose = lazyCompletionProse(() => request.prose)
+    // Data properties keep snapshot semantics; accessors defer editor scans.
+    const descriptor = Object.getOwnPropertyDescriptor(request, 'prose')
+    if (descriptor && 'value' in descriptor) prose()
+    Object.defineProperty(bounded, 'prose', { enumerable: true, get: prose })
+  }
+  return Object.freeze(bounded)
 }
 
 function sameView(a: CompletionRequest, b: CompletionRequest) {
@@ -243,7 +270,7 @@ export class CompletionBroker {
 
   emitTypingContext(context: TypingContext, origin = context.kind) {
     if (this.#disposed || !this.#typing.size) return
-    const request = snapshot({ ...context, trigger: { kind: 'explicit' } })
+    const request = snapshot(context, true)
     const { from, to, insertedLength } = context.change
     if (
       !request ||

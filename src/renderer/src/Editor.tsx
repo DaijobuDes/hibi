@@ -67,7 +67,11 @@ import { Button } from '../../ui/Controls'
 import { DocumentNotice } from '../../ui/DocumentNotice'
 import { performanceDiagnostics } from '../../ui/diagnostics'
 import { addonRegistry } from './addon-registry'
-import { completionBroker, otherPopupOpen } from './completion-broker'
+import {
+  completionBroker,
+  lazyCompletionProse,
+  otherPopupOpen,
+} from './completion-broker'
 import {
   completionForKey,
   initialCompletionSelection,
@@ -806,7 +810,8 @@ export function MarkdownEditor({
         return null
       const current = documentRuntime.get(context.tabId)
       const source = documentRuntime.session(context.tabId)?.snapshot()
-      const selection = view.state.selection
+      const state = view.state
+      const selection = state.selection
       if (
         !current ||
         !source ||
@@ -846,42 +851,45 @@ export function MarkdownEditor({
         return null
       const parent = selection.$head.parent
       const offset = selection.$head.parentOffset
-      let from = 0,
-        to = parent.content.size,
-        excluded = false
-      const unsafe = (node: RichNode) =>
-        !node.isText ||
-        node.marks.some(
-          (mark) =>
-            mark.type.spec.code || /link|math|html/i.test(mark.type.name),
-        )
-      if (!rangeOnly && parent.content.size <= 16384)
-        parent.forEach((node, start) => {
-          if (!unsafe(node)) return
-          const end = start + node.nodeSize
-          if (start < offset && offset < end) excluded = true
-          if (end <= offset) from = Math.max(from, end)
-          if (start >= offset) to = Math.min(to, start)
-        })
-      const prose =
-        !rangeOnly &&
-        !excluded &&
-        parent.content.size <= 16384 &&
-        !selection.$head
-          .marks()
-          .some(
+      const prose = lazyCompletionProse(() => {
+        let from = 0,
+          to = parent.content.size,
+          excluded = false
+        const unsafe = (node: RichNode) =>
+          !node.isText ||
+          node.marks.some(
             (mark) =>
               mark.type.spec.code || /link|math|html/i.test(mark.type.name),
-          ) &&
-        !/^\s*\//.test(parent.textBetween(0, offset))
+          )
+        if (!rangeOnly && parent.content.size <= 16384)
+          parent.forEach((node, start) => {
+            if (!unsafe(node)) return
+            const end = start + node.nodeSize
+            if (start < offset && offset < end) excluded = true
+            if (end <= offset) from = Math.max(from, end)
+            if (start >= offset) to = Math.min(to, start)
+          })
+        return !rangeOnly &&
+          !excluded &&
+          parent.content.size <= 16384 &&
+          !selection.$head
+            .marks()
+            .some(
+              (mark) =>
+                mark.type.spec.code || /link|math|html/i.test(mark.type.name),
+            ) &&
+          !/^\s*\//.test(parent.textBetween(0, offset))
           ? safeCompletionContext(parent.textBetween(from, to), offset - from)
           : null
+      })
       return {
         view: target,
-        prose,
+        get prose() {
+          return prose() ?? null
+        },
         contentVersion: current.contentVersion,
         editor: 'rich',
-        documentLength: view.state.doc.content.size,
+        documentLength: state.doc.content.size,
         selection: { anchor: selection.anchor, head: selection.head },
         before: parent.textBetween(Math.max(0, offset - 128), offset),
         after: parent.textBetween(
@@ -1253,7 +1261,7 @@ export function MarkdownEditor({
       )
     }
     const onBeforeInput = (event: InputEvent) => {
-      if (event.isComposing) return
+      if (event.isComposing || !completionBroker.hasTypingListeners()) return
       inputKind = event.inputType.startsWith('delete')
         ? 'delete'
         : [

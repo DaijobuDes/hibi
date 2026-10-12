@@ -72,7 +72,11 @@ import {
 import { Button } from '../../ui/Controls'
 import { DocumentNotice } from '../../ui/DocumentNotice'
 import { codeHighlighter, codeLanguages } from './code-languages'
-import { completionBroker, otherPopupOpen } from './completion-broker'
+import {
+  completionBroker,
+  lazyCompletionProse,
+  otherPopupOpen,
+} from './completion-broker'
 import {
   completionForKey,
   initialCompletionSelection,
@@ -608,10 +612,13 @@ export function SourceEditor({
         kind,
       )
     }
-    const proseAt = (state = editor.state) => {
+    const proseAt = (
+      state: EditorState,
+      markdownMode = parserOptions.current.markdownMode,
+    ) => {
       const pos = state.selection.main.head
       if (
-        !parserOptions.current.markdownMode ||
+        !markdownMode ||
         pos > 16384 ||
         !sourceProseAllowed(state.sliceDoc(0, pos))
       )
@@ -650,7 +657,8 @@ export function SourceEditor({
       const active = documentRuntime.get(document.tabId)
       const target = documentRuntime.captureActiveView()
       const owner = documentRuntime.captureDocument(document.tabId)
-      const selected = editor.state.selection
+      const state = editor.state
+      const selected = state.selection
       if (
         view.current !== editor ||
         !editor.hasFocus ||
@@ -675,18 +683,19 @@ export function SourceEditor({
       const snapshot = bridge.snapshot()
       if (snapshot.version !== active.contentVersion) return null
       const pos = selected.main.head
+      const markdownMode = parserOptions.current.markdownMode
+      const prose = lazyCompletionProse(() => proseAt(state, markdownMode))
       return {
         view: target,
         contentVersion: snapshot.version,
         editor: 'source',
-        documentLength: editor.state.doc.length,
+        documentLength: state.doc.length,
         selection: { anchor: selected.main.anchor, head: pos },
-        prose: proseAt(),
-        before: editor.state.sliceDoc(Math.max(0, pos - 256), pos),
-        after: editor.state.sliceDoc(
-          pos,
-          Math.min(editor.state.doc.length, pos + 256),
-        ),
+        get prose() {
+          return prose() ?? null
+        },
+        before: state.sliceDoc(Math.max(0, pos - 256), pos),
+        after: state.sliceDoc(pos, Math.min(state.doc.length, pos + 256)),
         trigger,
       }
     }
