@@ -2,7 +2,7 @@
 
 # MethodOf
 
-Type alias · Supporting type · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L236)
+Type alias · Supporting type · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L238)
 
 ```typescript
 type MethodOf<T, K extends keyof T> = Extract<T[K], Method>

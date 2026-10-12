@@ -204,6 +204,9 @@
   "afbe92392457": [
     "src/renderer/src/settings-categories.ts"
   ],
+  "c11b83517a72": [
+    "src/addons/ui-preview/index.tsx"
+  ],
   "af3185c7197e": [
     "src/main/index.ts",
     "src/renderer/src/Introduction.tsx",
@@ -896,6 +899,7 @@
     "src/addons/mcp-server/Settings.tsx"
   ],
   "7d9eb7acb13e": [
+    "src/addons/ui-preview/index.tsx",
     "src/renderer/src/CommandPalette.tsx",
     "src/ui/DialogProvider.tsx"
   ],
@@ -3543,6 +3547,9 @@
   "b52d8596aa3f": [
     "src/renderer/src/addons.ts"
   ],
+  "53bd3f8c9ac4": [
+    "src/addons/ui-preview/index.tsx"
+  ],
   "29c10407db3a": [
     "src/renderer/src/AddonSettings.tsx"
   ],
@@ -5286,6 +5293,9 @@
   "b29376d8e035": [
     "src/main/links.ts"
   ],
+  "6db0ac5a60ac": [
+    "src/main/addon-windows.ts"
+  ],
   "d560cd1db8eb": [
     "src/renderer/src/addon-global-shortcuts.ts"
   ],
@@ -5392,11 +5402,26 @@
   "f59f73db914f": [
     "src/renderer/src/settings-pages.ts"
   ],
+  "6783f24ab2c9": [
+    "src/main/addon-windows.ts"
+  ],
   "5eebb144c45a": [
     "src/main/sideload.ts"
   ],
   "2d715c5a75aa": [
     "src/main/addons.ts"
+  ],
+  "b442d72f5b4f": [
+    "src/main/addons.ts"
+  ],
+  "6f81d1a9cd1d": [
+    "src/main/addon-windows.ts"
+  ],
+  "b4992c4271a6": [
+    "src/renderer/src/addon-window.tsx"
+  ],
+  "f469169d3df0": [
+    "src/main/addon-windows.ts"
   ],
   "a7742e0a996e": [
     "src/renderer/src/addon-registry.ts"
@@ -5632,6 +5657,9 @@
   ],
   "20cfcb2cec56": [
     "src/main/links.ts"
+  ],
+  "c04f0fb5e9da": [
+    "src/addons/ui-preview/index.tsx"
   ],
   "78c4a3ab448e": [
     "src/main/workspace.ts"
@@ -6331,6 +6359,7 @@
     "src/addons/keybeats/manifest.ts"
   ],
   "55ea09e5715d": [
+    "src/main/addon-windows.ts",
     "src/preload/analysis.ts"
   ],
   "a6375ee99716": [
@@ -6417,6 +6446,7 @@
     "src/main/local-diagnostics/sink.ts"
   ],
   "7a30651bca5a": [
+    "src/main/addon-windows.ts",
     "src/main/index.ts"
   ],
   "4c94485e0c21": [

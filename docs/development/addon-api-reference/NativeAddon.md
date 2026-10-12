@@ -2,7 +2,7 @@
 
 # NativeAddon
 
-Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L939)
+Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L967)
 
 Native handlers compiled with Hibi. Sideloaded renderer packages cannot register these handlers.
 
@@ -20,6 +20,13 @@ type NativeAddon = {
     warnings?: string[]
   }>
   stop?: () => void
+  /** Run in the main process when this addon's global shortcut fires, instead of showing the main window. Keys are local shortcut IDs. */
+  globalShortcuts?: Record<
+    string,
+    (context: {
+      windows: { open: (options: AddonWindowOptions) => Promise<void> }
+    }) => void | Promise<void>
+  >
   /** Trusted read-only handlers. No user-file changes or dialogs; private compilation caches are allowed. */
   queries?: Record<
     string,
@@ -39,6 +46,7 @@ type NativeAddon = {
 **Properties**
 
 - [id](#id)
+- [globalShortcuts](#globalshortcuts)
 - [queries](#queries)
 - [methods](#methods)
 
@@ -51,15 +59,32 @@ type NativeAddon = {
 
 ### id
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L940)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L968)
 
 ```typescript
 id: string
 ```
 
+### globalShortcuts
+
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L978)
+
+Run in the main process when this addon's global shortcut fires, instead of showing the main window. Keys are local shortcut IDs.
+
+```typescript
+globalShortcuts?: Record<
+    string,
+    (context: {
+      windows: { open: (options: AddonWindowOptions) => Promise<void> }
+    }) => void | Promise<void>
+  >
+```
+
+Related: [AddonWindowOptions](AddonWindowOptions.md).
+
 ### queries
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L950)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L985)
 
 Trusted read-only handlers. No user-file changes or dialogs; private compilation caches are allowed.
 
@@ -74,7 +99,7 @@ Related: [NativeAddonContext](NativeAddonContext.md).
 
 ### methods
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L954)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L989)
 
 ```typescript
 methods: Record<
@@ -89,7 +114,7 @@ Related: [NativeAddonContext](NativeAddonContext.md).
 
 ### import
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L942)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L970)
 
 Convert a selected export in memory. Core validates paths and writes a new destination folder.
 
@@ -114,7 +139,7 @@ Related: [ImportFile](ImportFile.md).
 
 ### stop
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L948)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L976)
 
 ```typescript
 stop?: () => void
@@ -124,4 +149,4 @@ stop?: () => void
 
 ## Related types
 
-[ImportFile](ImportFile.md), [NativeAddonContext](NativeAddonContext.md).
+[ImportFile](ImportFile.md), [AddonWindowOptions](AddonWindowOptions.md), [NativeAddonContext](NativeAddonContext.md).

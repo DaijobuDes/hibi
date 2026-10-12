@@ -2,7 +2,7 @@
 
 # Addon
 
-Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L897)
+Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L923)
 
 A renderer addon and its lifecycle hooks. Use defineAddon to check this contract in source addons.
 
@@ -18,6 +18,8 @@ type Addon = {
   stop?: () => void
   /** Optional settings content. The host supplies its heading and metadata. */
   Settings?: ComponentType
+  /** Window content by local window ID. Hibi loads this module in the window's own renderer and never calls `start` there. */
+  windows?: Record<string, ComponentType<AddonWindowProps>>
 }
 ```
 
@@ -30,6 +32,7 @@ type Addon = {
 - [manifest](#manifest)
 - [flavors](#flavors)
 - [Settings](#settings)
+- [windows](#windows)
 
 **Methods**
 
@@ -40,7 +43,7 @@ type Addon = {
 
 ### manifest
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L898)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L924)
 
 ```typescript
 manifest: AddonManifest
@@ -50,7 +53,7 @@ Related: [AddonManifest](AddonManifest.md).
 
 ### flavors
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L901)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L927)
 
 Lightweight descriptors remain discoverable while a bundled addon is disabled.
 
@@ -62,7 +65,7 @@ Related: [MarkdownFlavor](MarkdownFlavor.md).
 
 ### Settings
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L904)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L930)
 
 Optional settings content. The host supplies its heading and metadata.
 
@@ -70,11 +73,23 @@ Optional settings content. The host supplies its heading and metadata.
 Settings?: ComponentType
 ```
 
+### windows
+
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L932)
+
+Window content by local window ID. Hibi loads this module in the window's own renderer and never calls `start` there.
+
+```typescript
+windows?: Record<string, ComponentType<AddonWindowProps>>
+```
+
+Related: [AddonWindowProps](AddonWindowProps.md).
+
 ## Methods
 
 ### start
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L899)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L925)
 
 ```typescript
 start: (context: AddonContext) => void | Promise<void>
@@ -92,7 +107,7 @@ Related: [AddonContext](AddonContext.md).
 
 ### stop
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L902)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L928)
 
 ```typescript
 stop?: () => void
@@ -102,4 +117,4 @@ stop?: () => void
 
 ## Related types
 
-[AddonManifest](AddonManifest.md), [AddonContext](AddonContext.md), [MarkdownFlavor](MarkdownFlavor.md).
+[AddonManifest](AddonManifest.md), [AddonContext](AddonContext.md), [MarkdownFlavor](MarkdownFlavor.md), [AddonWindowProps](AddonWindowProps.md).

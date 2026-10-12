@@ -10,6 +10,7 @@ import {
   ADDON_STORAGE_CHANNELS,
   type AddonStorageChange,
 } from '../shared/addon-storage'
+import { ADDON_WINDOW_CHANNELS } from '../shared/addon-windows'
 import { ANALYSIS_CHANNELS } from '../shared/analysis'
 import { BACKGROUND_CHANNELS } from '../shared/background'
 import { APPEARANCE_CHANNEL } from '../shared/colorschemes'
@@ -191,6 +192,22 @@ if (process.isMainFrame) {
       ),
     unregisterGlobalShortcut: (id, token) =>
       ipcRenderer.invoke(GLOBAL_SHORTCUT_CHANNELS.unregister, id, token),
+    openAddonWindow: (addonId, options) =>
+      ipcRenderer.invoke(ADDON_WINDOW_CHANNELS.open, addonId, options),
+    focusAddonWindow: (addonId, id) =>
+      ipcRenderer.invoke(ADDON_WINDOW_CHANNELS.focus, addonId, id),
+    closeAddonWindow: (addonId, id) =>
+      ipcRenderer.invoke(ADDON_WINDOW_CHANNELS.close, addonId, id),
+    onAddonWindowClosed: (callback) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        addonId: string,
+        id: string,
+      ) => callback(addonId, id)
+      ipcRenderer.on(ADDON_WINDOW_CHANNELS.closed, listener)
+      return () =>
+        ipcRenderer.removeListener(ADDON_WINDOW_CHANNELS.closed, listener)
+    },
     onGlobalShortcut: (callback) => {
       const listener = (
         _event: Electron.IpcRendererEvent,

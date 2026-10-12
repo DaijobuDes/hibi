@@ -155,6 +155,7 @@ type Environment = Omit<
   | 'storage'
   | 'dependencies'
   | 'globalShortcuts'
+  | 'windows'
   | 'addons'
   | 'exports'
 > & {
@@ -1098,6 +1099,32 @@ export function useAddons(
             },
             dialogs: dialogScope.api,
             globalShortcuts: { register: shortcutScope.register },
+            windows: {
+              async open(options) {
+                if (disposed) throw new Error('This addon has stopped.')
+                await window.hibi.openAddonWindow(id, options)
+                const local = options.id
+                return {
+                  focus: () => window.hibi.focusAddonWindow(id, local),
+                  close: () => window.hibi.closeAddonWindow(id, local),
+                  onClosed(listener) {
+                    const off = window.hibi.onAddonWindowClosed(
+                      (addonId, closed) => {
+                        if (addonId !== id || closed !== local) return
+                        remove()
+                        listener()
+                      },
+                    )
+                    const remove = () => {
+                      off()
+                      cleanups.delete(remove)
+                    }
+                    cleanups.add(remove)
+                    return remove
+                  },
+                }
+              },
+            },
             views: { register: registerView, notify: notificationScope.notify },
             analysis: {
               async run(projection) {

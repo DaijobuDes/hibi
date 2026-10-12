@@ -39,6 +39,25 @@ function saveError(status: string) {
 
 export default defineAddon({
   manifest,
+  windows: {
+    preview: ({ close }) => (
+      <section
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'flex-start',
+          gap: 'var(--space-3)',
+          padding: 'var(--space-4)',
+        }}
+      >
+        <p style={{ margin: 0 }}>
+          This window renders a component from the UI preview addon in its own
+          renderer, without access to documents or files.
+        </p>
+        <Button onClick={close}>Close</Button>
+      </section>
+    ),
+  },
   async start(context) {
     const storage = await context.storage.global<unknown>('custom-css', 1)
     const snapshot = storage.snapshot()
@@ -380,6 +399,19 @@ export default defineAddon({
       keywords: 'components controls inspect theme css',
       run: () => {
         view.open({ id: 'preview' })
+      },
+    })
+    context.commands.register({
+      id: 'open-window',
+      label: 'Open addon window preview',
+      keywords: 'addon window panel',
+      run: async () => {
+        await context.windows.open({
+          id: 'preview',
+          title: 'Addon window preview',
+          titleBar: 'hibi',
+          size: { width: 480, height: 320 },
+        })
       },
     })
     context.commands.register({

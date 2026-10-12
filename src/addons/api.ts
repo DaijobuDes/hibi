@@ -2,6 +2,7 @@ import type { Extension } from '@codemirror/state'
 import type { AnyExtension, Editor } from '@tiptap/core'
 import type { MarkedExtension } from 'marked'
 import type { ComponentType, CSSProperties } from 'react'
+import type { AddonWindowOptions } from '../shared/addon-windows'
 import type {
   Colorscheme,
   ColorschemeInput,
@@ -15,6 +16,7 @@ import type {
 } from '../shared/markdown-syntax'
 import type { CodeLanguage } from '../shared/syntax'
 
+export type { AddonWindowOptions } from '../shared/addon-windows'
 export type {
   AddonDependency,
   DependencyApi,
@@ -617,8 +619,32 @@ export type SettingsApi = {
   register: (page: SettingsPage) => () => void
 }
 
+/** Controls a window opened with `context.windows.open`. */
+export type AddonWindowHandle = {
+  focus: () => Promise<void>
+  close: () => Promise<void>
+  /** Called once when the window closes, including when the user closes it. */
+  onClosed: (listener: () => void) => () => void
+}
+/** Props for a component in `Addon.windows`. It runs in a separate renderer with only these APIs. */
+export type AddonWindowProps = {
+  /** The JSON input passed to `windows.open`. */
+  input: unknown
+  /** This addon's native handlers, with the same checks as `context.native`. */
+  native: {
+    query: <T = unknown>(method: string, input?: unknown) => Promise<T>
+    invoke: <T = unknown>(method: string, input?: unknown) => Promise<T>
+  }
+  /** Close this window. */
+  close: () => void
+}
+
 /** APIs available while your renderer addon is enabled. Registrations are removed when it stops. */
 export type AddonContext = {
+  /** Separate desktop windows that render a component from `Addon.windows`. Built-in and local source addons only. */
+  windows: {
+    open: (options: AddonWindowOptions) => Promise<AddonWindowHandle>
+  }
   /** Same-renderer API exchange for trusted addons; declarations are not a security boundary. */
   addons: AddonAccessApi
   exports: AddonExportsApi
@@ -902,6 +928,8 @@ export type Addon = {
   stop?: () => void
   /** Optional settings content. The host supplies its heading and metadata. */
   Settings?: ComponentType
+  /** Window content by local window ID. Hibi loads this module in the window's own renderer and never calls `start` there. */
+  windows?: Record<string, ComponentType<AddonWindowProps>>
 }
 
 /** Native modules are trusted application code, never loaded from a workspace. */
@@ -946,6 +974,13 @@ export type NativeAddon = {
     warnings?: string[]
   }>
   stop?: () => void
+  /** Run in the main process when this addon's global shortcut fires, instead of showing the main window. Keys are local shortcut IDs. */
+  globalShortcuts?: Record<
+    string,
+    (context: {
+      windows: { open: (options: AddonWindowOptions) => Promise<void> }
+    }) => void | Promise<void>
+  >
   /** Trusted read-only handlers. No user-file changes or dialogs; private compilation caches are allowed. */
   queries?: Record<
     string,
