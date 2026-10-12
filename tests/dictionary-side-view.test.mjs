@@ -369,22 +369,98 @@ test('side view follows the caret offline, replaces in one undo step, and pack s
     exact: true,
   })
   const options = page.locator('.cm-tooltip-autocomplete [role="option"]')
+  // The editor's own state, so focus, caret, and text are read before any flush.
+  await page.evaluate(() => {
+    window.sourceView = () =>
+      document.querySelector('.cm-content').cmTile.root.view
+  })
+  const sourceText = () =>
+    page.evaluate(() => window.sourceView().state.doc.toString())
   const typeAtEnd = async (text) => {
     await source.focus()
     await source.press('ControlOrMeta+End')
+    await waitForAsync(page, async () => {
+      const { hasFocus, state } = window.sourceView()
+      return hasFocus && state.selection.main.head === state.doc.length
+    })
     await page.keyboard.type(text)
+    await waitForAsync(
+      page,
+      (text) => window.sourceView().state.doc.toString().endsWith(text),
+      text,
+    )
+  }
+  const happy = async () => {
+    try {
+      await options.filter({ hasText: /^happy(English)?$/ }).waitFor()
+    } catch (error) {
+      const state = await page.evaluate(() => {
+        const { hasFocus, state } = window.sourceView()
+        return {
+          hasFocus,
+          windowFocused: document.hasFocus(),
+          active: document.activeElement?.className,
+          head: state.selection.main.head,
+          tail: state.doc.toString().slice(-12),
+        }
+      })
+      throw new Error(`${error.message}\n${JSON.stringify(state)}`)
+    }
   }
   await typeAtEnd(' hap')
-  await options.filter({ hasText: /^happy(English)?$/ }).waitFor()
+  await happy()
   await page.keyboard.press('Tab')
   await waitForAsync(page, async () =>
     (await window.hibi.getDocument()).markdown.endsWith(' happy hap\t'),
   )
   await page.keyboard.press('Backspace')
+  await waitForAsync(
+    page,
+    () =>
+      window.sourceView().state.doc.toString().endsWith(' happy hap') &&
+      !document.querySelector('.cm-tooltip-autocomplete'),
+  )
   await toggle('autocomplete-tab-accepts', { name: 'Markdown editor' })
+  // CodeMirror declines Tab and Enter for its `interactionDelay` (75 ms by
+  // default, which SourceEditor keeps) after a list opens. Shifting the page
+  // clock around one key press puts it inside or past that delay without waiting.
+  const pressWhenListIs = async (age, key) => {
+    await page.evaluate(
+      (shift) => {
+        const now = Date.now
+        Date.now = () => now() + shift
+        window.restoreNow = () => {
+          Date.now = now
+        }
+      },
+      age === 'new' ? -60000 : 60000,
+    )
+    try {
+      await page.keyboard.press(key)
+    } finally {
+      await page.evaluate(() => window.restoreNow())
+    }
+  }
+  // A Tab the just-opened list declines still indents; it is never lost.
   await typeAtEnd('p')
-  await options.filter({ hasText: /^happy(English)?$/ }).waitFor()
-  await page.keyboard.press('Tab')
+  await happy()
+  const typed = await sourceText()
+  await pressWhenListIs('new', 'Tab')
+  await waitForAsync(
+    page,
+    (typed) =>
+      window.sourceView().state.doc.toString() === `${typed}\t` &&
+      !document.querySelector('.cm-tooltip-autocomplete'),
+    typed,
+  )
+  await page.keyboard.press('Backspace')
+  await page.keyboard.press('Backspace')
+  await waitForAsync(page, () =>
+    window.sourceView().state.doc.toString().endsWith(' happy hap'),
+  )
+  await typeAtEnd('p')
+  await happy()
+  await pressWhenListIs('ready', 'Tab')
   await waitForAsync(page, async () =>
     (await window.hibi.getDocument()).markdown.endsWith(' happy happy'),
   )
