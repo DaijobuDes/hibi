@@ -39,6 +39,9 @@ function saveError(status: string) {
 
 export default defineAddon({
   manifest,
+  windows: {
+    editor: ({ Editor }) => <Editor label="Preview note" />,
+  },
   async start(context) {
     const storage = await context.storage.global<unknown>('custom-css', 1)
     const snapshot = storage.snapshot()
@@ -380,6 +383,19 @@ export default defineAddon({
       keywords: 'components controls inspect theme css',
       run: () => {
         view.open({ id: 'preview' })
+      },
+    })
+    context.commands.register({
+      id: 'open-editor-window',
+      label: 'Open editor window preview',
+      keywords: 'addon window editor toolbar',
+      run: async () => {
+        await context.windows.open({
+          id: 'editor',
+          title: 'Editor preview',
+          titleBar: 'hibi',
+          size: { width: 640, height: 480 },
+        })
       },
     })
     context.commands.register({
