@@ -50,6 +50,14 @@ test('rich completions replace exact plain text in one undo step and retract on 
           to: request.selection.head,
         }]
       }, { onAccepted(request, item) { window.completionAccepted.push({request, item}) } })
+      window.completionFallback = false
+      const stopFallback = await context.editor.registerCompletionProvider((request) => {
+        if (request.editor !== 'rich') return []
+        window.completionCalls++
+        if (!window.completionFallback || !request.before.endsWith('hel')) return []
+        return [{ label: 'help', insertText: 'help', from: request.selection.head - 3, to: request.selection.head }]
+      })
+      window.stopPrimaryCompletionProbe = dispose
       const stopActions = await context.editor.registerContextActionProvider((request) => [{
         label: 'Probe action',
         edit: { from: request.selection.head, to: request.selection.head, insertText: '!' },
@@ -57,6 +65,7 @@ test('rich completions replace exact plain text in one undo step and retract on 
       window.stopCompletionProbe = () => {
         stopActions()
         dispose()
+        stopFallback()
       }
       window.completionProbeReady = true
     },
@@ -416,8 +425,28 @@ test('rich completions replace exact plain text in one undo step and retract on 
     acceptedCount,
   )
   await reset('hel')
+  await page.evaluate(() => {
+    window.completionFallback = true
+  })
   await page.keyboard.press('Control+Space')
-  await menu.getByRole('option', { name: /hello/ }).waitFor()
+  const primary = menu.getByRole('option', { name: /hello/ })
+  const fallback = menu.getByRole('option', { name: 'help' })
+  await primary.waitFor()
+  await fallback.waitFor()
+  await primary.hover()
+  assert.equal(await primary.getAttribute('aria-selected'), 'true')
+  await page.evaluate(() => window.stopPrimaryCompletionProbe())
+  await primary.waitFor({ state: 'hidden' })
+  assert.equal(await fallback.getAttribute('aria-selected'), 'true')
+  await page.keyboard.press('Enter')
+  await menu.waitFor({ state: 'hidden' })
+  await waitForAsync(
+    page,
+    async () => (await window.hibi.getDocument()).markdown.trim() === 'help',
+  )
+  await reset('hel')
+  await page.keyboard.press('Control+Space')
+  await fallback.waitFor()
   await page.evaluate(() => window.stopCompletionProbe())
   await menu.waitFor({ state: 'hidden' })
   const calls = await page.evaluate(() => window.completionCalls)

@@ -1078,11 +1078,9 @@ export function MarkdownEditor({
         return
       }
       const highlighted = visible?.items[selected]
-      selected = highlighted
-        ? items.indexOf(highlighted)
-        : visible
-          ? -1
-          : initialCompletionSelection(items)
+      selected = highlighted ? items.indexOf(highlighted) : -1
+      if (selected < 0 && (highlighted || !visible))
+        selected = initialCompletionSelection(items)
       visible = { request: update.request, items }
       menu.replaceChildren(
         ...items.map((item, index) => {
