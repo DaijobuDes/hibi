@@ -397,12 +397,12 @@ test('quick note captures to a chosen folder without replacing files', {
     .getByLabel('Workspace', { exact: true })
     .selectOption('')
   await page.getByRole('button', { name: 'Save settings' }).click()
-  const pinnedDialog = await openCapture(app, page)
+  const currentDialog = await openCapture(app, page)
   const workspacePath = await realpath(workspace)
   await until(
-    async () => (await destinationTooltip(pinnedDialog)) === workspacePath,
+    async () => (await destinationTooltip(currentDialog)) === workspacePath,
   )
-  await writeNote(pinnedDialog, '# Pinned', 'Pinned to original workspace')
+  await writeNote(currentDialog, '# Current', 'Saved where the settings point')
   await app.evaluate(({ dialog }, destination) => {
     dialog.showOpenDialog = async () => ({
       canceled: false,
@@ -411,12 +411,13 @@ test('quick note captures to a chosen folder without replacing files', {
   }, other)
   const switched = await page.evaluate(() => window.hibi.openWorkspace())
   assert.equal(switched?.id, otherId)
-  await saveCapture(app, pinnedDialog, 'Pinned.md')
+  // A note saves to the destination set when it is saved: now the other workspace.
+  await saveCapture(app, currentDialog, 'Current.md')
   assert.equal(
-    await readFile(join(workspace, 'Pinned.md'), 'utf8'),
-    '# Pinned\n\nPinned to original workspace',
+    await readFile(join(other, 'Current.md'), 'utf8'),
+    '# Current\n\nSaved where the settings point',
   )
-  await assert.rejects(readFile(join(other, 'Pinned.md'), 'utf8'), {
+  await assert.rejects(readFile(join(workspace, 'Current.md'), 'utf8'), {
     code: 'ENOENT',
   })
 
@@ -812,47 +813,6 @@ test('the unsaved note survives a crash', {
   assert.equal(await noteText(again), 'survive crash')
 })
 
-test('each note keeps the destination it was started with', {
-  timeout: 60000,
-}, async (t) => {
-  const h = await harness(t)
-  const other = join(h.root, 'other')
-  await mkdir(other)
-  const { app, page } = await h.launch()
-  let capture = await openCapture(app, page)
-  await writeNote(capture, 'first')
-  await saveCapture(app, capture, 'Quick note.md')
-  assert.equal(
-    await readFile(join(h.workspace, 'Quick note.md'), 'utf8'),
-    'first',
-  )
-  // A fresh note follows the workspace that is current when it is started.
-  await app.evaluate(({ dialog }, destination) => {
-    dialog.showOpenDialog = async () => ({
-      canceled: false,
-      filePaths: [destination],
-    })
-  }, other)
-  await page.evaluate(() => window.hibi.openWorkspace())
-  capture = await openCapture(app, page)
-  await writeNote(capture, 'second')
-  await saveCapture(app, capture, 'Quick note.md')
-  assert.equal(await readFile(join(other, 'Quick note.md'), 'utf8'), 'second')
-  // A started note is not moved by later settings changes.
-  capture = await openCapture(app, page)
-  await writeNote(capture, 'third')
-  await until(async () => (await readDraft(h.profile))?.destination)
-  const originalPath = await realpath(h.workspace)
-  const original = (
-    await page.evaluate(() => window.hibi.getRecentWorkspaces())
-  ).find((item) => item.path === originalPath)
-  await page.evaluate((workspaceId) => {
-    localStorage.setItem('hibi:quick-note', JSON.stringify({ workspaceId }))
-  }, original.id)
-  await saveCapture(app, capture, 'Quick note 2.md')
-  assert.equal(await readFile(join(other, 'Quick note 2.md'), 'utf8'), 'third')
-})
-
 test('escape closes editor popups before the capture window', {
   timeout: 45000,
 }, async (t) => {
@@ -1006,82 +966,9 @@ test('an unreadable draft is kept aside and an older one is recovered', {
   session = await older.launch()
   capture = await openCapture(session.app, session.page)
   assert.equal(await noteText(capture), 'recover me')
-  await until(async () => (await readDraft(older.profile))?.destination)
-  assert.equal((await readDraft(older.profile)).markdown, 'recover me')
-})
-
-test('a discarded or kept-over note does not keep the old destination', {
-  timeout: 60000,
-}, async (t) => {
-  const h = await harness(t)
-  await mkdir(join(h.workspace, 'Inbox'))
-  const { app, page } = await h.launch()
-  const setFolder = (folder) =>
-    page.evaluate((folder) => {
-      localStorage.setItem('hibi:quick-note', JSON.stringify({ folder }))
-    }, folder)
-  // Typing pins the root; deleting everything discards that note.
-  let capture = await openCapture(app, page)
-  await writeNote(capture, 'temporary')
-  await until(async () => (await readDraft(h.profile))?.destination)
-  await writeNote(capture, '')
-  await until(async () => !(await readDraft(h.profile)))
-  const before = await captureHides(app)
-  await capture.keyboard.press('Escape')
-  await hidden(app, before)
-  await setFolder('Inbox')
-  capture = await openCapture(app, page)
-  await writeNote(capture, 'fresh')
-  await saveCapture(app, capture, 'Quick note.md')
-  assert.equal(
-    await readFile(join(h.workspace, 'Inbox', 'Quick note.md'), 'utf8'),
-    'fresh',
-  )
-  // Text kept after a stalled save is a new note with its own destination.
-  await setFolder('')
-  capture = await openCapture(app, page)
-  await writeNote(capture, 'alpha')
-  await until(async () => (await readDraft(h.profile))?.destination)
-  await pause(app, 'quick-note-save')
-  await capture.keyboard.press('ControlOrMeta+Enter')
-  await capture.getByRole('button', { name: 'Saving…' }).waitFor()
-  await capture.keyboard.press('Enter')
-  await capture.keyboard.type('beta')
-  await setFolder('Inbox')
-  await resume(app, 'quick-note-save')
-  await until(async () => (await noteText(capture)) === 'beta')
+  // The editor's first autosave keeps the recovered text.
   await until(
-    async () => (await readDraft(h.profile))?.destination?.folder === 'Inbox',
-  )
-  await saveCapture(app, capture, 'Quick note 2.md')
-  assert.equal(
-    await readFile(join(h.workspace, 'Quick note.md'), 'utf8'),
-    'alpha',
-  )
-  assert.equal(
-    await readFile(join(h.workspace, 'Inbox', 'Quick note 2.md'), 'utf8'),
-    'beta',
-  )
-})
-
-test('a draft from the previous version is imported once', {
-  timeout: 45000,
-}, async (t) => {
-  const h = await harness(t)
-  const { app, page } = await h.launch()
-  await page.evaluate(() => {
-    localStorage.setItem(
-      'hibi:quick-note-draft',
-      JSON.stringify({ markdown: 'legacy note' }),
-    )
-  })
-  const capture = await openCapture(app, page)
-  assert.equal(await noteText(capture), 'legacy note')
-  await until(
-    async () => (await readDraft(h.profile))?.markdown === 'legacy note',
-  )
-  await until(async () =>
-    page.evaluate(() => localStorage.getItem('hibi:quick-note-draft') === null),
+    async () => (await readDraft(older.profile))?.markdown === 'recover me',
   )
 })
 
@@ -1117,4 +1004,119 @@ test('frontmatter does not become the file name', {
     .getByText('Saved Real heading.md.')
     .waitFor()
   await hidden(app, before)
+})
+
+test('notes save to the destination currently set', {
+  timeout: 60000,
+}, async (t) => {
+  const h = await harness(t)
+  await mkdir(join(h.workspace, 'Inbox'))
+  const other = join(h.root, 'other')
+  await mkdir(other)
+  const { app, page } = await h.launch()
+  const setFolder = (folder) =>
+    page.evaluate((folder) => {
+      localStorage.setItem('hibi:quick-note', JSON.stringify({ folder }))
+    }, folder)
+  const capture = await openCapture(app, page)
+  await capture.getByText('workspace', { exact: true }).waitFor()
+  await writeNote(capture, 'first')
+  // The footer follows a settings change while the note is open, and so does saving.
+  await setFolder('Inbox')
+  await capture.getByText('workspace › Inbox', { exact: true }).waitFor()
+  await saveCapture(app, capture, 'Quick note.md')
+  assert.equal(
+    await readFile(join(h.workspace, 'Inbox', 'Quick note.md'), 'utf8'),
+    'first',
+  )
+  // A new note after switching workspaces saves into the new one.
+  await setFolder('')
+  await app.evaluate(({ dialog }, destination) => {
+    dialog.showOpenDialog = async () => ({
+      canceled: false,
+      filePaths: [destination],
+    })
+  }, other)
+  await page.evaluate(() => window.hibi.openWorkspace())
+  const next = await openCapture(app, page)
+  await writeNote(next, 'second')
+  await saveCapture(app, next, 'Quick note.md')
+  assert.equal(await readFile(join(other, 'Quick note.md'), 'utf8'), 'second')
+})
+
+test('a refused draft write warns over the recovery notice and retries', {
+  timeout: 60000,
+}, async (t) => {
+  const original = '{"markdown": "half'
+  const h = await harness(t, { draftFile: original })
+  const { app, page } = await h.launch()
+  // Moving the unreadable draft aside fails until the test lets it through.
+  await app.evaluate(() => {
+    const blocked = Promise.reject(new Error('blocked'))
+    blocked.catch(() => {})
+    globalThis.hibiTestPauses = { 'quick-note-keep-aside': blocked }
+  })
+  const capture = await openCapture(app, page)
+  await capture
+    .getByRole('alert')
+    .getByText(/left the file unchanged/)
+    .waitFor()
+  await writeNote(capture, 'newer')
+  const warning = capture.getByText(/cannot keep this note right now/)
+  await warning.waitFor()
+  assert.equal(
+    await readFile(join(h.profile, 'quick-note-draft.json'), 'utf8'),
+    original,
+  )
+  await app.evaluate(() => {
+    delete globalThis.hibiTestPauses['quick-note-keep-aside']
+  })
+  await warning.waitFor({ state: 'hidden' })
+  await until(async () => (await readDraft(h.profile))?.markdown === 'newer')
+  const kept = (await readdir(h.profile)).find((name) =>
+    name.startsWith('quick-note-draft.unreadable-'),
+  )
+  assert.equal(await readFile(join(h.profile, kept), 'utf8'), original)
+})
+
+test('a draft from the previous version is imported once', {
+  timeout: 60000,
+}, async (t) => {
+  const h = await harness(t)
+  // The first writes fail, so the import must survive until one succeeds.
+  const blocker = join(h.profile, 'quick-note-draft.json.tmp')
+  await mkdir(blocker)
+  const first = await h.launch()
+  await first.page.evaluate(() => {
+    localStorage.setItem(
+      'hibi:quick-note-draft',
+      JSON.stringify({ markdown: 'legacy note' }),
+    )
+  })
+  const capture = await openCapture(first.app, first.page)
+  assert.equal(await noteText(capture), 'legacy note')
+  const warning = capture.getByText(/cannot keep this note right now/)
+  await warning.waitFor()
+  assert.notEqual(
+    await first.page.evaluate(() =>
+      localStorage.getItem('hibi:quick-note-draft'),
+    ),
+    null,
+  )
+  await rm(blocker, { recursive: true })
+  await warning.waitFor({ state: 'hidden' })
+  await until(
+    async () => (await readDraft(h.profile))?.markdown === 'legacy note',
+  )
+  await until(() =>
+    first.page.evaluate(
+      () => localStorage.getItem('hibi:quick-note-draft') === null,
+    ),
+  )
+  await saveCapture(first.app, capture, 'Quick note.md')
+  await first.app.close()
+  // After the note is saved, a restart does not bring the old text back.
+  const second = await h.launch()
+  const again = await openCapture(second.app, second.page)
+  assert.equal(await noteText(again), '')
 })
