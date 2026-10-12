@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 import test from 'node:test'
+import { setTimeout } from 'node:timers/promises'
 import { mathFlavor } from '../src/addons/math/syntax.ts'
 import { electron, waitForDocumentEditor } from './electron.mjs'
 import { clickMenu, pressShortcut, splitTab } from './keyboard.mjs'
@@ -307,8 +308,14 @@ test('math source bytes survive source and visual view round trips and saving', 
     (await page.evaluate(() => window.hibi.getDocument())).markdown,
     original,
   )
+  const written = (await stat(file)).mtimeMs
   await pressShortcut(app, `${mod}+s`)
-  await waitForAsync(page, async () => !(await window.hibi.getDocument()).dirty)
+  // The document is already clean: wait for the write, then for the editor to
+  // leave the save's busy state so the math click is not ignored.
+  while ((await stat(file)).mtimeMs === written) await setTimeout(30)
+  await page
+    .locator('.app[aria-busy="false"] .tiptap[contenteditable="true"]')
+    .waitFor()
   assert.equal(await readFile(file, 'utf8'), original)
 
   await rich.locator('[data-type="block-math"]').first().click()
