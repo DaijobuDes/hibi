@@ -370,8 +370,7 @@ export async function inventoryAddonDirectory(
   const register = pathRegistry()
   const entries: AddonInventory['entries'] = []
   let count = 0,
-    declared = 0,
-    actual = 0
+    declared = 0
 
   async function checked(path: string, folder: boolean, expected?: Stats) {
     signal?.throwIfAborted()
@@ -408,17 +407,13 @@ export async function inventoryAddonDirectory(
     }
   }
 
-  async function read(path: string, limitManifest = true): Promise<Buffer> {
+  async function read(path: string): Promise<Buffer> {
     const expected = files.get(path)
     if (!expected)
       throw new Error('The requested addon file is absent from the inventory.')
     await checkParents(path)
     await checked(path, false, expected)
-    if (
-      limitManifest &&
-      manifestPath(path) &&
-      expected.size > MAX_ADDON_MANIFEST_BYTES
-    )
+    if (manifestPath(path) && expected.size > MAX_ADDON_MANIFEST_BYTES)
       throw new Error(
         'hibi-addon.json must be a JSON file no larger than 64 KiB.',
       )
@@ -476,11 +471,7 @@ export async function inventoryAddonDirectory(
         size: stat.isFile() ? stat.size : 0,
       })
       if (stat.isDirectory()) await walk(relative)
-      else {
-        files.set(relative, stat)
-        actual += (await read(relative, false)).length
-        inventoryLimits(0, actual, 0)
-      }
+      else files.set(relative, stat)
     }
     await checked(path, true, directories.get(path))
   }

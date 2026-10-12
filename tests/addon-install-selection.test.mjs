@@ -86,13 +86,21 @@ async function fixture(t) {
   }
   const module = { exports: {} }
   const loaded = []
+  const opened = []
   evaluate(
     (id) => {
       loaded.push(id)
       return id === 'electron'
         ? desktop
         : id === 'node:fs/promises'
-          ? { ...fs, rename: (...args) => rename(...args) }
+          ? {
+              ...fs,
+              rename: (...args) => rename(...args),
+              open: (...args) => {
+                opened.push(args[0])
+                return fs.open(...args)
+              },
+            }
           : require(id)
     },
     module,
@@ -132,6 +140,7 @@ async function fixture(t) {
   return {
     api,
     loaded,
+    opened,
     source,
     profile,
     temporary,
@@ -165,6 +174,27 @@ test('local installation keeps the zip parser unloaded', async (t) => {
   assert.equal(f.loaded.includes('unzipper'), false)
   await f.api.inventoryAddonArchive(zipFiles(packageFiles('', 'archive')))
   assert.equal(f.loaded.includes('unzipper'), true)
+})
+
+test('local inventory defers contents until metadata review and selected copying', async (t) => {
+  const f = await fixture(t)
+  await f.write([
+    ...packageFiles('one', 'one'),
+    ...packageFiles('two', 'two'),
+    { name: 'unrelated/source.ts', content: 'not installed' },
+  ])
+  await f.api.inventoryAddonDirectory(f.source)
+  assert.deepEqual(f.opened, [])
+  const session = await f.prepare()
+  assert.ok(f.opened.every((path) => path.endsWith('hibi-addon.json')))
+  f.opened.length = 0
+  await f.install(session, [session.candidates[0].key])
+  assert.ok(f.opened.includes(join(f.source, 'one', 'index.js')))
+  assert.equal(f.opened.includes(join(f.source, 'two', 'index.js')), false)
+  assert.equal(
+    f.opened.includes(join(f.source, 'unrelated', 'source.ts')),
+    false,
+  )
 })
 
 test('candidate review reports invalid metadata, duplicate ids before policy, and prepared overlaps', async (t) => {
