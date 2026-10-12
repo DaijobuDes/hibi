@@ -73,6 +73,9 @@ export type AppInfo = {
 }
 
 export type DesktopApi = {
+  getBackgroundMode: () => Promise<boolean>
+  setBackgroundMode: (enabled: boolean) => Promise<boolean>
+  onOpenSettings: (callback: () => void) => () => void
   getAddonHotkeys: () => Promise<import('./addon-hotkeys').AddonHotkeyBinding[]>
   registerAddonHotkey: (
     registration: import('./addon-hotkeys').AddonHotkeyRegistration,
