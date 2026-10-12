@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import type {
   AddonInstallResult,
   AddonInstallSession,
@@ -71,6 +71,7 @@ function AddonInstallChooser({
   close: () => void
 }) {
   const id = useId()
+  const closeButton = useRef<HTMLButtonElement>(null)
   const [selected, setSelected] = useState(
     () =>
       new Set(
@@ -81,6 +82,9 @@ function AddonInstallChooser({
   )
   const [busy, setBusy] = useState(false)
   const [results, setResults] = useState<AddonInstallResult[] | null>(null)
+  useEffect(() => {
+    if (results) closeButton.current?.focus()
+  }, [results])
   useEffect(() => {
     if (signal.aborted) cancel()
     signal.addEventListener('abort', cancel, { once: true })
@@ -202,7 +206,7 @@ function AddonInstallChooser({
         })}
       </ul>
       <div className="dialog-actions">
-        <Button onClick={busy ? cancel : close}>
+        <Button ref={closeButton} onClick={busy ? cancel : close}>
           {results ? 'Close' : 'Cancel'}
         </Button>
         {!results && (

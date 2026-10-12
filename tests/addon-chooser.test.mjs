@@ -277,6 +277,12 @@ test('addon chooser reviews every candidate, supports keyboard selection, and se
       assert.match(await row('theme').innerText(), /Failed:/)
       assert.match(await row('provider').innerText(), /Not selected/)
       assert.equal(
+        await dialog
+          .getByRole('button', { name: 'Close', exact: true })
+          .evaluate((el) => el === document.activeElement),
+        true,
+      )
+      assert.equal(
         await row('consumer').locator('[aria-live="polite"]').count(),
         1,
       )
