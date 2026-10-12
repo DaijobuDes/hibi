@@ -147,6 +147,21 @@ export function requiredAddonDependencies(
   return requiredDependencies(dependencyGraph(manifests, true).addons, id)
 }
 
+/** Required addons that start only in the background or from a command, which editor windows never do. */
+export function backgroundAddonDependencies(
+  manifests: readonly (Manifest & { startup?: string; activation?: string })[],
+  dependencies: readonly string[],
+): string[] {
+  return dependencies.filter((id) =>
+    manifests.some(
+      (manifest) =>
+        manifest.id === id &&
+        (manifest.startup === 'background' ||
+          manifest.activation === 'command'),
+    ),
+  )
+}
+
 /** All required closures share one graph validation. */
 export function requiredAddonDependencyMap(
   manifests: readonly Manifest[],

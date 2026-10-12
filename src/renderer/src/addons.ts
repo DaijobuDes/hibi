@@ -26,6 +26,7 @@ import {
 } from '../../addons/api'
 import {
   addonDependents,
+  backgroundAddonDependencies,
   requiredAddonDependencyMap,
   resolveAddonDependencies,
 } from '../../shared/addon-dependencies'
@@ -277,12 +278,36 @@ export function useAddons(
     (manifest: AddonManifest) => relevantIds.has(manifest.id),
     [relevantIds],
   )
+  // Editor windows refuse addons whose requirements would start background addons there.
+  const refused = useMemo(
+    () =>
+      new Map(
+        editorOnly
+          ? manifests.flatMap((manifest) => {
+              const blocked = backgroundAddonDependencies(
+                manifests,
+                dependencies.get(manifest.id) ?? [],
+              )
+              return blocked.length ? [[manifest.id, blocked] as const] : []
+            })
+          : [],
+      ),
+    [editorOnly, manifests, dependencies],
+  )
+  useEffect(() => {
+    for (const [id, blocked] of refused)
+      if (states.some((state) => state.id === id && state.enabled))
+        console.warn(
+          `The ${id} addon did not start in this window because it requires ${blocked.join(', ')}, which starts only in the main window.`,
+        )
+  }, [refused, states])
   const required = useMemo(
     () =>
       new Set(
         catalog
           .filter((addon) => {
-            if (!triggered(addon.manifest)) return false
+            if (!triggered(addon.manifest) || refused.has(addon.manifest.id))
+              return false
             if (
               addon.manifest.startup === 'background' ||
               addon.manifest.activation === 'command'
@@ -306,7 +331,7 @@ export function useAddons(
               : []),
           ]),
       ),
-    [catalog, documentName, triggered, dependencies, states],
+    [catalog, documentName, triggered, refused, dependencies, states],
   )
   const enabledStates = states.filter(
     (state) => state.enabled && available.has(state.id),
