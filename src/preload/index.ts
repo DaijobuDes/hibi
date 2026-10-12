@@ -302,8 +302,8 @@ if (process.isMainFrame) {
     setAppearance: (appearance) =>
       ipcRenderer.invoke(APPEARANCE_CHANNEL, appearance),
     getAddonStates: () => ipcRenderer.invoke(ADDON_CHANNELS.states),
-    setAddonEnabled: (id, enabled) =>
-      ipcRenderer.invoke(ADDON_CHANNELS.enable, id, enabled),
+    setAddonEnabled: (id, enabled, includeRequired) =>
+      ipcRenderer.invoke(ADDON_CHANNELS.enable, id, enabled, includeRequired),
     readAddonStorage: (request) =>
       transport.invoke(ADDON_STORAGE_CHANNELS.read, request),
     writeAddonStorage: (request) =>

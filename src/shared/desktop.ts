@@ -208,7 +208,11 @@ export type DesktopApi = {
     appearance: import('./colorschemes').NativeAppearance,
   ) => Promise<void>
   getAddonStates: () => Promise<AddonState[]>
-  setAddonEnabled: (id: string, enabled: boolean) => Promise<AddonState[]>
+  setAddonEnabled: (
+    id: string,
+    enabled: boolean,
+    includeRequired?: boolean,
+  ) => Promise<AddonState[]>
   readAddonStorage: (
     request: import('./addon-storage').AddonStorageReadRequest,
   ) => Promise<import('./addon-storage').AddonStorageReadResult>

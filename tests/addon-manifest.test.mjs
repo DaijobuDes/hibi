@@ -8,6 +8,7 @@ import {
   compatibleAddonManifest,
 } from '../src/addons/api.ts'
 import { parseAddonNetwork } from '../src/main/host-network.ts'
+import { validateAddonRequirements } from '../src/shared/addon-dependencies.ts'
 
 test('addon manifests require release versions while accepting versioned v1 packages', () => {
   assert.equal(ADDON_API_VERSION, 2)
@@ -147,7 +148,7 @@ test('network declarations reject malformed metadata and unsafe origins', () => 
     )
 })
 
-test('bundled addon manifests have valid network declarations', async () => {
+test('bundled addon manifests have valid network and addon requirements', async () => {
   const files = await readdir('src/addons', { recursive: true })
   const { outputFiles } = await build({
     entryPoints: files
@@ -161,14 +162,17 @@ test('bundled addon manifests have valid network declarations', async () => {
     loader: { '.md': 'text' },
   })
   assert.ok(outputFiles.length > 0)
+  const manifests = []
   for (const file of outputFiles) {
     const { default: manifest } = await import(
       `data:text/javascript;base64,${Buffer.from(file.contents).toString('base64')}`
     )
+    manifests.push(manifest)
     if (manifest.network !== undefined)
       assert.doesNotThrow(
         () => parseAddonNetwork(manifest.network),
         manifest.id,
       )
   }
+  assert.doesNotThrow(() => validateAddonRequirements(manifests))
 })
