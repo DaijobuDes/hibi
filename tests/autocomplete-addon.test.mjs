@@ -139,6 +139,15 @@ test('autocomplete learns locally, disables learning, excludes documents and cle
           editor.commands.setContent(text, { contentType: 'markdown' })
           editor.commands.focus('end')
         }, text)
+        await page.waitForFunction(() => {
+          const editor = document.querySelector('.rich-pane .tiptap').editor
+          const { empty, head } = editor.state.selection
+          return (
+            editor.view.hasFocus() &&
+            empty &&
+            head === editor.state.doc.content.size - 1
+          )
+        })
       } else {
         const source = page.getByRole('textbox', {
           name: 'Markdown editor',
