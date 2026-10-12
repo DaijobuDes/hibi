@@ -11,7 +11,7 @@ import type {
   AddonWindowContext,
   AddonWindowOptions,
 } from '../shared/addon-windows'
-import { appearanceColors } from './appearance'
+import { appearanceColors, titleBarColors } from './appearance'
 import { isTrustedRendererUrl } from './security'
 
 type Entry = AddonWindowContext & { window: BrowserWindow }
@@ -57,6 +57,7 @@ function validate(value: unknown): Options {
     !dimension(size.width) ||
     !dimension(size.height) ||
     ![undefined, 'cursor-display', 'center'].includes(options.position) ||
+    ![undefined, 'native', 'hibi'].includes(options.titleBar) ||
     ![undefined, true, false].includes(options.alwaysOnTop) ||
     ![undefined, true, false].includes(options.panel)
   )
@@ -66,6 +67,7 @@ function validate(value: unknown): Options {
     title: options.title,
     size: { width: size.width, height: size.height },
     position: options.position ?? 'center',
+    titleBar: options.titleBar ?? 'native',
     alwaysOnTop: options.alwaysOnTop ?? false,
     panel: options.panel ?? false,
     input,
@@ -157,6 +159,14 @@ async function create(addonId: string, name: string, options: Options) {
     // stays where it is. Electron also floats them over full-screen apps.
     ...(panel ? { type: 'panel', minimizable: false, maximizable: false } : {}),
     alwaysOnTop: options.alwaysOnTop,
+    ...(options.titleBar === 'native'
+      ? {}
+      : process.platform === 'darwin'
+        ? {
+            titleBarStyle: 'hiddenInset',
+            trafficLightPosition: { x: 12, y: 11 },
+          }
+        : { titleBarStyle: 'hidden', titleBarOverlay: titleBarColors() }),
     ...(process.platform === 'darwin' ? {} : { autoHideMenuBar: true }),
     backgroundColor: appearanceColors().background,
     webPreferences: {
@@ -168,7 +178,15 @@ async function create(addonId: string, name: string, options: Options) {
       webviewTag: false,
     },
   })
-  const entry = { addonId, id: options.id, input: options.input, window }
+  const entry = {
+    addonId,
+    id: options.id,
+    input: options.input,
+    title: options.title ?? name,
+    titleBar: options.titleBar,
+    platform: process.platform,
+    window,
+  }
   entries.set(windowKey, entry)
   if (process.platform !== 'darwin') window.removeMenu()
   // Keep the addon's title instead of the page's.
@@ -228,6 +246,15 @@ export function closeAddonWindow(addonId: string, id: unknown): void {
 export function closeAddonWindows(addonId: string): void {
   for (const entry of entries.values())
     if (entry.addonId === addonId) entry.window.close()
+}
+
+/** Follow appearance changes in window backgrounds and Hibi-drawn window controls. */
+export function refreshAddonWindowColors(): void {
+  for (const { window, titleBar } of entries.values()) {
+    window.setBackgroundColor(appearanceColors().background)
+    if (titleBar === 'hibi' && process.platform !== 'darwin')
+      window.setTitleBarOverlay(titleBarColors())
+  }
 }
 
 export function onAddonWindowClosed(

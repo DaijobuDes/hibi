@@ -78,6 +78,7 @@ import {
   focusAddonWindow,
   onAddonWindowClosed,
   openAddonWindow,
+  refreshAddonWindowColors,
 } from './addon-windows'
 import {
   currentAddonOwner,
@@ -98,7 +99,12 @@ import {
   windowAddonName,
 } from './addons'
 import { analysisService } from './analysis'
-import { appearanceColors, loadAppearance, saveAppearance } from './appearance'
+import {
+  appearanceColors,
+  loadAppearance,
+  saveAppearance,
+  titleBarColors,
+} from './appearance'
 import {
   autosaveDocument,
   closeDocumentTab,
@@ -617,14 +623,6 @@ async function readAfterFileOperation<T>(
 ) {
   while (fileOperation) await fileOperation.catch(() => undefined)
   return read(window)
-}
-
-function titleBarColors() {
-  return {
-    color: appearanceColors().background,
-    symbolColor: appearanceColors().foreground,
-    height: 36,
-  }
 }
 
 async function serveAsset(request: Request): Promise<Response> {
@@ -1302,6 +1300,7 @@ if (!app.requestSingleInstanceLock()) {
         window.setBackgroundColor(appearanceColors().background)
         if (process.platform !== 'darwin')
           window.setTitleBarOverlay(titleBarColors())
+        refreshAddonWindowColors()
         await saved
       })
       handle(ABOUT_CHANNELS.licenses, (event) => {
@@ -1494,8 +1493,8 @@ if (!app.requestSingleInstanceLock()) {
       )
       // Addon windows reach only their owner's native handlers.
       ipcMain.handle(ADDON_WINDOW_CHANNELS.context, (event) => {
-        const { addonId, id, input } = addonWindowSender(event)
-        return { addonId, id, input }
+        const { window: _window, ...context } = addonWindowSender(event)
+        return context
       })
       ipcMain.handle(
         ADDON_WINDOW_CHANNELS.query,
@@ -2093,6 +2092,7 @@ if (!app.requestSingleInstanceLock()) {
         mainWindow?.setBackgroundColor(appearanceColors().background)
         if (process.platform !== 'darwin')
           mainWindow?.setTitleBarOverlay(titleBarColors())
+        refreshAddonWindowColors()
       })
       windowSetupReady = true
       createWindow()

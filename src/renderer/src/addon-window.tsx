@@ -1,7 +1,10 @@
-import { StrictMode } from 'react'
+import { type ReactNode, StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import type { Addon, AddonManifest, AddonWindowProps } from '../../addons/api'
-import type { AddonWindowBridge } from '../../shared/addon-windows'
+import type {
+  AddonWindowBridge,
+  AddonWindowContext,
+} from '../../shared/addon-windows'
 import { errorMessage } from '../../shared/errors'
 import { createColorschemeStore } from '../../ui/colorschemes'
 import './styles.css'
@@ -35,8 +38,25 @@ const request = async <T,>(pending: Promise<unknown>) => {
   }
 }
 
+let context: AddonWindowContext | undefined
+
+function show(children: ReactNode) {
+  root.render(
+    <StrictMode>
+      <div className="addon-window">
+        {context?.titleBar === 'hibi' && (
+          <header className="addon-window-titlebar">{context.title}</header>
+        )}
+        <div className="addon-window-content">{children}</div>
+      </div>
+    </StrictMode>,
+  )
+}
+
 async function render() {
-  const { addonId, id, input } = await bridge.context()
+  context = await bridge.context()
+  const { addonId, id, input, platform } = context
+  document.documentElement.dataset.platform = platform
   const path = Object.keys(manifests).find(
     (candidate) => manifests[candidate]?.id === addonId,
   )
@@ -54,15 +74,11 @@ async function render() {
     },
     close: () => window.close(),
   }
-  root.render(
-    <StrictMode>
-      <Content {...props} />
-    </StrictMode>,
-  )
+  show(<Content {...props} />)
 }
 
 render().catch((error: unknown) =>
-  root.render(
+  show(
     <p role="alert" className="addon-window-error">
       {errorMessage(error)}
     </p>,
