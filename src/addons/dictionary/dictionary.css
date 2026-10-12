@@ -60,12 +60,10 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
+  font-size: var(--text-ui);
 }
 .dictionary-custom-words ul {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  margin: var(--space-3) 0;
+  margin: 0;
   padding: 0;
   list-style: none;
 }
@@ -74,11 +72,13 @@
   grid-template-columns: minmax(6em, 1fr) auto minmax(8em, 2fr) auto;
   align-items: center;
   gap: var(--space-2);
+  border-top: 1px solid var(--border);
 }
 .dictionary-custom-word {
   overflow-wrap: anywhere;
+  font-size: var(--text-ui);
   font-weight: 500;
 }
 .dictionary-custom-words textarea {
-  width: 100%;
+  width: min(320px, 100%);
 }

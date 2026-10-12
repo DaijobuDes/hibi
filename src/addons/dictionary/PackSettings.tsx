@@ -60,102 +60,104 @@ export function PackSettings() {
     }
   }
   return (
-    <section aria-label="Offline language packs">
-      <p>
+    <section className="ui-panel" aria-label="Offline language packs">
+      <p className="ui-description">
         Install a language pack to look up words without an internet connection.
         Downloads come directly from each dictionary’s publisher.
       </p>
-      <p>
+      <p className="ui-description">
         Use Update to download the latest source data. Updating keeps your
         installed pack until its replacement is ready.
       </p>
       {!states.length && !error && (
         <p role="status">Loading dictionary packs…</p>
       )}
-      {packIds.map((id) => {
-        const pack = packs[id]
-        const state = states.find((item) => item.id === id)
-        const installed = state?.manifest
-        const active = !!state && running(state)
-        return (
-          <SettingRow
-            key={id}
-            id={`dictionary-pack-${id}`}
-            label={languageNames[id]}
-            description={
-              <>
-                {pack.sources
-                  .map((source) => `${source.name} · ${source.license}`)
-                  .join('; ')}
-                <br />
-                {`Download: about ${size(pack.sources.reduce((sum, source) => sum + source.bytes, 0))} from ${[...new Set(pack.sources.map((source) => new URL(source.url).hostname))].join(', ')}`}
-                {installed && (
+      <div className="settings-group">
+        {packIds.map((id) => {
+          const pack = packs[id]
+          const state = states.find((item) => item.id === id)
+          const installed = state?.manifest
+          const active = !!state && running(state)
+          return (
+            <SettingRow
+              key={id}
+              id={`dictionary-pack-${id}`}
+              label={languageNames[id]}
+              description={
+                <>
+                  {pack.sources
+                    .map((source) => `${source.name} · ${source.license}`)
+                    .join('; ')}
+                  <br />
+                  {`Download: about ${size(pack.sources.reduce((sum, source) => sum + source.bytes, 0))} from ${[...new Set(pack.sources.map((source) => new URL(source.url).hostname))].join(', ')}`}
+                  {installed && (
+                    <>
+                      <br />
+                      {`Installed: ${size(installed.data.bytes + installed.index.bytes)} · ${new Date(installed.installedAt).toLocaleDateString()}`}
+                    </>
+                  )}
+                </>
+              }
+            >
+              <div className="dictionary-pack-controls">
+                <ControlRow>
+                  <Button
+                    id={`dictionary-pack-${id}`}
+                    aria-label={`${installed ? 'Update' : 'Install'} ${languageNames[id]} pack`}
+                    disabled={busy || !state}
+                    onClick={() => void act('installPack', id)}
+                  >
+                    {installed ? 'Update' : 'Install pack'}
+                  </Button>
+                  {(installed || state?.phase === 'error') && (
+                    <Button
+                      aria-label={`Uninstall ${languageNames[id]} pack`}
+                      disabled={busy}
+                      onClick={() => void act('uninstallPack', id)}
+                    >
+                      Uninstall
+                    </Button>
+                  )}
+                  {active && (
+                    <Button
+                      aria-label={`Cancel ${languageNames[id]} pack installation`}
+                      disabled={pending}
+                      onClick={() => void act('cancelPack', id)}
+                    >
+                      Cancel
+                    </Button>
+                  )}
+                </ControlRow>
+                {active && (
                   <>
-                    <br />
-                    {`Installed: ${size(installed.data.bytes + installed.index.bytes)} · ${new Date(installed.installedAt).toLocaleDateString()}`}
+                    <progress
+                      aria-label={`Install ${pack.label}`}
+                      max={
+                        state.phase === 'downloading'
+                          ? (state.total ?? undefined)
+                          : undefined
+                      }
+                      value={
+                        state.phase === 'downloading' && state.total
+                          ? state.bytes
+                          : undefined
+                      }
+                    />
+                    <span role="status">
+                      {state.phase === 'converting'
+                        ? `Preparing pack: ${state.entries.toLocaleString()} entries…`
+                        : `Downloading: ${size(state.bytes)}`}
+                    </span>
                   </>
                 )}
-              </>
-            }
-          >
-            <div className="dictionary-pack-controls">
-              <ControlRow>
-                <Button
-                  id={`dictionary-pack-${id}`}
-                  aria-label={`${installed ? 'Update' : 'Install'} ${languageNames[id]} pack`}
-                  disabled={busy || !state}
-                  onClick={() => void act('installPack', id)}
-                >
-                  {installed ? 'Update' : 'Install pack'}
-                </Button>
-                {(installed || state?.phase === 'error') && (
-                  <Button
-                    aria-label={`Uninstall ${languageNames[id]} pack`}
-                    disabled={busy}
-                    onClick={() => void act('uninstallPack', id)}
-                  >
-                    Uninstall
-                  </Button>
-                )}
-                {active && (
-                  <Button
-                    aria-label={`Cancel ${languageNames[id]} pack installation`}
-                    disabled={pending}
-                    onClick={() => void act('cancelPack', id)}
-                  >
-                    Cancel
-                  </Button>
-                )}
-              </ControlRow>
-              {active && (
-                <>
-                  <progress
-                    aria-label={`Install ${pack.label}`}
-                    max={
-                      state.phase === 'downloading'
-                        ? (state.total ?? undefined)
-                        : undefined
-                    }
-                    value={
-                      state.phase === 'downloading' && state.total
-                        ? state.bytes
-                        : undefined
-                    }
-                  />
-                  <span role="status">
-                    {state.phase === 'converting'
-                      ? `Preparing pack: ${state.entries.toLocaleString()} entries…`
-                      : `Downloading: ${size(state.bytes)}`}
-                  </span>
-                </>
-              )}
-              {state?.error && <span role="alert">{state.error}</span>}
-            </div>
-          </SettingRow>
-        )
-      })}
+                {state?.error && <span role="alert">{state.error}</span>}
+              </div>
+            </SettingRow>
+          )
+        })}
+      </div>
       {error && <p role="alert">{error}</p>}
-      <p>
+      <p className="ui-description">
         Source credits and license notices are available in Settings → Credits.
         Synonym coverage varies by language and source.
       </p>

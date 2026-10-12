@@ -3511,6 +3511,7 @@
   ],
   "97472a48bbea": [
     "src/addons/dictionary/PackSettings.tsx",
+    "src/addons/dictionary/Settings.tsx",
     "src/addons/dictionary/index.tsx"
   ],
   "ee6f9df95bd1": [
