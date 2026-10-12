@@ -29,6 +29,7 @@ import {
   backgroundAddonDependencies,
   requiredAddonDependencyMap,
   resolveAddonDependencies,
+  startsInWindow,
 } from '../../shared/addon-dependencies'
 import type { AddonHotkeyRegistration } from '../../shared/addon-hotkeys'
 import {
@@ -360,6 +361,15 @@ export function useAddons(
       ),
     [editorOnly, manifests, dependencies],
   )
+  // Neither startup nor on-demand activation starts these in an editor window.
+  const windowBlocked = useCallback(
+    (id: string) => {
+      if (!editorOnly) return false
+      const manifest = manifests.find((item) => item.id === id)
+      return !manifest || !startsInWindow(manifest) || refused.has(id)
+    },
+    [editorOnly, manifests, refused],
+  )
   useEffect(() => {
     for (const [id, blocked] of refused)
       if (states.some((state) => state.id === id && state.enabled))
@@ -487,6 +497,7 @@ export function useAddons(
     catalog,
     available,
     dependencies,
+    windowBlocked,
   })
   currentActivation.current = {
     states,
@@ -494,11 +505,14 @@ export function useAddons(
     catalog,
     available,
     dependencies,
+    windowBlocked,
   }
   const activateAddon = useCallback(
     async (owner: string) => {
       if (!currentActivation.current.available.has(owner))
         throw new Error('Enable this addon before running its command.')
+      if (currentActivation.current.windowBlocked(owner))
+        throw new Error('This addon does not run in this window.')
       if (!started.has(owner)) {
         if (currentActivation.current.settled.get(owner) === false)
           throw new Error(
@@ -715,6 +729,7 @@ export function useAddons(
       if (
         !addon ||
         running.has(id) ||
+        windowBlocked(id) ||
         !relevant(addon.manifest) ||
         (!required.has(id) && !requested.has(id) && (!ready || editorOnly)) ||
         (dependencies.get(id) ?? []).some(
@@ -2058,6 +2073,7 @@ export function useAddons(
   }, [
     catalog,
     editorOnly,
+    windowBlocked,
     relevant,
     resolution,
     available,

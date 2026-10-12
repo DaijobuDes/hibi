@@ -147,17 +147,21 @@ export function requiredAddonDependencies(
   return requiredDependencies(dependencyGraph(manifests, true).addons, id)
 }
 
+type Activation = { id: string; startup?: string; activation?: string }
+
+/** Editor windows start only addons that start with documents, never background or command-activated ones. */
+export function startsInWindow(manifest: Activation): boolean {
+  return manifest.startup !== 'background' && manifest.activation !== 'command'
+}
+
 /** Required addons that start only in the background or from a command, which editor windows never do. */
 export function backgroundAddonDependencies(
-  manifests: readonly (Manifest & { startup?: string; activation?: string })[],
+  manifests: readonly Activation[],
   dependencies: readonly string[],
 ): string[] {
   return dependencies.filter((id) =>
     manifests.some(
-      (manifest) =>
-        manifest.id === id &&
-        (manifest.startup === 'background' ||
-          manifest.activation === 'command'),
+      (manifest) => manifest.id === id && !startsInWindow(manifest),
     ),
   )
 }

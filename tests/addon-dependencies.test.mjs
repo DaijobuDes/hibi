@@ -7,6 +7,7 @@ import {
   requiredAddonDependencies,
   requiredAddonDependencyMap,
   resolveAddonDependencies,
+  startsInWindow,
   validateAddonRequirements,
 } from '../src/shared/addon-dependencies.ts'
 
@@ -505,4 +506,14 @@ test('editor windows find background addons among transitive requirements', () =
     backgroundAddonDependencies(manifests, dependencies.get('service')),
     [],
   )
+})
+
+test('editor windows start only document addons, including on demand', () => {
+  assert.equal(startsInWindow({ id: 'syntax' }), true)
+  assert.equal(startsInWindow({ id: 'source', activation: 'source' }), true)
+  assert.equal(
+    startsInWindow({ id: 'quick-note', startup: 'background' }),
+    false,
+  )
+  assert.equal(startsInWindow({ id: 'palette', activation: 'command' }), false)
 })
