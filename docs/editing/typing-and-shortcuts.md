@@ -23,6 +23,8 @@ Letter shortcuts and punctuation on letter keys follow your active keyboard layo
 | `Cmd/Ctrl+Shift+[` / `]` | Normal / Source view |
 | `Cmd/Ctrl+Shift+\` | Side-by-side view |
 
+**Focus notifications** moves keyboard focus to the newest notification. It has no shortcut by default; run it from the command palette or assign one under **Settings → Hotkeys**.
+
 ## Undo and redo
 
 Undo history is shared between source and formatted editing and survives switching tabs. Hibi limits the memory used by history; when it needs space, older edits in less recently used tabs may stop being undoable. This keeps your current text and saved files intact. Use [Version history](version-history.md) to restore an earlier saved version.

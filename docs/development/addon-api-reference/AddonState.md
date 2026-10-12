@@ -2,7 +2,7 @@
 
 # AddonState
 
-Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L307)
+Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L308)
 
 <details>
 <summary>Declaration</summary>
@@ -31,7 +31,7 @@ type AddonState = {
 
 ### id
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L308)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L309)
 
 ```typescript
 id: string
@@ -39,7 +39,7 @@ id: string
 
 ### enabled
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L310)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L311)
 
 The user's preference, retained while required addons are unavailable.
 
@@ -49,7 +49,7 @@ enabled: boolean
 
 ### blockedBy
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L312)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L313)
 
 Missing or disabled required addon IDs. Blocked addons cannot run.
 

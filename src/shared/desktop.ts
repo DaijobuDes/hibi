@@ -202,7 +202,10 @@ export type DesktopApi = {
   listVersions: () => Promise<import('./history').DocumentVersion[]>
   previewVersion: (id: string) => Promise<string>
   restoreVersion: (id: string) => Promise<DocumentState | null>
-  onNotice: (callback: (message: string) => void) => () => void
+  /** `updates` notices lead to the update settings. */
+  onNotice: (
+    callback: (message: string, target?: 'updates') => void,
+  ) => () => void
   getLicenses: () => Promise<import('./about').LicenseInfo[]>
   getLicense: (id: string) => Promise<string>
   openSponsor: () => Promise<void>

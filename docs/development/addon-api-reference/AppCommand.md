@@ -2,7 +2,7 @@
 
 # AppCommand
 
-Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/shared/hotkeys.ts#L69)
+Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/shared/hotkeys.ts#L75)
 
 ```typescript
 type AppCommand = (typeof actions)[number]['id']
