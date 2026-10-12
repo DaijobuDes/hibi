@@ -1170,11 +1170,13 @@ editor.onTypingContext: (
     ) => () => void
 ```
 
+Related: [TypingContext](TypingContext.md).
+
 **Parameters**
 
 | Name | Type |
 | --- | --- |
-| <code>listener</code> | <code>(event: import('../shared/completions').TypingContext) =&gt; void</code> |
+| <code>listener</code> | <code>(event: import('../shared/completions').<a href="TypingContext.md">TypingContext</a>) =&gt; void</code> |
 
 **Returns:** <code>() =&gt; void</code>
 
@@ -1191,12 +1193,14 @@ editor.registerCompletionProvider: (
     ) => Promise<() => void>
 ```
 
+Related: [CompletionProvider](CompletionProvider.md), [CompletionProviderOptions](CompletionProviderOptions.md).
+
 **Parameters**
 
 | Name | Type |
 | --- | --- |
-| <code>provider</code> | <code>import('../shared/completions').CompletionProvider</code> |
-| <code>options?</code> | <code>import('../shared/completions').CompletionProviderOptions</code> |
+| <code>provider</code> | <code>import('../shared/completions').<a href="CompletionProvider.md">CompletionProvider</a></code> |
+| <code>options?</code> | <code>import('../shared/completions').<a href="CompletionProviderOptions.md">CompletionProviderOptions</a></code> |
 
 **Returns:** <code>Promise&lt;() =&gt; void&gt;</code>
 
@@ -1883,4 +1887,4 @@ notify: (message: string) => void
 
 ## Related types
 
-[AddonAccessApi](AddonAccessApi.md), [AddonExportsApi](AddonExportsApi.md), [DependencyApi](DependencyApi.md), [SettingsApi](SettingsApi.md), [ColorschemeInput](ColorschemeInput.md), [Colorscheme](Colorscheme.md), [ThemePreferences](ThemePreferences.md), [DialogApi](DialogApi.md), [SidebarApi](SidebarApi.md), [ViewApi](ViewApi.md), [AnalysisApi](AnalysisApi.md), [ToastApi](ToastApi.md), [MenuApi](MenuApi.md), [ToolbarApi](ToolbarApi.md), [TooltipApi](TooltipApi.md), [AddonApp](AddonApp.md), [StyleHandle](StyleHandle.md), [PatchApi](PatchApi.md), [StatusItem](StatusItem.md), [StatusHandle](StatusHandle.md), [SourceEditRequest](SourceEditRequest.md), [SourceEditResult](SourceEditResult.md), [TextProjection](TextProjection.md), [TextDecoration](TextDecoration.md), [DocumentState](DocumentState.md), [DocumentFormat](DocumentFormat.md), [RenderedMarkdown](RenderedMarkdown.md), [CodeLanguage](CodeLanguage.md), [MarkdownSyntaxFeature](MarkdownSyntaxFeature.md), [DocumentSyntaxFeature](DocumentSyntaxFeature.md), [EditorKeyEvent](EditorKeyEvent.md), [EditorInputEvent](EditorInputEvent.md), [RichExtension](RichExtension.md), [MarkdownExtension](MarkdownExtension.md), [SourceExtension](SourceExtension.md), [MarkdownFlavor](MarkdownFlavor.md), [DocumentCommand](DocumentCommand.md), [DocumentsApi](DocumentsApi.md), [EditorViewsApi](EditorViewsApi.md), [AddonCommand](AddonCommand.md), [AddonSlashCommand](AddonSlashCommand.md), [ExplorerDecorationProvider](ExplorerDecorationProvider.md), [WorkspaceIndex](WorkspaceIndex.md), [WorkspaceSnapshot](WorkspaceSnapshot.md), [WorkspaceStreamSnapshot](WorkspaceStreamSnapshot.md), [WorkspaceEntryPageRequest](WorkspaceEntryPageRequest.md), [WorkspaceEntryPageResult](WorkspaceEntryPageResult.md), [WorkspaceChangeListener](WorkspaceChangeListener.md), [WorkspaceChangeSubscription](WorkspaceChangeSubscription.md), [WorkspaceTarget](WorkspaceTarget.md), [WorkspaceFileResult](WorkspaceFileResult.md), [WorkspaceTextRead](WorkspaceTextRead.md), [WorkspaceBinaryRead](WorkspaceBinaryRead.md), [WorkspaceTextCreation](WorkspaceTextCreation.md), [WorkspaceBinaryCreation](WorkspaceBinaryCreation.md), [WorkspaceTextUpdateOptions](WorkspaceTextUpdateOptions.md), [WorkspaceTextUpdate](WorkspaceTextUpdate.md), [WorkspaceFileVersion](WorkspaceFileVersion.md), [WorkspaceFileRename](WorkspaceFileRename.md), [WorkspaceFileTrash](WorkspaceFileTrash.md), [OperationResult](OperationResult.md), [WorkspaceState](WorkspaceState.md).
+[AddonAccessApi](AddonAccessApi.md), [AddonExportsApi](AddonExportsApi.md), [DependencyApi](DependencyApi.md), [SettingsApi](SettingsApi.md), [ColorschemeInput](ColorschemeInput.md), [Colorscheme](Colorscheme.md), [ThemePreferences](ThemePreferences.md), [DialogApi](DialogApi.md), [SidebarApi](SidebarApi.md), [ViewApi](ViewApi.md), [AnalysisApi](AnalysisApi.md), [ToastApi](ToastApi.md), [MenuApi](MenuApi.md), [ToolbarApi](ToolbarApi.md), [TooltipApi](TooltipApi.md), [AddonApp](AddonApp.md), [StyleHandle](StyleHandle.md), [PatchApi](PatchApi.md), [StatusItem](StatusItem.md), [StatusHandle](StatusHandle.md), [SourceEditRequest](SourceEditRequest.md), [SourceEditResult](SourceEditResult.md), [TextProjection](TextProjection.md), [TextDecoration](TextDecoration.md), [DocumentState](DocumentState.md), [DocumentFormat](DocumentFormat.md), [RenderedMarkdown](RenderedMarkdown.md), [CodeLanguage](CodeLanguage.md), [MarkdownSyntaxFeature](MarkdownSyntaxFeature.md), [DocumentSyntaxFeature](DocumentSyntaxFeature.md), [EditorKeyEvent](EditorKeyEvent.md), [EditorInputEvent](EditorInputEvent.md), [TypingContext](TypingContext.md), [CompletionProvider](CompletionProvider.md), [CompletionProviderOptions](CompletionProviderOptions.md), [RichExtension](RichExtension.md), [MarkdownExtension](MarkdownExtension.md), [SourceExtension](SourceExtension.md), [MarkdownFlavor](MarkdownFlavor.md), [DocumentCommand](DocumentCommand.md), [DocumentsApi](DocumentsApi.md), [EditorViewsApi](EditorViewsApi.md), [AddonCommand](AddonCommand.md), [AddonSlashCommand](AddonSlashCommand.md), [ExplorerDecorationProvider](ExplorerDecorationProvider.md), [WorkspaceIndex](WorkspaceIndex.md), [WorkspaceSnapshot](WorkspaceSnapshot.md), [WorkspaceStreamSnapshot](WorkspaceStreamSnapshot.md), [WorkspaceEntryPageRequest](WorkspaceEntryPageRequest.md), [WorkspaceEntryPageResult](WorkspaceEntryPageResult.md), [WorkspaceChangeListener](WorkspaceChangeListener.md), [WorkspaceChangeSubscription](WorkspaceChangeSubscription.md), [WorkspaceTarget](WorkspaceTarget.md), [WorkspaceFileResult](WorkspaceFileResult.md), [WorkspaceTextRead](WorkspaceTextRead.md), [WorkspaceBinaryRead](WorkspaceBinaryRead.md), [WorkspaceTextCreation](WorkspaceTextCreation.md), [WorkspaceBinaryCreation](WorkspaceBinaryCreation.md), [WorkspaceTextUpdateOptions](WorkspaceTextUpdateOptions.md), [WorkspaceTextUpdate](WorkspaceTextUpdate.md), [WorkspaceFileVersion](WorkspaceFileVersion.md), [WorkspaceFileRename](WorkspaceFileRename.md), [WorkspaceFileTrash](WorkspaceFileTrash.md), [OperationResult](OperationResult.md), [WorkspaceState](WorkspaceState.md).

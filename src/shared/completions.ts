@@ -31,7 +31,7 @@ export interface CompletionItem {
   readonly from: number
   readonly to: number
   readonly rank?: number
-  /** False leaves Tab to the editor. Defaults to true. */
+  /** False leaves Tab to the editor, closing the popup first in rich view. Defaults to true. */
   readonly acceptOnTab?: boolean
   /** When false on every visible item, any arrow key dismisses the popup and leaves caret movement to the editor. Defaults to true. */
   readonly captureArrowKeys?: boolean
