@@ -6,6 +6,9 @@ import {
   type PersonalScope,
   type PersonalSnapshot,
 } from './model.ts'
+import type { AutocompletePreferences } from './settings.ts'
+
+export type LearningObservation = PersonalObservation & { documentId: string }
 
 /** Idle learning and serialized atomic writes; only aggregates reach storage. */
 export function createLearning(
@@ -25,7 +28,7 @@ export function createLearning(
     }
     return model
   }
-  let pending: PersonalObservation[] = []
+  let pending: LearningObservation[] = []
   let cancelIdle: (() => void) | undefined
   let timer: ReturnType<typeof setTimeout> | undefined
   let writes = Promise.resolve()
@@ -120,7 +123,7 @@ export function createLearning(
   return {
     suggest: (request: PersonalRequest) => getModel().suggest(request),
     epoch: () => generation,
-    observe(observation: PersonalObservation) {
+    observe(observation: LearningObservation) {
       if (disposed || clearing || observation.enabled === false) return
       // Drop excess observations instead of retaining unbounded editing history.
       if (pending.length < 128) pending.push(observation)
@@ -137,7 +140,19 @@ export function createLearning(
         clearing--
       }
     },
-    async persist() {
+    async persist(
+      preferences?: Pick<
+        AutocompletePreferences,
+        'learning' | 'excludedDocuments' | 'excludedWorkspaces'
+      >,
+    ) {
+      if (preferences)
+        pending = pending.filter(
+          (observation) =>
+            preferences.learning &&
+            !preferences.excludedDocuments.includes(observation.documentId) &&
+            !preferences.excludedWorkspaces.includes(observation.scope ?? ''),
+        )
       flush()
       clearTimeout(timer)
       timer = undefined

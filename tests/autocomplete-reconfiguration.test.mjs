@@ -42,7 +42,7 @@ const view = {
   viewGeneration: 1,
 }
 
-test('preference changes persist queued learning and pending saves before reconfiguration', async (t) => {
+test('preference changes discard newly excluded queues and preserve learned aggregates', async (t) => {
   for (const flushed of [false, true]) {
     for (const [name, change] of Object.entries({
       learning: { learning: false },
@@ -157,9 +157,16 @@ test('preference changes persist queued learning and pending saves before reconf
             snapshot.value.entries.every((row) => row.word !== 'secret'),
           )
           const word = snapshot.value.entries.find((row) => row.word === 'wild')
-          assert.ok(word)
-          assert.equal(word.scope, 'notes')
-          assert.deepEqual(word.languages, ['en'])
+          const excluded = ['learning', 'document', 'workspace'].includes(name)
+          if (!flushed && excluded) assert.equal(word, undefined)
+          else {
+            assert.ok(word)
+            assert.equal(word.scope, 'notes')
+            assert.deepEqual(word.languages, ['en'])
+          }
+          assert.ok(
+            snapshot.value.entries.every((row) => !('documentId' in row)),
+          )
           t.mock.timers.tick(1000)
           await new Promise(setImmediate)
           assert.equal(writes, 1)

@@ -16,7 +16,7 @@ Stored data contains individual words, counts, correction counts, timestamps, la
 
 Code blocks, inline code, frontmatter, link URLs, math, raw HTML, and secret-looking text are excluded. These checks are conservative, not a way to recognize every secret. Use **Exclude this document** or **Exclude this workspace** for private writing. Exclusions stop learning and personal suggestions there; they do not erase words already learned. Clear the relevant history to remove existing data.
 
-Turn off **Learn from my writing** to pause learning and personal ranking. Offline dictionary suggestions still work. Settings changes save already queued observations before applying the new preferences. Turning learning off keeps existing counts for later.
+Turn off **Learn from my writing** to pause learning and personal ranking. Offline dictionary suggestions still work. Excluding a document or workspace discards its queued observations. Turning learning off discards all queued observations and keeps existing counts for later. Other settings changes save queued observations.
 
 ## Clear learned words
 

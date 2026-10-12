@@ -4,7 +4,7 @@ import type {
   TypingContext,
 } from '../../shared/completions.ts'
 import type { Lang } from '../dictionary/providers.ts'
-import type { PersonalObservation } from './model.ts'
+import type { LearningObservation } from './learning.ts'
 import { precedingWords, type TypingSession } from './suggestions.ts'
 
 type Position = {
@@ -33,12 +33,12 @@ type Accepted = {
   from: number
   to: number
   at: number
-  observations: PersonalObservation[]
+  observations: LearningObservation[]
 }
 
 /** Transient edit receipts; no document text or keystroke log is retained. */
 export function createTypingSignals(
-  observe: (value: PersonalObservation) => void,
+  observe: (value: LearningObservation) => void,
   now = Date.now,
 ) {
   let accepted: Accepted | undefined
@@ -67,14 +67,15 @@ export function createTypingSignals(
       )
       const words = item.insertText.split(/\s+/)
       const context = precedingWords(before)
-      const observations: PersonalObservation[] = []
+      const observations: LearningObservation[] = []
       for (const word of words) {
         if (!/^[\p{L}\p{M}]+(?:['’-][\p{L}\p{M}]+)*$/u.test(word)) {
           context.length = 0
           continue
         }
-        const observation: PersonalObservation = {
+        const observation: LearningObservation = {
           scope: session.scope,
+          documentId: session.documentId,
           languages,
           context: context.slice(-2),
           word,
@@ -198,6 +199,7 @@ export function createTypingSignals(
       if (!covered) return
       observe({
         scope: session.scope,
+        documentId: session.documentId,
         languages,
         word,
         kind: 'typed',

@@ -118,7 +118,7 @@ export default defineAddon({
     }
     const stopPreferences = onPreferencesChange(() => {
       void learning
-        .persist()
+        .persist(readPreferences())
         .catch((error) =>
           console.error('Could not save autocomplete words:', error),
         )

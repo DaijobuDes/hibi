@@ -19,6 +19,7 @@ const view = {
 }
 const observation = (word, extra = {}) => ({
   scope: 'notes',
+  documentId: 'document',
   languages,
   word,
   kind: 'typed',
@@ -611,6 +612,40 @@ test('discard after a partial idle flush cancels queued remainder', async (t) =>
   assert.deepEqual(
     (await f.disk()).entries.map((row) => row.word),
     ['committed'],
+  )
+})
+
+test('privacy changes drop only excluded queues and keep document ids off disk', async (t) => {
+  const f = await fixture(t)
+  f.learning.observe(observation('learned'))
+  await f.learning.persist()
+  f.learning.observe(observation('private'))
+  f.learning.observe(observation('allowed', { documentId: 'other-document' }))
+  f.learning.observe(observation('workspace', { scope: 'excluded-workspace' }))
+  f.learning.observe(
+    observation('outside', { scope: null, documentId: 'outside-document' }),
+  )
+  await f.learning.persist({
+    learning: true,
+    excludedDocuments: ['document'],
+    excludedWorkspaces: ['excluded-workspace'],
+  })
+  const disk = await f.disk()
+  assert.deepEqual(
+    new Set(disk.entries.map((row) => row.word)),
+    new Set(['learned', 'allowed', 'outside']),
+  )
+  assert.ok(disk.entries.every((row) => !('documentId' in row)))
+  assert.equal(f.idle.size(), 0)
+  f.learning.observe(observation('paused', { documentId: 'other-document' }))
+  await f.learning.persist({
+    learning: false,
+    excludedDocuments: [],
+    excludedWorkspaces: [],
+  })
+  assert.deepEqual(
+    new Set((await f.disk()).entries.map((row) => row.word)),
+    new Set(['learned', 'allowed', 'outside']),
   )
 })
 
