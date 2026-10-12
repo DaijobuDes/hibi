@@ -156,7 +156,7 @@ test('bigram and trigram patterns predict next word after a space', () => {
 
 test('next-word prediction needs matching repeated context, never context-free vocabulary', () => {
   const model = createPersonalModel({ now: () => 1_000_000 })
-  for (let repeat = 0; repeat < 3; repeat++) {
+  for (let repeat = 0; repeat < 5; repeat++) {
     const phrase = ['bro', 'that', 'was', 'wild']
     for (const [i, word] of phrase.entries())
       learn(model, word, 1, { context: phrase.slice(0, i) })
@@ -199,7 +199,7 @@ test('next-word prediction suppresses one-hit, tied and near-tied contexts', () 
     assert.deepEqual(words(model, request), [])
   }
   const model = createPersonalModel({ now: () => 1_000_000 })
-  learn(model, 'wild', 3, { context: request.context })
+  learn(model, 'wild', 5, { context: request.context })
   learn(model, 'weird', 1, { context: request.context })
   assert.deepEqual(words(model, request), ['wild'])
   // Strong one-word evidence must not override an ambiguous longer context.
@@ -207,6 +207,65 @@ test('next-word prediction suppresses one-hit, tied and near-tied contexts', () 
   assert.deepEqual(words(model, request), ['wild'])
   learn(model, 'weird', 2, { context: request.context })
   assert.deepEqual(words(model, request), [])
+})
+
+test('next-word gate requires five observations and seventy percent of all evidence', () => {
+  const request = { ...session, prefix: '', context: ['that', 'was'] }
+  for (const [winner, runner, tail, expected] of [
+    [4, 0, 0, []],
+    [5, 0, 0, ['wild']],
+    [7, 3, 0, ['wild']],
+    [7, 3, 1, []],
+    [6, 3, 0, []],
+    [75, 0, 33, []],
+  ]) {
+    const model = createPersonalModel({ now: () => 1_000_000 })
+    learn(model, 'wild', winner, { context: request.context })
+    learn(model, 'weird', runner, { context: request.context })
+    for (let i = 0; i < tail; i++)
+      learn(
+        model,
+        `other${String.fromCharCode(97 + Math.floor(i / 26), 97 + (i % 26))}`,
+        1,
+        {
+          context: request.context,
+        },
+      )
+    assert.deepEqual(words(model, request), expected)
+  }
+})
+
+test('weak or fully corrected matching contexts block shorter-context fallback', () => {
+  const request = { ...session, prefix: '', context: ['that', 'was'] }
+  for (const corrected of [false, true]) {
+    const model = createPersonalModel({ now: () => 1_000_000 })
+    learn(model, 'usual', 100, { context: ['it', 'was'] })
+    assert.deepEqual(words(model, request), ['usual'])
+    learn(model, 'wild', 1, {
+      context: request.context,
+      kind: corrected ? 'accepted' : 'typed',
+    })
+    if (corrected)
+      learn(model, 'wild', 1, { context: request.context, kind: 'undo' })
+    assert.deepEqual(words(model, request), [])
+    assert.deepEqual(words(model, { ...request, context: ['was'] }), ['usual'])
+  }
+})
+
+test('next-word evidence does not count multilingual rows twice', () => {
+  const model = createPersonalModel({ now: () => 1_000_000 })
+  const request = {
+    ...session,
+    languages: ['en', 'fr'],
+    prefix: '',
+    context: ['that', 'was'],
+  }
+  learn(model, 'wild', 7, { context: request.context })
+  learn(model, 'weird', 3, {
+    context: request.context,
+    languages: request.languages,
+  })
+  assert.deepEqual(words(model, request), ['wild'])
 })
 
 test('slang, spelling, capitalization and multilingual scripts remain exact', () => {
@@ -309,7 +368,7 @@ test('legacy casing variants coalesce without multiplying snapshot evidence', ()
 test('case-insensitive context and vocabulary do not split next-word confidence', () => {
   const model = createPersonalModel({ now: () => 1_000_000 })
   learn(model, 'Wild', 1, { context: ['That', 'was'] })
-  learn(model, 'wild', 2, { context: ['that', 'was'] })
+  learn(model, 'wild', 4, { context: ['that', 'was'] })
   assert.deepEqual(
     words(model, { ...session, prefix: '', context: ['THAT', 'WAS'] }),
     ['wild'],
@@ -318,7 +377,7 @@ test('case-insensitive context and vocabulary do not split next-word confidence'
   learn(model, 'wild', 1, { context: ['That', 'was'], kind: 'undo' })
   assert.equal(
     model.snapshot().entries.find((row) => row.context.length === 2).count,
-    3,
+    5,
   )
   const ranked = model.suggest({
     ...session,

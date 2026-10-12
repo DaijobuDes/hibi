@@ -410,12 +410,12 @@ export function createPersonalModel(options: PersonalModelOptions = {}) {
       const time = now()
       for (let length = context.length; length > 0; length--) {
         const candidates = new Map<string, PersonalSuggestion>()
+        let matched = false
         for (const lang of langs)
-          for (const row of (
-            buckets.get(
-              bucketKey(request.scope, lang, context.slice(-length), ''),
-            ) ?? []
-          ).slice(0, CANDIDATES)) {
+          for (const row of buckets.get(
+            bucketKey(request.scope, lang, context.slice(-length), ''),
+          ) ?? []) {
+            matched = true
             const score = (row.count - 2 * row.corrections) * decay(row, time)
             if (score <= 0) continue
             const key = wordKey(row.word)
@@ -431,10 +431,13 @@ export function createPersonalModel(options: PersonalModelOptions = {}) {
           (a, b) => b.score - a.score,
         )
         const first = ranked[0]
-        if (!first) continue
-        // An ambiguous longer context must not fall back to a broader habit.
-        return first.score >= 2.5 &&
-          first.score >= 1.5 * (ranked[1]?.score ?? 0)
+        if (!matched) continue
+        const total = ranked.reduce((sum, item) => sum + item.score, 0)
+        // A rejected longer context must not fall back to a broader habit.
+        return first &&
+          first.score >= 5 &&
+          first.score >= 0.7 * total &&
+          first.score >= 2 * (ranked[1]?.score ?? 0)
           ? [first]
           : []
       }
