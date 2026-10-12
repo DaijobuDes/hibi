@@ -6,8 +6,23 @@ import {
   fixtureComplete,
   replay,
   replayRepository,
+  repositoryProse,
+  textItems,
 } from '../scripts/autocomplete-replay.mjs'
 import { createPersonalModel } from '../src/addons/autocomplete/model.ts'
+
+test('excluded code leaves boundaries without synthetic tokens or joined context', () => {
+  const text = repositoryProse(
+    'before `hidden` after\n# `hidden` tail\nword\n```js\nhidden\n```\nlast',
+  )
+  const items = textItems(text)
+  assert.deepEqual(
+    items.map((item) => item.word),
+    ['before', 'after', 'tail', 'word', 'last'],
+  )
+  for (const item of items) assert.deepEqual(item.context, [])
+  assert.equal(textItems(repositoryProse('`hidden`')).length, 0)
+})
 
 test('repository replay fails if next-word prediction is removed', async () => {
   await assert.rejects(

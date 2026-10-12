@@ -249,6 +249,14 @@ export async function evaluateCorpus(
   }
 }
 
+export function repositoryProse(text) {
+  return text
+    .replace(/```[\s\S]*?```/g, '\n')
+    .replace(/`[^`]*`/g, '\n')
+    .replace(/\]\([^)]*\)/g, ']')
+    .replace(/^[#>|*-]+[ \t]*/gm, '')
+}
+
 export function repositoryCorpus() {
   const files = ['docs', 'src']
     .flatMap((directory) =>
@@ -266,11 +274,9 @@ export function repositoryCorpus() {
   const heldOutFiles = files.filter((_, i) => i % 3 === 0)
   const prose = (paths) =>
     paths.map((file) =>
-      readFileSync(new URL(`../${file}`, import.meta.url), 'utf8')
-        .replace(/```[\s\S]*?```/g, '\n')
-        .replace(/`[^`]*`/g, ' X ')
-        .replace(/\]\([^)]*\)/g, ']')
-        .replace(/^[#>|*-]+\s*/gm, ''),
+      repositoryProse(
+        readFileSync(new URL(`../${file}`, import.meta.url), 'utf8'),
+      ),
     )
   const trainingDocuments = prose(trainingFiles)
   const heldOutDocuments = prose(heldOutFiles)
