@@ -539,7 +539,27 @@ export function useAddons(
   useEffect(() => {
     void window.hibi.bootstrap
       .addons()
-      .then(({ states, packages: installed, notices }) => {
+      .then(async ({ states, packages: installed, notices }) => {
+        try {
+          if (localStorage.getItem('hibi:dictionary:typing')) {
+            const { migrateDictionaryTyping } = await import(
+              '../../addons/autocomplete/settings'
+            )
+            await migrateDictionaryTyping(async () => {
+              if (
+                states.find((state) => state.id === 'autocomplete')
+                  ?.savedEnabled !== false
+              )
+                states = await window.hibi.setAddonEnabled(
+                  'autocomplete',
+                  true,
+                  true,
+                )
+            })
+          }
+        } catch (error) {
+          latest.current.error(error)
+        }
         setStates(states)
         addonRegistry.hydrate(installed)
         for (const message of notices)

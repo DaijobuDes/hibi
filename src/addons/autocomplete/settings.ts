@@ -34,6 +34,18 @@ const ids = (value: unknown) =>
         .slice(0, 512)
     : []
 
+/** Run before addon activation so existing suggestions survive the default-off split. */
+export async function migrateDictionaryTyping(enable: () => Promise<void>) {
+  const previous = saved('hibi:dictionary:typing')
+  if (!previous) return
+  const current = saved(key)
+  if (!current && previous.suggest === true) await enable()
+  cached = undefined
+  const preferences = readPreferences()
+  if (!current) localStorage.setItem(key, JSON.stringify(preferences))
+  localStorage.removeItem('hibi:dictionary:typing')
+}
+
 export function readPreferences(): AutocompletePreferences {
   if (cached) return cached
   const previous = saved('hibi:dictionary:typing')
@@ -41,7 +53,7 @@ export function readPreferences(): AutocompletePreferences {
   const value = current ?? previous ?? {}
   cached = {
     suggest: value.suggest !== false,
-    tabAccepts: value.tabAccepts !== false,
+    tabAccepts: (value.tabAccepts ?? value.acceptOnTab) !== false,
     learning: value.learning !== false,
     languages: Array.isArray(value.languages)
       ? [
@@ -54,14 +66,6 @@ export function readPreferences(): AutocompletePreferences {
       : ['en'],
     excludedDocuments: ids(value.excludedDocuments),
     excludedWorkspaces: ids(value.excludedWorkspaces),
-  }
-  if (previous) {
-    try {
-      if (!current) localStorage.setItem(key, JSON.stringify(cached))
-      localStorage.removeItem('hibi:dictionary:typing')
-    } catch {
-      // Keep the previous settings until a saved copy exists.
-    }
   }
   return cached
 }

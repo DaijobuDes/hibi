@@ -308,6 +308,8 @@ export type AddonState = {
   id: string
   /** The user's preference, retained while required addons are unavailable. */
   enabled: boolean
+  /** Explicit saved choice, absent when the manifest default applies. */
+  savedEnabled?: boolean
   /** Missing or disabled required addon IDs. Blocked addons cannot run. */
   blockedBy?: readonly string[]
 }

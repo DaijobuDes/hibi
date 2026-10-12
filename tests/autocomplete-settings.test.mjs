@@ -22,6 +22,9 @@ test('autocomplete inherits existing language and Tab preferences and respects i
       languages: ['tl', 'ja', 'fr', 'tl', 'en', 7],
     },
   })
+  await settings.migrateDictionaryTyping(async () => {
+    assert.fail('disabled suggestions must not enable autocomplete')
+  })
   const initial = settings.readPreferences()
   assert.equal(initial.suggest, false)
   assert.equal(initial.tabAccepts, false)
@@ -100,9 +103,9 @@ test('autocomplete validates stored languages and exclusions, and defaults safel
   assert.equal(value.tabAccepts, true)
 })
 
-test('migration keeps the old preferences if saving fails and retries on next subscription', async () => {
+test('migration keeps the old preferences if saving fails and retries', async () => {
   const previous = {
-    suggest: false,
+    suggest: true,
     tabAccepts: false,
     languages: ['de', 'en'],
   }
@@ -111,6 +114,12 @@ test('migration keeps the old preferences if saving fails and retries on next su
   localStorage.setItem = () => {
     throw new Error('quota')
   }
+  let enabled = 0
+  const enable = async () => {
+    enabled++
+  }
+  await assert.rejects(settings.migrateDictionaryTyping(enable), /quota/)
+  assert.equal(enabled, 1)
   assert.deepEqual(settings.readPreferences().languages, previous.languages)
   assert.equal(localStorage.getItem('hibi:autocomplete'), null)
   assert.deepEqual(
@@ -118,10 +127,10 @@ test('migration keeps the old preferences if saving fails and retries on next su
     previous,
   )
   localStorage.setItem = set
-  const stop = settings.onPreferencesChange(() => {})
-  assert.equal(settings.readPreferences().suggest, false)
+  await settings.migrateDictionaryTyping(enable)
+  assert.equal(enabled, 2)
+  assert.equal(settings.readPreferences().suggest, true)
   assert.equal(localStorage.getItem('hibi:dictionary:typing'), null)
-  stop()
 })
 
 test('saved autocomplete preferences win over stale dictionary settings', async () => {
@@ -137,11 +146,81 @@ test('saved autocomplete preferences win over stale dictionary settings', async 
       tabAccepts: false,
     },
   })
+  await settings.migrateDictionaryTyping(async () => {
+    assert.fail('saved autocomplete preferences must win')
+  })
   const next = settings.readPreferences()
   assert.deepEqual(next.languages, ['fr', 'de'])
   assert.equal(next.suggest, true)
   assert.equal(next.tabAccepts, true)
   assert.equal(localStorage.getItem('hibi:dictionary:typing'), null)
+})
+
+test('startup migration enables existing suggestions before saving language and Tab preferences', async () => {
+  const settings = await preferences({
+    'hibi:dictionary:typing': {
+      suggest: true,
+      acceptOnTab: false,
+      languages: ['fr', 'de'],
+    },
+  })
+  let enabled = 0
+  await settings.migrateDictionaryTyping(async () => {
+    enabled++
+    assert.equal(localStorage.getItem('hibi:autocomplete'), null)
+    assert.ok(localStorage.getItem('hibi:dictionary:typing'))
+  })
+  assert.equal(enabled, 1)
+  assert.deepEqual(settings.readPreferences().languages, ['fr', 'de'])
+  assert.equal(settings.readPreferences().tabAccepts, false)
+  assert.equal(localStorage.getItem('hibi:dictionary:typing'), null)
+  await settings.migrateDictionaryTyping(async () => enabled++)
+  assert.equal(enabled, 1)
+})
+
+test('failed activation retains legacy preferences and retries migration', async () => {
+  const previous = { suggest: true, acceptOnTab: false, languages: ['tl'] }
+  const settings = await preferences({ 'hibi:dictionary:typing': previous })
+  await assert.rejects(
+    settings.migrateDictionaryTyping(async () => {
+      throw new Error('activation failed')
+    }),
+    /activation failed/,
+  )
+  assert.equal(settings.readPreferences().tabAccepts, false)
+  assert.equal(localStorage.getItem('hibi:autocomplete'), null)
+  assert.deepEqual(
+    JSON.parse(localStorage.getItem('hibi:dictionary:typing')),
+    previous,
+  )
+  let enabled = false
+  await settings.migrateDictionaryTyping(async () => {
+    enabled = true
+  })
+  assert.equal(enabled, true)
+  assert.equal(settings.readPreferences().tabAccepts, false)
+})
+
+test('migration leaves fresh, disabled, and already migrated activation alone', async () => {
+  for (const data of [
+    {},
+    { 'hibi:dictionary:typing': { suggest: false, languages: ['de'] } },
+    { 'hibi:dictionary:typing': { languages: ['de'] } },
+    {
+      'hibi:dictionary:typing': { suggest: true, languages: ['de'] },
+      'hibi:autocomplete': { suggest: false, languages: ['fr'] },
+    },
+  ]) {
+    const settings = await preferences(data)
+    await settings.migrateDictionaryTyping(async () => {
+      assert.fail('must not enable autocomplete')
+    })
+    assert.equal(localStorage.getItem('hibi:dictionary:typing'), null)
+    if (data['hibi:autocomplete']) {
+      assert.equal(settings.readPreferences().suggest, false)
+      assert.deepEqual(settings.readPreferences().languages, ['fr'])
+    }
+  }
 })
 
 test('fresh autocomplete defaults to English without a second language filter', async () => {
