@@ -62,7 +62,7 @@ In other formatted text, `Tab` inserts a tab character after text on the same li
 
 Indentation follows the first indented line of the file or code block. If there is none yet, Hibi uses **Settings → Editor → Writing → Indent with**, which defaults to tabs.
 
-When a completion or slash command menu is open, `Tab` accepts the highlighted item instead of indenting, unless the item leaves `Tab` to the editor, as dictionary suggestions do when **Accept suggestions with Tab** is off. In [Vim](../guides/vim.md) normal mode, `Tab` is not used for indentation.
+When a completion or slash command menu is open, `Tab` accepts the highlighted item instead of indenting, unless the item leaves `Tab` to the editor, as dictionary suggestions do when **Accept suggestions with Tab** is off. In source view, a `Tab` pressed just as a completion list appears indents instead, so a quick `Tab` is never lost. In [Vim](../guides/vim.md) normal mode, `Tab` is not used for indentation.
 
 To move focus out of the editor with the keyboard, press `Escape` and then `Tab` or `Shift+Tab`. There is no time limit: the next `Tab` or `Shift+Tab` leaves the editor, and typing another key or moving focus elsewhere cancels it. Screen readers announce this hint with each editor. If you prefer `Tab` to always move focus, turn off **Settings → Editor → Writing → Tab key indents**. Lists and tables keep their `Tab` behavior when the setting is off.
 

@@ -420,19 +420,49 @@ test('side view follows the caret offline, replaces in one undo step, and pack s
       !document.querySelector('.cm-tooltip-autocomplete'),
   )
   await toggle('dictionary-tab-accepts', { name: 'Markdown editor' })
+  // CodeMirror declines Tab and Enter for its `interactionDelay` (75 ms by
+  // default, which SourceEditor keeps) after a list opens. Shifting the page
+  // clock around one key press puts it inside or past that delay without waiting.
+  const pressWhenListIs = async (age, key) => {
+    await page.evaluate(
+      (shift) => {
+        const now = Date.now
+        Date.now = () => now() + shift
+        window.restoreNow = () => {
+          Date.now = now
+        }
+      },
+      age === 'new' ? -60000 : 60000,
+    )
+    try {
+      await page.keyboard.press(key)
+    } finally {
+      await page.evaluate(() => window.restoreNow())
+    }
+  }
+  // A Tab the just-opened list declines still indents; it is never lost.
   await typeAtEnd('p')
   await happy()
-  // CodeMirror ignores Tab for a moment after the list opens so a key meant
-  // for the text is not taken as a choice; such a Tab changes nothing.
   const typed = await sourceText()
-  const deadline = performance.now() + APP_STATE_TIMEOUT
-  for (;;) {
-    await page.keyboard.press('Tab')
-    const text = await sourceText()
-    if (text.endsWith(' happy happy')) break
-    assert.equal(text, typed)
-    assert.ok(performance.now() < deadline, 'Tab never accepted the suggestion')
-  }
+  await pressWhenListIs('new', 'Tab')
+  await waitForAsync(
+    page,
+    (typed) =>
+      window.sourceView().state.doc.toString() === `${typed}\t` &&
+      !document.querySelector('.cm-tooltip-autocomplete'),
+    typed,
+  )
+  await page.keyboard.press('Backspace')
+  await page.keyboard.press('Backspace')
+  await waitForAsync(page, () =>
+    window.sourceView().state.doc.toString().endsWith(' happy hap'),
+  )
+  await typeAtEnd('p')
+  await happy()
+  await pressWhenListIs('ready', 'Tab')
+  await waitForAsync(page, async () =>
+    (await window.hibi.getDocument()).markdown.endsWith(' happy happy'),
+  )
   await page.keyboard.type(' zq')
   await page.keyboard.press('Tab')
   await waitForAsync(page, async () =>

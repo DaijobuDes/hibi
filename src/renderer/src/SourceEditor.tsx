@@ -842,14 +842,6 @@ export function SourceEditor({
         view.scrollDOM.classList.contains('cm-vimMode')
       )
         return false
-      // An open menu declines Tab briefly after appearing; never indent beneath it
-      // unless its option leaves Tab to the document.
-      const option = selectedCompletion(view.state)
-      if (
-        completionStatus(view.state) === 'active' &&
-        !(option && keepTab.has(option))
-      )
-        return true
       if (
         command === indentLess ||
         view.state.selection.ranges.some((range) => !range.empty)
@@ -903,6 +895,8 @@ export function SourceEditor({
                 )
               },
             },
+            // Like Enter, a Tab the open list declines (it just opened, or its
+            // item keeps Tab) does what it would without the list.
             {
               key: 'Tab',
               run: (view) => indentSource(view, indentMore),
