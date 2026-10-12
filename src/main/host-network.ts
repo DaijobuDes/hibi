@@ -5,14 +5,15 @@ import type { Readable } from 'node:stream'
 import { Transform, Writable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { createBrotliDecompress, createGunzip, createInflate } from 'node:zlib'
-import type { AddonManifest } from '../addons/api'
 import type { AddonOwner } from '../shared/foundation-contracts'
 import type { CredentialResult } from '../shared/host-credentials'
-import type {
-  HostNetworkFailure,
-  HostTextResponse,
-  HostTextResult,
-} from '../shared/host-network'
+import {
+  type HostNetworkFailure,
+  type HostTextResponse,
+  type HostTextResult,
+  LOCAL_HOSTNAME_SUFFIX,
+  MAX_URL_LENGTH,
+} from '../shared/host-network.ts'
 
 const MAX_ACTIVE = 4
 const MAX_PER_OWNER = 2
@@ -20,7 +21,6 @@ const MAX_PER_OWNER = 2
 // use a cancelable resolver if this bound becomes a practical bottleneck.
 const MAX_PENDING_EXTERNAL = 16
 const MAX_REDIRECTS = 3
-const MAX_URL_LENGTH = 2048
 const MAX_RAW_BYTES = 2 * 1024 * 1024
 const MAX_TEXT_BYTES = 1024 * 1024
 const REQUEST_TIMEOUT_MS = 60_000
@@ -300,52 +300,8 @@ function localName(hostname: string): boolean {
   return (
     !name.includes('.') ||
     name === 'localhost' ||
-    /\.(?:localhost|local|lan|internal|home\.arpa)$/.test(name)
+    LOCAL_HOSTNAME_SUFFIX.test(name)
   )
-}
-
-/** Keep package declarations canonical so request origins can match exactly. */
-export function parseAddonNetwork(
-  value: unknown,
-): NonNullable<AddonManifest['network']> {
-  const invalid = () => {
-    throw new Error('The addon must declare exact public HTTPS origins.')
-  }
-  if (!value || typeof value !== 'object' || Array.isArray(value))
-    return invalid()
-  const { origins } = value as Record<string, unknown>
-  if (
-    Object.keys(value).some((key) => key !== 'origins') ||
-    !Array.isArray(origins) ||
-    origins.length < 1 ||
-    origins.length > 16 ||
-    new Set(origins).size !== origins.length
-  )
-    return invalid()
-  for (const origin of origins) {
-    if (typeof origin !== 'string' || origin.length > MAX_URL_LENGTH)
-      return invalid()
-    let url: URL
-    try {
-      url = new URL(origin)
-    } catch {
-      return invalid()
-    }
-    if (
-      url.protocol !== 'https:' ||
-      url.origin !== origin ||
-      url.port === '0' ||
-      isIP(url.hostname) ||
-      localName(url.hostname) ||
-      url.hostname === 'home.arpa' ||
-      url.hostname.length > 253 ||
-      !url.hostname
-        .split('.')
-        .every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label))
-    )
-      return invalid()
-  }
-  return { origins: [...origins] }
 }
 
 async function abortable<T>(

@@ -1,3 +1,4 @@
+export const MAX_ADDON_MANIFEST_BYTES = 64 * 1024
 export const MAX_ADDON_BYTES = 25 * 1024 * 1024
 export const MAX_ADDON_FILE_BYTES = 5 * 1024 * 1024
 export const MAX_ADDON_ENTRIES = 1000

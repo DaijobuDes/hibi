@@ -7,8 +7,8 @@ import {
   ADDON_API_VERSION,
   compatibleAddonManifest,
 } from '../src/addons/api.ts'
-import { parseAddonNetwork } from '../src/main/host-network.ts'
 import { validateAddonRequirements } from '../src/shared/addon-dependencies.ts'
+import { parseAddonNetwork } from '../src/shared/host-network.ts'
 
 test('addon manifests require release versions while accepting versioned v1 packages', () => {
   assert.equal(ADDON_API_VERSION, 2)

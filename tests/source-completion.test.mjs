@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { electron } from './electron.mjs'
-import { clickMenu } from './keyboard.mjs'
+import { clickMenu, pressPastCompletionDelay } from './keyboard.mjs'
 
 test('source completions stream, accept in one undo step, and retract on provider disposal', {
   timeout: 30000,
@@ -124,9 +124,7 @@ test('source completions stream, accept in one undo step, and retract on provide
     ),
     'ab',
   )
-  // CodeMirror guards newly opened menus from immediate accidental acceptance.
-  await page.waitForTimeout(100)
-  await source.press('Tab')
+  await pressPastCompletionDelay(page, 'Tab')
   await page.waitForFunction(
     async () => (await window.hibi.getDocument()).markdown === 'abeta',
   )

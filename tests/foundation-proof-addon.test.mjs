@@ -8,7 +8,7 @@ import test from 'node:test'
 import { setTimeout as delay } from 'node:timers/promises'
 import { pathToFileURL } from 'node:url'
 import { electron } from './electron.mjs'
-import { clickMenu } from './keyboard.mjs'
+import { clickMenu, pressPastCompletionDelay } from './keyboard.mjs'
 
 const packagePath = resolve('examples/foundation-proof-addon')
 const shortcut = 'CommandOrControl+Alt+Shift+F11'
@@ -693,8 +693,7 @@ test('proof addon installs and composes captured edits, queries, providers, and 
       hasText: '[[proof-note]]',
     })
     .waitFor()
-  await page.waitForTimeout(100)
-  await source.press('Tab')
+  await pressPastCompletionDelay(page, 'Tab')
   await page.waitForFunction(async () =>
     (await window.hibi.getDocument())?.markdown.includes('[[proof-note]]'),
   )

@@ -1,0 +1,138 @@
+[
+  {
+    "name": "api 1",
+    "fields": {
+      "apiVersion": 1
+    },
+    "expected": {
+      "apiVersion": 2
+    }
+  },
+  {
+    "name": "omitted optional metadata",
+    "fields": {},
+    "expected": {}
+  },
+  {
+    "name": "host-owned defaults",
+    "fields": {
+      "defaultEnabled": true,
+      "startup": "unknown",
+      "source": "built-in",
+      "trust": "compiled"
+    },
+    "expected": {
+      "defaultEnabled": false
+    }
+  },
+  {
+    "name": "modal editing remains unavailable",
+    "fields": {
+      "capabilities": ["modalEditing"]
+    },
+    "error": "SDK capabilities"
+  },
+  {
+    "name": "shortcuts keep their existing acceptance",
+    "fields": {
+      "commands": [
+        {
+          "id": "run",
+          "label": "Run",
+          "defaultShortcut": "not+a+shortcut"
+        }
+      ]
+    },
+    "expected": {
+      "commands": [
+        {
+          "id": "run",
+          "label": "Run",
+          "defaultShortcut": "not+a+shortcut"
+        }
+      ]
+    }
+  },
+  {
+    "name": "command syntax remains a runtime activation check",
+    "fields": {
+      "capabilities": [],
+      "activation": "command",
+      "commands": [
+        {
+          "id": "run",
+          "label": "Run",
+          "defaultShortcut": "mod+shift+r"
+        }
+      ],
+      "syntax": [
+        {
+          "id": "sample",
+          "kind": "flavor",
+          "markers": ["%%sample"],
+          "preservation": {
+            "level": "verbatim",
+            "version": "1",
+            "fallback": "source"
+          }
+        }
+      ]
+    },
+    "expected": {
+      "capabilities": [],
+      "activation": "command",
+      "commands": [
+        {
+          "id": "run",
+          "label": "Run",
+          "defaultShortcut": "mod+shift+r"
+        }
+      ],
+      "syntax": [
+        {
+          "id": "sample",
+          "kind": "flavor",
+          "markers": ["%%sample"],
+          "preservation": {
+            "level": "verbatim",
+            "version": "1",
+            "fallback": "source"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "background syntax remains a runtime activation check",
+    "fields": {
+      "startup": "background",
+      "syntax": [
+        {
+          "id": "sample",
+          "kind": "flavor",
+          "markers": ["%%sample"],
+          "preservation": {
+            "level": "verbatim",
+            "version": "1",
+            "fallback": "source"
+          }
+        }
+      ]
+    },
+    "expected": {
+      "startup": "background",
+      "syntax": [
+        {
+          "id": "sample",
+          "kind": "flavor",
+          "markers": ["%%sample"],
+          "preservation": {
+            "level": "verbatim",
+            "version": "1",
+            "fallback": "source"
+          }
+        }
+      ]
+    }
+  }
+]

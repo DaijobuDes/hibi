@@ -1,7 +1,7 @@
 import type { Editor, EditorEvents } from '@tiptap/core'
 import { closeHistory } from '@tiptap/pm/history'
 import type { Node as RichNode } from '@tiptap/pm/model'
-import { AllSelection, TextSelection } from '@tiptap/pm/state'
+import { AllSelection, TextSelection, type Transaction } from '@tiptap/pm/state'
 import { Mapping, ReplaceStep } from '@tiptap/pm/transform'
 import { EditorContent, useEditor } from '@tiptap/react'
 import {
@@ -1616,8 +1616,11 @@ export function MarkdownEditor({
       () => capture(view.state.selection.head, true, true),
       (position) => capture(position, true, true),
     )
-    const invalidate = () =>
-      view.dom.dispatchEvent(new Event('hibi:editor-interactions-invalidate'))
+    // Focus and plugin metadata transactions leave the menu's target intact.
+    const invalidate = ({ transaction }: { transaction: Transaction }) => {
+      if (transaction.docChanged || transaction.selectionSet)
+        view.dom.dispatchEvent(new Event('hibi:editor-interactions-invalidate'))
+    }
     editor.on('transaction', invalidate)
     return () => {
       disposed = true
