@@ -307,8 +307,11 @@ if (process.isMainFrame) {
     previewVersion: (id) => ipcRenderer.invoke(HISTORY_CHANNELS.preview, id),
     restoreVersion: (id) => ipcRenderer.invoke(HISTORY_CHANNELS.restore, id),
     onNotice: (callback) => {
-      const listener = (_event: Electron.IpcRendererEvent, message: string) =>
-        callback(message)
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        message: string,
+        target?: 'updates',
+      ) => callback(message, target === 'updates' ? target : undefined)
       ipcRenderer.on(HISTORY_CHANNELS.notice, listener)
       return () => {
         ipcRenderer.removeListener(HISTORY_CHANNELS.notice, listener)

@@ -61,6 +61,7 @@ function Host({
   const host = useAddons(
     {
       openDependencySettings: () => {},
+      openAddonSettings: () => {},
       workspace: {
         index: unavailable,
         snapshot: unavailable,

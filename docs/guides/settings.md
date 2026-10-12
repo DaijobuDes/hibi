@@ -77,6 +77,10 @@ Only install addons you trust. Enabled addons can access your documents and work
 
 Under **Appearance → Notifications**, choose where notices appear and how long they stay. **Show preview** lets you try the settings. Hovering over or focusing a notice pauses its timer.
 
+Some notices lead to related settings. For example, clicking **A Hibi update is available** opens the update section in **About**. These notices show their destination as a button and highlight when you point at them. Clicking a notice follows it and closes the notice.
+
+Run **Focus notifications** from the command palette to move keyboard focus to the newest notice. Press `Enter` to follow it or `Escape` to dismiss it; focus returns to where you were. Arrow keys and `Tab` move between notice buttons, and `Tab` past the last one also returns focus. Notices never take focus on their own, and `Tab` from elsewhere does not move into them. The command has no shortcut by default; assign one under **Hotkeys**.
+
 ## If the editor fails
 
 Choose **Save a copy** on the recovery screen to keep the draft Hibi still has in memory, then try **Reload Hibi**. The recovered copy may not include your latest changes. **Error details** shows information you can copy when reporting a problem; Hibi does not send it automatically.
