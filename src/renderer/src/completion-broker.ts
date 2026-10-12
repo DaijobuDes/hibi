@@ -184,6 +184,8 @@ function validItems(items: readonly CompletionItem[], length: number) {
       (item.rank !== undefined && !Number.isFinite(item.rank)) ||
       (item.acceptOnTab !== undefined &&
         typeof item.acceptOnTab !== 'boolean') ||
+      (item.captureArrowKeys !== undefined &&
+        typeof item.captureArrowKeys !== 'boolean') ||
       (item.preselect !== undefined && typeof item.preselect !== 'boolean') ||
       (item.acceptOnEnter !== undefined &&
         typeof item.acceptOnEnter !== 'boolean' &&
@@ -199,6 +201,7 @@ function validItems(items: readonly CompletionItem[], length: number) {
         to: item.to,
         rank: Math.max(-100, Math.min(100, item.rank ?? 0)),
         ...(item.acceptOnTab === false ? { acceptOnTab: false } : {}),
+        ...(item.captureArrowKeys === false ? { captureArrowKeys: false } : {}),
         ...(item.preselect === false ? { preselect: false } : {}),
         ...(item.acceptOnEnter === undefined
           ? {}

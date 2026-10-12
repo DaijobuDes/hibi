@@ -74,6 +74,7 @@ import {
 } from './completion-broker'
 import {
   completionForKey,
+  dismissCompletionForArrow,
   initialCompletionSelection,
 } from './completion-selection'
 import { documentImage } from './DocumentImage'
@@ -1175,6 +1176,10 @@ export function MarkdownEditor({
         event.stopPropagation()
         return
       }
+      if (visible && dismissCompletionForArrow(visible.items, event.key)) {
+        dismiss()
+        return
+      }
       if (visible && !event.ctrlKey && !event.metaKey && !event.altKey) {
         if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
           select(
@@ -1199,7 +1204,7 @@ export function MarkdownEditor({
             event.stopPropagation()
             return
           }
-          if (event.key === 'Enter') dismiss()
+          dismiss()
         }
       }
       if (

@@ -557,11 +557,18 @@ const collect = (broker, captured = request(), getCurrent = () => captured) => {
 test('keyboard metadata survives validation and invalid flags are rejected', async () => {
   const broker = new CompletionBroker()
   broker.register(owner('flags'), () => [
-    { ...item('next'), preselect: false, acceptOnEnter: false },
+    {
+      ...item('next'),
+      preselect: false,
+      acceptOnEnter: false,
+      acceptOnTab: false,
+      captureArrowKeys: false,
+    },
     { ...item('word'), preselect: false, acceptOnEnter: 'selected' },
     { ...item('disabled-tab'), acceptOnTab: false },
     { ...item('invalid-preselect'), preselect: 'false' },
     { ...item('invalid-enter'), acceptOnEnter: 'always' },
+    { ...item('invalid-arrows'), captureArrowKeys: 'false' },
     item('generic'),
   ])
   const { items } = await collect(broker).final
@@ -571,8 +578,11 @@ test('keyboard metadata survives validation and invalid flags are rejected', asy
   )
   assert.equal(items[0].preselect, false)
   assert.equal(items[0].acceptOnEnter, false)
+  assert.equal(items[0].acceptOnTab, false)
+  assert.equal(items[0].captureArrowKeys, false)
   assert.equal(items[1].acceptOnEnter, 'selected')
   assert.equal(items[2].acceptOnTab, false)
+  assert.equal('captureArrowKeys' in items[3], false)
   assert.equal('preselect' in items[3], false)
   assert.equal('acceptOnEnter' in items[3], false)
   assert.ok(Object.isFrozen(items[0]))

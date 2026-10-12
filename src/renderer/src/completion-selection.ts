@@ -9,6 +9,16 @@ export function initialCompletionSelection(items: readonly CompletionItem[]) {
     : -1
 }
 
+export function dismissCompletionForArrow(
+  items: readonly CompletionItem[],
+  key: string,
+) {
+  return (
+    ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(key) &&
+    items.some((item) => item.captureArrowKeys === false)
+  )
+}
+
 export function completionForKey(
   items: readonly CompletionItem[],
   selected: number,

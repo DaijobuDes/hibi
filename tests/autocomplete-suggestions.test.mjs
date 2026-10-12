@@ -90,6 +90,12 @@ test('provider combines baseline, exact personal spelling, custom words and next
   assert.equal(next[0].to, next[0].from)
   assert.equal(next[0].preselect, false)
   assert.equal(next[0].acceptOnEnter, false)
+  assert.equal(next[0].acceptOnTab, false)
+  assert.equal(next[0].captureArrowKeys, false)
+  f.settings({ tabAccepts: false })
+  const disabledTab = await f.provider(request('bro that was '), signal())
+  assert.equal(disabledTab[0].acceptOnTab, false)
+  assert.equal(disabledTab[0].captureArrowKeys, false)
   f.settings({ learning: false })
   assert.deepEqual(await words('bro that was '), [])
 })
@@ -107,15 +113,14 @@ test('next-word provider rejects unrelated, one-hit and tied contexts', async ()
     })
   observe('wild')
   assert.deepEqual(await f.provider(request('bro that was '), signal()), [])
-  observe('wild')
-  observe('wild')
+  for (let i = 0; i < 5; i++) observe('wild')
   assert.equal(
     (await f.provider(request('bro that was '), signal()))[0].insertText,
     'wild',
   )
   for (const before of ['purple zebra ', 'done. ', ' '])
     assert.deepEqual(await f.provider(request(before), signal()), [])
-  for (let i = 0; i < 3; i++) observe('weird')
+  for (let i = 0; i < 6; i++) observe('weird')
   assert.deepEqual(await f.provider(request('bro that was '), signal()), [])
 })
 
@@ -125,6 +130,7 @@ test('prefix results require explicit enter selection and retain tab preference'
     f.settings({ tabAccepts })
     const items = await f.provider(request('cra'), signal())
     assert.ok(items.length)
+    assert.ok(items.every((item) => item.captureArrowKeys === undefined))
     assert.ok(
       items.every(
         (item) => item.preselect === false && item.acceptOnEnter === 'selected',

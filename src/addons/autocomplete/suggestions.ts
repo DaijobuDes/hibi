@@ -200,7 +200,8 @@ export function autocompleteCompletions(
       rank: score * 100,
       preselect: false,
       acceptOnEnter: typed ? 'selected' : false,
-      ...(settings.tabAccepts ? {} : { acceptOnTab: false }),
+      ...(typed ? {} : { captureArrowKeys: false }),
+      ...(typed && settings.tabAccepts ? {} : { acceptOnTab: false }),
     }))
   }
 }

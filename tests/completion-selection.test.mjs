@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   completionForKey,
+  dismissCompletionForArrow,
   initialCompletionSelection,
 } from '../src/renderer/src/completion-selection.ts'
 
@@ -13,13 +14,31 @@ const item = (overrides = {}) => ({
   ...overrides,
 })
 
-test('next-word predictions leave Enter to newline even after highlighting', () => {
-  const items = [item({ preselect: false, acceptOnEnter: false })]
+test('next-word predictions never accept Enter or Tab, even after highlighting', () => {
+  const items = [
+    item({ preselect: false, acceptOnEnter: false, acceptOnTab: false }),
+  ]
   assert.equal(initialCompletionSelection(items), -1)
   for (const selected of [-1, 0]) {
     assert.equal(completionForKey(items, selected, 'Enter'), null)
-    assert.equal(completionForKey(items, selected, 'Tab'), items[0])
+    assert.equal(completionForKey(items, selected, 'Tab'), null)
   }
+})
+
+test('next-word and mixed popups dismiss for every arrow, leaving other keys alone', () => {
+  const next = item({ captureArrowKeys: false })
+  for (const key of ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']) {
+    assert.equal(dismissCompletionForArrow([next], key), true)
+    assert.equal(dismissCompletionForArrow([item(), next], key), true)
+    assert.equal(dismissCompletionForArrow([item()], key), false)
+    assert.equal(
+      dismissCompletionForArrow([item({ captureArrowKeys: true })], key),
+      false,
+    )
+    assert.equal(dismissCompletionForArrow([], key), false)
+  }
+  for (const key of ['Enter', 'Tab', 'Escape', 'a'])
+    assert.equal(dismissCompletionForArrow([next], key), false)
 })
 
 test('in-word predictions require explicit selection for Enter; Tab accepts first', () => {

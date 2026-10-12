@@ -79,6 +79,7 @@ import {
 } from './completion-broker'
 import {
   completionForKey,
+  dismissCompletionForArrow,
   initialCompletionSelection,
 } from './completion-selection'
 import { documentEdits } from './document-edits'
@@ -990,7 +991,7 @@ export function SourceEditor({
                     !item ||
                     !completionForKey([item], selected < 0 ? -1 : 0, key)
                   ) {
-                    if (key === 'Enter') closeCompletion(view)
+                    closeCompletion(view)
                     return false
                   }
                   if (selected < 0)
@@ -1248,6 +1249,14 @@ export function SourceEditor({
       )
     })
     const onTypingCommand = (event: KeyboardEvent) => {
+      if (
+        completion &&
+        dismissCompletionForArrow(completion.items, event.key)
+      ) {
+        cancelCompletion()
+        closeCompletion(editor)
+        return
+      }
       if (
         event.key !== 'Enter' ||
         event.isComposing ||

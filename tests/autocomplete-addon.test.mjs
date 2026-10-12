@@ -76,9 +76,7 @@ test('autocomplete learns locally, disables learning, excludes documents and cle
     })
     .waitFor({ state: 'hidden' })
   await back()
-  await page.keyboard.type(
-    'bro that was wild. bro that was wild. bro that was wild. ',
-  )
+  await page.keyboard.type('bro that was wild. '.repeat(6))
   await waitForAsync(page, async () => {
     const data = await window.hibi.readAddonStorage({
       owner: 'autocomplete',
@@ -89,7 +87,7 @@ test('autocomplete learns locally, disables learning, excludes documents and cle
     return (
       data.status === 'ready' &&
       // Counts begin decaying before the debounced write reaches disk.
-      data.value.entries.some((row) => row.word === 'wild' && row.count > 2.99)
+      data.value.entries.some((row) => row.word === 'wild' && row.count > 5.99)
     )
   })
   const first = await stored()
@@ -176,12 +174,64 @@ test('autocomplete learns locally, disables learning, excludes documents and cle
         (await window.hibi.getDocument()).markdown,
       ),
     )
-    for (const highlight of [false, true]) {
+    const caret = () =>
+      page.evaluate((mode) => {
+        if (mode === 'rich') {
+          const { anchor, head } =
+            document.querySelector('.rich-pane .tiptap').editor.state.selection
+          return { anchor, head }
+        }
+        const { anchor, head } =
+          document.querySelector('.cm-content').cmTile.root.view.state.selection
+            .main
+        return { anchor, head }
+      }, mode)
+    const openBetweenParagraphs = async () => {
+      await reset('previous paragraph\n\nbro that was\n\nfollowing paragraph')
+      await page.evaluate((mode) => {
+        if (mode === 'rich') {
+          const editor = document.querySelector('.rich-pane .tiptap').editor
+          editor.commands.setTextSelection(
+            editor.state.doc.child(0).nodeSize + 1 + 'bro that was'.length,
+          )
+        } else {
+          const view = document.querySelector('.cm-content').cmTile.root.view
+          const head =
+            view.state.doc.toString().indexOf('bro that was') +
+            'bro that was'.length
+          view.dispatch({ selection: { anchor: head } })
+        }
+      }, mode)
+      await page.keyboard.type(' ')
+      await waitForChoice()
+    }
+    for (const key of ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']) {
+      for (const shift of ['', 'Shift+']) {
+        await openBetweenParagraphs()
+        const before = await caret()
+        await page.keyboard.press('Escape')
+        await page.keyboard.press(shift + key)
+        const expected = await caret()
+        assert.notEqual(
+          expected.head,
+          before.head,
+          `${mode} ${shift}${key} control moves caret`,
+        )
+        await openBetweenParagraphs()
+        await page.keyboard.press(shift + key)
+        await popup.waitFor({ state: 'hidden' })
+        assert.deepEqual(await caret(), expected, `${mode} ${shift}${key}`)
+      }
+    }
+    for (const dismissWithArrow of [false, true]) {
       await reset('bro that was')
       await page.keyboard.type(' ')
       await waitForChoice()
       assert.equal(await popup.locator('[aria-selected="true"]').count(), 0)
-      if (highlight) await page.keyboard.press('ArrowDown')
+      if (dismissWithArrow) {
+        await page.keyboard.press('ArrowDown')
+        await popup.waitFor({ state: 'hidden' })
+      }
       await page.keyboard.press('Enter')
       await page.keyboard.type('new paragraph')
       await waitForAsync(page, async () =>
@@ -192,6 +242,23 @@ test('autocomplete learns locally, disables learning, excludes documents and cle
     }
     await reset('bro that was')
     await page.keyboard.type(' ')
+    await waitForChoice()
+    await page.keyboard.press('Tab')
+    await popup.waitFor({ state: 'hidden' })
+    // Read editor state directly so a delayed document flush cannot hide acceptance.
+    const textAfterTab = await page.evaluate(
+      (mode) =>
+        mode === 'rich'
+          ? document.querySelector('.rich-pane .tiptap').editor.state.doc
+              .textContent
+          : document
+              .querySelector('.cm-content')
+              .cmTile.root.view.state.doc.toString(),
+      mode,
+    )
+    assert.match(textAfterTab, /^bro that was\s*$/)
+    await reset('bro that was wil')
+    await page.keyboard.press('Control+Space')
     await waitForChoice()
     await page.keyboard.press('Tab')
     await waitForAsync(
@@ -253,7 +320,7 @@ test('autocomplete learns locally, disables learning, excludes documents and cle
     )
   }
   await page.keyboard.type(' disabledword ')
-  // Changing the preference flushes queued learning before the positive control.
+  // Re-enable learning before the positive control.
   await settings()
   await page.locator('#autocomplete-learning').check()
   await back()
@@ -268,7 +335,7 @@ test('autocomplete learns locally, disables learning, excludes documents and cle
   await page.locator('#autocomplete-exclude-document').check()
   await back()
   await page.keyboard.type(' excludedword ')
-  // Changing the preference flushes queued learning before the positive control.
+  // Re-include this document before the positive control.
   await settings()
   await page.locator('#autocomplete-exclude-document').uncheck()
   await back()
