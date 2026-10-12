@@ -16,7 +16,7 @@ const mac = navigator.userAgent.includes('Mac')
 const platform = mac ? 'darwin' : 'win32'
 type Target = { id: string; path: string; folder: string }
 type Destination = Target | { error: string }
-type Draft = { markdown: string; destination: Target | null }
+type Draft = { markdown: string }
 type DraftLoad =
   | { status: 'none' }
   | { status: 'ready'; draft: Draft }
@@ -86,11 +86,8 @@ export function CaptureWindow({ Editor, native, close }: AddonWindowProps) {
   const sessionRef = useRef(0)
   sessionRef.current = session
   const markdown = useRef('')
-  // A started note keeps the destination it had when writing began.
-  const pinned = useRef<Target | null>(null)
-  const pinning = useRef<Promise<void> | null>(null)
-  const [fresh, setFresh] = useState<Destination | null>(null)
-  const [shownPin, setShownPin] = useState<Target | null>(null)
+  // Notes save to the destination currently set; the footer follows it live.
+  const [destination, setDestination] = useState<Destination | null>(null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState('')
   const [error, setError] = useState('')
@@ -99,6 +96,8 @@ export function CaptureWindow({ Editor, native, close }: AddonWindowProps) {
   } | null>(null)
   const [draftWarning, setDraftWarning] = useState(false)
   const failures = useRef(0)
+  // A previous version's draft stays until a native write is acknowledged.
+  const legacyPending = useRef(false)
   const busy = saving || !!saved
 
   const resolve = useCallback(async (): Promise<Destination> => {
@@ -114,25 +113,20 @@ export function CaptureWindow({ Editor, native, close }: AddonWindowProps) {
       return { error: errorMessage(failure) }
     }
   }, [native])
-  const refresh = useCallback(() => void resolve().then(setFresh), [resolve])
-  const pin = useCallback((target: Target | null) => {
-    pinned.current = target
-    setShownPin(target)
-  }, [])
+  const refresh = useCallback(
+    () => void resolve().then(setDestination),
+    [resolve],
+  )
 
   // Drafts go to the main process, which acknowledges each write.
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const writing = useRef<Promise<unknown>>(Promise.resolve())
-  const startPinning = useRef(() => {})
   const writeDraft = useCallback((): Promise<boolean> => {
     clearTimeout(timer.current)
     const value = untouched(markdown.current, settingsRef.current)
       ? ''
       : markdown.current
-    const draft: Draft = {
-      markdown: value,
-      destination: value ? pinned.current : null,
-    }
+    const draft: Draft = { markdown: value }
     const write = writing.current
       .catch(() => {})
       .then(() => native.invoke('saveDraft', draft))
@@ -140,6 +134,10 @@ export function CaptureWindow({ Editor, native, close }: AddonWindowProps) {
         () => {
           failures.current = 0
           setDraftWarning(false)
+          if (legacyPending.current) {
+            localStorage.removeItem(legacyDraftKey)
+            legacyPending.current = false
+          }
           return true
         },
         () => {
@@ -157,18 +155,6 @@ export function CaptureWindow({ Editor, native, close }: AddonWindowProps) {
     clearTimeout(timer.current)
     timer.current = setTimeout(writeDraft, draftDelay)
   }, [writeDraft])
-  startPinning.current = () => {
-    pinning.current = resolve().then((target) => {
-      // Only a note that still has text keeps the destination.
-      if (
-        !('error' in target) &&
-        !untouched(markdown.current, settingsRef.current)
-      )
-        pin(target)
-      pinning.current = null
-      scheduleDraft()
-    })
-  }
   const hide = useCallback(() => {
     void writeDraft()
     close()
@@ -187,26 +173,26 @@ export function CaptureWindow({ Editor, native, close }: AddonWindowProps) {
         }
       }
     }
-    void open().then(async (result) => {
+    void open().then((result) => {
       if (!active || !result) return
       let text = template(settingsRef.current)
       let legacy = ''
-      if (result.status === 'ready' && result.draft.markdown) {
+      if (result.status === 'ready' && result.draft.markdown)
         text = result.draft.markdown
-        if (result.draft.destination) pin(result.draft.destination)
-      } else if (result.status === 'unreadable') setUnreadable(result)
+      else if (result.status === 'unreadable') setUnreadable(result)
       else if (result.status === 'none') legacy = readLegacyDraft()
       if (legacy) text = legacy
       markdown.current = text
       setInitial(text)
-      // Keep the old copy until the new one is on disk.
-      if (legacy && (await writeDraft()))
-        localStorage.removeItem(legacyDraftKey)
+      if (legacy) {
+        legacyPending.current = true
+        void writeDraft()
+      }
     })
     return () => {
       active = false
     }
-  }, [native, pin, writeDraft])
+  }, [native, writeDraft])
   useEffect(() => {
     refresh()
     window.addEventListener('focus', refresh)
@@ -237,8 +223,7 @@ export function CaptureWindow({ Editor, native, close }: AddonWindowProps) {
     setSaving(true)
     setError('')
     try {
-      await pinning.current
-      const target = pinned.current ?? (await resolve())
+      const target = await resolve()
       if ('error' in target) throw new Error(target.error)
       await writing.current.catch(() => {})
       const result = await native.invoke<{ name: string }>('save', {
@@ -258,19 +243,15 @@ export function CaptureWindow({ Editor, native, close }: AddonWindowProps) {
             : current
       setUnreadable(null)
       if (rest) {
-        // The kept text is a new note with its own destination.
-        pin(null)
         markdown.current = rest
         setInitial(rest)
         setSession((value) => value + 1)
-        startPinning.current()
         await writeDraft()
         setTimeout(() => setSaved(''), savedDelay)
         return
       }
       // The window stays alive hidden; the next note starts empty.
       markdown.current = template(settingsRef.current)
-      pin(null)
       setInitial(markdown.current)
       setSession((value) => value + 1)
       await writeDraft()
@@ -315,7 +296,6 @@ export function CaptureWindow({ Editor, native, close }: AddonWindowProps) {
       window.removeEventListener('keydown', command, true)
     }
   }, [hide])
-  const destination: Destination | null = shownPin ?? fresh
   const where =
     destination && 'path' in destination
       ? [
@@ -334,11 +314,6 @@ export function CaptureWindow({ Editor, native, close }: AddonWindowProps) {
             // An editor from a previous note may report once more while it unmounts.
             if (session !== sessionRef.current) return
             markdown.current = value
-            // An emptied note is discarded, so the next text is a new note.
-            if (untouched(value, settingsRef.current)) {
-              if (pinned.current) pin(null)
-            } else if (!pinned.current && !pinning.current)
-              startPinning.current()
             scheduleDraft()
           }}
         />
@@ -349,16 +324,16 @@ export function CaptureWindow({ Editor, native, close }: AddonWindowProps) {
             {error ||
               (destination && 'error' in destination && destination.error)}
           </p>
+        ) : draftWarning ? (
+          <p role="status" className="quick-note-meta quick-note-warning">
+            Hibi cannot keep this note right now. Save it or copy the text
+            somewhere safe.
+          </p>
         ) : unreadable ? (
           <p role="alert" className="quick-note-meta">
             {unreadable.keptAs
               ? `Hibi could not read your previous unsaved note, so it kept the file as ${unreadable.keptAs} in its app data folder.`
               : 'Hibi could not read your previous unsaved note. It left the file unchanged and will not keep new notes until the file is moved.'}
-          </p>
-        ) : draftWarning ? (
-          <p role="status" className="quick-note-meta quick-note-warning">
-            Hibi cannot keep this note right now. Save it or copy the text
-            somewhere safe.
           </p>
         ) : (
           <p role="status" className="quick-note-meta">
