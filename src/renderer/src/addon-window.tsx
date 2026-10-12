@@ -52,9 +52,13 @@ const Editor = lazy(async () => {
 function show(children: ReactNode) {
   root.render(
     <StrictMode>
-      <div className="addon-window">
+      <div className="app addon-window" data-platform={context?.platform}>
         {context?.titleBar === 'hibi' && (
-          <header className="addon-window-titlebar">{context.title}</header>
+          <header className="titlebar addon-window-titlebar">
+            <div className="document-title">
+              <span>{context.title}</span>
+            </div>
+          </header>
         )}
         <div className="addon-window-content">{children}</div>
       </div>
@@ -64,8 +68,7 @@ function show(children: ReactNode) {
 
 async function render() {
   context = await bridge.context()
-  const { addonId, id, input, platform } = context
-  document.documentElement.dataset.platform = platform
+  const { addonId, id, input } = context
   const path = Object.keys(manifests).find(
     (candidate) => manifests[candidate]?.id === addonId,
   )
