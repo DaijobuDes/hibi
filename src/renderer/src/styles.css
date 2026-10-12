@@ -1481,6 +1481,14 @@ button.ui-button.update-download-button:disabled {
   text-decoration-thickness: 1px;
   text-underline-offset: 3px;
 }
+.tiptap [data-raw-html="block"] {
+  max-height: 12em;
+}
+.tiptap [data-raw-html].ProseMirror-selectednode {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-control);
+}
 .format-unavailable {
   color: var(--muted);
   font-size: var(--text-ui);
