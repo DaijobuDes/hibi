@@ -320,7 +320,11 @@ export function useAddons(
               !extensions?.length ||
               !documentName ||
               extensions.includes(documentExtension(documentName)) ||
-              (!!(addon.flavors?.length || addon.manifest.syntax?.length) &&
+              (!!(
+                addon.flavors?.length ||
+                addon.manifest.syntax?.length ||
+                addon.manifest.capabilities?.includes('markdown')
+              ) &&
                 isMarkdownDocument(documentName))
             )
           })

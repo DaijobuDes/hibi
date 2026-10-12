@@ -15,7 +15,7 @@ test('addon windows host the editor without desktop privileges', {
   // Quick note is a background addon with a global shortcut; it must not start in the window.
   await writeFile(
     join(profile, 'addons.json'),
-    JSON.stringify({ 'ui-preview': true, 'quick-note': true }),
+    JSON.stringify({ 'ui-preview': true, 'quick-note': true, mermaid: true }),
   )
   const app = await electron.launch({
     args: [resolve('.'), `--user-data-dir=${profile}`],
@@ -39,6 +39,10 @@ test('addon windows host the editor without desktop privileges', {
   const editor = preview.locator('.tiptap[contenteditable="true"]')
   await editor.waitFor()
   assert.equal(await preview.locator('.editor-toolbar').count(), 1)
+  // Mermaid also opens its own diagram files, but Markdown notes still start it.
+  await preview
+    .locator('style[data-addon-style="mermaid.preview"]')
+    .waitFor({ state: 'attached' })
   assert.equal(
     await preview.getByRole('region', { name: 'Preview note' }).count(),
     1,
