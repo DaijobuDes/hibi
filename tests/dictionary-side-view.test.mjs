@@ -228,16 +228,8 @@ test('side view follows the caret offline, replaces in one undo step, and pack s
     await waitForDocumentEditor(app, page, editor)
   }
   await toggle('dictionary-suggest')
-  await page.evaluate(() => {
-    window.tabsReachingDocument = 0
-    document.addEventListener('keydown', (event) => {
-      if (event.key !== 'Tab') return
-      // Counts Tabs no editor handled; then keeps focus in the editor.
-      if (!event.defaultPrevented) window.tabsReachingDocument++
-      event.preventDefault()
-    })
-  })
-  const tabs = () => page.evaluate(() => window.tabsReachingDocument)
+  const richText = () =>
+    rich.evaluate((element) => element.editor.state.doc.textContent)
   const menu = page.getByRole('listbox', { name: 'Completions' })
   await rich.evaluate((element) => {
     element.editor.commands.focus('end')
@@ -252,23 +244,23 @@ test('side view follows the caret offline, replaces in one undo step, and pack s
     async () =>
       (await window.hibi.getDocument()).markdown === 'The dog is happy happy',
   )
-  assert.equal(await tabs(), 0)
 
-  // Without a popup, Tab belongs to the editor.
+  // Without a popup, Tab works as usual: mid-line it inserts a tab.
   await page.keyboard.type(' zq')
   await page.keyboard.press('Tab')
-  assert.equal(await tabs(), 1)
+  assert.match(await richText(), / zq\t$/)
   assert.equal(await menu.isVisible(), false)
+  await page.keyboard.press('Backspace')
 
-  // With Tab acceptance off, Tab passes through and Enter still accepts.
+  // With Tab acceptance off, Tab works as usual and Enter still accepts.
   await toggle('dictionary-tab-accepts')
   await rich.evaluate((element) => element.editor.commands.focus('end'))
   await page.keyboard.type(' hap')
   await menu.getByRole('option', { name: 'happy', exact: true }).waitFor()
   await page.keyboard.press('Tab')
-  assert.equal(await tabs(), 2)
-  assert.match(await markdown(), / zq hap$/)
-  await rich.evaluate((element) => element.editor.commands.focus('end'))
+  await menu.waitFor({ state: 'hidden' })
+  assert.match(await richText(), / zq hap\t$/)
+  await page.keyboard.press('Backspace')
   await page.keyboard.type('p')
   await menu.getByRole('option', { name: 'happy', exact: true }).waitFor()
   await page.keyboard.press('Enter')
@@ -312,6 +304,18 @@ test('side view follows the caret offline, replaces in one undo step, and pack s
     .waitFor()
   await page.keyboard.press('Escape')
   await menu.waitFor({ state: 'hidden' })
+  // That Escape closed the popup; the next one lets Tab leave the editor.
+  await page.keyboard.press('Escape')
+  await page.keyboard.press('Tab')
+  assert.equal(
+    await rich.evaluate((element) => element.contains(document.activeElement)),
+    false,
+  )
+  assert.match(await richText(), / sch$/)
+  await rich.evaluate((element) => element.editor.commands.focus('end'))
+  await waitForAsync(page, async () =>
+    document.querySelector('.tiptap').contains(document.activeElement),
+  )
   const latencies = []
   for (let sample = 0; sample < 5; sample++) {
     await page.keyboard.type(' ha')
@@ -372,8 +376,10 @@ test('side view follows the caret offline, replaces in one undo step, and pack s
   await typeAtEnd(' hap')
   await options.filter({ hasText: /^happy(English)?$/ }).waitFor()
   await page.keyboard.press('Tab')
-  assert.equal(await tabs(), 3)
-  assert.match(await markdown(), / happy hap$/)
+  await waitForAsync(page, async () =>
+    (await window.hibi.getDocument()).markdown.endsWith(' happy hap\t'),
+  )
+  await page.keyboard.press('Backspace')
   await toggle('dictionary-tab-accepts', { name: 'Markdown editor' })
   await typeAtEnd('p')
   await options.filter({ hasText: /^happy(English)?$/ }).waitFor()
@@ -381,10 +387,11 @@ test('side view follows the caret offline, replaces in one undo step, and pack s
   await waitForAsync(page, async () =>
     (await window.hibi.getDocument()).markdown.endsWith(' happy happy'),
   )
-  assert.equal(await tabs(), 3)
   await page.keyboard.type(' zq')
   await page.keyboard.press('Tab')
-  assert.equal(await tabs(), 4)
+  await waitForAsync(page, async () =>
+    (await window.hibi.getDocument()).markdown.endsWith(' happy happy zq\t'),
+  )
 
   // Source view: the slash menu wins too.
   await page.keyboard.press('Enter')
