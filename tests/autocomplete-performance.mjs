@@ -73,6 +73,7 @@ for (let run = 0; run < 7; run++) {
     callbacks.add(run)
     return () => callbacks.delete(run)
   })
+  learning.suggest({ ...session, prefix: 'prefix' })
   saveTime += 1000
   start = performance.now()
   await learning.persist()
