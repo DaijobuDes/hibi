@@ -152,12 +152,13 @@ test('preference changes discard newly excluded queues and preserve learned aggr
             assert.equal(idle, undefined)
           }
           await new Promise(setImmediate)
-          assert.equal(writes, 1)
+          const excluded = ['learning', 'document', 'workspace'].includes(name)
+          const expectedWrites = !flushed && excluded ? 0 : 1
+          assert.equal(writes, expectedWrites)
           assert.ok(
             snapshot.value.entries.every((row) => row.word !== 'secret'),
           )
           const word = snapshot.value.entries.find((row) => row.word === 'wild')
-          const excluded = ['learning', 'document', 'workspace'].includes(name)
           if (!flushed && excluded) assert.equal(word, undefined)
           else {
             assert.ok(word)
@@ -169,7 +170,7 @@ test('preference changes discard newly excluded queues and preserve learned aggr
           )
           t.mock.timers.tick(1000)
           await new Promise(setImmediate)
-          assert.equal(writes, 1)
+          assert.equal(writes, expectedWrites)
         },
       )
     }

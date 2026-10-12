@@ -141,6 +141,7 @@ async function fixture(t) {
   const handle = await open(true)
   const idle = idleQueue()
   const learning = createLearning(handle, idle.schedule)
+  idle.run()
   t.after(async () => {
     learning.dispose()
     for (const gate of gates) gate.resolve()
@@ -506,7 +507,7 @@ test('disabled session, missing safe prose and reset discard acceptance receipts
   assert.equal(seen.length, 1)
 })
 
-test('startup and external reload defer saved-model loading until first use', (t) => {
+test('startup prewarms saved model at idle and external reload stays lazy', (t) => {
   const trained = createPersonalModel()
   trained.observe(observation('remembered'))
   let saved = trained.snapshot()
@@ -532,9 +533,9 @@ test('startup and external reload defer saved-model loading until first use', (t
   )
   t.after(() => learning.dispose())
   assert.equal(reads, 0)
-  learning.observe(observation('pending'))
-  assert.equal(reads, 0)
-  learning.discard()
+  assert.equal(idle.size(), 1)
+  idle.run()
+  assert.equal(reads, 1)
   const request = { scope: 'notes', languages, prefix: 'rem' }
   assert.equal(learning.suggest(request)[0].word, 'remembered')
   assert.equal(reads, 1)
@@ -545,6 +546,31 @@ test('startup and external reload defer saved-model loading until first use', (t
   assert.equal(reads, 1)
   assert.deepEqual(learning.suggest(request), [])
   assert.equal(reads, 2)
+})
+
+test('preferences and disposal cancel cold prewarming without reading or writing storage', async () => {
+  for (const action of ['persist', 'dispose']) {
+    const idle = idleQueue()
+    const learning = createLearning(
+      {
+        snapshot: () => assert.fail('cold settings must not load the model'),
+        set: () => assert.fail('cold settings must not rewrite the snapshot'),
+        subscribe: () => () => {},
+      },
+      idle.schedule,
+    )
+    learning.observe(observation('excluded'))
+    if (action === 'persist')
+      await learning.persist({
+        learning: false,
+        excludedDocuments: [],
+        excludedWorkspaces: [],
+      })
+    else learning.dispose()
+    assert.equal(idle.size(), 0)
+    idle.run()
+    learning.dispose()
+  }
 })
 
 test('idle learning batches once, caps pending words and persists only aggregates', async (t) => {

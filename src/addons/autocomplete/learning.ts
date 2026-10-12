@@ -61,6 +61,7 @@ export function createLearning(
   })
 
   function save(clear?: { scope?: PersonalScope | undefined }) {
+    if (!clear && !model) return writes
     const epoch = generation
     const operation = writes
       .catch(() => {})
@@ -119,6 +120,11 @@ export function createLearning(
       )
     }, 1000)
   }
+
+  cancelIdle = schedule((deadline) => {
+    getModel()
+    flush(deadline)
+  })
 
   return {
     suggest: (request: PersonalRequest) => getModel().suggest(request),
