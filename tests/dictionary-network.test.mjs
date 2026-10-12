@@ -9,7 +9,8 @@ import {
   wiktionaryProvider,
 } from '../src/addons/dictionary/online.ts'
 import { packs } from '../src/addons/dictionary/packs.ts'
-import { HostNetwork, parseAddonNetwork } from '../src/main/host-network.ts'
+import { HostNetwork } from '../src/main/host-network.ts'
+import { parseAddonNetwork } from '../src/shared/host-network.ts'
 
 const bundled = await build({
   entryPoints: [
