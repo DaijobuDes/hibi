@@ -30,10 +30,14 @@ export function textItems(text) {
   )
 }
 
-function requests(item) {
+function requests(item, nextWordOnly = false) {
   const result = []
   const prefix = item.word.slice(0, 3)
-  if (item.word.length > 3 && prefixAt(item.before + prefix, '') === prefix)
+  if (
+    !nextWordOnly &&
+    item.word.length > 3 &&
+    prefixAt(item.before + prefix, '') === prefix
+  )
     result.push({ kind: 'prefix', prefix })
   if (/[ \t]$/.test(item.before) && item.context.length)
     result.push({ kind: 'nextWord', prefix: '' })
@@ -120,6 +124,7 @@ export async function evaluateCorpus(
   corpus,
   complete,
   createModel = createPersonalModel,
+  { nextWordOnly = false } = {},
 ) {
   const training = (corpus.trainingDocuments ?? [corpus.training]).flatMap(
     textItems,
@@ -148,7 +153,7 @@ export async function evaluateCorpus(
       context: item.context,
       kind: 'typed',
     })
-    for (const { kind, prefix } of requests(item))
+    for (const { kind, prefix } of requests(item, nextWordOnly))
       trainingKeys[kind].add(queryKey(item, prefix))
   }
   const frozen = model.snapshot()
@@ -170,9 +175,10 @@ export async function evaluateCorpus(
       unseenTrainingQueryOccurrences: 0,
     },
   }
+  const completions = new Map()
   // Time stays fixed, and no evaluation target is ever observed.
   for (const item of heldOut) {
-    for (const { kind, prefix } of requests(item)) {
+    for (const { kind, prefix } of requests(item, nextWordOnly)) {
       const key = queryKey(item, prefix)
       const firstTime = !seen[kind].has(key)
       seen[kind].add(key)
@@ -180,7 +186,9 @@ export async function evaluateCorpus(
       if (!trainingKeys[kind].has(key))
         counts[kind].unseenTrainingQueryOccurrences++
       const unseenTarget = !trainedWords.has(wordKey(item.word))
-      const found = prefix ? await complete(prefix, corpus) : []
+      if (prefix && !completions.has(prefix))
+        completions.set(prefix, await complete(prefix, corpus))
+      const found = completions.get(prefix) ?? []
       const start = performance.now()
       const ranked = prefix ? rankWords(prefix, found) : []
       const baselineElapsed = performance.now() - start
@@ -309,6 +317,7 @@ export function assertNextWordQuality(report) {
 export async function replayRepository(
   complete = fixtureComplete,
   createModel = createPersonalModel,
+  options,
 ) {
   const corpus = repositoryCorpus()
   assert.equal(
@@ -316,7 +325,12 @@ export async function replayRepository(
     corpus.trainingFiles.length + corpus.heldOutFiles.length,
     'training and held-out files must be disjoint',
   )
-  const { report } = await evaluateCorpus(corpus, complete, createModel)
+  const { report } = await evaluateCorpus(
+    corpus,
+    complete,
+    createModel,
+    options,
+  )
   report.training.files = corpus.trainingFiles
   report.heldOut.files = corpus.heldOutFiles
   assert.ok(
@@ -425,6 +439,7 @@ export async function replay({
     join(homedir(), 'Library/Application Support/hibi-dev/dictionary-packs'),
   ],
   fixturesOnly = false,
+  createModel = createPersonalModel,
 } = {}) {
   const packs = await dictionary(roots, fixturesOnly)
   const aggregate = modes()
@@ -444,7 +459,7 @@ export async function replay({
   for (let i = 0; i < 200; i++)
     warm.suggest({ scope: null, languages: ['en'], prefix: 'pre', baseline })
   try {
-    repository = await replayRepository(packs.complete)
+    repository = await replayRepository(packs.complete, createModel)
     for (const file of readdirSync(fixtureDirectory)
       .filter((name) => name.endsWith('.json'))
       .sort()) {

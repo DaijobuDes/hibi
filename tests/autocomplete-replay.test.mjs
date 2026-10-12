@@ -13,6 +13,17 @@ import {
 } from '../scripts/autocomplete-replay.mjs'
 import { createPersonalModel } from '../src/addons/autocomplete/model.ts'
 
+let reportPromise
+let repositoryModel
+const replayReport = () =>
+  (reportPromise ??= replay({
+    fixturesOnly: true,
+    createModel: (options) => {
+      repositoryModel = createPersonalModel(options)
+      return repositoryModel
+    },
+  }))
+
 test('excluded code leaves boundaries without synthetic tokens or joined context', () => {
   const text = repositoryProse(
     'before `hidden` after\n# `hidden` tail\nword\n```js\nhidden\n```\nlast',
@@ -55,16 +66,26 @@ test('repository corpus keeps frozen prose, file split and training-only vocabul
 })
 
 test('repository replay fails if next-word prediction is removed', async () => {
+  const report = await replayReport()
+  let queries = 0
   await assert.rejects(
-    replayRepository(fixtureComplete, (options) => {
-      const model = createPersonalModel(options)
-      return {
-        ...model,
-        suggest: (request) => (request.prefix ? model.suggest(request) : []),
-      }
-    }),
+    replayRepository(
+      () => assert.fail('next-word control must not look up prefixes'),
+      () => ({
+        ...repositoryModel,
+        // Reuse frozen training; the control changes only predictions.
+        observe: () => {},
+        suggest: (request) => {
+          assert.equal(request.prefix, '')
+          queries++
+          return []
+        },
+      }),
+      { nextWordOnly: true },
+    ),
     /must produce nonzero predictions/,
   )
+  assert.equal(queries, report.repository.queries.nextWord.personal.samples)
 })
 
 test('quality gates reject excessive firing and poor precision independently', () => {
@@ -148,6 +169,26 @@ test('prefix save counts subtract typed prefix and acceptance; baseline case mat
   assert.equal(report.queries.nextWord.baseline.charactersSaved, 0)
 })
 
+test('repeated prefix queries reuse candidates while retaining every baseline sample', async () => {
+  const lookups = []
+  const { report } = await evaluateCorpus(
+    {
+      ...corpus,
+      training: 'we enjoy coffee.',
+      heldOut: 'we carry coffee. we carry coffee.',
+      dictionary: { en: ['carry', 'coffee'] },
+    },
+    (prefix, corpus) => {
+      lookups.push(prefix)
+      return fixtureComplete(prefix, corpus)
+    },
+  )
+  assert.deepEqual(lookups, ['car', 'cof'])
+  assert.equal(report.queries.prefix.baseline.samples, 4)
+  assert.equal(report.queries.prefix.baseline.topOneHits, 4)
+  assert.equal(report.queries.prefix.baseline.charactersSaved, 6)
+})
+
 test('personal scoring follows real insertion casing and preserves internal capitals', async () => {
   const { report } = await evaluateCorpus(
     {
@@ -162,8 +203,8 @@ test('personal scoring follows real insertion casing and preserves internal capi
   assert.equal(report.queries.prefix.personal.charactersSaved, 12)
 })
 
-test('replay reports separate modes, sources, novel targets and internally consistent counts', async () => {
-  const report = await replay({ fixturesOnly: true })
+test('replay reports separate modes, sources, novel targets and internally consistent counts', async (t) => {
+  const report = await replayReport()
   assert.equal(report.corpora.length, 3)
   const repository = report.repository
   assert.ok(repository.heldOut.tokens >= 10_000)
@@ -174,6 +215,22 @@ test('replay reports separate modes, sources, novel targets and internally consi
     repository.training.files.length + repository.heldOut.files.length,
   )
   assertNextWordQuality(repository)
+  const nextWord = repository.queries.nextWord.personal
+  assert.equal(nextWord.samples, 15544)
+  assert.equal(nextWord.fired, 413)
+  assert.equal(nextWord.topOneHits, 194)
+  t.diagnostic(
+    JSON.stringify({
+      nextWord: {
+        samples: nextWord.samples,
+        fired: nextWord.fired,
+        hits: nextWord.topOneHits,
+        precision: nextWord.precision,
+        fireRate: nextWord.fireRate,
+      },
+      prefixBaseline: repository.queries.prefix.baseline,
+    }),
+  )
   for (const kind of ['prefix', 'nextWord']) {
     const metric = repository.queries[kind].personal
     assert.equal(metric.fireRate, metric.fired / metric.samples)
