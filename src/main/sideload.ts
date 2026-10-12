@@ -17,11 +17,12 @@ import {
   requiredAddonDependencies,
   validateAddonRequirements,
 } from '../shared/addon-dependencies'
-import { parseAddonManifest, validId } from '../shared/addon-manifest'
+import { admitInstalledAddon, validId } from '../shared/addon-manifest'
 import {
   MAX_ADDON_BYTES,
   MAX_ADDON_ENTRIES,
   MAX_ADDON_FILE_BYTES,
+  MAX_ADDON_MANIFEST_BYTES,
   validAddonPath as validPath,
 } from '../shared/addon-package'
 import type { InstalledAddon } from '../shared/sideload'
@@ -30,14 +31,21 @@ import { downloadRepository, repositoryUrl } from './addon-repository'
 type Package = InstalledAddon & { entry: string; hash: string; files: string[] }
 let installed: Package[] = []
 const root = () => join(app.getPath('userData'), 'installed-addons')
-async function readManifest(folder: string) {
+async function readManifest(folder: string, compiledIds: readonly string[]) {
   const path = join(folder, 'hibi-addon.json')
   const stat = await lstat(path)
-  if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 64 * 1024)
+  if (
+    !stat.isFile() ||
+    stat.isSymbolicLink() ||
+    stat.size > MAX_ADDON_MANIFEST_BYTES
+  )
     throw new Error(
       'hibi-addon.json must be a JSON file no larger than 64 KiB.',
     )
-  return parseAddonManifest(JSON.parse(await readFile(path, 'utf8')))
+  return admitInstalledAddon(
+    JSON.parse(await readFile(path, 'utf8')),
+    compiledIds,
+  )
 }
 function descriptor(data: Omit<Package, 'url'>): Package {
   return {
@@ -84,7 +92,7 @@ export async function loadInstalledAddons(
     try {
       const folder = join(root(), entry.name)
       const [data, record] = await Promise.all([
-        readManifest(folder),
+        readManifest(folder, builtinIds),
         readFile(join(folder, '.hibi-install.json'), 'utf8').then((text) =>
           JSON.parse(text),
         ),
@@ -203,11 +211,8 @@ async function installDirectory(
   origin: 'local' | 'third-party',
   host?: string,
 ): Promise<boolean> {
-  const data = await readManifest(source)
-  if (builtins.some((manifest) => manifest.id === data.manifest.id))
-    throw new Error(
-      'This addon uses the ID of a built-in addon and cannot replace it.',
-    )
+  const compiledIds = builtins.map((manifest) => manifest.id)
+  const data = await readManifest(source, compiledIds)
   const validateGraph = () => {
     const graph = [
       ...builtins,
@@ -325,7 +330,7 @@ async function installDirectory(
       throw new Error(
         'The addon needs README.md and the entry file listed in hibi-addon.json.',
       )
-    const copied = await readManifest(staging)
+    const copied = await readManifest(staging, compiledIds)
     if (JSON.stringify(copied) !== JSON.stringify(data))
       throw new Error('The addon files changed during installation. Try again.')
     const fingerprint = hash.digest('hex')

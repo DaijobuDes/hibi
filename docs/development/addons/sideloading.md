@@ -59,7 +59,11 @@ Declaring capabilities also stages editor configuration, commands, toolbar items
 
 Run **Install addon…** from the command palette and choose the package folder. Review it, install it, then enable it in **Settings → Addons**. If you already have a source addon with the same ID, use a different ID for this package.
 
-Installed extensions run trusted code with access to documents through the addon APIs. Install packages only from sources you trust. They cannot include native handlers; those must ship with Hibi.
+Installed extensions run trusted code with access to documents through the addon APIs. Install packages only from sources you trust. Native handlers, importers, and addon windows must ship with Hibi; installed manifests cannot declare these privileges or replace a built-in addon ID.
+
+Keep `hibi-addon.json` within 64 KiB, including full license notices. Each notice can use up to 64 KiB of UTF-8 text, subject to that total manifest limit. API versions 1 and 2 use the same package format and validation.
+
+Declarative `styles`, extension `themes`, and theme JSON file paths are not supported for installation yet. Packages declaring them are rejected. Color-only theme packages can continue to supply inline color schemes; extensions can use the existing runtime styles and colorscheme APIs.
 
 ## Share it
 

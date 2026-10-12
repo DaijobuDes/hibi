@@ -1028,7 +1028,7 @@
     "src/shared/hotkeys.ts"
   ],
   "ecf83f59ca6c": [
-    "src/main/sideload.ts"
+    "src/shared/addon-manifest.ts"
   ],
   "82a9c46ffa47": [
     "src/addons/git/Panel.tsx"
@@ -1404,8 +1404,11 @@
   "d0b43f84af18": [
     "src/addons/dictionary/online.ts"
   ],
+  "e8ffd55b05d1": [
+    "src/shared/addon-manifest.ts"
+  ],
   "a2e7d5bd8495": [
-    "src/main/sideload.ts"
+    "src/shared/addon-manifest.ts"
   ],
   "cae5ed2286f5": [
     "src/shared/preservation.ts"
@@ -1745,8 +1748,8 @@
   "380ca3b00419": [
     "src/addons/mcp-server/types.ts"
   ],
-  "cf38d1cfb9e9": [
-    "src/main/sideload.ts"
+  "a9ccbf1ab39f": [
+    "src/shared/addon-manifest.ts"
   ],
   "ed4b5895642d": [
     "src/addons/mermaid/Block.tsx"
@@ -2725,6 +2728,9 @@
   ],
   "b18b85dc391e": [
     "src/main/dependencies.ts"
+  ],
+  "73581a21f0ae": [
+    "src/shared/addon-manifest.ts"
   ],
   "08b480ad47e2": [
     "src/renderer/src/DependencySettings.tsx"
@@ -5106,10 +5112,13 @@
     "src/main/addon-download.ts"
   ],
   "90d9d5c6ec27": [
-    "src/main/sideload.ts"
+    "src/shared/addon-manifest.ts"
+  ],
+  "8869ca54f216": [
+    "src/shared/addon-manifest.ts"
   ],
   "5be6b50155f3": [
-    "src/main/sideload.ts"
+    "src/shared/addon-manifest.ts"
   ],
   "c6d6c8ef14cc": [
     "src/renderer/src/main.tsx"
@@ -5118,7 +5127,7 @@
     "src/shared/dependencies.ts"
   ],
   "f71617647792": [
-    "src/main/sideload.ts"
+    "src/shared/addon-manifest.ts"
   ],
   "b3aaffb41ae2": [
     "src/renderer/src/addons.ts"
@@ -5139,31 +5148,31 @@
     "src/main/sideload.ts"
   ],
   "46a7d61e52d1": [
-    "src/main/sideload.ts"
+    "src/shared/addon-manifest.ts"
   ],
   "88aa7ff96fcd": [
-    "src/main/sideload.ts"
+    "src/shared/addon-manifest.ts"
   ],
   "2440b28c8988": [
-    "src/main/sideload.ts"
+    "src/shared/addon-manifest.ts"
   ],
   "d62200507764": [
-    "src/main/host-network.ts"
+    "src/shared/host-network.ts"
   ],
   "9d855d273e81": [
     "src/main/sideload.ts"
   ],
   "4659069874da": [
-    "src/main/sideload.ts"
+    "src/shared/addon-manifest.ts"
   ],
   "7da468d62980": [
     "src/main/addons.ts"
   ],
   "684444d409b0": [
-    "src/main/sideload.ts"
+    "src/shared/addon-manifest.ts"
   ],
   "08dc5bb800f9": [
-    "src/main/sideload.ts"
+    "src/shared/addon-manifest.ts"
   ],
   "14e2725ada95": [
     "src/renderer/src/addons.ts"
@@ -5171,11 +5180,14 @@
   "45d1d79cf007": [
     "src/renderer/src/addons.ts"
   ],
+  "9a02a116c1fb": [
+    "src/shared/addon-manifest.ts"
+  ],
   "a4e0693c4c13": [
     "src/main/analysis.ts"
   ],
   "efbcf28d704b": [
-    "src/main/sideload.ts"
+    "src/shared/addon-manifest.ts"
   ],
   "d60ff980fc8f": [
     "src/main/analysis.ts"
@@ -5340,7 +5352,7 @@
     "src/addons/mcp-server/index.ts"
   ],
   "ac1dd1f24840": [
-    "src/main/sideload.ts"
+    "src/shared/addon-manifest.ts"
   ],
   "a22ad77d6876": [
     "src/renderer/src/document-target-edits.ts"
@@ -5505,8 +5517,11 @@
   "ea84903d5e12": [
     "src/renderer/src/addons.ts"
   ],
+  "ce3f6b624545": [
+    "src/shared/addon-manifest.ts"
+  ],
   "ae8d2458110c": [
-    "src/main/sideload.ts"
+    "src/shared/addon-manifest.ts"
   ],
   "39ee7c38435d": [
     "src/addons/dictionary/SideView.tsx"
@@ -5639,7 +5654,7 @@
     "src/main/addon-windows.ts"
   ],
   "5eebb144c45a": [
-    "src/main/sideload.ts"
+    "src/shared/addon-manifest.ts"
   ],
   "2d715c5a75aa": [
     "src/main/addons.ts"
@@ -5876,7 +5891,7 @@
     "src/renderer/src/Introduction.tsx"
   ],
   "609876d22bea": [
-    "src/main/sideload.ts"
+    "src/shared/addon-manifest.ts"
   ],
   "d3a986ab8faa": [
     "src/main/appearance.ts"

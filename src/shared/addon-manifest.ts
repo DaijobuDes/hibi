@@ -5,7 +5,10 @@ import {
 } from '../addons/api'
 import { parseAddonRequirements } from './addon-dependencies'
 import { validCommandMenu } from './addon-hotkeys'
-import { validAddonPath as validPath } from './addon-package'
+import {
+  MAX_ADDON_MANIFEST_BYTES,
+  validAddonPath as validPath,
+} from './addon-package'
 import { type ColorschemeInput, defineColorscheme } from './colorschemes'
 import { parseDependencies } from './dependencies'
 import { validDocumentExtensions } from './document-types'
@@ -35,11 +38,14 @@ function settingsMetadata(
   }
 }
 
-export function parseAddonManifest(value: unknown): {
+export type ParsedAddonManifest = {
   manifest: AddonManifest
   entry: string
-  themes: ColorschemeInput[]
-} {
+  styles?: string[]
+  themes: (ColorschemeInput | string)[]
+}
+
+export function parseAddonManifest(value: unknown): ParsedAddonManifest {
   if (!value || typeof value !== 'object')
     throw new Error('The addon details in hibi-addon.json are invalid.')
   const data = value as Record<string, unknown>
@@ -81,7 +87,9 @@ export function parseAddonManifest(value: unknown): {
           !validId(license.id) ||
           !string(license.name, 100) ||
           !string(license.license, 100) ||
-          !string(license.text, 32000),
+          !string(license.text, MAX_ADDON_MANIFEST_BYTES) ||
+          new TextEncoder().encode(license.text).length >
+            MAX_ADDON_MANIFEST_BYTES,
       ))
   )
     throw new Error('The addon license details are invalid.')
@@ -93,10 +101,11 @@ export function parseAddonManifest(value: unknown): {
   if (
     data.capabilities !== undefined &&
     (!Array.isArray(data.capabilities) ||
-      data.capabilities.length > 4 ||
+      data.capabilities.length > 5 ||
       new Set(data.capabilities).size !== data.capabilities.length ||
       data.capabilities.some(
-        (value) => !['ui', 'rich', 'source', 'markdown'].includes(value),
+        (value) =>
+          !['ui', 'rich', 'source', 'markdown', 'modalEditing'].includes(value),
       ))
   )
     throw new Error('The addon lists invalid SDK capabilities.')
@@ -139,7 +148,7 @@ export function parseAddonManifest(value: unknown): {
     kind: data.kind as 'theme' | 'extension',
     version: data.version,
     authors: data.authors,
-    defaultEnabled: false,
+    defaultEnabled: data.defaultEnabled === true,
     ...(data.network === undefined
       ? {}
       : { network: parseAddonNetwork(data.network) }),
@@ -185,6 +194,49 @@ export function parseAddonManifest(value: unknown): {
       ? { licenses: data.licenses as NonNullable<AddonManifest['licenses']> }
       : {}),
   }
+  if (
+    data.styles !== undefined &&
+    (!Array.isArray(data.styles) ||
+      data.styles.length > 16 ||
+      new Set(data.styles).size !== data.styles.length ||
+      data.styles.some((path) => !validPath(path) || !path.endsWith('.css')))
+  )
+    throw new Error(
+      'The addon styles must be unique CSS paths inside the addon folder.',
+    )
+  if (
+    data.themes !== undefined &&
+    (!Array.isArray(data.themes) || data.themes.length > 20)
+  )
+    throw new Error('The addon can declare up to 20 color schemes.')
+  const themes =
+    (data.themes as unknown[] | undefined)?.map((value) => {
+      if (typeof value === 'string') {
+        if (!validPath(value) || !value.endsWith('.json'))
+          throw new Error(
+            'Theme files must be JSON paths inside the addon folder.',
+          )
+        return value
+      }
+      if (
+        !value ||
+        typeof value !== 'object' ||
+        !('colors' in value) ||
+        !value.colors ||
+        typeof value.colors !== 'object'
+      )
+        throw new Error('This theme has an invalid color scheme.')
+      return defineColorscheme(value as ColorschemeInput)
+    }) ?? []
+  const inlineThemes = themes.filter((theme) => typeof theme !== 'string')
+  const themePaths = themes.filter((theme) => typeof theme === 'string')
+  if (
+    inlineThemes.some((theme) => !validId(theme.id)) ||
+    new Set(inlineThemes.map((theme) => theme.id)).size !==
+      inlineThemes.length ||
+    new Set(themePaths).size !== themePaths.length
+  )
+    throw new Error('Each theme needs a valid, unique ID or path.')
   if (base.kind === 'theme') {
     if (
       data.analysis !== undefined ||
@@ -194,31 +246,15 @@ export function parseAddonManifest(value: unknown): {
       data.commands !== undefined ||
       data.dependencies !== undefined ||
       data.entry !== undefined ||
-      !Array.isArray(data.themes) ||
-      !data.themes.length ||
-      data.themes.length > 20
+      data.styles !== undefined ||
+      !themes.length
     )
       throw new Error(
         'Themes must contain color schemes without executable code.',
       )
-    const themes = data.themes.map((value) => {
-      if (
-        !value ||
-        typeof value !== 'object' ||
-        !value.colors ||
-        typeof value.colors !== 'object'
-      )
-        throw new Error('This theme has an invalid color scheme.')
-      return defineColorscheme(value as ColorschemeInput)
-    })
-    if (
-      themes.some((theme) => !validId(theme.id)) ||
-      new Set(themes.map((theme) => theme.id)).size !== themes.length
-    )
-      throw new Error('Each theme needs a valid, unique ID.')
     base.licenses = [
       ...(base.licenses ?? []),
-      ...themes.map((theme) => ({
+      ...inlineThemes.map((theme) => ({
         id: `theme-${theme.id}`,
         name: theme.name,
         license: theme.license.name,
@@ -231,8 +267,44 @@ export function parseAddonManifest(value: unknown): {
     throw new Error(
       'The extension entry must point to a .js or .mjs file inside the addon folder.',
     )
-  return { manifest: base, entry: data.entry, themes: [] }
+  return {
+    manifest: base,
+    entry: data.entry,
+    themes,
+    ...(data.styles === undefined ? {} : { styles: data.styles as string[] }),
+  }
 }
+export function admitInstalledAddon(
+  value: unknown,
+  compiledIds: readonly string[],
+): { manifest: AddonManifest; entry: string; themes: ColorschemeInput[] } {
+  const parsed = parseAddonManifest(value)
+  const data = value as Record<string, unknown>
+  if (compiledIds.includes(parsed.manifest.id))
+    throw new Error(
+      'This addon uses the ID of a built-in addon and cannot replace it.',
+    )
+  if (['native', 'importer', 'windows'].some((key) => data[key] !== undefined))
+    throw new Error(
+      'Installed addons cannot declare native handlers, importers, or windows.',
+    )
+  if (parsed.manifest.capabilities?.includes('modalEditing'))
+    throw new Error('The addon lists invalid SDK capabilities.')
+  if (
+    parsed.styles !== undefined ||
+    (parsed.manifest.kind === 'extension' && data.themes !== undefined) ||
+    !parsed.themes.every((theme) => typeof theme !== 'string')
+  )
+    throw new Error(
+      'Declarative styles, extension themes, and theme files are not supported for installed addons yet.',
+    )
+  return {
+    manifest: { ...parsed.manifest, defaultEnabled: false },
+    entry: parsed.entry,
+    themes: parsed.themes,
+  }
+}
+
 function parseAnalysis(value: unknown): { entry: string } {
   const entry =
     value && typeof value === 'object'
