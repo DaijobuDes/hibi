@@ -113,10 +113,14 @@ export function CaptureWindow({ Editor, native, close }: AddonWindowProps) {
       return { error: errorMessage(failure) }
     }
   }, [native])
-  const refresh = useCallback(
-    () => void resolve().then(setDestination),
-    [resolve],
-  )
+  // A slow lookup must not replace the footer from a newer one.
+  const refreshes = useRef(0)
+  const refresh = useCallback(() => {
+    const id = ++refreshes.current
+    void resolve().then((next) => {
+      if (id === refreshes.current) setDestination(next)
+    })
+  }, [resolve])
 
   // Drafts go to the main process, which acknowledges each write.
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined)

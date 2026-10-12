@@ -119,6 +119,7 @@ export default {
     /** The workspace a note saves into: the chosen one, or the current one for an empty id. */
     async destination(input, context) {
       const path = await target(input, context)
+      await testPause('quick-note-destination')
       return { id: createHash('sha256').update(path).digest('hex'), path }
     },
     async targets(selected) {
