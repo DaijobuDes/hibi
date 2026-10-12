@@ -204,3 +204,165 @@ test('addon windows open once per id and close with their addon', {
   await page.evaluate(() => window.hibi.setAddonEnabled('quick-note', false))
   await until(async () => (await appWindows(app)).length === 1)
 })
+
+test('addon windows survive cancelled quits and keep their limits', {
+  timeout: 60000,
+}, async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'hibi-addon-windows-edges-'))
+  const profile = join(root, 'profile')
+  await mkdir(profile)
+  await writeFile(
+    join(profile, 'addons.json'),
+    JSON.stringify({ 'quick-note': true }),
+  )
+  const app = await electron.launch({
+    args: [resolve('.'), `--user-data-dir=${profile}`],
+  })
+  t.after(async () => {
+    // Answer the unsaved-changes prompt with "Don't save" so quitting completes.
+    await app
+      .evaluate(({ dialog }) => {
+        dialog.showMessageBox = async () => ({ response: 1 })
+      })
+      .catch(() => {})
+    await app.close()
+    await rm(root, { recursive: true, force: true })
+  })
+  const page = await app.firstWindow()
+  await page.getByRole('textbox', { name: /document editor/i }).waitFor()
+  await page.evaluate(() => {
+    window.closedAddonWindows = []
+    window.hibi.onAddonWindowClosed((addonId, id) =>
+      window.closedAddonWindows.push(`${addonId}/${id}`),
+    )
+  })
+  const open = (id, options = {}) =>
+    page.evaluate(
+      ({ id, options }) =>
+        window.hibi.openAddonWindow('quick-note', { id, ...options }),
+      { id, options },
+    )
+  const addonWindows = async () =>
+    (await appWindows(app)).filter((url) => url === windowUrl).length
+
+  // An inherited property name is not a window.
+  await open('constructor')
+  const inherited = await until(() => addonPage(app, 'constructor'))
+  await inherited
+    .getByRole('alert')
+    .getByText('This addon window is unavailable.')
+    .waitFor()
+
+  // The main window publishes its palette; windows apply changes live.
+  const published = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem('hibi:active-palette')),
+  )
+  assert.equal(
+    published.colors.background,
+    await page.evaluate(() =>
+      getComputedStyle(document.documentElement)
+        .getPropertyValue('--background')
+        .trim(),
+    ),
+  )
+  await page.evaluate((palette) => {
+    localStorage.setItem(
+      'hibi:active-palette',
+      JSON.stringify({
+        ...palette,
+        colors: { ...palette.colors, background: '#123456' },
+      }),
+    )
+  }, published)
+  await inherited.waitForFunction(
+    () =>
+      getComputedStyle(document.documentElement)
+        .getPropertyValue('--background')
+        .trim() === '#123456',
+  )
+  await page.evaluate(() =>
+    window.hibi.closeAddonWindow('quick-note', 'constructor'),
+  )
+
+  // A tall window opened near the top still fits the work area.
+  const area = await app.evaluate(
+    ({ screen }) =>
+      screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea,
+  )
+  await open('tall', {
+    position: 'cursor-display',
+    size: { width: 400, height: Math.min(4096, area.height - 20) },
+  })
+  const tall = await app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()
+      .filter((window) => window.webContents.getURL().endsWith('window.html'))
+      .map((window) => window.getBounds())
+      .at(-1),
+  )
+  assert.ok(tall.y + tall.height <= area.y + area.height)
+  await page.evaluate(() => window.hibi.closeAddonWindow('quick-note', 'tall'))
+
+  // A visible request while a hidden one is pending shows the window.
+  await Promise.all([open('warm', { show: false }), open('warm')])
+  await page.evaluate(() => window.hibi.closeAddonWindow('quick-note', 'warm'))
+  await page.waitForFunction(() =>
+    window.closedAddonWindows.includes('quick-note/warm'),
+  )
+
+  // Concurrent creations count toward the eight-window limit.
+  const results = await page.evaluate(() =>
+    Promise.allSettled(
+      Array.from({ length: 9 }, (_, index) =>
+        window.hibi.openAddonWindow('quick-note', { id: `many-${index}` }),
+      ),
+    ),
+  )
+  assert.equal(
+    results.filter((result) => result.status === 'rejected').length,
+    1,
+  )
+  assert.equal(await addonWindows(), 8)
+  for (let index = 0; index < 9; index++)
+    await page.evaluate(
+      (id) => window.hibi.closeAddonWindow('quick-note', id),
+      `many-${index}`,
+    )
+  await until(async () => (await addonWindows()) === 0)
+
+  // Cancelling the unsaved-changes prompt during quit keeps kept-alive windows.
+  await open('kept', { keepAlive: true })
+  const kept = await until(() => addonPage(app, 'kept'))
+  await kept.evaluate(() => {
+    window.marker = 'still here'
+  })
+  await page.getByRole('textbox', { name: /document editor/i }).click()
+  await page.keyboard.type('unsaved')
+  await app.evaluate(({ dialog }) => {
+    globalThis.discardPrompts = 0
+    dialog.showMessageBox = async () => {
+      globalThis.discardPrompts++
+      return { response: 2 }
+    }
+  })
+  await until(async () => {
+    await app.evaluate(({ app }) => app.quit())
+    return app.evaluate(() => globalThis.discardPrompts > 0)
+  })
+  assert.equal(await kept.evaluate(() => window.marker), 'still here')
+  await open('kept')
+  await kept.evaluate(() => window.hibiAddonWindow.close())
+  await page.waitForFunction(() =>
+    window.closedAddonWindows.includes('quick-note/kept'),
+  )
+  assert.equal(await kept.evaluate(() => window.marker), 'still here')
+
+  // Disabling tears windows down even if the page refuses to unload.
+  await kept.evaluate(() => {
+    window.onbeforeunload = (event) => {
+      event.returnValue = false
+      return false
+    }
+  })
+  await page.evaluate(() => window.hibi.setAddonEnabled('quick-note', false))
+  await until(async () => (await addonWindows()) === 0)
+})
