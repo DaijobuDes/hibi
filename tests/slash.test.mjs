@@ -6,7 +6,7 @@ import test from 'node:test'
 import { filterCommands } from '../src/addons/slash-commands/commands.ts'
 import { markdownSyntax } from '../src/renderer/src/markdown-syntax.ts'
 import { electron } from './electron.mjs'
-import { clickMenu } from './keyboard.mjs'
+import { clickMenu, replaceSourceText } from './keyboard.mjs'
 
 test('slash search matches labels, descriptions, and extension keywords without case sensitivity', () => {
   assert.deepEqual(
@@ -177,7 +177,7 @@ test('slash commands work in both editors, preserve undo, and coexist with vim',
     .getByRole('button', { name: /^source view$/i, exact: true })
     .click()
   await source.waitFor()
-  await source.fill('/code')
+  await replaceSourceText(page, source, '/code')
   await menu.waitFor()
   await source.press('Enter')
   await source.pressSequentially('sample')
@@ -185,11 +185,11 @@ test('slash commands work in both editors, preserve undo, and coexist with vim',
   await source.press(undo)
   await source.press(undo)
   assert.equal(await read(), '/code')
-  await source.fill('/h6')
+  await replaceSourceText(page, source, '/h6')
   await menu.waitFor()
   await source.press('Enter')
   assert.equal(await read(), '###### ')
-  await source.fill('/h1')
+  await replaceSourceText(page, source, '/h1')
   await menu.waitFor()
   await page.mouse.click(500, 20)
   await menu.waitFor({ state: 'hidden' })
@@ -201,7 +201,7 @@ test('slash commands work in both editors, preserve undo, and coexist with vim',
     '```\n/code\n```',
     '---\ntitle: note\n/h1\n---',
   ]) {
-    await source.fill(text)
+    await replaceSourceText(page, source, text)
     if (text.startsWith('```') || text.startsWith('---')) {
       await source.press('ArrowUp')
       await source.press('End')
@@ -211,12 +211,12 @@ test('slash commands work in both editors, preserve undo, and coexist with vim',
     )
     assert.equal(await read(), text)
   }
-  await source.fill('/not-a-command')
+  await replaceSourceText(page, source, '/not-a-command')
   await menu.waitFor()
   assert.match(await menu.innerText(), /No commands found/)
   await source.press('Escape')
 
-  await source.fill('/h2')
+  await replaceSourceText(page, source, '/h2')
   await menu.waitFor()
   await app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()[0].setContentSize(720, 520),
@@ -229,7 +229,7 @@ test('slash commands work in both editors, preserve undo, and coexist with vim',
       ),
   )
   await menu.waitFor()
-  await source.fill(`${'paragraph\n\n'.repeat(24)}/h2`)
+  await replaceSourceText(page, source, `${'paragraph\n\n'.repeat(24)}/h2`)
   await source.press('ArrowLeft')
   await source.press('ArrowRight')
   await menu.waitFor()
@@ -298,7 +298,7 @@ test('slash commands work in both editors, preserve undo, and coexist with vim',
       !document.querySelector('style[data-addon-style="slash-commands.menu"]'),
   )
   await page.getByRole('button', { name: /^back to app$/i }).click()
-  await source.fill('/h1')
+  await replaceSourceText(page, source, '/h1')
   assert.equal(await menu.count(), 0)
   const beforeToggle = await read()
   await page.mouse.move(450, 18)
