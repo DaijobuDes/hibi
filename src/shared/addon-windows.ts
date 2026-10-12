@@ -25,7 +25,7 @@ export type AddonWindowOptions = {
   alwaysOnTop?: boolean
   /** On macOS, float over full-screen apps on every Space and take keyboard focus without bringing Hibi forward. Ignored elsewhere. */
   panel?: boolean
-  /** Closing hides the window and keeps its renderer, so reopening is immediate. Disabling the addon or quitting still closes it. */
+  /** Closing hides the window and keeps its renderer for ten minutes, so reopening is immediate. Disabling the addon or quitting still closes it. */
   keepAlive?: boolean
   /** Set to false to prepare the window without showing it, for example at idle. Defaults to true. */
   show?: boolean

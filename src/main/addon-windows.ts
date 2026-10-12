@@ -21,6 +21,7 @@ type Entry = AddonWindowContext & {
   hidden: boolean
   /** Close for real, even with keepAlive. */
   release: boolean
+  idle?: ReturnType<typeof setTimeout>
 }
 type Options = Required<Omit<AddonWindowOptions, 'title' | 'input'>> & {
   title: string | undefined
@@ -33,6 +34,8 @@ const testing = !app.isPackaged && app.commandLine.hasSwitch('hibi-test')
 const boundsPath = () => join(app.getPath('userData'), 'addon-windows.json')
 const MAX_WINDOWS = 8
 const MAX_INPUT = 64 * 1024
+// ponytail: fixed idle limit; a hidden editor window holds about 160 MB. Make it an option if an addon needs a different trade-off.
+const KEEP_ALIVE_MS = 10 * 60 * 1000
 const entries = new Map<string, Entry>()
 const opening = new Map<string, Promise<void>>()
 const closedListeners = new Set<(addonId: string, id: string) => void>()
@@ -156,6 +159,7 @@ const notifyClosed = (entry: Entry) => {
 }
 
 function reveal(entry: Entry) {
+  clearTimeout(entry.idle)
   entry.hidden = false
   const { window } = entry
   // Local tests never take desktop focus; CI's launcher shows test windows.
@@ -199,7 +203,7 @@ async function create(addonId: string, name: string, options: Options) {
       webviewTag: false,
     },
   })
-  const entry = {
+  const entry: Entry = {
     addonId,
     id: options.id,
     input: options.input,
@@ -232,6 +236,11 @@ async function create(addonId: string, name: string, options: Options) {
     if (!entry.keepAlive || entry.release || quitting) return
     event.preventDefault()
     window.hide()
+    clearTimeout(entry.idle)
+    entry.idle = setTimeout(() => {
+      entry.release = true
+      window.close()
+    }, KEEP_ALIVE_MS)
     if (entry.hidden) return
     entry.hidden = true
     notifyClosed(entry)

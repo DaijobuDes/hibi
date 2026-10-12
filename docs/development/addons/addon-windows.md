@@ -51,7 +51,7 @@ Set `titleBar: 'hibi'` to replace the system title bar with Hibi's compact bar, 
 
 Set `panel: true` for short tasks that should appear over whatever the user is doing. On macOS, a panel floats over full-screen apps on every Space and takes keyboard focus without bringing Hibi's main window forward. Other systems ignore `panel`; use `alwaysOnTop` to keep the window above other applications there.
 
-Set `keepAlive: true` for a window people open often. Closing it then hides it and keeps its renderer and state, so reopening is immediate; `onClosed` still reports each close. To prepare such a window before it is first needed, call `open` with `show: false`, for example from `requestIdleCallback` after your addon starts. A hidden window costs about as much memory as a small open one.
+Set `keepAlive: true` for a window people open often. Closing it then hides it and keeps its renderer and state for ten minutes, so reopening within that time is immediate; `onClosed` still reports each close. A hidden window that shows Hibi's editor holds roughly 160 MB, so Hibi releases it after ten minutes and the next open starts it again. To prepare a window before it is first needed, call `open` with `show: false`. Do this only when the window is likely to be used soon, because the memory is held until then.
 
 Hibi closes an addon's windows when the addon is disabled. Closing the main window does not close addon windows.
 
