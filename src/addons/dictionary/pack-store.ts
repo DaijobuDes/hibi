@@ -438,6 +438,34 @@ export class PackStore {
     )
   }
 
+  /**
+   * Completions from several packs for one keystroke, in the order asked.
+   * Missing or failing packs are skipped so the others still answer.
+   */
+  async completeAll(
+    values: unknown,
+    prefix: string,
+    limit = 8,
+  ): Promise<{ id: PackId; words: string[] }[]> {
+    if (!Array.isArray(values) || values.length > packIds.length)
+      throw new Error('Choose dictionary language packs.')
+    const ids = [...new Set(values.map(packId))]
+    prefix = completionPrefix(prefix)
+    limit = completionLimit(limit)
+    const found = await Promise.all(
+      ids.map((id) =>
+        this.complete(id, prefix, limit).then(
+          (words) => ({ id, words }),
+          (error) => {
+            console.error('could not complete from dictionary pack:', error)
+            return { id, words: [] }
+          },
+        ),
+      ),
+    )
+    return found.filter(({ words }) => words.length)
+  }
+
   async lookup(id: PackId, word: string) {
     return this.read(
       packId(id),

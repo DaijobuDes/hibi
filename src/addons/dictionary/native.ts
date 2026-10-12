@@ -41,6 +41,16 @@ export default {
         completionLimit(limit),
       )
     },
+    async packCompleteAll(input) {
+      if (!input || typeof input !== 'object')
+        throw new Error('Invalid dictionary completion')
+      const { ids, prefix, limit } = input as Record<string, unknown>
+      return (await store()).completeAll(
+        ids,
+        completionPrefix(prefix),
+        completionLimit(limit),
+      )
+    },
     packInstalled: async (input) => (await store()).installed(input),
     async packLookup(input) {
       const { id, word } = lookupInput(input)

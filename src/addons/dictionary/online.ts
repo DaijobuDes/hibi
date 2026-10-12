@@ -48,20 +48,23 @@ function parsed<T>(parse: () => T) {
   }
 }
 
-/** Successful answers are kept for the session; failures are retried. */
+/**
+ * Successful answers are kept for the session; failures are retried. With
+ * `cachedOnly`, a key that was never requested (or whose request failed)
+ * resolves to undefined without calling `load`, so nothing is sent.
+ */
 function remember<T>(load: (key: string) => Promise<T>) {
   const cache = new Map<string, Promise<T>>()
-  const get = (key: string) => {
+  return async (key: string, cachedOnly = false): Promise<T | undefined> => {
     let value = cache.get(key)
     if (!value) {
+      if (cachedOnly) return undefined
       value = load(key)
       cache.set(key, value)
       value.catch(() => cache.delete(key))
     }
     return value
   }
-  /** True once `key` was requested, even if the answer is still pending. */
-  return Object.assign(get, { has: (key: string) => cache.has(key) })
 }
 
 const wiktionarySection: Record<Lang, readonly string[]> = {
@@ -178,9 +181,8 @@ export function wiktionaryProvider(getText: GetText): DictionaryProvider {
       const titles =
         lower === term ? [term] : lang === 'de' ? [term, lower] : [lower, term]
       for (const title of titles) {
-        if (cachedOnly && !page.has(title)) continue
         stopIfAborted(signal)
-        const sections = await page(title)
+        const sections = await page(title, cachedOnly)
         stopIfAborted(signal)
         const entries = sections ? wiktionaryEntries(sections, title, lang) : []
         if (entries.length) return entries
@@ -233,15 +235,17 @@ export function datamuseProvider(getText: GetText): DictionaryProvider {
     kind: 'online',
     languages: ['en'],
     lookup: async () => [],
-    async related(term, _lang, signal): Promise<Related | null> {
+    async related(term, _lang, signal, cachedOnly): Promise<Related | null> {
+      const key = term.toLowerCase()
       const words = async (relation: 'syn' | 'ant') => {
         stopIfAborted(signal)
-        const found = await lists[relation](term.toLowerCase())
+        const found = await lists[relation](key, cachedOnly)
         stopIfAborted(signal)
         return found
       }
       const synonyms = await words('syn')
-      const antonyms = await words('ant')
+      const antonyms = synonyms && (await words('ant'))
+      if (!synonyms || !antonyms) return null
       return synonyms.length || antonyms.length
         ? { synonyms, antonyms, source }
         : null

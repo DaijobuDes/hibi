@@ -7,6 +7,7 @@ import {
   closeCompletion,
   completionStatus,
   pickedCompletion,
+  selectedCompletion,
   startCompletion,
 } from '@codemirror/autocomplete'
 import {
@@ -74,7 +75,7 @@ import {
 import { Button } from '../../ui/Controls'
 import { DocumentNotice } from '../../ui/DocumentNotice'
 import { codeHighlighter, codeLanguages } from './code-languages'
-import { completionBroker } from './completion-broker'
+import { completionBroker, otherPopupOpen } from './completion-broker'
 import { documentEdits } from './document-edits'
 import { editorDocument } from './document-formats'
 import { documentProjections } from './document-projections'
@@ -586,6 +587,7 @@ export function SourceEditor({
         view.current !== editor ||
         !editor.hasFocus ||
         editor.composing ||
+        otherPopupOpen(editor.contentDOM) ||
         !context.editTarget ||
         context.disabled ||
         !context.inputReady ||
@@ -684,6 +686,7 @@ export function SourceEditor({
       pending.cancel?.()
       for (const resolve of pending.waiting.splice(0)) resolve(null)
     }
+    const keepTab = new WeakSet<Completion>()
     const resultFor = (pending: PendingCompletion): CompletionResult => ({
       from: pending.request.selection.head,
       to: pending.request.selection.head,
@@ -735,6 +738,7 @@ export function SourceEditor({
           },
         }
         pending.options.set(item, option)
+        if (item.acceptOnTab === false) keepTab.add(option)
         return option
       }),
     })
@@ -838,8 +842,6 @@ export function SourceEditor({
         view.scrollDOM.classList.contains('cm-vimMode')
       )
         return false
-      // An open menu declines Tab briefly after appearing; never indent beneath it.
-      if (completionStatus(view.state) === 'active') return true
       if (
         command === indentLess ||
         view.state.selection.ranges.some((range) => !range.empty)
@@ -884,7 +886,17 @@ export function SourceEditor({
           autocompletion({ override: [sourceCompletions] }),
           indentation.current.of(sourceIndentation(tabIndent.snapshot().unit)),
           keymap.of([
-            { key: 'Tab', run: acceptCompletion },
+            {
+              key: 'Tab',
+              run: (view) => {
+                const option = selectedCompletion(view.state)
+                return (
+                  !(option && keepTab.has(option)) && acceptCompletion(view)
+                )
+              },
+            },
+            // Like Enter, a Tab the open list declines (it just opened, or its
+            // item keeps Tab) does what it would without the list.
             {
               key: 'Tab',
               run: (view) => indentSource(view, indentMore),

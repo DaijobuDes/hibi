@@ -47,7 +47,14 @@ test('rich completions replace exact plain text in one undo step and retract on 
           to: request.selection.head,
         }]
       })
-      window.stopCompletionProbe = dispose
+      const stopActions = await context.editor.registerContextActionProvider((request) => [{
+        label: 'Probe action',
+        edit: { from: request.selection.head, to: request.selection.head, insertText: '!' },
+      }])
+      window.stopCompletionProbe = () => {
+        stopActions()
+        dispose()
+      }
       window.completionProbeReady = true
     },
   })`,
@@ -159,6 +166,61 @@ test('rich completions replace exact plain text in one undo step and retract on 
     (await page.evaluate(() => window.hibi.getDocument())).markdown.trim(),
     'hel',
   )
+  // An open slash menu keeps its keys; completions stay closed.
+  const slash = page.getByRole('listbox', { name: 'Slash commands' })
+  await rich.evaluate((element) => {
+    const editor = element.editor
+    editor.commands.setContent('<p>/he</p>')
+    editor.commands.setTextSelection(4)
+    editor.commands.focus()
+  })
+  const slashCalls = await page.evaluate(() => window.completionCalls)
+  await page.keyboard.type('l')
+  await slash.waitFor()
+  await page.evaluate(
+    () =>
+      new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve)),
+      ),
+  )
+  assert.equal(await menu.isVisible(), false)
+  assert.equal(await page.evaluate(() => window.completionCalls), slashCalls)
+  await page.keyboard.press('Escape')
+  await slash.waitFor({ state: 'hidden' })
+  await rich.evaluate((element) => {
+    const editor = element.editor
+    editor.commands.setContent('<p>hel</p>')
+    editor.commands.setTextSelection(4)
+    editor.commands.focus()
+  })
+  await waitForAsync(
+    page,
+    async () => (await window.hibi.getDocument()).markdown.trim() === 'hel',
+  )
+  // The editor actions menu owns the keys as well: completions stay closed
+  // while it is open, and opening it closes them.
+  const actions = page.getByRole('menu', { name: 'Editor actions' })
+  await rich.press('Shift+F10')
+  await actions.getByRole('menuitem', { name: 'Probe action' }).waitFor()
+  const actionCalls = await page.evaluate(() => window.completionCalls)
+  await page.keyboard.press('Control+Space')
+  await page.evaluate(
+    () =>
+      new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve)),
+      ),
+  )
+  assert.equal(await menu.isVisible(), false)
+  assert.equal(await page.evaluate(() => window.completionCalls), actionCalls)
+  await page.keyboard.press('Escape')
+  await actions.waitFor({ state: 'hidden' })
+  await page.keyboard.press('Control+Space')
+  await menu.getByRole('option', { name: /hello/ }).waitFor()
+  await rich.press('Shift+F10')
+  await actions.getByRole('menuitem', { name: 'Probe action' }).waitFor()
+  await menu.waitFor({ state: 'hidden' })
+  await page.keyboard.press('Escape')
+  await actions.waitFor({ state: 'hidden' })
   const beforeUnsafe = await page.evaluate(() => {
     window.completionUnsafeRange = true
     return window.completionCalls

@@ -26,6 +26,9 @@ const ordered = <T extends Lang>(first: T, all: readonly T[]) => [
 ]
 
 /** Candidate languages in preference order; empty for unsupported scripts such as Hangul. */
+/** Languages written in Latin letters, which word suggestions support. */
+export const latinLangs: readonly Lang[] = ['en', 'tl', 'fr', 'de']
+
 export function detectLangs(
   term: string,
   preferences: LanguagePreferences,
@@ -34,7 +37,7 @@ export function detectLangs(
   if (kana.test(term)) return ['ja']
   if (han.test(term)) return ordered(preferences.han, ['zh', 'yue', 'ja'])
   if (/\p{Script=Latin}/u.test(term))
-    return ordered(preferences.latin, ['en', 'tl', 'fr', 'de'])
+    return ordered(preferences.latin, latinLangs)
   return []
 }
 

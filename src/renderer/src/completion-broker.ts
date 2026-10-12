@@ -127,7 +127,8 @@ function validItems(items: readonly CompletionItem[], length: number) {
       item.from > item.to ||
       (item.detail !== undefined &&
         (typeof item.detail !== 'string' || item.detail.length > 512)) ||
-      (item.rank !== undefined && !Number.isFinite(item.rank))
+      (item.rank !== undefined && !Number.isFinite(item.rank)) ||
+      (item.acceptOnTab !== undefined && typeof item.acceptOnTab !== 'boolean')
     )
       continue
     result.push(
@@ -138,10 +139,37 @@ function validItems(items: readonly CompletionItem[], length: number) {
         from: item.from,
         to: item.to,
         rank: Math.max(-100, Math.min(100, item.rank ?? 0)),
+        ...(item.acceptOnTab === false ? { acceptOnTab: false } : {}),
       }),
     )
   }
   return result
+}
+
+const claims = new WeakMap<Element, Element>()
+
+/**
+ * Marks `popup`, such as the editor actions menu, as owning `editor` until
+ * the returned function releases it, so completions stay closed meanwhile.
+ */
+export function claimEditorPopup(editor: Element, popup: Element) {
+  claims.set(editor, popup)
+  return () => {
+    if (claims.get(editor) === popup) claims.delete(editor)
+  }
+}
+
+/**
+ * True while another open popup, such as the slash menu or the editor actions
+ * menu, controls `editor`; that popup keeps the keys and completions stay
+ * closed.
+ */
+export function otherPopupOpen(editor: Element, own?: Element) {
+  const claimed = claims.get(editor)
+  if (claimed && claimed !== own) return true
+  const id = editor.getAttribute('aria-controls')
+  const popup = id && document.getElementById(id)?.closest(':popover-open')
+  return !!popup && popup !== own
 }
 
 /** One active query; old providers retain slots until their promises actually settle. */

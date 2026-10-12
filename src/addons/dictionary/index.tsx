@@ -17,6 +17,11 @@ import type {
 } from '../../shared/foundation-contracts'
 import { defineAddon } from '../api'
 import { Button, PanelMessage } from '../ui'
+import {
+  addCustomWord,
+  customWordsProvider,
+  openCustomWords,
+} from './custom-words'
 import css from './dictionary.css?inline'
 import { detectLangs, type LookupTarget, matchCase, wordAt } from './lookup'
 import manifest from './manifest'
@@ -32,7 +37,10 @@ import {
   type Related,
   type Source,
 } from './providers'
+import { SideView } from './SideView'
 import { languageNames, readPreferences, readRecentPack } from './settings'
+import sideCss from './side-view.css?inline'
+import { watchSuggestions } from './suggestions'
 
 function richTarget(
   editor: Editor,
@@ -123,6 +131,29 @@ const notices = {
   changed: { message: 'The document changed. Look up the word again.' },
 }
 
+/** Saves a word with no entry so later lookups and suggestions know it. */
+function AddWord({ word, added }: { word: string; added: () => void }) {
+  const [error, setError] = useState('')
+  return (
+    <>
+      <Button
+        onClick={() =>
+          addCustomWord({ word }).then(added, (failure) =>
+            setError(
+              failure instanceof Error
+                ? failure.message
+                : 'Could not save custom words.',
+            ),
+          )
+        }
+      >
+        Add to dictionary
+      </Button>
+      {error && <p role="alert">{error}</p>}
+    </>
+  )
+}
+
 function Words({
   label,
   words,
@@ -148,7 +179,9 @@ function Words({
 }
 
 const credit = (source: Source) => (
-  <p className="dictionary-source">{`${source.name} · ${source.license}`}</p>
+  <p className="dictionary-source">
+    {[source.name, source.license].filter(Boolean).join(' · ')}
+  </p>
 )
 
 type Outcome = Gathered<Entry[]> | Gathered<Related>
@@ -216,15 +249,25 @@ function Results({
               : 'Install an offline pack to find synonyms in this language.'}
           </PanelMessage>
           <Button onClick={install}>Install offline pack</Button>
+          {kind === 'define' && (
+            <AddWord word={word} added={() => setAttempt(attempt + 1)} />
+          )}
         </div>
       )
     return (
-      <PanelMessage
-        icon={<SearchX size={28} />}
-        title={kind === 'define' ? 'No definitions found' : 'No synonyms found'}
-      >
-        {`Nothing was found for “${word}”. Check the spelling or try another form of the word.`}
-      </PanelMessage>
+      <div className="dictionary-results">
+        <PanelMessage
+          icon={<SearchX size={28} />}
+          title={
+            kind === 'define' ? 'No definitions found' : 'No synonyms found'
+          }
+        >
+          {`Nothing was found for “${word}”. Check the spelling or try another form of the word.`}
+        </PanelMessage>
+        {kind === 'define' && (
+          <AddWord word={word} added={() => setAttempt(attempt + 1)} />
+        )}
+      </div>
     )
   }
   const shown = new Set<string>()
@@ -287,8 +330,10 @@ function Results({
   )
 }
 
+let stopAddon: (() => void) | undefined
 export default defineAddon({
   manifest,
+  stop: () => stopAddon?.(),
   start(context) {
     context.styles.register('dictionary', css)
     queueMicrotask(() => {
@@ -312,16 +357,25 @@ export default defineAddon({
     registry.register(datamuseProvider(context.host.network.getText))
     for (const provider of createOfflineProviders(context.native))
       registry.register(provider)
+    // After the packs, so a pack entry for the same word is shown first.
+    registry.register(
+      customWordsProvider((term) => detectLangs(term, readPreferences())[0]),
+    )
+    const closeWords = openCustomWords(context).catch((error) => {
+      console.error('could not load custom words:', error)
+      return undefined
+    })
     context.commands.register({
       id: INSTALL_PACK_COMMAND,
       label: 'Dictionary: install offline pack',
       keywords: 'dictionary language download offline',
-      run: () => {
-        context.dialogs.open({
+      // Resolves when the dialog closes, so callers can look up again.
+      run: async () => {
+        await context.dialogs.open({
           title: 'Offline language packs',
           size: 'wide',
           content: () => <PackSettings />,
-        })
+        }).result
       },
     })
     const richEditors = new Set<Editor>()
@@ -476,6 +530,30 @@ export default defineAddon({
       run: (invocation) => lookUp(invocation, 'define'),
     })
     context.commands.register({
+      id: 'add-word',
+      label: 'Add word to dictionary',
+      keywords: 'dictionary custom word add own spelling',
+      menu: { location: 'editor', group: 'dictionary', order: 3 },
+      run: async (invocation) => {
+        const found = await target(invocation)
+        if (!found) {
+          context.notify(notices.noWord.message)
+          return
+        }
+        try {
+          await addCustomWord({ word: found.word })
+          context.notify(`Added “${found.word}” to your dictionary.`)
+        } catch (error) {
+          context.notify(
+            error instanceof Error
+              ? error.message
+              : 'Could not save custom words.',
+          )
+        }
+        found.focus()
+      },
+    })
+    context.commands.register({
       id: 'synonyms',
       label: 'Find synonyms',
       keywords: 'thesaurus synonym antonym replace word',
@@ -483,5 +561,37 @@ export default defineAddon({
       menu: { location: 'editor', group: 'dictionary', order: 2 },
       run: (invocation) => lookUp(invocation, 'synonyms'),
     })
+    context.styles.register('dictionary-side', sideCss)
+    const sideTarget = (view: ViewTarget) => target({ source: 'api', view })
+    const side = context.sidebar.register({
+      id: 'side',
+      label: 'Dictionary',
+      icon: BookOpen,
+      side: 'right',
+      Content: () => (
+        <SideView
+          context={context}
+          registry={registry}
+          target={sideTarget}
+          failures={failures}
+          install={() =>
+            context.commands
+              .execute(INSTALL_PACK_COMMAND)
+              .catch(() => context.notify(notices.noPacks.message))
+          }
+        />
+      ),
+    })
+    context.commands.register({
+      id: 'side-view',
+      label: 'Open dictionary side view',
+      keywords: 'dictionary thesaurus sidebar panel definition synonyms',
+      run: () => side.open(),
+    })
+    const stopSuggestions = watchSuggestions(context)
+    stopAddon = () => {
+      stopSuggestions()
+      void closeWords.then((close) => close?.())
+    }
   },
 })
