@@ -114,6 +114,26 @@ test('autocomplete learns locally, disables learning, excludes documents and cle
       mode === 'rich'
         ? page.getByRole('listbox', { name: 'Completions' })
         : page.locator('.cm-tooltip-autocomplete')
+    const waitForChoice = async () => {
+      await popup.getByRole('option', { name: 'wild', exact: true }).waitFor()
+      if (mode === 'source') {
+        // Wait for CodeMirror's actual interaction guard, without a fixed sleep.
+        await page.waitForFunction(() => {
+          const state =
+            document.querySelector('.cm-content')?.cmTile?.root?.view?.state
+          const completion = state?.values.find((value) => value?.open?.options)
+          const config = state?.config.staticValues.find(
+            (value) => typeof value?.interactionDelay === 'number',
+          )
+          return (
+            completion?.open &&
+            !completion.open.disabled &&
+            config &&
+            Date.now() - completion.open.timestamp >= config.interactionDelay
+          )
+        })
+      }
+    }
     const reset = async (text) => {
       if (mode === 'rich') {
         await rich.evaluate((element, text) => {
@@ -159,7 +179,7 @@ test('autocomplete learns locally, disables learning, excludes documents and cle
     for (const highlight of [false, true]) {
       await reset('bro that was')
       await page.keyboard.type(' ')
-      await popup.getByRole('option', { name: 'wild', exact: true }).waitFor()
+      await waitForChoice()
       assert.equal(await popup.locator('[aria-selected="true"]').count(), 0)
       if (highlight) await page.keyboard.press('ArrowDown')
       await page.keyboard.press('Enter')
@@ -172,7 +192,7 @@ test('autocomplete learns locally, disables learning, excludes documents and cle
     }
     await reset('bro that was')
     await page.keyboard.type(' ')
-    await popup.getByRole('option', { name: 'wild', exact: true }).waitFor()
+    await waitForChoice()
     await page.keyboard.press('Tab')
     await waitForAsync(
       page,
@@ -181,7 +201,7 @@ test('autocomplete learns locally, disables learning, excludes documents and cle
     )
     await reset('bro that was wil')
     await page.keyboard.press('Control+Space')
-    await popup.getByRole('option', { name: 'wild', exact: true }).waitFor()
+    await waitForChoice()
     await page.keyboard.press('Enter')
     await page.keyboard.type('new paragraph')
     await waitForAsync(page, async () =>
@@ -191,8 +211,9 @@ test('autocomplete learns locally, disables learning, excludes documents and cle
     )
     await reset('bro that was wil')
     await page.keyboard.press('Control+Space')
-    await popup.getByRole('option', { name: 'wild', exact: true }).waitFor()
+    await waitForChoice()
     await page.keyboard.press('ArrowDown')
+    assert.equal(await popup.locator('[aria-selected="true"]').count(), 1)
     await page.keyboard.press('Enter')
     await waitForAsync(
       page,
