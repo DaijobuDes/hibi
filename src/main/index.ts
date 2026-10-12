@@ -28,6 +28,7 @@ import {
 import { ADDON_STORAGE_CHANNELS } from '../shared/addon-storage'
 import { ADDON_WINDOW_CHANNELS } from '../shared/addon-windows'
 import { ANALYSIS_CHANNELS } from '../shared/analysis'
+import { BACKGROUND_CHANNELS, QUICK_NOTE_COMMAND } from '../shared/background'
 import { APPEARANCE_CHANNEL } from '../shared/colorschemes'
 import { DEPENDENCY_CHANNELS } from '../shared/dependencies'
 import {
@@ -107,6 +108,7 @@ import {
   saveAppearance,
   titleBarColors,
 } from './appearance'
+import { BackgroundMode } from './background'
 import {
   autosaveDocument,
   closeDocumentTab,
@@ -120,6 +122,7 @@ import {
   getDocumentSourceFor,
   getOpenDocumentVersions,
   hasOpenDocumentPath,
+  hasUnsavedDocuments,
   loadDocument,
   loadDocumentPreferences,
   moveDocumentTab,
@@ -487,6 +490,41 @@ const addonHotkeys = new AddonHotkeys(
   process.platform,
   hotkeys,
 )
+let backgroundSettingsReady = false
+let pendingBackgroundSettings = false
+function deliverBackgroundSettings() {
+  if (!backgroundSettingsReady || !pendingBackgroundSettings || !mainWindow)
+    return
+  pendingBackgroundSettings = false
+  mainWindow.webContents.send(BACKGROUND_CHANNELS.settings)
+}
+const background = new BackgroundMode({
+  open: showMainWindow,
+  settings: () => {
+    pendingBackgroundSettings = true
+    showMainWindow()
+    deliverBackgroundSettings()
+  },
+  hasQuickNote: () => !!addonHotkeys.command(QUICK_NOTE_COMMAND),
+  quickNote: () => {
+    const command = addonHotkeys.command(QUICK_NOTE_COMMAND)
+    if (!command) return
+    // Quick note captures inside the main window, like its global shortcut.
+    showMainWindow()
+    mainWindow?.webContents.send(ADDON_HOTKEY_CHANNELS.invoke, command)
+  },
+})
+function syncAddonCommands(
+  event: IpcMainInvokeEvent,
+  bindingsChanged: boolean,
+) {
+  const bindings = addonHotkeys.bindings()
+  if (bindingsChanged) {
+    installMenu()
+    event.sender.send(ADDON_HOTKEY_CHANNELS.changed, bindings)
+  } else background.refresh()
+  return bindings
+}
 let addonHotkeysLoading: Promise<void> | null = null
 const loadAddonHotkeys = () => {
   if (!addonHotkeysLoading) {
@@ -497,6 +535,16 @@ const loadAddonHotkeys = () => {
 }
 let pendingGlobalShortcut: { id: string; accelerator: string } | null = null
 const externalFiles: string[] = []
+function showMainWindow() {
+  if (!mainWindow) createWindow()
+  if (!mainWindow) return
+  if (mainWindow.isMinimized()) mainWindow.restore()
+  if (testing) mainWindow.showInactive()
+  else {
+    mainWindow.show()
+    mainWindow.focus()
+  }
+}
 function queueExternalFiles(paths: string[]) {
   for (const path of paths) {
     if (!externalFiles.includes(path)) externalFiles.push(path)
@@ -533,7 +581,10 @@ if (process.env.NODE_ENV_ELECTRON_VITE === 'development')
       app.quit()
     }
   })
-app.on('will-quit', () => globalShortcuts.clear())
+app.on('will-quit', () => {
+  globalShortcuts.clear()
+  background.dispose()
+})
 
 const openOwnedAddonWindow = (addonId: string, options: unknown) =>
   openAddonWindow(addonId, windowAddonName(addonId), options)
@@ -713,12 +764,14 @@ function createWindow(): void {
   window.on('blur', stopRecording)
   window.webContents.on('did-start-loading', stopRecording)
   window.webContents.on('did-start-loading', () => {
+    backgroundSettingsReady = false
     globalShortcuts.clear()
     addonHotkeys.clearRegistrations()
     installMenu()
   })
   window.webContents.on('did-start-loading', () => analysisService.cancel())
   window.webContents.on('render-process-gone', () => {
+    backgroundSettingsReady = false
     stopRecording()
     globalShortcuts.clear()
     addonHotkeys.clearRegistrations()
@@ -727,6 +780,7 @@ function createWindow(): void {
     analysisService.cancel()
   })
   window.on('closed', () => {
+    backgroundSettingsReady = false
     recordingHotkey = false
     addonHotkeys.clearRegistrations()
     installMenu()
@@ -833,10 +887,21 @@ function createWindow(): void {
     if (allowClose) return
     event.preventDefault()
     if (confirmingClose) return
+    if (background.enabled && !quitting) {
+      window.hide()
+      return
+    }
     confirmingClose = true
     void (async () => {
       await flushRenderer()
       await fileOperation?.catch(() => undefined)
+      if (
+        quitting &&
+        background.enabled &&
+        !window.isVisible() &&
+        hasUnsavedDocuments()
+      )
+        showMainWindow()
       if (await confirmDiscardAll(window)) {
         const installed = finishUpdateInstall()
         if (installed === false) {
@@ -903,6 +968,7 @@ function createWindow(): void {
     flushRequest?.resolve()
     console.error('renderer exited:', details.reason, details.exitCode)
     if (details.reason === 'clean-exit' || window.isDestroyed()) return
+    if (background.enabled && !window.isVisible()) showMainWindow()
     void dialog
       .showMessageBox(window, {
         type: 'error',
@@ -1004,7 +1070,9 @@ function installMenu(): void {
           role: process.platform === 'darwin' ? 'close' : 'quit',
           ...(process.platform === 'darwin'
             ? { accelerator: 'CmdOrCtrl+Shift+W' }
-            : {}),
+            : process.platform === 'win32' && background.enabled
+              ? { accelerator: 'CmdOrCtrl+Q' }
+              : {}),
         },
       ],
     },
@@ -1077,6 +1145,7 @@ function installMenu(): void {
     lowercase(built.items)
   }
   Menu.setApplicationMenu(built)
+  background.refresh()
 }
 
 if (!app.requestSingleInstanceLock()) {
@@ -1099,14 +1168,15 @@ if (!app.requestSingleInstanceLock()) {
   )
   app.on('second-instance', (_event, argv, cwd) => {
     queueExternalFiles(externalFileArguments(argv, cwd, !app.isPackaged))
-    if (testing) return
-    if (!mainWindow) createWindow()
-    if (mainWindow?.isMinimized()) mainWindow.restore()
-    mainWindow?.show()
-    mainWindow?.focus()
+    showMainWindow()
   })
   app.on('activate', () => {
     if (!mainWindow) createWindow()
+    else if (
+      background.enabled &&
+      BrowserWindow.getAllWindows().every((window) => !window.isVisible())
+    )
+      showMainWindow()
   })
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit()
@@ -1139,6 +1209,7 @@ if (!app.requestSingleInstanceLock()) {
         hotkeysReady,
         addonsReady,
         startupSpan('ui-case', loadUiCase),
+        background.load(),
         documentReady,
         workspacePending,
       ])
@@ -1167,6 +1238,17 @@ if (!app.requestSingleInstanceLock()) {
             throw error
           }
         })
+      handle(BACKGROUND_CHANNELS.settingsReady, () => {
+        backgroundSettingsReady = true
+        deliverBackgroundSettings()
+      })
+      handle(BACKGROUND_CHANNELS.get, () => background.enabled)
+      handle(BACKGROUND_CHANNELS.set, async (_event, value: unknown) => {
+        const enabled = await background.save(value)
+        installMenu()
+        if (!enabled && mainWindow && !mainWindow.isVisible()) showMainWindow()
+        return enabled
+      })
       handle(UPDATE_CHANNELS.get, getUpdateState, updatesReady)
       handle(
         UPDATE_CHANNELS.channel,
@@ -1550,22 +1632,24 @@ if (!app.requestSingleInstanceLock()) {
       })
       handle(ADDON_HOTKEY_CHANNELS.register, async (event, value: unknown) => {
         await loadAddonHotkeys()
+        const previousBindings = addonHotkeys.bindings()
         addonHotkeys.register(value as AddonHotkeyRegistration)
-        installMenu()
-        const bindings = addonHotkeys.bindings()
-        event.sender.send(ADDON_HOTKEY_CHANNELS.changed, bindings)
-        return bindings
+        const registration = value as AddonHotkeyRegistration
+        return syncAddonCommands(
+          event,
+          !registration.runnableOnly ||
+            previousBindings.some(({ id }) => id === registration.id),
+        )
       })
       handle(
         ADDON_HOTKEY_CHANNELS.unregister,
         (event, id: unknown, token: unknown) => {
           if (typeof id !== 'string' || typeof token !== 'string') return
+          const hadBinding = addonHotkeys
+            .bindings()
+            .some((binding) => binding.id === id)
           if (!addonHotkeys.unregister(id, token)) return
-          installMenu()
-          event.sender.send(
-            ADDON_HOTKEY_CHANNELS.changed,
-            addonHotkeys.bindings(),
-          )
+          syncAddonCommands(event, hadBinding)
         },
       )
       handle(

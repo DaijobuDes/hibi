@@ -24,6 +24,14 @@ The top bar and its document tabs stay visible while you type. Turn on **Hide to
 
 **Zen mode** hides navigation, toolbars, and status while you write. Use **Enter zen mode** in the command palette or turn it on in Appearance. Leave with the exit button at the top or **Exit zen mode** in the palette. Your previous layout returns when you leave. You can assign a shortcut under Hotkeys.
 
+## Running in the background
+
+Under **About → General**, turn on **Keep Hibi running in the background** to keep your edits and enabled addons running when you close the main window. This setting is off by default on macOS, Windows, and Linux, and no menu bar or tray icon appears while it is off. With it off, closing behaves as before: Windows and Linux quit after the last window closes, and macOS keeps the app available from the Dock.
+
+When enabled, closing hides the window without discarding unsaved text. Use **Open Hibi** in the menu bar or tray menu to restore the same window, or launch Hibi again. **New quick note** appears when the Quick note addon is enabled, and **Settings** opens the app settings. On Windows, clicking the notification-area icon opens Hibi; on macOS, clicking the menu bar icon opens its menu. Linux tray availability and clicks depend on your desktop environment and its indicator support.
+
+Choose **Quit** from the tray or app menu to stop Hibi. Use `Cmd+Q` on macOS or `Ctrl+Q` on Linux. On Windows, `Ctrl+Q` is available only while background mode is enabled. Hibi still asks about unsaved changes and checks for external file changes when you save. Cancelling keeps Hibi and your edits open. Background mode does not open Hibi at login or hide its Dock icon. See [running in the background](../features/background.md) for more details.
+
 ## Autosave
 
 Autosave is off by default. Enable it under **Editor** and choose how long to wait after typing stops. New notes and remote drafts need one manual save to choose a local destination.

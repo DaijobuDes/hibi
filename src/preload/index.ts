@@ -12,6 +12,7 @@ import {
 } from '../shared/addon-storage'
 import { ADDON_WINDOW_CHANNELS } from '../shared/addon-windows'
 import { ANALYSIS_CHANNELS } from '../shared/analysis'
+import { BACKGROUND_CHANNELS } from '../shared/background'
 import { APPEARANCE_CHANNEL } from '../shared/colorschemes'
 import { DEPENDENCY_CHANNELS } from '../shared/dependencies'
 import {
@@ -180,6 +181,7 @@ if (process.isMainFrame) {
   }
   for (const pending of [startupDocument, startupAddons, startupKnown])
     void pending.catch(() => {})
+  let backgroundSettingsReady = false
   contextBridge.exposeInMainWorld('hibi', {
     registerGlobalShortcut: (id, accelerator, token) =>
       ipcRenderer.invoke(
@@ -214,6 +216,21 @@ if (process.isMainFrame) {
       ipcRenderer.on(GLOBAL_SHORTCUT_CHANNELS.invoked, listener)
       return () =>
         ipcRenderer.removeListener(GLOBAL_SHORTCUT_CHANNELS.invoked, listener)
+    },
+    getBackgroundMode: () => transport.invoke(BACKGROUND_CHANNELS.get),
+    setBackgroundMode: (enabled) =>
+      transport.invoke(BACKGROUND_CHANNELS.set, enabled),
+    onOpenSettings: (callback) => {
+      const listener = () => callback()
+      transport.on(BACKGROUND_CHANNELS.settings, listener)
+      if (!backgroundSettingsReady) {
+        backgroundSettingsReady = true
+        void transport
+          .invoke(BACKGROUND_CHANNELS.settingsReady)
+          .catch(console.error)
+      }
+      return () =>
+        transport.removeListener(BACKGROUND_CHANNELS.settings, listener)
     },
     getUpdateState: () => transport.invoke(UPDATE_CHANNELS.get),
     setUpdateChannel: (channel) =>
