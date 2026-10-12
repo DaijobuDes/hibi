@@ -186,6 +186,22 @@ test('autocomplete learns locally, disables learning, excludes documents and cle
             .main
         return { anchor, head }
       }, mode)
+    const waitForCaret = (condition) =>
+      waitForAsync(
+        page,
+        ({ mode, previousHead, expected }) => {
+          const { anchor, head } =
+            mode === 'rich'
+              ? document.querySelector('.rich-pane .tiptap').editor.state
+                  .selection
+              : document.querySelector('.cm-content').cmTile.root.view.state
+                  .selection.main
+          return expected
+            ? anchor === expected.anchor && head === expected.head
+            : head !== previousHead
+        },
+        { mode, ...condition },
+      )
     const openBetweenParagraphs = async () => {
       await reset('previous paragraph\n\nbro that was\n\nfollowing paragraph')
       await page.evaluate((mode) => {
@@ -211,6 +227,7 @@ test('autocomplete learns locally, disables learning, excludes documents and cle
         const before = await caret()
         await page.keyboard.press('Escape')
         await page.keyboard.press(shift + key)
+        await waitForCaret({ previousHead: before.head })
         const expected = await caret()
         assert.notEqual(
           expected.head,
@@ -220,6 +237,7 @@ test('autocomplete learns locally, disables learning, excludes documents and cle
         await openBetweenParagraphs()
         await page.keyboard.press(shift + key)
         await popup.waitFor({ state: 'hidden' })
+        await waitForCaret({ expected })
         assert.deepEqual(await caret(), expected, `${mode} ${shift}${key}`)
       }
     }
