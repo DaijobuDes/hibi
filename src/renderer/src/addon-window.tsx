@@ -84,7 +84,7 @@ async function render() {
       query: (method, value) => request(bridge.query(method, value)),
       invoke: (method, value) => request(bridge.invoke(method, value)),
     },
-    close: () => window.close(),
+    close: () => void bridge.close(),
     Editor,
   }
   show(<Content {...props} />)
