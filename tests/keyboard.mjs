@@ -67,3 +67,21 @@ export async function pressShortcut(app, shortcut) {
     { keyCode, modifiers },
   )
 }
+
+// CodeMirror ignores Tab and Enter on a completion list for its
+// `interactionDelay` after the list opens. Move the page clock past that delay
+// for one key press instead of sleeping.
+export async function pressPastCompletionDelay(page, key) {
+  await page.evaluate(() => {
+    const now = Date.now
+    Date.now = () => now() + 60000
+    window.restoreNow = () => {
+      Date.now = now
+    }
+  })
+  try {
+    await page.keyboard.press(key)
+  } finally {
+    await page.evaluate(() => window.restoreNow())
+  }
+}
