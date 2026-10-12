@@ -508,3 +508,36 @@ test('pending hidden addon windows do not keep hibi running', {
     }),
   ])
 })
+
+test('closing the main window to the tray keeps hidden addon windows', {
+  timeout: 45000,
+}, async (t) => {
+  const { app, page, open } = await launch(t, ['quick-note'])
+  assert.equal(
+    await page.evaluate(() => window.hibi.setBackgroundMode(true)),
+    true,
+  )
+  await open('kept', { keepAlive: true })
+  const kept = await until(() => addonPage(app, 'kept'))
+  await kept.evaluate(() => {
+    window.marker = 'still here'
+  })
+  await kept.evaluate(() => window.hibiAddonWindow.close())
+  await page.waitForFunction(() =>
+    window.closedAddonWindows.includes('quick-note/kept'),
+  )
+  // Background mode hides the main window instead of closing it.
+  const main = await app.evaluate(({ BrowserWindow }) => {
+    const window = BrowserWindow.getAllWindows().find(
+      (item) => item.webContents.getURL() === 'app://hibi/',
+    )
+    window.close()
+    return { destroyed: window.isDestroyed(), visible: window.isVisible() }
+  })
+  assert.deepEqual(main, { destroyed: false, visible: false })
+  assert.equal(await kept.evaluate(() => window.marker), 'still here')
+  assert.equal(
+    (await appWindows(app)).filter((url) => url === windowUrl).length,
+    1,
+  )
+})

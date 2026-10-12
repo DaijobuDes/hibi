@@ -1470,6 +1470,7 @@ function App() {
   useEffect(() =>
     window.hibi.onCommand((command) => addonHost.app.runAction(command)),
   )
+  useEffect(() => window.hibi.onOpenSettings(() => openSetting('hibi')))
   useEffect(() =>
     window.hibi.onOpenRemote(() => {
       void openRemote()
