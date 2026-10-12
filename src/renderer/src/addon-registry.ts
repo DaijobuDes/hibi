@@ -1,7 +1,7 @@
 import { type ComponentType, lazy } from 'react'
 import type { Addon, AddonManifest, MarkdownFlavor } from '../../addons/api'
-import type { SideloadFactory } from '../../addons/sdk'
-import { type CapabilitySdk, loadAddonSdk } from '../../addons/sdk-loader'
+import { loadAddonSdk } from '../../addons/sdk-loader'
+import type { ColorschemeInput } from '../../shared/colorschemes'
 import type { InstalledAddon } from '../../shared/sideload'
 import { startupSpan } from '../../shared/startup'
 
@@ -22,67 +22,105 @@ const flavorInfo = import.meta.glob<readonly MarkdownFlavor[]>(
   { eager: true, import: 'default' },
 )
 const origins = new Map<string, string>()
-const bundled = Object.entries(manifests).map(([path, manifest]): Addon => {
-  const directory = path.slice(0, path.lastIndexOf('/'))
-  origins.set(manifest.id, path.includes('/useraddons/') ? 'local' : 'built-in')
-  const loader =
-    implementations[`${directory}/index.ts`] ??
-    implementations[`${directory}/index.tsx`]
-  let pending: Promise<Addon> | undefined
+type Definition = Omit<Addon, 'manifest'> & { manifest?: AddonManifest }
+const component = (value: unknown) =>
+  typeof value === 'function' ||
+  (typeof value === 'object' && value !== null && '$$typeof' in value)
+/** Accepts a direct `Addon` or a factory; only factories load an SDK, chosen by the canonical manifest. */
+async function normalizeDefinition(
+  exported: unknown,
+  manifest: AddonManifest,
+): Promise<Definition> {
+  if (
+    typeof exported !== 'function' &&
+    (typeof exported !== 'object' || exported === null)
+  )
+    throw new Error(
+      'This addon has no valid startup function. Contact its author.',
+    )
+  // Capabilities select the optional SDK; omitting them keeps the legacy factory contract.
+  const definition: Partial<Definition> | null | undefined =
+    typeof exported === 'function'
+      ? (exported as (sdk: unknown) => Definition)(
+          await loadAddonSdk(manifest.capabilities),
+        )
+      : exported
+  if (
+    !definition ||
+    typeof definition.start !== 'function' ||
+    (definition.stop !== undefined && typeof definition.stop !== 'function') ||
+    (definition.Settings !== undefined && !component(definition.Settings)) ||
+    (definition.windows !== undefined &&
+      (typeof definition.windows !== 'object' ||
+        definition.windows === null ||
+        !Object.values(definition.windows).every(component)))
+  )
+    throw new Error(
+      'This addon cannot start. Contact its author for an updated version.',
+    )
+  if (definition.manifest && definition.manifest.id !== manifest.id)
+    throw new Error(
+      'This addon’s files do not match its manifest. Reinstall it.',
+    )
+  return definition as Definition
+}
+/** One descriptor for bundled and installed addons. Nothing is imported until `start` or declared settings render. */
+function describeAddon(
+  manifest: AddonManifest,
+  importer: () => Promise<unknown>,
+  declared: {
+    flavors?: readonly MarkdownFlavor[] | undefined
+    Settings?: ComponentType
+    themes?: readonly ColorschemeInput[]
+  } = {},
+) {
+  let pending: Promise<unknown> | undefined
   const load = () =>
-    (pending ??= (
-      loader
-        ? loader()
-        : Promise.reject(
-            new Error(
-              `The ${manifest.id} addon is missing its startup file. Reinstall it.`,
-            ),
-          )
-    ).catch((error) => {
+    (pending ??= importer().catch((error) => {
       pending = undefined
       throw error
     }))
   let generation = 0
-  let instance: Addon | undefined
-  const settingsLoader = settings[`${directory}/Settings.tsx`]
+  let instance: Definition | undefined
   const descriptor: Addon = {
     manifest,
-    ...(flavorInfo[`${directory}/flavor-info.ts`]
-      ? { flavors: flavorInfo[`${directory}/flavor-info.ts`] }
-      : {}),
-    ...(settingsLoader || manifest.fileExtensions?.length
-      ? {
-          Settings: lazy(async () => ({
-            default: settingsLoader
-              ? (await settingsLoader()).Settings
-              : ((await load()).Settings ?? (() => null)),
-          })),
-        }
-      : {}),
+    ...(declared.flavors ? { flavors: declared.flavors } : {}),
+    ...(declared.Settings ? { Settings: declared.Settings } : {}),
     async start(context) {
       const token = ++generation
-      const addon = await startupSpan(`addon-load:${manifest.id}`, load, {
-        addonName: manifest.name,
-      })
+      if (manifest.kind === 'theme') {
+        for (const theme of declared.themes ?? [])
+          context.colorschemes.register(theme)
+        return
+      }
+      const definition = await startupSpan(
+        `addon-load:${manifest.id}`,
+        async () => normalizeDefinition(await load(), manifest),
+        { addonName: manifest.name },
+      )
       if (token !== generation) return
-      if (addon.manifest.id !== manifest.id)
-        throw new Error(
-          'This addon’s files do not match its manifest. Reinstall it.',
-        )
-      instance = addon
+      instance = definition
       let changed = false
-      if (!descriptor.flavors && addon.flavors) {
-        descriptor.flavors = addon.flavors
+      if (
+        !declared.flavors &&
+        definition.flavors &&
+        definition.flavors !== descriptor.flavors
+      ) {
+        descriptor.flavors = definition.flavors
         changed = true
       }
-      if (!descriptor.Settings && addon.Settings) {
-        descriptor.Settings = addon.Settings
+      if (
+        !declared.Settings &&
+        definition.Settings &&
+        definition.Settings !== descriptor.Settings
+      ) {
+        descriptor.Settings = definition.Settings
         changed = true
       }
       if (changed) publish()
       await startupSpan(
         `addon-start:${manifest.id}`,
-        async () => addon.start(context),
+        async () => definition.start(context),
         { addonName: manifest.name },
       )
     },
@@ -90,90 +128,65 @@ const bundled = Object.entries(manifests).map(([path, manifest]): Addon => {
       generation++
       const previous = instance
       instance = undefined
-      previous?.stop?.()
-    },
-  }
-  return descriptor
-})
-export let addons = bundled
-const installed = new Map<
-  string,
-  { signature: string; addon: Addon; source: 'local' | 'third-party' }
->()
-const listeners = new Set<() => void>()
-const publish = () => {
-  addons = [...bundled, ...[...installed.values()].map((entry) => entry.addon)]
-  for (const listener of listeners) listener()
-}
-function installedAddon(item: InstalledAddon): Addon {
-  let generation = 0
-  let instance: Omit<Addon, 'manifest'> | null = null
-  const addon: Addon = {
-    manifest: item.manifest,
-    async start(context) {
-      const token = ++generation
-      if (item.manifest.kind === 'theme') {
-        for (const theme of item.themes) context.colorschemes.register(theme)
-        return
-      }
-      if (!item.url)
-        throw new Error('This addon is missing its startup file. Reinstall it.')
-      const url = item.url
-      const [module, sdk] = await startupSpan(
-        `addon-load:${item.manifest.id}`,
-        () =>
-          Promise.all([
-            import(/* @vite-ignore */ url) as Promise<{
-              default?:
-                | SideloadFactory
-                | ((sdk: CapabilitySdk) => Omit<Addon, 'manifest'>)
-            }>,
-            loadAddonSdk(item.manifest.capabilities),
-          ]),
-        { addonName: item.manifest.name },
-      )
-      if (token !== generation) return
-      if (typeof module.default !== 'function')
-        throw new Error(
-          'This addon has no valid startup function. Contact its author.',
-        )
-      // The manifest selects the new optional SDK or the unchanged legacy factory contract.
-      const definition = (
-        module.default as (host: typeof sdk) => Omit<Addon, 'manifest'>
-      )(sdk)
-      if (
-        !definition ||
-        typeof definition.start !== 'function' ||
-        (definition.stop !== undefined &&
-          typeof definition.stop !== 'function') ||
-        (definition.Settings !== undefined &&
-          typeof definition.Settings !== 'function')
-      )
-        throw new Error(
-          'This addon cannot start. Contact its author for an updated version.',
-        )
-      instance = definition
-      if (definition.Settings) addon.Settings = definition.Settings
-      if (definition.flavors) addon.flavors = definition.flavors
-      publish()
-      await startupSpan(
-        `addon-start:${item.manifest.id}`,
-        async () => definition.start(context),
-        { addonName: item.manifest.name },
-      )
-    },
-    stop() {
-      generation++
-      const previous = instance
-      instance = null
-      if (addon.Settings) {
-        delete addon.Settings
+      // Runtime settings close over the stopped instance; declared settings stay available.
+      if (!declared.Settings && descriptor.Settings) {
+        delete descriptor.Settings
         publish()
       }
       previous?.stop?.()
     },
   }
-  return addon
+  const retire = () => {
+    generation++
+    pending = undefined
+    delete descriptor.Settings
+    delete descriptor.flavors
+  }
+  return { addon: descriptor, retire }
+}
+const bundled = Object.entries(manifests).map(([path, manifest]): Addon => {
+  const directory = path.slice(0, path.lastIndexOf('/'))
+  origins.set(manifest.id, path.includes('/useraddons/') ? 'local' : 'built-in')
+  const loader =
+    implementations[`${directory}/index.ts`] ??
+    implementations[`${directory}/index.tsx`]
+  const importer = () =>
+    loader
+      ? loader()
+      : Promise.reject(
+          new Error(
+            `The ${manifest.id} addon is missing its startup file. Reinstall it.`,
+          ),
+        )
+  const settingsLoader = settings[`${directory}/Settings.tsx`]
+  return describeAddon(manifest, importer, {
+    flavors: flavorInfo[`${directory}/flavor-info.ts`],
+    ...(settingsLoader || manifest.fileExtensions?.length
+      ? {
+          Settings: lazy(async () => ({
+            default: settingsLoader
+              ? (await settingsLoader()).Settings
+              : ((await normalizeDefinition(await importer(), manifest))
+                  .Settings ?? (() => null)),
+          })),
+        }
+      : {}),
+  }).addon
+})
+export let addons = bundled
+const installed = new Map<
+  string,
+  {
+    signature: string
+    addon: Addon
+    retire: () => void
+    source: 'local' | 'third-party'
+  }
+>()
+const listeners = new Set<() => void>()
+const publish = () => {
+  addons = [...bundled, ...[...installed.values()].map((entry) => entry.addon)]
+  for (const listener of listeners) listener()
 }
 export const addonRegistry = {
   snapshot: () => addons,
@@ -188,15 +201,35 @@ export const addonRegistry = {
     installed.get(id)?.source ?? origins.get(id) ?? 'local',
   hydrate(packages: readonly InstalledAddon[]) {
     const ids = new Set(packages.map((item) => item.manifest.id))
-    for (const id of installed.keys()) if (!ids.has(id)) installed.delete(id)
+    for (const [id, entry] of installed)
+      if (!ids.has(id)) {
+        entry.retire()
+        installed.delete(id)
+      }
     for (const item of packages) {
       const signature = JSON.stringify(item)
-      if (installed.get(item.manifest.id)?.signature !== signature)
-        installed.set(item.manifest.id, {
-          signature,
-          addon: installedAddon(item),
-          source: item.source ?? 'local',
-        })
+      const previous = installed.get(item.manifest.id)
+      if (previous?.signature === signature) continue
+      previous?.retire()
+      const { url } = item
+      installed.set(item.manifest.id, {
+        signature,
+        ...describeAddon(
+          item.manifest,
+          () =>
+            url
+              ? import(/* @vite-ignore */ url).then(
+                  (module: { default?: unknown }) => module.default,
+                )
+              : Promise.reject(
+                  new Error(
+                    'This addon is missing its startup file. Reinstall it.',
+                  ),
+                ),
+          { themes: item.themes },
+        ),
+        source: item.source ?? 'local',
+      })
     }
     publish()
   },
