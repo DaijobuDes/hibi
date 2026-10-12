@@ -9,6 +9,7 @@ if (process.isMainFrame)
   contextBridge.exposeInMainWorld('hibiAddonWindow', {
     context: () => ipcRenderer.invoke(ADDON_WINDOW_CHANNELS.context),
     states: () => ipcRenderer.invoke(ADDON_WINDOW_CHANNELS.states),
+    close: () => ipcRenderer.invoke(ADDON_WINDOW_CHANNELS.closeSelf),
     query: (method, input) =>
       ipcRenderer.invoke(ADDON_WINDOW_CHANNELS.query, method, input),
     invoke: (method, input) =>
