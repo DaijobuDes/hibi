@@ -35,6 +35,38 @@ type Draft = {
 }
 const draftPath = () => join(app.getPath('userData'), 'quick-note-draft.json')
 let draftWrites: Promise<unknown> = Promise.resolve()
+/** An unreadable draft that could not be moved aside; never write over it. */
+let draftLocked = false
+
+/** Recover what an existing draft file holds, including older shapes without a destination. */
+function recoverDraft(value: unknown): Draft | null {
+  const input = value as { markdown?: unknown; destination?: unknown } | null
+  if (
+    !input ||
+    typeof input !== 'object' ||
+    typeof input.markdown !== 'string' ||
+    Buffer.byteLength(input.markdown) > MAX_DOCUMENT_BYTES
+  )
+    return null
+  return {
+    markdown: input.markdown,
+    destination:
+      parseDraft({ markdown: '', destination: input.destination ?? null })
+        ?.destination ?? null,
+  }
+}
+
+/** Move an unreadable draft out of the way so it is never overwritten. */
+async function keepAside(path: string) {
+  const keptAs = `quick-note-draft.unreadable-${Date.now()}.json`
+  try {
+    await rename(path, join(app.getPath('userData'), keptAs))
+    return { status: 'unreadable', keptAs } as const
+  } catch {
+    draftLocked = true
+    return { status: 'unreadable', keptAs: null } as const
+  }
+}
 
 function parseDraft(value: unknown): Draft | null {
   const input = value as Partial<Draft> | null
@@ -117,14 +149,6 @@ export default {
     capture: ({ windows }) => windows.open(captureWindow),
   },
   queries: {
-    /** The unsaved note, written by `saveDraft`, so a crash does not lose it. */
-    async draft() {
-      try {
-        return parseDraft(JSON.parse(await readFile(draftPath(), 'utf8')))
-      } catch {
-        return null
-      }
-    },
     /** Pin the destination when capture opens, so a workspace switch cannot move the note. */
     async destination(input, context) {
       const path = await target(input, context)
@@ -162,10 +186,30 @@ export default {
       await rememberWorkspace(path)
       return (await getRecentWorkspaces()).find((entry) => entry.path === path)
     },
+    /** The unsaved note written by `saveDraft`. An unreadable file is moved aside, never replaced. */
+    async openDraft() {
+      const path = draftPath()
+      let text: string
+      try {
+        text = await readFile(path, 'utf8')
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT')
+          return { status: 'none' }
+        return keepAside(path)
+      }
+      try {
+        const draft = recoverDraft(JSON.parse(text))
+        if (draft) return { status: 'ready', draft }
+      } catch {
+        // Damaged JSON is kept aside below.
+      }
+      return keepAside(path)
+    },
     /** Resolves once the draft is on disk; an empty note removes it. */
     async saveDraft(input) {
       const draft = parseDraft(input)
-      if (!draft) throw new Error('Could not keep this note. Try again.')
+      if (!draft || draftLocked)
+        throw new Error('Could not keep this note. Try again.')
       const path = draftPath()
       const write = draftWrites.then(async () => {
         if (!draft.markdown) return rm(path, { force: true })
