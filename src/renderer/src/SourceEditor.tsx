@@ -585,16 +585,19 @@ export function SourceEditor({
       })
       if (!Number.isFinite(from)) return
       insertedLength = changes.newLength - changes.length + to - from
-      completionBroker.emitTypingContext({
-        ...request,
-        before:
-          boundaryBefore === undefined
-            ? (request.prose?.before ?? '')
-            : `${boundaryBefore}\n`.slice(-256),
-        after: request.prose?.after ?? '',
-        kind: request.prose ? kind : 'replace',
-        change: { from, to, insertedLength },
-      })
+      completionBroker.emitTypingContext(
+        {
+          ...request,
+          before:
+            boundaryBefore === undefined
+              ? (request.prose?.before ?? '')
+              : `${boundaryBefore}\n`.slice(-256),
+          after: request.prose?.after ?? '',
+          kind: request.prose ? kind : 'replace',
+          change: { from, to, insertedLength },
+        },
+        kind,
+      )
     }
     const proseAt = (state = editor.state) => {
       const pos = state.selection.main.head

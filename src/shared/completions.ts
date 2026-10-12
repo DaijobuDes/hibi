@@ -1,4 +1,11 @@
 import type { ViewTarget } from './foundation-contracts'
+import { codeSpans } from './prose-context.ts'
+
+function maskCodeSpans(text: string, spans = codeSpans(text)) {
+  const characters = text.split('')
+  for (const span of spans) characters.fill(' ', span.from, span.to)
+  return characters.join('')
+}
 
 /** Positions are editor-local: CodeMirror and ProseMirror offsets are distinct. */
 export interface CompletionRequest {
@@ -83,8 +90,7 @@ export function sourceProseAllowed(prefix: string) {
     }
     if (fence || (!math && /^(?: {4}|\t)/.test(line))) continue
     if (line.includes('$$')) {
-      const delimiters =
-        line.replace(/(`+)[\s\S]*?\1/g, '').match(/(?<!\\)\$\$/g)?.length ?? 0
+      const delimiters = maskCodeSpans(line).match(/(?<!\\)\$\$/g)?.length ?? 0
       if (delimiters % 2) math = !math
     }
   }
@@ -115,15 +121,19 @@ export function safeCompletionContext(text: string, offset: number) {
     if (start >= offset) to = Math.min(to, start)
     return true
   }
-  for (const match of text.matchAll(
+  const spans = codeSpans(text)
+  for (const span of spans)
+    if (!exclude(span.from, span.to, !span.closed)) return null
+  const plain = maskCodeSpans(text, spans)
+  for (const match of plain.matchAll(
     /<([a-z][\w:-]*)\b[^>]*>(?:[\s\S]*?<\/\1\s*>|[\s\S]*$)|<!--(?:[\s\S]*?-->|[\s\S]*$)/gi,
   )) {
     const end = match.index + match[0].length
     if (!exclude(match.index, end, !/<\/[\w:-]+\s*>$|-->$/.test(match[0])))
       return null
   }
-  for (const match of text.matchAll(
-    /(`+|\$\$?)([\s\S]*?)(\1|$)|<[^>]*(?:>|$)|(?:https?:\/\/|www\.)[^\s]*|\b[^\s]{20,}\b/g,
+  for (const match of plain.matchAll(
+    /(\$\$?)([\s\S]*?)(\1|$)|<[^>]*(?:>|$)|(?:https?:\/\/|www\.)[^\s]*|\b[^\s]{20,}\b/g,
   )) {
     const token = match[0]
     if (

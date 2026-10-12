@@ -176,6 +176,41 @@ test('space after acceptance keeps range-only feedback for a subsequent unsafe o
   assert.equal(events[1].after, '')
 })
 
+test('unsafe composition keeps range-only correction through intermediate versions', async () => {
+  for (const origin of ['replace', 'composition']) {
+    const broker = new CompletionBroker()
+    const events = []
+    broker.onTypingContext((event) => events.push(event))
+    broker.register(owner('provider'), () => [item('word')])
+    const shown = await collect(broker).final
+    broker.prepareAcceptance(shown.request, shown.items[0])()
+    broker.emitTypingContext({
+      ...request({ contentVersion: 5, before: 'word ' }),
+      kind: 'input',
+      change: { from: 4, to: 4, insertedLength: 1 },
+    })
+    const context = {
+      ...request({
+        contentVersion: 8,
+        before: 'private composition',
+        prose: null,
+      }),
+      kind: 'replace',
+      change: { from: 0, to: 4, insertedLength: 19 },
+    }
+    broker.emitTypingContext(context, origin)
+    assert.equal(events.length, origin === 'composition' ? 2 : 1, origin)
+    if (origin === 'composition') {
+      assert.equal(events[1].kind, 'replace')
+      assert.equal(events[1].before, '')
+      assert.equal(events[1].after, '')
+      assert.equal('prose' in events[1], false)
+    }
+    broker.emitTypingContext(context, origin)
+    assert.equal(events.length, origin === 'composition' ? 2 : 1)
+  }
+})
+
 test('receipt follows preceding typing and allows replacement inside the accepted range', async () => {
   const broker = new CompletionBroker()
   const events = []
@@ -272,6 +307,38 @@ test('plain prose clips excluded neighboring spans and keeps punctuation', () =>
     safeCompletionContext('mixed 中文 slang. ', 16)?.before,
     'mixed 中文 slang. ',
   )
+})
+
+test('prose clips whole CommonMark code spans and preserves escaped backticks', () => {
+  for (const code of ['``a`b``', '```a``b```', '`a\\`', '``a`$$b``']) {
+    const text = `${code} hap`
+    assert.deepEqual(safeCompletionContext(text, text.length), {
+      before: ' hap',
+      after: '',
+    })
+    assert.equal(safeCompletionContext(text, 2), null)
+    assert.deepEqual(safeCompletionContext(`hap ${code}`, 3), {
+      before: 'hap',
+      after: ' ',
+    })
+  }
+  for (const text of ['hap \\` word', 'hap \\`\\` word']) {
+    assert.deepEqual(safeCompletionContext(text, text.length), {
+      before: text,
+      after: '',
+    })
+  }
+  for (const text of ['``a``` hap', '``a``` more ` hap', '\\\\`a hap']) {
+    assert.equal(safeCompletionContext(text, text.length), null, text)
+  }
+})
+
+test('source math proof ignores delimiters strictly inside CommonMark code', () => {
+  for (const text of ['``a`$$b`` hap', '`a\\` $$ hidden', '\\` $$ hidden']) {
+    assert.equal(sourceProseAllowed(text), text === '``a`$$b`` hap', text)
+  }
+  assert.equal(sourceProseAllowed('``$$ hap'), true)
+  assert.equal(sourceProseAllowed('\\` $$ hidden\n$$\nhap'), true)
 })
 
 test('source proof excludes frontmatter and code/math fences within bounded work', () => {

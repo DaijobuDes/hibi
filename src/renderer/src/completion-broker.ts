@@ -232,7 +232,7 @@ export class CompletionBroker {
     return this.#typing.size > 0
   }
 
-  emitTypingContext(context: TypingContext) {
+  emitTypingContext(context: TypingContext, origin = context.kind) {
     if (this.#disposed || !this.#typing.size) return
     const request = snapshot({ ...context, trigger: { kind: 'explicit' } })
     const { from, to, insertedLength } = context.change
@@ -255,7 +255,7 @@ export class CompletionBroker {
         performance.now() - accepted.at > 10000 ||
         (request.contentVersion !== accepted.version + 1 &&
           !(
-            context.kind === 'composition' &&
+            origin === 'composition' &&
             request.contentVersion > accepted.version
           )))
     )

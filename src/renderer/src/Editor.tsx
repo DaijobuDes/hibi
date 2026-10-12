@@ -1212,20 +1212,23 @@ export function MarkdownEditor({
           insertedLength: end.b + overlap - from,
         }
       }
-      completionBroker.emitTypingContext({
-        ...request,
-        before:
-          kind === 'input' &&
-          request.prose?.before === '' &&
-          previous?.prose &&
-          before.resolve(previous.selection.head).parent !==
-            view.state.selection.$head.parent
-            ? `${previous.prose.before}\n`.slice(-256)
-            : (request.prose?.before ?? ''),
-        after: request.prose?.after ?? '',
-        kind: request.prose ? kind : 'replace',
-        change,
-      })
+      completionBroker.emitTypingContext(
+        {
+          ...request,
+          before:
+            kind === 'input' &&
+            request.prose?.before === '' &&
+            previous?.prose &&
+            before.resolve(previous.selection.head).parent !==
+              view.state.selection.$head.parent
+              ? `${previous.prose.before}\n`.slice(-256)
+              : (request.prose?.before ?? ''),
+          after: request.prose?.after ?? '',
+          kind: request.prose ? kind : 'replace',
+          change,
+        },
+        kind,
+      )
     }
     const onBeforeInput = (event: InputEvent) => {
       if (event.isComposing) return
