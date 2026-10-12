@@ -67,6 +67,25 @@ test('addon windows host the editor without desktop privileges', {
     'background addons such as quick note did not start in the window',
   )
 
+  // Window ids are looked up as own keys, so inherited names render nothing.
+  await page.evaluate(() =>
+    window.hibi.openAddonWindow('ui-preview', { id: 'constructor' }),
+  )
+  const findInherited = async () => {
+    for (const item of app.windows())
+      if (
+        item.url().endsWith('/addon-window.html') &&
+        (await item.evaluate(() => window.hibiAddonWindow.context())).id ===
+          'constructor'
+      )
+        return item
+  }
+  while (!(await findInherited())) await setTimeout(30)
+  await (await findInherited())
+    .getByRole('alert')
+    .getByText('This addon window is unavailable.')
+    .waitFor()
+
   // The main document is untouched by edits in the window.
   assert.equal(
     await page.evaluate(async () => (await window.hibi.getDocument()).markdown),
