@@ -14,7 +14,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { setTimeout } from 'node:timers/promises'
-import { electron, stopElectronTree } from './electron.mjs'
+import { electron, showTestWindows, stopElectronTree } from './electron.mjs'
 import { clickMenu } from './keyboard.mjs'
 
 const captureUrl = /\/addon-window\.html$/
@@ -24,6 +24,22 @@ async function captureWindow(app) {
   for (;;) {
     const page = app.windows().find((item) => captureUrl.test(item.url()))
     if (page) {
+      // Test runs never reveal windows themselves, and CI's launcher shows a window
+      // only on its first ready-to-show. A kept-alive capture window reopened in CI
+      // would stay hidden, and Linux stops painting hidden windows.
+      if (showTestWindows)
+        await app.evaluate(({ BrowserWindow }) => {
+          for (const window of BrowserWindow.getAllWindows())
+            if (
+              !window.isDestroyed() &&
+              window.webContents.getURL().endsWith('/addon-window.html') &&
+              !window.isVisible()
+            ) {
+              window.setFocusable(true)
+              window.show()
+              window.focus()
+            }
+        })
       await page.locator('.tiptap[contenteditable="true"]').waitFor()
       return page
     }
@@ -59,10 +75,38 @@ async function hidden(app, before) {
   while ((await captureHides(app)) <= before) await setTimeout(30)
 }
 
+/** Click, or explain why the target never became clickable. */
+async function click(locator, what) {
+  try {
+    await locator.click({ timeout: 15000 })
+  } catch (error) {
+    const why = await locator
+      .evaluate((element) => {
+        const rect = element.getBoundingClientRect()
+        const top = document.elementFromPoint(
+          rect.x + rect.width / 2,
+          rect.y + Math.min(rect.height / 2, 12),
+        )
+        return {
+          visibility: document.visibilityState,
+          focused: document.hasFocus(),
+          rect: [rect.x, rect.y, rect.width, rect.height].map(Math.round),
+          inert: !!element.closest('[inert]'),
+          coveredBy:
+            top && !element.contains(top) ? top.outerHTML.slice(0, 160) : null,
+        }
+      })
+      .catch((reason) => String(reason))
+    throw new Error(`${what} is not clickable: ${JSON.stringify(why)}`, {
+      cause: error,
+    })
+  }
+}
+
 /** Replace the note with Markdown typed line by line. */
 async function writeNote(capture, ...lines) {
   const editor = capture.locator('.tiptap[contenteditable="true"]')
-  await editor.click()
+  await click(editor, 'The capture window editor')
   await capture.keyboard.press('ControlOrMeta+a')
   await capture.keyboard.press('Backspace')
   for (const [index, line] of lines.entries()) {
@@ -167,7 +211,10 @@ const resume = (app, name) =>
 
 async function saveCapture(app, capture, name) {
   const before = await captureHides(app)
-  await capture.getByRole('button', { name: 'Save', exact: true }).click()
+  await click(
+    capture.getByRole('button', { name: 'Save', exact: true }),
+    'The capture window Save button',
+  )
   await capture.getByRole('status').getByText(`Saved ${name}.`).waitFor()
   await hidden(app, before)
 }
@@ -692,7 +739,7 @@ test('the capture window renders markdown like the main editor', {
   const shape = async (editor) => {
     const root = editor.locator('.tiptap[contenteditable="true"]')
     // The same plain caret in both: the end of the first paragraph, outside bold.
-    await root.locator('p').first().click()
+    await click(root.locator('p').first(), 'The first paragraph')
     await editor.keyboard.press('End')
     return root.evaluate((element) => ({
       headings: element.querySelectorAll('h1').length,
@@ -809,7 +856,10 @@ test('escape closes editor popups before the capture window', {
   const h = await harness(t)
   const { app, page } = await h.launch()
   const capture = await openCapture(app, page)
-  await capture.locator('.tiptap[contenteditable="true"]').click()
+  await click(
+    capture.locator('.tiptap[contenteditable="true"]'),
+    'The capture window editor',
+  )
   await capture.keyboard.type('/')
   const menu = capture.locator('.slash-menu [role="listbox"]')
   await menu.waitFor()
