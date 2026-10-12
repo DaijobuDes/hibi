@@ -3,6 +3,7 @@ import { Button, ControlRow, Select, TextArea, TextInput } from '../ui'
 import {
   addCustomWord,
   type CustomWord,
+  editCustomWord,
   exportCustomWords,
   importCustomWords,
   listCustomWords,
@@ -22,10 +23,11 @@ export function CustomWords() {
   const [draft, setDraft] = useState('')
   const [text, setText] = useState('')
   const [message, setMessage] = useState('')
-  const replace = (original: CustomWord, next: CustomWord) =>
-    updateCustomWords((current) =>
-      current.map((item) => (sameCustomWord(item, original) ? next : item)),
-    )
+  const edit = (
+    original: CustomWord,
+    change: (current: CustomWord) => CustomWord,
+  ) =>
+    editCustomWord(original, change)
       .then(() => setMessage(''))
       .catch((error) => setMessage(failed(error)))
   return (
@@ -73,9 +75,10 @@ export function CustomWords() {
                 aria-label={`Language of “${item.word}”`}
                 value={item.lang ?? ''}
                 onChange={(event) => {
-                  const { lang: _old, ...rest } = item
                   const lang = event.target.value as Lang | ''
-                  void replace(item, lang ? { ...rest, lang } : rest)
+                  void edit(item, ({ lang: _old, ...rest }) =>
+                    lang ? { ...rest, lang } : rest,
+                  )
                 }}
               >
                 <option value="">Any language</option>
@@ -93,8 +96,9 @@ export function CustomWords() {
                 onBlur={(event) => {
                   const note = event.target.value.trim()
                   if (note === (item.note ?? '')) return
-                  const { note: _old, ...rest } = item
-                  void replace(item, note ? { ...rest, note } : rest)
+                  void edit(item, ({ note: _old, ...rest }) =>
+                    note ? { ...rest, note } : rest,
+                  )
                 }}
               />
               <Button

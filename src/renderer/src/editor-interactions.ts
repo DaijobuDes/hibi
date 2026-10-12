@@ -6,6 +6,7 @@ import {
 } from '../../shared/editor-interactions'
 import type { CommandExecutionContext } from '../../shared/foundation-contracts'
 import type { RegisteredCommand } from './addons'
+import { claimEditorPopup } from './completion-broker'
 import { captureEditorCommandTarget } from './editor-command-targets'
 import { contextActionBroker, hoverBroker } from './editor-interaction-broker'
 import { editorCommandMenu } from './editor-interaction-presence'
@@ -92,11 +93,16 @@ export function attachEditorInteractions(adapter: Adapter) {
     items: readonly MenuEntry[]
   } | null = null
   let commandRelease: (() => void) | null = null
+  let releaseMenu: (() => void) | null = null
   let menuGeneration = 0
   let selected = 0
   let disposed = false
 
   const hide = (element: HTMLElement) => {
+    if (element === menu) {
+      releaseMenu?.()
+      releaseMenu = null
+    }
     if (element.matches(':popover-open')) element.hidePopover()
   }
   const closeHover = () => {
@@ -228,6 +234,12 @@ export function attachEditorInteractions(adapter: Adapter) {
         shown = null
         hide(menu)
         return
+      }
+      // The shown menu owns the editor's keys; completions close and stay
+      // closed until it does.
+      if (!releaseMenu) {
+        adapter.element.dispatchEvent(new Event('hibi:editor-actions-open'))
+        releaseMenu = claimEditorPopup(adapter.element, menu)
       }
       shown = { request, items }
       selected = Math.min(selected, items.length - 1)

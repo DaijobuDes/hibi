@@ -173,11 +173,27 @@ function validItems(items: readonly CompletionItem[], length: number) {
   return result
 }
 
+const claims = new WeakMap<Element, Element>()
+
 /**
- * True while another open popup, such as the slash menu, controls `editor`;
- * that popup keeps the keys and completions stay closed.
+ * Marks `popup`, such as the editor actions menu, as owning `editor` until
+ * the returned function releases it, so completions stay closed meanwhile.
+ */
+export function claimEditorPopup(editor: Element, popup: Element) {
+  claims.set(editor, popup)
+  return () => {
+    if (claims.get(editor) === popup) claims.delete(editor)
+  }
+}
+
+/**
+ * True while another open popup, such as the slash menu or the editor actions
+ * menu, controls `editor`; that popup keeps the keys and completions stay
+ * closed.
  */
 export function otherPopupOpen(editor: Element, own?: Element) {
+  const claimed = claims.get(editor)
+  if (claimed && claimed !== own) return true
   const id = editor.getAttribute('aria-controls')
   const popup = id && document.getElementById(id)?.closest(':popover-open')
   return !!popup && popup !== own

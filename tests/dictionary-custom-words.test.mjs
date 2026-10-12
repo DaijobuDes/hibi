@@ -6,6 +6,7 @@ import {
   addCustomWord,
   customWords,
   customWordsProvider,
+  editCustomWord,
   exportCustomWords,
   importCustomWords,
   listCustomWords,
@@ -89,6 +90,15 @@ test('custom words round-trip through plain text', () => {
     { word: 'Hibi' },
     { word: 'gemütlich', lang: 'de' },
   ])
+  // Words starting with `#` are not read back as comments.
+  const tags = [
+    { word: '#hashtag', lang: 'en' },
+    { word: '\\#odd' },
+    { word: 'C#' },
+  ]
+  const tagText = exportCustomWords(tags)
+  assert.equal(tagText, '\\#hashtag\ten\n\\\\#odd\nC#')
+  assert.deepEqual(importCustomWords(tagText), tags)
 })
 
 test('custom words load, save, follow other windows, and clear on stop', async () => {
@@ -123,6 +133,87 @@ test('custom words load, save, follow other windows, and clear on stop', async (
   assert.deepEqual(listCustomWords(), [])
   assert.ok(changes >= 5)
   stopListening()
+})
+
+test('queued field edits apply to the word as it is saved', async () => {
+  const { context } = storage([{ word: 'kilig', note: 'old' }])
+  const close = await openCustomWords(context)
+  const [item] = listCustomWords()
+  // A note blur, then a language change before the note is saved.
+  await Promise.all([
+    editCustomWord(item, ({ note: _old, ...rest }) => ({
+      ...rest,
+      note: 'new',
+    })),
+    editCustomWord(item, (current) => ({ ...current, lang: 'tl' })),
+  ])
+  assert.deepEqual(listCustomWords(), [
+    { word: 'kilig', note: 'new', lang: 'tl' },
+  ])
+  close()
+})
+
+test('custom words refuse to go over capacity without saving part of a change', async () => {
+  const full = Array.from({ length: 4999 }, (_, index) => ({
+    word: `w${index}`,
+  }))
+  const { handle, context } = storage(full)
+  const close = await openCustomWords(context)
+  await assert.rejects(
+    updateCustomWords((current) =>
+      mergeCustomWords(current, importCustomWords('kilig\ngigil')),
+    ),
+    /up to 5,000 custom words/,
+  )
+  assert.equal(listCustomWords().length, 4999)
+  await addCustomWord({ word: 'kilig' })
+  await assert.rejects(addCustomWord({ word: 'gigil' }), /up to 5,000/)
+  assert.equal(handle.snapshot().value.length, 5000)
+  // Editing a word already listed still saves at capacity.
+  await addCustomWord({ word: 'kilig', note: 'giddy' })
+  assert.equal(listCustomWords().at(-1).note, 'giddy')
+  assert.equal(
+    importCustomWords(`${full.map(({ word }) => word).join('\n')}\nx`).length,
+    5000,
+  )
+  close()
+})
+
+test('custom words keep a newer revision over a late save reply or notification', async () => {
+  // A held save reply, as the storage handle delivers it: its snapshot keeps
+  // the newer revision that arrived first.
+  let current = { status: 'ready', revision: 1, value: [{ word: 'kilig' }] }
+  let reply
+  const listeners = new Set()
+  const notify = (next) => {
+    current = next
+    for (const listener of listeners) listener()
+  }
+  const handle = {
+    snapshot: () => current,
+    subscribe(listener) {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
+    },
+    set: (value) =>
+      new Promise((resolve) => {
+        reply = () => resolve({ status: 'saved', revision: 2, value })
+      }),
+  }
+  const close = await openCustomWords({
+    storage: { global: async () => handle },
+  })
+  const saving = addCustomWord({ word: 'gigil' })
+  await new Promise((resolve) => setImmediate(resolve))
+  const newer = [{ word: 'kilig' }, { word: 'gigil' }, { word: 'Hibi' }]
+  notify({ status: 'ready', revision: 3, value: newer })
+  reply()
+  await saving
+  assert.deepEqual(listCustomWords(), newer)
+  // A notification for an older revision arriving late is ignored too.
+  notify({ status: 'ready', revision: 2, value: [{ word: 'kilig' }] })
+  assert.deepEqual(listCustomWords(), newer)
+  close()
 })
 
 test('custom words are looked up as the user’s own without going online', async () => {
@@ -222,5 +313,79 @@ test('custom words come before pack words in suggestions', async () => {
       ['happenstance', 'Your word'],
       ['happen', undefined],
     ],
+  )
+})
+
+test('custom word suggestions match NFC prefixes and list each word once', async () => {
+  const preferences = {
+    suggest: true,
+    tabAccepts: true,
+    learning: true,
+    languages: ['fr', 'en'],
+    excludedDocuments: [],
+    excludedWorkspaces: [],
+  }
+  const session = { scope: null, documentId: 'document', personal: true }
+  const personal = createPersonalModel()
+  const provider = autocompleteCompletions(
+    {
+      version: 1,
+      complete: async (prefix) => [
+        {
+          lang: 'fr',
+          words: ['bonjour', 'écolier'].filter((word) =>
+            word.startsWith(prefix.normalize('NFC')),
+          ),
+        },
+      ],
+      suggestionLanguages: () => ['en', 'fr'],
+      customWords: () => [
+        { word: 'école' },
+        { word: 'bonjour', lang: 'fr' },
+        { word: 'Bonjour', lang: 'en' },
+      ],
+    },
+    () => preferences,
+    { suggest: personal.suggest, epoch: () => 0 },
+    () => session,
+    (lang) => lang,
+  )
+  const ask = (before) =>
+    provider(
+      {
+        view: {
+          documentId: 'document',
+          documentGeneration: 1,
+          viewId: 'view',
+          viewGeneration: 1,
+        },
+        contentVersion: 1,
+        editor: 'source',
+        documentLength: before.length,
+        selection: { anchor: before.length, head: before.length },
+        before,
+        after: '',
+        prose: { before, after: '' },
+        trigger: { kind: 'input', character: before.at(-1) },
+      },
+      signal,
+    )
+  // Typed in decomposed form: `e` and a combining acute accent.
+  const decomposed = 'Une e\u0301co'
+  assert.deepEqual(
+    (await ask(decomposed)).map(({ label, detail, from, to }) => [
+      label,
+      detail,
+      from,
+      to,
+    ]),
+    [
+      ['école', 'Your word', 4, 8],
+      ['écolier', 'fr', 4, 8],
+    ],
+  )
+  assert.deepEqual(
+    (await ask('bon')).map(({ label, detail }) => [label, detail]),
+    [['bonjour', 'Your word']],
   )
 })

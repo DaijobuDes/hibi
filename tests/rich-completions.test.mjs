@@ -50,7 +50,14 @@ test('rich completions replace exact plain text in one undo step and retract on 
           to: request.selection.head,
         }]
       }, { onAccepted(request, item) { window.completionAccepted.push({request, item}) } })
-      window.stopCompletionProbe = dispose
+      const stopActions = await context.editor.registerContextActionProvider((request) => [{
+        label: 'Probe action',
+        edit: { from: request.selection.head, to: request.selection.head, insertText: '!' },
+      }])
+      window.stopCompletionProbe = () => {
+        stopActions()
+        dispose()
+      }
       window.completionProbeReady = true
     },
   })`,
@@ -202,6 +209,30 @@ test('rich completions replace exact plain text in one undo step and retract on 
     page,
     async () => (await window.hibi.getDocument()).markdown.trim() === 'hel',
   )
+  // The editor actions menu owns the keys as well: completions stay closed
+  // while it is open, and opening it closes them.
+  const actions = page.getByRole('menu', { name: 'Editor actions' })
+  await rich.press('Shift+F10')
+  await actions.getByRole('menuitem', { name: 'Probe action' }).waitFor()
+  const actionCalls = await page.evaluate(() => window.completionCalls)
+  await page.keyboard.press('Control+Space')
+  await page.evaluate(
+    () =>
+      new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve)),
+      ),
+  )
+  assert.equal(await menu.isVisible(), false)
+  assert.equal(await page.evaluate(() => window.completionCalls), actionCalls)
+  await page.keyboard.press('Escape')
+  await actions.waitFor({ state: 'hidden' })
+  await page.keyboard.press('Control+Space')
+  await menu.getByRole('option', { name: /hello/ }).waitFor()
+  await rich.press('Shift+F10')
+  await actions.getByRole('menuitem', { name: 'Probe action' }).waitFor()
+  await menu.waitFor({ state: 'hidden' })
+  await page.keyboard.press('Escape')
+  await actions.waitFor({ state: 'hidden' })
   const beforeUnsafe = await page.evaluate(() => {
     window.completionUnsafeRange = true
     return window.completionCalls

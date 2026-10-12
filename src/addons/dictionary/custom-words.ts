@@ -21,7 +21,7 @@ const key = (word: CustomWord) =>
   `${word.word.normalize('NFC').toLowerCase()}\u0000${word.lang ?? ''}`
 
 /** Valid words only, first spelling kept for each word and language. */
-export function customWords(value: unknown): CustomWord[] {
+export function customWords(value: unknown, limit = MAX_WORDS): CustomWord[] {
   if (!Array.isArray(value)) return []
   const seen = new Set<string>()
   const words: CustomWord[] = []
@@ -41,13 +41,14 @@ export function customWords(value: unknown): CustomWord[] {
     if (seen.has(key(entry))) continue
     seen.add(key(entry))
     words.push(Object.freeze(entry))
-    if (words.length === MAX_WORDS) break
+    if (words.length === limit) break
   }
   return words
 }
 
 let words: readonly CustomWord[] = Object.freeze([])
 let handle: AddonStorageHandle<unknown> | null = null
+let revision = 0
 const listeners = new Set<() => void>()
 
 function publish(next: CustomWord[]) {
@@ -71,17 +72,26 @@ export function onCustomWordsChanged(listener: () => void): () => void {
 export async function openCustomWords(context: AddonContext) {
   const opened = await context.storage.global<unknown>('custom-words', 1)
   handle = opened
-  const sync = () => {
-    const snapshot = opened.snapshot()
-    publish(snapshot.status === 'ready' ? customWords(snapshot.value) : [])
-  }
+  revision = 0
   sync()
   const stop = opened.subscribe(sync)
   return () => {
     stop()
     if (handle === opened) handle = null
+    revision = 0
     publish([])
   }
+}
+
+/** Publishes the handle's latest words; an older revision never replaces a newer one. */
+function sync() {
+  const snapshot = handle?.snapshot()
+  if (!snapshot) return
+  if (snapshot.status === 'ready') {
+    if (snapshot.revision < revision) return
+    revision = snapshot.revision
+  }
+  publish(snapshot.status === 'ready' ? customWords(snapshot.value) : [])
 }
 
 let saving: Promise<unknown> = Promise.resolve()
@@ -97,12 +107,18 @@ export function updateCustomWords(
   const run = saving.then(async () => {
     if (!handle)
       throw new Error('Turn on Dictionary and thesaurus to keep custom words.')
-    const result = await handle.set(customWords(change(words)))
+    const next = customWords(change(words), Infinity)
+    if (next.length > MAX_WORDS)
+      throw new Error(
+        'You can keep up to 5,000 custom words. Remove some to add more.',
+      )
+    const result = await handle.set(next)
     if (result.status === 'conflict')
       throw new Error('Custom words changed in another window. Try again.')
     if (result.status !== 'saved')
       throw new Error('Could not save custom words.')
-    publish(customWords(result.value))
+    // A newer change from another window may have arrived before this reply.
+    sync()
   })
   saving = run.catch(() => {})
   return run
@@ -112,13 +128,29 @@ export function updateCustomWords(
 export const sameCustomWord = (left: CustomWord, right: CustomWord) =>
   key(left) === key(right)
 
+/**
+ * Applies `change` to the saved entry for `original` when its turn comes, so
+ * queued edits to different fields of one word all keep.
+ */
+export function editCustomWord(
+  original: CustomWord,
+  change: (current: CustomWord) => CustomWord,
+) {
+  return updateCustomWords((current) =>
+    current.map((item) =>
+      sameCustomWord(item, original) ? change(item) : item,
+    ),
+  )
+}
+
 /** `incoming` words replace matching ones in place; the rest are added at the end. */
 export function mergeCustomWords(
   current: readonly CustomWord[],
   incoming: readonly CustomWord[],
 ) {
   const merged = new Map(current.map((item) => [key(item), item]))
-  for (const item of customWords(incoming)) merged.set(key(item), item)
+  for (const item of customWords(incoming, Infinity))
+    merged.set(key(item), item)
   return [...merged.values()]
 }
 
@@ -129,11 +161,19 @@ export function addCustomWord(word: CustomWord) {
   return updateCustomWords((current) => mergeCustomWords(current, added))
 }
 
-/** One word per line: `word`, then optional tab-separated language code and note. */
+/**
+ * One word per line: `word`, then optional tab-separated language code and
+ * note. A backslash goes before a word starting with `#` (after any
+ * backslashes) so it is not read back as a comment.
+ */
 export function exportCustomWords(list: readonly CustomWord[]) {
   return list
     .map((item) =>
-      [item.word, item.lang ?? '', item.note?.replace(/\s+/g, ' ') ?? '']
+      [
+        item.word.replace(/^(?=\\*#)/, '\\'),
+        item.lang ?? '',
+        item.note?.replace(/\s+/g, ' ') ?? '',
+      ]
         .join('\t')
         .trimEnd(),
     )
@@ -147,9 +187,14 @@ export function importCustomWords(text: string) {
       .split(/\r?\n/)
       .filter((line) => line.trim() && !line.trimStart().startsWith('#'))
       .map((line) => {
-        const [word, lang, ...note] = line.split('\t')
-        return { word, lang: lang?.trim(), note: note.join(' ') }
+        const [word = '', lang, ...note] = line.split('\t')
+        return {
+          word: word.trim().replace(/^\\(?=\\*#)/, ''),
+          lang: lang?.trim(),
+          note: note.join(' '),
+        }
       }),
+    Infinity,
   )
 }
 

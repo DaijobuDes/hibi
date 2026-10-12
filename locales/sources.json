@@ -6260,6 +6260,9 @@
   "9b6e8abe425e": [
     "src/addons/frontmatter/Properties.tsx"
   ],
+  "fb54b1cc7cef": [
+    "src/addons/dictionary/custom-words.ts"
+  ],
   "0ec4c65bb923": [
     "src/renderer/src/workspace-menu.ts"
   ],
