@@ -47,7 +47,8 @@ await build({
       name: 'external-unzipper',
       setup(b) {
         b.onResolve({ filter: /^unzipper$/ }, () => ({
-          path: require.resolve('unzipper'),
+          // Windows needs a file URL: Node's ESM loader rejects drive paths.
+          path: pathToFileURL(require.resolve('unzipper')).href,
           external: true,
         }))
       },
