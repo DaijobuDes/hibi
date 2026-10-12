@@ -15,7 +15,8 @@ export function dismissCompletionForArrow(
 ) {
   return (
     ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(key) &&
-    items.some((item) => item.captureArrowKeys === false)
+    items.length > 0 &&
+    items.every((item) => item.captureArrowKeys === false)
   )
 }
 

@@ -127,7 +127,9 @@ export function autocompleteCompletions(
       return []
     const prefix = prefixAt(prose.before, prose.after)
     const nextWord =
-      /[ \t]$/.test(prose.before) && !/^[\p{L}\p{M}]/u.test(prose.after)
+      /[ \t]$/.test(prose.before) &&
+      !/^[\p{L}\p{M}]/u.test(prose.after) &&
+      !/\[\[[^\]\r\n]*$/.test(prose.before)
     if (prefix === null && !nextWord) return []
     const typed = prefix ?? ''
     const context = precedingWords(

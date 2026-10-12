@@ -25,11 +25,13 @@ test('next-word predictions never accept Enter or Tab, even after highlighting',
   }
 })
 
-test('next-word and mixed popups dismiss for every arrow, leaving other keys alone', () => {
+test('only all-next-word popups release arrows; mixed lists retain navigation', () => {
   const next = item({ captureArrowKeys: false })
   for (const key of ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']) {
     assert.equal(dismissCompletionForArrow([next], key), true)
-    assert.equal(dismissCompletionForArrow([item(), next], key), true)
+    assert.equal(dismissCompletionForArrow([next, next], key), true)
+    assert.equal(dismissCompletionForArrow([item(), next], key), false)
+    assert.equal(dismissCompletionForArrow([next, item()], key), false)
     assert.equal(dismissCompletionForArrow([item()], key), false)
     assert.equal(
       dismissCompletionForArrow([item({ captureArrowKeys: true })], key),

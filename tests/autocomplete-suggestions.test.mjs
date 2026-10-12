@@ -124,6 +124,35 @@ test('next-word provider rejects unrelated, one-hit and tied contexts', async ()
   assert.deepEqual(await f.provider(request('bro that was '), signal()), [])
 })
 
+test('next-word predictions yield to unfinished note links', async () => {
+  const f = fixture()
+  f.dictionary.complete = async () => assert.fail('next-word dictionary lookup')
+  for (let i = 0; i < 6; i++)
+    f.model.observe({
+      scope: 'workspace',
+      languages: ['en'],
+      context: ['that', 'was'],
+      word: 'wild',
+      kind: 'typed',
+    })
+  for (const before of [
+    '[[bro that was ',
+    'see [[bro that was ',
+    '[[closed]] then [[bro that was ',
+  ])
+    assert.deepEqual(await f.provider(request(before), signal()), [], before)
+  for (const before of [
+    'bro that was ',
+    '[[closed]] bro that was ',
+    '[bro that was ',
+  ])
+    assert.equal(
+      (await f.provider(request(before), signal()))[0]?.insertText,
+      'wild',
+      before,
+    )
+})
+
 test('prefix results require explicit enter selection and retain tab preference', async () => {
   const f = fixture()
   for (const tabAccepts of [true, false]) {

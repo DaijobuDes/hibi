@@ -33,7 +33,7 @@ export interface CompletionItem {
   readonly rank?: number
   /** False leaves Tab to the editor. Defaults to true. */
   readonly acceptOnTab?: boolean
-  /** False dismisses the popup on any arrow key, leaving caret movement to the editor, even in mixed results. Defaults to true. */
+  /** When false on every visible item, any arrow key dismisses the popup and leaves caret movement to the editor. Defaults to true. */
   readonly captureArrowKeys?: boolean
   /** False opens without a highlighted item. Defaults to true. */
   readonly preselect?: boolean
