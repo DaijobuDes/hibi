@@ -6,6 +6,7 @@ export const ADDON_WINDOW_CHANNELS = {
   /** Requests from inside an addon window, scoped to the addon that owns it. */
   context: 'addon-windows:context',
   states: 'addon-windows:states',
+  statesChanged: 'addon-windows:states-changed',
   closeSelf: 'addon-windows:close-self',
   invoke: 'addon-windows:invoke',
   query: 'addon-windows:query',
@@ -49,6 +50,10 @@ export type AddonWindowBridge = {
   context: () => Promise<AddonWindowContext>
   /** Enabled and disabled addons, so an editor window can start the same editor addons. */
   states: () => Promise<import('../addons/api').AddonState[]>
+  /** Addon state changes accepted after `states` was read. */
+  onStates: (
+    listener: (states: import('../addons/api').AddonState[]) => void,
+  ) => () => void
   /** Close this window the way its close button does, so kept-alive windows hide. */
   close: () => Promise<void>
   query: (method: string, input?: unknown) => Promise<unknown>

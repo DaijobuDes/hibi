@@ -177,6 +177,8 @@ type Environment = Omit<
   closeSidebar: (side: 'left' | 'right') => void
   openTab: () => void
   focusDocument: (tabId: string) => Promise<boolean>
+  /** Addon state changes made elsewhere, for hosts outside the main window. */
+  subscribeStates?: (listener: (states: AddonState[]) => void) => () => void
   captureCommandContext?: (
     source: CommandExecutionContext['source'],
   ) => CommandExecutionContext
@@ -566,6 +568,7 @@ export function useAddons(
         request.reject(new Error('The addon host stopped.'))
     }
   }, [running, activation])
+  useEffect(() => latest.current.subscribeStates?.(setStates), [])
   useEffect(() => {
     void window.hibi.bootstrap
       .addons()

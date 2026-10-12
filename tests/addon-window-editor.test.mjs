@@ -117,6 +117,35 @@ test('addon windows host the editor without desktop privileges', {
     .getByText('This addon window is unavailable.')
     .waitFor()
 
+  await page.evaluate(() =>
+    window.hibi.closeAddonWindow('ui-preview', 'constructor'),
+  )
+  while (findPreview()) await setTimeout(30)
+
+  // Settings changes in the main window stop and start addons in editor windows,
+  // including hidden kept-alive ones.
+  await page.evaluate(() =>
+    window.hibi.openAddonWindow('ui-preview', {
+      id: 'editor',
+      keepAlive: true,
+    }),
+  )
+  while (!findPreview()) await setTimeout(30)
+  const kept = findPreview()
+  const extras = kept.locator(
+    'style[data-addon-style="text-extras.text-extras"]',
+  )
+  await kept.locator('.cm-content[contenteditable="true"]').waitFor()
+  await extras.waitFor({ state: 'attached' })
+  await page.evaluate(() => window.hibi.setAddonEnabled('text-extras', false))
+  await extras.waitFor({ state: 'detached' })
+  await page.evaluate(() =>
+    window.hibi.closeAddonWindow('ui-preview', 'editor'),
+  )
+  assert.equal(findPreview(), kept, 'the kept-alive window is only hidden')
+  await page.evaluate(() => window.hibi.setAddonEnabled('text-extras', true))
+  await extras.waitFor({ state: 'attached' })
+
   // The main document is untouched by edits in the window.
   assert.equal(
     await page.evaluate(async () => (await window.hibi.getDocument()).markdown),

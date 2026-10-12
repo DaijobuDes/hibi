@@ -1,6 +1,11 @@
 import { lazy, type ReactNode, StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import type { Addon, AddonManifest, AddonWindowProps } from '../../addons/api'
+import type {
+  Addon,
+  AddonManifest,
+  AddonWindowEditorProps,
+  AddonWindowProps,
+} from '../../addons/api'
 import type {
   AddonWindowBridge,
   AddonWindowContext,
@@ -66,7 +71,12 @@ const Editor = lazy(async () => {
     value: windowDesktop(bridge),
     configurable: true,
   })
-  return { default: (await import('./WindowEditor')).WindowEditor }
+  const { WindowEditor } = await import('./WindowEditor')
+  return {
+    default: (props: AddonWindowEditorProps) => (
+      <WindowEditor {...props} subscribeStates={owned.onStates} />
+    ),
+  }
 })
 
 function show(children: ReactNode) {

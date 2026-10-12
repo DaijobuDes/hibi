@@ -6,7 +6,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react'
-import type { AddonWindowEditorProps } from '../../addons/api'
+import type { AddonState, AddonWindowEditorProps } from '../../addons/api'
 import type { DocumentState } from '../../shared/desktop'
 import { isDocumentView } from '../../shared/document-types'
 import { DialogProvider } from '../../ui/DialogProvider'
@@ -24,6 +24,9 @@ import { LoadingScreen } from './LoadingScreen'
 import './colorschemes'
 
 const name = 'Untitled.md'
+type Props = AddonWindowEditorProps & {
+  subscribeStates: (listener: (states: AddonState[]) => void) => () => void
+}
 const unavailable = () =>
   Promise.reject(new Error('This is not available in this window.'))
 
@@ -32,7 +35,8 @@ function Host({
   defaultValue = '',
   onChange,
   label = 'Note',
-}: AddonWindowEditorProps) {
+  subscribeStates,
+}: Props) {
   // The same view new documents open in, as chosen in the main window.
   const [mode] = useState<ViewMode>(() => {
     const saved = localStorage.getItem('default-view')
@@ -88,6 +92,7 @@ function Host({
       closeSidebar: () => {},
       openTab: () => {},
       focusDocument: async () => true,
+      subscribeStates,
     },
     name,
     mode,
@@ -187,7 +192,7 @@ function Host({
   )
 }
 
-export const WindowEditor: ComponentType<AddonWindowEditorProps> = (props) => (
+export const WindowEditor: ComponentType<Props> = (props) => (
   <ToastProvider>
     <DialogProvider>
       <Host {...props} />

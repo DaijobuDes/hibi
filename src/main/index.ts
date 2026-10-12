@@ -82,6 +82,7 @@ import {
   openAddonWindow,
   refreshAddonWindowColors,
   releaseAddonWindows,
+  sendAddonWindowStates,
 } from './addon-windows'
 import {
   currentAddonOwner,
@@ -99,6 +100,7 @@ import {
   removeAddon,
   runNativeGlobalShortcut,
   setAddonDeactivationHandler,
+  setAddonStatesHandler,
   windowAddonName,
 } from './addons'
 import { analysisService } from './analysis'
@@ -465,6 +467,7 @@ setAddonDeactivationHandler(async (id, generation) => {
   closeAddonWindows(id)
   await addonStorage.clearSession(id)
 })
+setAddonStatesHandler(sendAddonWindowStates)
 addonStorage.subscribe((change) => {
   if (mainWindow && !mainWindow.isDestroyed())
     mainWindow.webContents.send(ADDON_STORAGE_CHANNELS.changed, change)
