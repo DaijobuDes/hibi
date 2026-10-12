@@ -1077,6 +1077,14 @@ test('a refused draft write warns over the recovery notice and retries', {
     name.startsWith('quick-note-draft.unreadable-'),
   )
   assert.equal(await readFile(join(h.profile, kept), 'utf8'), original)
+  // The notice now names the kept file instead of saying notes are not kept.
+  await capture
+    .getByRole('alert')
+    .getByText(`kept the file as ${kept} in its app data folder`, {
+      exact: false,
+    })
+    .waitFor()
+  assert.equal(await capture.getByText(/left the file unchanged/).count(), 0)
 })
 
 test('a draft from the previous version is imported once', {
@@ -1119,4 +1127,80 @@ test('a draft from the previous version is imported once', {
   const second = await h.launch()
   const again = await openCapture(second.app, second.page)
   assert.equal(await noteText(again), '')
+})
+
+test('a native draft retires a stale draft from the previous version', {
+  timeout: 60000,
+}, async (t) => {
+  const h = await harness(t, { draft: 'native note' })
+  const first = await h.launch()
+  const legacyDraft = () =>
+    first.page.evaluate(() => localStorage.getItem('hibi:quick-note-draft'))
+  await first.page.evaluate(() => {
+    localStorage.setItem(
+      'hibi:quick-note-draft',
+      JSON.stringify({ markdown: 'stale legacy' }),
+    )
+  })
+  const capture = await openCapture(first.app, first.page)
+  assert.equal(await noteText(capture), 'native note')
+  await until(async () => (await legacyDraft()) === null)
+  await saveCapture(first.app, capture, 'Quick note.md')
+  await first.app.close()
+  // The saved note's empty draft does not let the old text return.
+  const second = await h.launch()
+  const again = await openCapture(second.app, second.page)
+  assert.equal(await noteText(again), '')
+})
+
+test('a slow destination lookup does not replace a newer footer', {
+  timeout: 45000,
+}, async (t) => {
+  const h = await harness(t)
+  await mkdir(join(h.workspace, 'Inbox'))
+  const { app, page } = await h.launch()
+  const capture = await openCapture(app, page)
+  await capture.getByText('workspace', { exact: true }).waitFor()
+  // Hold only the next lookup, which still reads the old folder.
+  await app.evaluate(() => {
+    globalThis.hibiTestPauses ??= {}
+    globalThis.destinationHeld = new Promise((resolve) => {
+      globalThis.releaseDestination = resolve
+    })
+    Object.defineProperty(globalThis.hibiTestPauses, 'quick-note-destination', {
+      configurable: true,
+      get() {
+        delete this['quick-note-destination']
+        globalThis.destinationHolding = true
+        return globalThis.destinationHeld
+      },
+    })
+  })
+  await capture.evaluate(() => window.dispatchEvent(new Event('focus')))
+  await until(() => app.evaluate(() => globalThis.destinationHolding))
+  await page.evaluate(() => {
+    localStorage.setItem('hibi:quick-note', JSON.stringify({ folder: 'Inbox' }))
+  })
+  await capture.getByText('workspace › Inbox', { exact: true }).waitFor()
+  await capture.evaluate(() => {
+    const footer = document.querySelector('.quick-note-bar')
+    window.footerTexts = []
+    new MutationObserver(() =>
+      window.footerTexts.push(
+        footer.querySelector('.quick-note-meta')?.textContent,
+      ),
+    ).observe(footer, { subtree: true, childList: true, characterData: true })
+  })
+  await app.evaluate(() => globalThis.releaseDestination())
+  await app.evaluate(() => {})
+  // Saving sends its lookup after the held reply, so that reply has arrived by then.
+  await writeNote(capture, 'inbox note')
+  await saveCapture(app, capture, 'Quick note.md')
+  assert.equal(
+    await readFile(join(h.workspace, 'Inbox', 'Quick note.md'), 'utf8'),
+    'inbox note',
+  )
+  assert.ok(
+    !(await capture.evaluate(() => window.footerTexts)).includes('workspace'),
+  )
 })
