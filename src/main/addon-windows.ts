@@ -13,6 +13,7 @@ import type {
 } from '../shared/addon-windows'
 import { appearanceColors, titleBarColors } from './appearance'
 import { isTrustedRendererUrl } from './security'
+import { testPause } from './test-pauses'
 
 type Entry = AddonWindowContext & {
   window: BrowserWindow
@@ -35,15 +36,18 @@ const boundsPath = () => join(app.getPath('userData'), 'addon-windows.json')
 const MAX_WINDOWS = 8
 const MAX_INPUT = 64 * 1024
 // ponytail: fixed idle limit; a hidden editor window holds about 160 MB. Make it an option if an addon needs a different trade-off.
-const KEEP_ALIVE_MS = 10 * 60 * 1000
+const KEEP_ALIVE_MS =
+  (testing && Number(process.env.HIBI_TEST_KEEP_ALIVE_MS)) || 10 * 60 * 1000
 const entries = new Map<string, Entry>()
-/** Creations in progress; `show` keeps the strongest visibility requested meanwhile. */
-const opening = new Map<
-  string,
-  { addonId: string; show: boolean; done: Promise<void> }
->()
-/** Bumped when an addon's windows are torn down, so pending creations stop. */
-const epochs = new Map<string, number>()
+type Pending = {
+  addonId: string
+  /** The strongest visibility requested while this creation runs. */
+  show: boolean
+  /** Set by teardown so the creation stops before making a window. */
+  cancelled: boolean
+  done: Promise<void>
+}
+const opening = new Map<string, Pending>()
 const closedListeners = new Set<(addonId: string, id: string) => void>()
 let writing: Promise<void> = Promise.resolve()
 
@@ -184,14 +188,14 @@ async function create(
   addonId: string,
   name: string,
   options: Options,
-  request: { show: boolean },
+  request: Pending,
 ) {
   const windowKey = key(addonId, options.id)
   const panel = options.panel && process.platform === 'darwin'
-  const epoch = epochs.get(addonId) ?? 0
   const bounds = await placement(windowKey, options)
-  if ((epochs.get(addonId) ?? 0) !== epoch)
-    throw new Error('This addon was disabled. Enable it to open its windows.')
+  await testPause('addon-window-placement')
+  if (request.cancelled)
+    throw new Error('This addon window was closed before it opened.')
   const window = new BrowserWindow({
     ...bounds,
     minWidth: 240,
@@ -271,6 +275,7 @@ async function create(
     if (!entry.hidden) notifyClosed(entry)
   })
   await window.loadURL(url)
+  await testPause('addon-window-loaded')
 }
 
 /** Open or focus one window per addon and local ID. The caller checks that the addon is enabled. */
@@ -291,11 +296,20 @@ export async function openAddonWindow(
     if (options.show) pending.show = true
     return pending.done
   }
-  const open = (list: Iterable<{ addonId: string }>) =>
-    [...list].filter((item) => item.addonId === addonId).length
-  if (open(entries.values()) + open(opening.values()) >= MAX_WINDOWS)
+  // A loading window is both pending and registered; count each key once.
+  const keys = new Set(
+    [...entries, ...opening]
+      .filter(([, item]) => item.addonId === addonId)
+      .map(([windowKey]) => windowKey),
+  )
+  if (keys.size >= MAX_WINDOWS)
     throw new Error('This addon already has eight windows open.')
-  const request = { addonId, show: options.show, done: Promise.resolve() }
+  const request: Pending = {
+    addonId,
+    show: options.show,
+    cancelled: false,
+    done: Promise.resolve(),
+  }
   opening.set(windowKey, request)
   request.done = create(addonId, name, options, request).finally(() =>
     opening.delete(windowKey),
@@ -312,17 +326,24 @@ export function closeAddonWindow(addonId: string, id: unknown): void {
   if (typeof id === 'string') entries.get(key(addonId, id))?.window.close()
 }
 
+/** Stop matching creations first, then destroy matching windows. */
+function teardown(
+  matches: (item: { addonId: string; hidden: boolean }) => boolean,
+) {
+  for (const request of opening.values())
+    if (matches({ addonId: request.addonId, hidden: !request.show }))
+      request.cancelled = true
+  for (const entry of [...entries.values()]) if (matches(entry)) destroy(entry)
+}
+
 /** Tear down every window of an addon, including kept-alive and pending ones. */
 export function closeAddonWindows(addonId: string): void {
-  epochs.set(addonId, (epochs.get(addonId) ?? 0) + 1)
-  for (const entry of [...entries.values()])
-    if (entry.addonId === addonId) destroy(entry)
+  teardown((item) => item.addonId === addonId)
 }
 
 /** Call once quitting is confirmed, or with `hidden` when only hidden windows would keep Hibi running. */
 export function releaseAddonWindows(hidden = false): void {
-  for (const entry of [...entries.values()])
-    if (!hidden || entry.hidden) destroy(entry)
+  teardown((item) => !hidden || item.hidden)
 }
 
 /** Follow appearance changes in window backgrounds and Hibi-drawn window controls. */

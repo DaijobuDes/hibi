@@ -40,6 +40,10 @@ applyActivePalette(palette)
 window.addEventListener('storage', (event) => {
   if (event.key === activePaletteKey) applyActivePalette(palette)
 })
+// "Match system" keeps following the system after the main window closes.
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () =>
+  applyActivePalette(palette),
+)
 const bridge = window.hibiAddonWindow
 const root = createRoot(document.getElementById('root') as HTMLElement)
 const request = async <T,>(pending: Promise<unknown>) => {

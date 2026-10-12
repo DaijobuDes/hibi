@@ -198,6 +198,9 @@
   "afbe92392457": [
     "src/renderer/src/settings-categories.ts"
   ],
+  "c11b83517a72": [
+    "src/addons/ui-preview/index.tsx"
+  ],
   "af3185c7197e": [
     "src/main/index.ts",
     "src/renderer/src/Introduction.tsx",
@@ -823,6 +826,9 @@
   "97ebc02f32f0": [
     "src/main/workspace-settings.ts"
   ],
+  "e77e7823e59a": [
+    "src/main/background.ts"
+  ],
   "83e12ba9ce92": [
     "src/main/workspace-settings.ts"
   ],
@@ -873,6 +879,7 @@
     "src/addons/mcp-server/Settings.tsx"
   ],
   "7d9eb7acb13e": [
+    "src/addons/ui-preview/index.tsx",
     "src/renderer/src/CommandPalette.tsx",
     "src/ui/DialogProvider.tsx"
   ],
@@ -923,6 +930,9 @@
   ],
   "31a8910a7cf4": [
     "src/renderer/src/DocumentTabs.tsx"
+  ],
+  "49f09fa5195f": [
+    "src/renderer/src/HibiSettings.tsx"
   ],
   "2cae577523a5": [
     "src/renderer/src/CodeSyntaxSettings.tsx",
@@ -2167,6 +2177,9 @@
   "c7a8f9cd36ee": [
     "src/addons/frontmatter/Properties.tsx"
   ],
+  "c910d474dcd7": [
+    "src/renderer/src/HibiSettings.tsx"
+  ],
   "b949c922b6ef": [
     "src/addons/git/index.tsx",
     "src/addons/git/manifest.ts"
@@ -2764,6 +2777,9 @@
   "5720aebea161": [
     "src/addons/documentation/options.ts"
   ],
+  "801c0e70112e": [
+    "src/renderer/src/HibiSettings.tsx"
+  ],
   "566c3a93a25f": [
     "src/renderer/src/main.tsx"
   ],
@@ -3129,6 +3145,9 @@
   "4643fac966e8": [
     "src/addons/frontmatter/Properties.tsx"
   ],
+  "c116a4594ad5": [
+    "src/main/background.ts"
+  ],
   "a25d48f8077d": [
     "src/renderer/src/WorkspaceSidebar.tsx",
     "src/renderer/src/main.tsx"
@@ -3356,6 +3375,9 @@
   "48b28302e75c": [
     "src/renderer/src/FormatsSettings.tsx"
   ],
+  "4dfb4b4c8f10": [
+    "src/main/background.ts"
+  ],
   "54ae80c30bea": [
     "src/renderer/src/WorkspaceSettings.tsx"
   ],
@@ -3436,6 +3458,9 @@
   ],
   "b52d8596aa3f": [
     "src/renderer/src/addons.ts"
+  ],
+  "53bd3f8c9ac4": [
+    "src/addons/ui-preview/index.tsx"
   ],
   "29c10407db3a": [
     "src/renderer/src/AddonSettings.tsx"
@@ -3795,6 +3820,7 @@
     "src/addons/ui-preview/index.tsx"
   ],
   "b3eb37acb66b": [
+    "src/main/background.ts",
     "src/main/index.ts"
   ],
   "eb4cdebd82bf": [
@@ -4311,6 +4337,7 @@
     "src/addons/diagnostics/Settings.tsx"
   ],
   "74a883a037bc": [
+    "src/main/background.ts",
     "src/main/index.ts",
     "src/renderer/src/SettingsScreen.tsx",
     "src/renderer/src/Titlebar.tsx"
@@ -5280,14 +5307,14 @@
   "b442d72f5b4f": [
     "src/main/addons.ts"
   ],
-  "fb7b1ce534c5": [
-    "src/main/addon-windows.ts"
-  ],
   "6f81d1a9cd1d": [
     "src/main/addon-windows.ts"
   ],
   "b4992c4271a6": [
     "src/renderer/src/addon-window.tsx"
+  ],
+  "f469169d3df0": [
+    "src/main/addon-windows.ts"
   ],
   "a7742e0a996e": [
     "src/renderer/src/addon-registry.ts"
@@ -5514,6 +5541,9 @@
   ],
   "20cfcb2cec56": [
     "src/main/links.ts"
+  ],
+  "c04f0fb5e9da": [
+    "src/addons/ui-preview/index.tsx"
   ],
   "78c4a3ab448e": [
     "src/main/workspace.ts"
