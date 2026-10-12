@@ -13,6 +13,7 @@ export async function exportAddons(source, destination) {
         entry.isFile() &&
         (path === join(source, 'authors.ts') ||
           basename(path) === 'manifest.ts' ||
+          basename(path) === 'hibi-addon.json' ||
           /\.(md|png|jpe?g|gif|webp|avif|svg|ico)$/i.test(path))
       )
         files.push(relative(source, path))

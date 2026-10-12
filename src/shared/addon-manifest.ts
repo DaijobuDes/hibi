@@ -42,13 +42,41 @@ export type ParsedAddonManifest = {
   manifest: AddonManifest
   entry: string
   styles?: string[]
+  native?: { entry: string }
   themes: (ColorschemeInput | string)[]
 }
 
-export function parseAddonManifest(value: unknown): ParsedAddonManifest {
+export function parseAddonManifest(
+  value: unknown,
+  trust: 'installed' | 'compiled' = 'installed',
+): ParsedAddonManifest {
   if (!value || typeof value !== 'object')
     throw new Error('The addon details in hibi-addon.json are invalid.')
   const data = value as Record<string, unknown>
+  if (
+    trust === 'installed' &&
+    ['native', 'importer', 'windows'].some((key) => data[key] !== undefined)
+  )
+    throw new Error(
+      'Installed addons cannot declare native handlers, importers, or windows.',
+    )
+  const modulePath = (entry: unknown): entry is string =>
+    validPath(entry) &&
+    (trust === 'compiled' ? /\.(m?js|tsx?)$/ : /\.m?js$/).test(entry)
+  let native: ParsedAddonManifest['native']
+  if (data.native !== undefined) {
+    const entry =
+      data.native &&
+      typeof data.native === 'object' &&
+      !Array.isArray(data.native)
+        ? (data.native as { entry?: unknown }).entry
+        : undefined
+    if (!modulePath(entry))
+      throw new Error(
+        'The native entry must be a module inside the addon folder.',
+      )
+    native = { entry }
+  }
   const string = (value: unknown, max: number): value is string =>
     typeof value === 'string' && !!value.trim() && value.length <= max
   if (
@@ -88,7 +116,7 @@ export function parseAddonManifest(value: unknown): ParsedAddonManifest {
           !string(license.name, 100) ||
           !string(license.license, 100) ||
           !string(license.text, MAX_ADDON_MANIFEST_BYTES) ||
-          // Installed manifests hit the file cap first; future compiled manifests need this byte check.
+          // Installed manifests hit the file cap first; compiled manifests need this byte check.
           new TextEncoder().encode(license.text).length >
             MAX_ADDON_MANIFEST_BYTES,
       ))
@@ -162,7 +190,10 @@ export function parseAddonManifest(value: unknown): ParsedAddonManifest {
       : { settings: settingsMetadata(data.settings) }),
     ...(data.analysis === undefined
       ? {}
-      : { analysis: parseAnalysis(data.analysis) }),
+      : { analysis: parseAnalysis(data.analysis, trust) }),
+    ...(data.importer === undefined
+      ? {}
+      : { importer: parseImporter(data.importer) }),
     ...(data.syntax === undefined
       ? {}
       : { syntax: parseSyntaxDescriptors(data.syntax)! }),
@@ -238,8 +269,13 @@ export function parseAddonManifest(value: unknown): ParsedAddonManifest {
     new Set(themePaths).size !== themePaths.length
   )
     throw new Error('Each theme needs a valid, unique ID or path.')
-  if (base.kind === 'theme') {
+  if (
+    base.kind === 'theme' &&
+    (trust === 'installed' || data.entry === undefined)
+  ) {
     if (
+      data.native !== undefined ||
+      data.importer !== undefined ||
       data.analysis !== undefined ||
       data.syntax !== undefined ||
       data.capabilities !== undefined ||
@@ -264,14 +300,17 @@ export function parseAddonManifest(value: unknown): ParsedAddonManifest {
     ]
     return { manifest: base, entry: '', themes }
   }
-  if (!validPath(data.entry) || !/\.(m?js)$/.test(data.entry))
+  if (!modulePath(data.entry))
     throw new Error(
-      'The extension entry must point to a .js or .mjs file inside the addon folder.',
+      trust === 'compiled'
+        ? 'The extension entry must point to a .ts, .tsx, .js or .mjs file inside the addon folder.'
+        : 'The extension entry must point to a .js or .mjs file inside the addon folder.',
     )
   return {
     manifest: base,
     entry: data.entry,
     themes,
+    ...(native === undefined ? {} : { native }),
     ...(data.styles === undefined ? {} : { styles: data.styles as string[] }),
   }
 }
@@ -297,10 +336,6 @@ export function admitInstalledAddon(
     throw new Error(
       'This addon uses the ID of a built-in addon and cannot replace it.',
     )
-  if (['native', 'importer', 'windows'].some((key) => data[key] !== undefined))
-    throw new Error(
-      'Installed addons cannot declare native handlers, importers, or windows.',
-    )
   if (parsed.manifest.capabilities?.includes('modalEditing'))
     throw new Error('The addon lists invalid SDK capabilities.')
   if (
@@ -318,12 +353,31 @@ export function admitInstalledAddon(
   }
 }
 
-function parseAnalysis(value: unknown): { entry: string } {
+function parseImporter(value: unknown): NonNullable<AddonManifest['importer']> {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    throw new Error('The addon importer metadata is invalid.')
+  const { instructions, sources } = value as Record<string, unknown>
+  if (
+    typeof instructions !== 'string' ||
+    !Array.isArray(sources) ||
+    sources.some((source) => source !== 'folder' && source !== 'zip')
+  )
+    throw new Error('The addon importer instructions or sources are invalid.')
+  return { instructions, sources }
+}
+
+function parseAnalysis(
+  value: unknown,
+  trust: 'installed' | 'compiled',
+): { entry: string } {
   const entry =
     value && typeof value === 'object'
       ? (value as { entry?: unknown }).entry
       : undefined
-  if (!validPath(entry) || !/\.m?js$/.test(entry))
+  if (
+    !validPath(entry) ||
+    !(trust === 'compiled' ? /\.(m?js|ts)$/ : /\.m?js$/).test(entry)
+  )
     throw new Error(
       'The analysis entry must be a JavaScript module inside the addon folder.',
     )

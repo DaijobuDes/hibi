@@ -21,6 +21,7 @@ test('addon catalog export keeps metadata, markdown, and relative images without
   for (const [file, contents] of Object.entries({
     'authors.ts': 'static authors',
     'sample/manifest.ts': 'static manifest',
+    'sample/hibi-addon.json': '{"id":"sample"}',
     'sample/README.md': '![preview](images/preview.png)',
     'sample/guide.md': 'More help',
     'sample/images/preview.png': 'image bytes',
@@ -29,7 +30,11 @@ test('addon catalog export keeps metadata, markdown, and relative images without
   }))
     await writeFile(join(source, file), contents)
   const files = await exportAddons(source, destination)
-  assert.equal(files.length, 5)
+  assert.equal(files.length, 6)
+  assert.equal(
+    await readFile(join(destination, 'sample/hibi-addon.json'), 'utf8'),
+    '{"id":"sample"}',
+  )
   assert.equal(
     await readFile(join(destination, 'sample/README.md'), 'utf8'),
     '![preview](images/preview.png)',
