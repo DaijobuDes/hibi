@@ -141,6 +141,8 @@ test('desktop launch, isolation, offline reload, and recovery', {
         'updateWorkspaceText',
         'renameWorkspaceFile',
         'trashWorkspaceFile',
+        'readTableLayout',
+        'writeTableLayout',
         'queryWorkspaceReferences',
         'listImporters',
         'importIntoWorkspace',

@@ -7,11 +7,12 @@ import type { WorkspaceManifest } from '../shared/workspace-settings'
 
 export const WORKSPACE_MANIFEST = '.hibi/workspace.json'
 export const WORKSPACE_IGNORE = '.hibi/ignore'
+export const WORKSPACE_LAYOUT = '.hibi/layout.json'
 const legacyNames = {
   [WORKSPACE_MANIFEST]: '.hibi.json',
   [WORKSPACE_IGNORE]: '.hibiignore',
 }
-type MetadataFile = keyof typeof legacyNames
+type MetadataFile = keyof typeof legacyNames | typeof WORKSPACE_LAYOUT
 
 async function metadataDirectory(root: string, create = false) {
   const directory = join(root, '.hibi')
@@ -32,13 +33,13 @@ async function metadataDirectory(root: string, create = false) {
   }
 }
 
-async function readText(root: string, name: string) {
+async function readText(root: string, name: string, limit = 65536) {
   const path = join(root, name)
   try {
     const stat = await lstat(path)
-    if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 65536)
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.size > limit)
       throw new Error(
-        `Cannot read ${name}. Use a text file smaller than 64 KiB.`,
+        `Cannot read ${name}. Use a text file smaller than ${limit / 1024} KiB.`,
       )
     return await readFile(path, 'utf8')
   } catch (error) {
@@ -46,11 +47,31 @@ async function readText(root: string, name: string) {
     throw error
   }
 }
-export async function readWorkspaceText(root: string, name: MetadataFile) {
+export async function readWorkspaceText(
+  root: string,
+  name: keyof typeof legacyNames,
+) {
   const current = (await metadataDirectory(root))
     ? await readText(root, name)
     : null
   return current ?? (await readText(root, legacyNames[name])) ?? ''
+}
+export const WORKSPACE_LAYOUT_LIMIT = 1048576
+// Oversized layout files already reported, by path, until they change.
+const oversized = new Map<string, string>()
+export async function readWorkspaceLayoutText(root: string) {
+  if (!(await metadataDirectory(root))) return null
+  const path = join(root, WORKSPACE_LAYOUT)
+  const info = await lstat(path).catch(() => null)
+  // Sizes are disposable; an oversized file must not block every later write.
+  if (info?.isFile() && info.size > WORKSPACE_LAYOUT_LIMIT) {
+    const version = `${info.size}:${info.mtimeMs}`
+    if (oversized.get(path) !== version)
+      console.warn(`${WORKSPACE_LAYOUT} is too large; table sizes were reset.`)
+    oversized.set(path, version)
+    return null
+  }
+  return await readText(root, WORKSPACE_LAYOUT, WORKSPACE_LAYOUT_LIMIT)
 }
 export function validateManifest(input: unknown): WorkspaceManifest {
   const value = input as WorkspaceManifest | null

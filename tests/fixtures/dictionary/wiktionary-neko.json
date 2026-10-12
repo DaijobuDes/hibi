@@ -1,0 +1,65 @@
+{
+  "ja": [
+    {
+      "partOfSpeech": "Noun",
+      "language": "Japanese",
+      "definitions": [
+        {
+          "definition": "<style data-mw-deduplicate=\"TemplateStyles:r90144991\" typeof=\"mw:Extension/templatestyles mw:Transclusion\" about=\"#mwt63\">.mw-parser-output .defdate{font-size:smaller}</style> a <a rel=\"mw:WikiLink\" href=\"/wiki/cat\" title=\"cat\">cat</a>",
+          "parsedExamples": [
+            {
+              "translation": "<i><span class=\"e-transliteration tr\"><b>Neko</b> ga nihiki iru.</span></i>",
+              "example": "<span lang=\"ja\" class=\"Jpan e-example\" about=\"#mwt65\" typeof=\"mw:Transclusion\"><b><ruby>猫<rp>(</rp><rt>ねこ</rt><rp>)</rp></ruby></b><a rel=\"mw:WikiLink\" href=\"/wiki/が#Etymology_2\" title=\"が\">が</a><a rel=\"mw:WikiLink\" href=\"/wiki/二#Japanese\" title=\"二\"><ruby>二<rp>(</rp><rt>に</rt><rp>)</rp></ruby></a><a rel=\"mw:WikiLink\" href=\"/wiki/匹#Japanese\" title=\"匹\"><ruby>匹<rp>(</rp><rt>ひき</rt><rp>)</rp></ruby></a><a rel=\"mw:WikiLink\" href=\"/wiki/居る#Japanese\" title=\"居る\"><ruby>居<rp>(</rp><rt>い</rt><rp>)</rp></ruby>る</a><a rel=\"mw:WikiLink\" href=\"/wiki/。#Japanese\" title=\"。\">。</a></span><link rel=\"mw:PageProp/Category\" href=\"./Category:Japanese_terms_with_usage_examples#ねこ\" about=\"#mwt65\"><link rel=\"mw:PageProp/Category\" href=\"./Category:Japanese_terms_with_usage_examples#ねこ\" about=\"#mwt65\">"
+            },
+            {
+              "translation": "<i><span class=\"e-transliteration tr\">Ie ni wa <b>neko</b> ga sanbiki imasu.</span></i>",
+              "example": "<span lang=\"ja\" class=\"Jpan e-example\" about=\"#mwt66\" typeof=\"mw:Transclusion\"><a rel=\"mw:WikiLink\" href=\"/wiki/家#Japanese\" title=\"家\"><ruby>家<rp>(</rp><rt>いえ</rt><rp>)</rp></ruby></a><a rel=\"mw:WikiLink\" href=\"/wiki/に#Etymology_2\" title=\"に\">に</a><a rel=\"mw:WikiLink\" href=\"/wiki/は#Etymology_2\" title=\"は\">は</a><b><ruby>猫<rp>(</rp><rt>ねこ</rt><rp>)</rp></ruby></b>が<ruby><a rel=\"mw:WikiLink\" href=\"/wiki/三#Japanese\" title=\"三\">三</a>匹<rp>(</rp><rt>さんびき</rt><rp>)</rp></ruby><a rel=\"mw:WikiLink\" href=\"/wiki/います#Japanese\" title=\"います\">います</a>。</span><link rel=\"mw:PageProp/Category\" href=\"./Category:Japanese_terms_with_usage_examples#ねこ\" about=\"#mwt66\"><link rel=\"mw:PageProp/Category\" href=\"./Category:Japanese_terms_with_usage_examples#ねこ\" about=\"#mwt66\">"
+            }
+          ],
+          "examples": [
+            "<span lang=\"ja\" class=\"Jpan e-example\" about=\"#mwt65\" typeof=\"mw:Transclusion\"><b><ruby>猫<rp>(</rp><rt>ねこ</rt><rp>)</rp></ruby></b><a rel=\"mw:WikiLink\" href=\"/wiki/が#Etymology_2\" title=\"が\">が</a><a rel=\"mw:WikiLink\" href=\"/wiki/二#Japanese\" title=\"二\"><ruby>二<rp>(</rp><rt>に</rt><rp>)</rp></ruby></a><a rel=\"mw:WikiLink\" href=\"/wiki/匹#Japanese\" title=\"匹\"><ruby>匹<rp>(</rp><rt>ひき</rt><rp>)</rp></ruby></a><a rel=\"mw:WikiLink\" href=\"/wiki/居る#Japanese\" title=\"居る\"><ruby>居<rp>(</rp><rt>い</rt><rp>)</rp></ruby>る</a><a rel=\"mw:WikiLink\" href=\"/wiki/。#Japanese\" title=\"。\">。</a></span><link rel=\"mw:PageProp/Category\" href=\"./Category:Japanese_terms_with_usage_examples#ねこ\" about=\"#mwt65\"><link rel=\"mw:PageProp/Category\" href=\"./Category:Japanese_terms_with_usage_examples#ねこ\" about=\"#mwt65\">",
+            "<span lang=\"ja\" class=\"Jpan e-example\" about=\"#mwt66\" typeof=\"mw:Transclusion\"><a rel=\"mw:WikiLink\" href=\"/wiki/家#Japanese\" title=\"家\"><ruby>家<rp>(</rp><rt>いえ</rt><rp>)</rp></ruby></a><a rel=\"mw:WikiLink\" href=\"/wiki/に#Etymology_2\" title=\"に\">に</a><a rel=\"mw:WikiLink\" href=\"/wiki/は#Etymology_2\" title=\"は\">は</a><b><ruby>猫<rp>(</rp><rt>ねこ</rt><rp>)</rp></ruby></b>が<ruby><a rel=\"mw:WikiLink\" href=\"/wiki/三#Japanese\" title=\"三\">三</a>匹<rp>(</rp><rt>さんびき</rt><rp>)</rp></ruby><a rel=\"mw:WikiLink\" href=\"/wiki/います#Japanese\" title=\"います\">います</a>。</span><link rel=\"mw:PageProp/Category\" href=\"./Category:Japanese_terms_with_usage_examples#ねこ\" about=\"#mwt66\"><link rel=\"mw:PageProp/Category\" href=\"./Category:Japanese_terms_with_usage_examples#ねこ\" about=\"#mwt66\">"
+          ]
+        }
+      ]
+    },
+    {
+      "partOfSpeech": "Noun",
+      "language": "Japanese",
+      "definitions": [
+        {
+          "definition": "<link rel=\"mw-deduplicated-inline-style\" href=\"mw-data:TemplateStyles:r90144991\" about=\"#mwt109\" typeof=\"mw:Extension/templatestyles mw:Transclusion\"> <span class=\"usage-label-sense\" about=\"#mwt111\" typeof=\"mw:Transclusion\"></span> a <a rel=\"mw:WikiLink\" href=\"/wiki/cat\" title=\"cat\">cat</a>"
+        }
+      ]
+    }
+  ],
+  "other": [
+    {
+      "partOfSpeech": "Noun",
+      "language": "Okinawan",
+      "definitions": [
+        {
+          "definition": "<a rel=\"mw:WikiLink\" href=\"/wiki/cat\" title=\"cat\">cat</a>"
+        }
+      ]
+    },
+    {
+      "partOfSpeech": "Noun",
+      "language": "Yaeyama",
+      "definitions": [
+        {
+          "definition": "<a rel=\"mw:WikiLink\" href=\"/wiki/cat\" title=\"cat\">cat</a>"
+        }
+      ]
+    },
+    {
+      "partOfSpeech": "Noun",
+      "language": "Yoron",
+      "definitions": [
+        {
+          "definition": "<a rel=\"mw:WikiLink\" href=\"/wiki/cat\" title=\"cat\">cat</a>\n\n<span class=\"mw-empty-elt\" about=\"#mwt179\" typeof=\"mw:Transclusion\"><link rel=\"mw:PageProp/Category\" href=\"./Category:yox:Felids#みゃんか\"></span>"
+        }
+      ]
+    }
+  ]
+}

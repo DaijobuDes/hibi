@@ -10,7 +10,9 @@ While you type in the source pane, the formatted pane may catch up shortly after
 
 Choose your starting view under **Settings → Editor → Layout → Default view**. Only views supported by the current [format](../editing/formats.md) are available. You can switch from the toolbar or use a [keyboard shortcut](../editing/typing-and-shortcuts.md).
 
-Switching views preserves your source. Normal view stays editable regardless of character count or word count. Hibi keeps untouched Markdown when you edit formatted text, including when addons such as LaTeX are enabled, and rejects an edit if it cannot prove the resulting source is safe. Use Source view for syntax the formatted editor cannot preserve, including some raw HTML and reference definitions.
+Switching views preserves your source. Normal view stays editable regardless of character count or word count. Hibi keeps untouched Markdown when you edit formatted text, including when addons such as LaTeX are enabled, and rejects an edit if it cannot prove the resulting source is safe. Use Source view for syntax the formatted editor cannot preserve, including reference definitions.
+
+Raw HTML appears as a monospace source chip or box in Normal view. Hibi preserves the markup without running it or turning it into live HTML. Click a chip or box to select it, then press Delete or Backspace to remove it as a unit. Use Source view to edit the HTML itself. A chip can include surrounding Markdown formatting to keep the whole fragment intact. When HTML surrounds several Markdown blocks, its opening and closing fragments appear in separate boxes, and you can edit the Markdown between them. Plain `<br>` tags remain line breaks and keep their original spelling when saved. Copying or dragging a chip within the same window preserves it while its copied content is still recognized, including with native copy and paste on Windows. Pasting a chip into another window or after reloading inserts inline code or a fenced code block instead.
 
 When you use an input method, choosing and revising candidates remains one undo step even if you pause between candidates. Each new composition starts a separate undo step in both source and formatted views.
 
@@ -31,6 +33,8 @@ To keep one file open at a time, turn off **Settings → Editor → Documents �
 ## Format text
 
 Select text, then choose a toolbar action. In side-by-side view, formatting actions are available while the source pane is focused. The toolbar offers tools for the current format, with extra buttons in the **More** menu. Within an editable formatted table, additional actions let you add or remove rows and columns.
+
+To resize a table column or row in Normal view, drag the right or bottom border of a cell. Columns and rows never shrink below their content. Double-click a border to return that column or row to its automatic size. Sizes are not part of the Markdown, so resizing never changes the file or adds an undo step. For files in a workspace, Hibi remembers sizes in `.hibi/layout.json`. Files outside a workspace keep their sizes only until you close them. Hibi recognizes each table by its position in the file and its header row, so sizes reset when you move a table or edit its header in Source view or another app. Exports use automatic sizes.
 
 In Normal view and its side-by-side preview, soft line breaks and surrounding spaces or tabs display as a single space, including inside task items. Repeated spaces and tabs elsewhere keep their width.
 
@@ -66,6 +70,8 @@ Use **File → Save** (`Cmd/Ctrl+S`) or **Save as** (`Cmd/Ctrl+Shift+S`). New no
 
 Empty paragraphs are saved as blank lines without nonbreaking-space placeholders. Consecutive empty lines collapse to normal paragraph spacing in exported HTML.
 
+When normal view rewrites Markdown, entity references such as `&copy;` can save as their decoded characters. Typed and pasted characters stay literal unless Markdown would change or discard them, such as literal line-break characters from entity references or tabs and nonbreaking spaces at paragraph line edges. Literal Markdown punctuation stays protected, and code keeps its literal text.
+
 To rename a note, run **Rename document…** from the command palette or choose **Rename** in its workspace menu. Renaming keeps unsaved edits and does not replace another file.
 
 Files must use UTF-8 and be no larger than 2 MiB. Save your work regularly: unsaved drafts can be lost in an app or machine crash. [Version history](../editing/version-history.md) stores previous saves.
@@ -77,5 +83,7 @@ Enable **Mermaid** to edit `.mmd` diagrams and render Mermaid code blocks in Mar
 Under **Settings → Addons**, enable **Word count** for word and character totals, or **Block dragging** to rearrange formatted text using a grip beside each block. The grip also offers **Move block up/down**, and moves support undo.
 
 Enable **Writing suggestions** for workspace tag completions after `#`, note-path completions after `[[` in Source view, and a `;todo` text snippet in either editing view. Choose a suggestion with Enter or Tab; Escape leaves the text unchanged.
+
+Enable **Dictionary and thesaurus** to look up definitions and synonyms for the word at the cursor in English, Chinese, Cantonese, Japanese, Filipino, or French, then replace it with a synonym. Looked-up words are sent to online services unless an offline pack answers, so the addon is off by default. Its readme in **Settings → Addons** describes which services it uses.
 
 The **Frontmatter** addon adds editable [page properties](frontmatter.md). **Settings → Editor → Writing → Spell check** controls spelling underlines in formatted text. See [settings](settings.md) for other preferences.
