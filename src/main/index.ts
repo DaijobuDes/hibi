@@ -436,6 +436,7 @@ setAddonDeactivationHandler(async (id, generation) => {
     addonId: id as AddonId,
     activationGeneration: generation,
   }
+  analysisService.cancel(id)
   hostNetwork.stopOwner(owner)
   hostCredentials.stopOwner(owner)
   selectedText.revokeAddon(id)
@@ -619,10 +620,8 @@ async function serveAsset(request: Request): Promise<Response> {
     if (
       !path ||
       (isAddon &&
-        !getAddonStates().some(
-          (addon) =>
-            addon.id === parsed.pathname.split('/')[2] && addon.enabled,
-        ))
+        getAddonActivationGeneration(parsed.pathname.split('/')[2] ?? '') ===
+          null)
     )
       return new Response(null, { status: 403 })
     const response = await net.fetch(pathToFileURL(path).href)
@@ -1429,15 +1428,14 @@ if (!app.requestSingleInstanceLock()) {
       handle(SIDELOAD_CHANNELS.remove, (event, id: unknown) =>
         runFileOperation(event, async () => {
           await removeAddon(id)
-          analysisService.cancel(id)
         }),
       )
-      handle(ADDON_CHANNELS.enable, (event, id: unknown, enabled: unknown) =>
-        runFileOperation(event, async () => {
-          const states = await enableAddon(id, enabled)
-          if (enabled === false) analysisService.cancel(id)
-          return states
-        }),
+      handle(
+        ADDON_CHANNELS.enable,
+        (event, id: unknown, enabled: unknown, includeRequired: unknown) =>
+          runFileOperation(event, () =>
+            enableAddon(id, enabled, includeRequired),
+          ),
       )
       handle(
         ADDON_CHANNELS.invoke,

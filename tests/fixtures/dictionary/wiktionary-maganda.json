@@ -1,0 +1,56 @@
+{
+  "other": [
+    {
+      "partOfSpeech": "Adjective",
+      "language": "Sambali",
+      "definitions": [
+        {
+          "definition": "<a rel=\"mw:WikiLink\" href=\"/wiki/pretty\" title=\"pretty\">pretty</a>"
+        }
+      ]
+    }
+  ],
+  "sw": [
+    {
+      "partOfSpeech": "Noun",
+      "language": "Swahili",
+      "definitions": [
+        {
+          "definition": "<span class=\"form-of-definition use-with-mention\" about=\"#mwt6\" typeof=\"mw:Transclusion\"><a rel=\"mw:WikiLink\" href=\"/wiki/Appendix:Glossary#plural_number\" title=\"Appendix:Glossary\">plural</a> of <span class=\"form-of-definition-link\"><i class=\"Latn mention\" lang=\"sw\"><a rel=\"mw:WikiLink\" href=\"/wiki/ganda#Swahili\" title=\"ganda\">ganda</a></i></span></span>"
+        }
+      ]
+    }
+  ],
+  "tl": [
+    {
+      "partOfSpeech": "Adjective",
+      "language": "Tagalog",
+      "definitions": [
+        {
+          "definition": "<a rel=\"mw:WikiLink\" href=\"/wiki/beautiful\" title=\"beautiful\">beautiful</a>"
+        },
+        {
+          "definition": "<span class=\"usage-label-sense\" about=\"#mwt12\" typeof=\"mw:Transclusion\"></span> <a rel=\"mw:WikiLink\" href=\"/wiki/good\" title=\"good\">good</a>",
+          "parsedExamples": [
+            {
+              "example": "<b>Maganda</b>ng gabi.",
+              "translation": "<b>Good</b> evening."
+            }
+          ],
+          "examples": ["<b>Maganda</b>ng gabi."]
+        }
+      ]
+    }
+  ],
+  "tr": [
+    {
+      "partOfSpeech": "Noun",
+      "language": "Turkish",
+      "definitions": [
+        {
+          "definition": "<a rel=\"mw:WikiLink\" href=\"/wiki/hooligan\" title=\"hooligan\">hooligan</a>"
+        }
+      ]
+    }
+  ]
+}

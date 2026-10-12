@@ -2022,7 +2022,7 @@ function App() {
     () =>
       new Set(
         addonHost.states
-          .filter((state) => state.enabled)
+          .filter((state) => state.enabled && !state.blockedBy?.length)
           .map((state) => state.id),
       ),
     [addonHost.states],
@@ -2249,7 +2249,10 @@ function App() {
       ...registeredSettings.pages
         .filter((page) =>
           addonHost.states.some(
-            (state) => state.id === page.owner && state.enabled,
+            (state) =>
+              state.id === page.owner &&
+              state.enabled &&
+              !state.blockedBy?.length,
           ),
         )
         .map(({ id, label }) => ({
