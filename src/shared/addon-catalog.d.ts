@@ -19,6 +19,14 @@ declare module 'virtual:hibi-addon-catalog/renderer' {
   export default catalog
 }
 
+declare module 'virtual:hibi-addon-catalog/windows' {
+  const catalog: {
+    manifest: import('../addons/api').AddonManifest
+    load: () => Promise<{ default: unknown }>
+  }[]
+  export default catalog
+}
+
 declare module 'virtual:hibi-addon-catalog/details' {
   const details: Record<
     string,

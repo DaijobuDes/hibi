@@ -51,6 +51,7 @@ export function diagnosticsBuild() {
         if (path.includes('/src/useraddons/')) return false
         if (
           path === '\0virtual:hibi-addon-catalog/renderer' ||
+          path === '\0virtual:hibi-addon-catalog/windows' ||
           path === '\0virtual:hibi-addon-catalog/details'
         )
           return true

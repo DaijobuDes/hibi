@@ -70,7 +70,7 @@ test('startup catalog stays within the main byte budget and leaves notices and a
   }
   for (const chunk of chunks) if (chunk.entry) visit(chunk.file)
   const initial = chunks.filter((chunk) => reached.has(chunk.file))
-  // Main at 147e7b1d, with the same production build and dependencies.
+  // Phase 2 ceiling at 147e7b1d; merged main df5ae17c measures 765879 bytes.
   const bytes = initial.reduce((sum, chunk) => sum + chunk.bytes, 0)
   assert.ok(bytes <= 765301, `startup catalog grew to ${bytes} bytes`)
   const modules = initial.flatMap((chunk) => chunk.modules).join('\n')
@@ -88,9 +88,10 @@ test('startup catalog stays within the main byte budget and leaves notices and a
   )
   const code = (
     await Promise.all(
-      initial.map((chunk) =>
-        readFile(join('out/renderer', chunk.file), 'utf8'),
-      ),
+      // Vite discards the report's empty javascript facades for css-only chunks.
+      initial
+        .filter((chunk) => chunk.bytes > 1)
+        .map((chunk) => readFile(join('out/renderer', chunk.file), 'utf8')),
     )
   ).join('\n')
   for (const author of [
@@ -259,7 +260,7 @@ test('blank startup leaves disabled runtimes and closed settings unloaded and so
     .waitFor()
   assert.match(await loadedModules(), /hibi-addon-catalog\/details/)
   await page
-    .getByRole('textbox', { name: 'Filter addons', exact: true })
+    .getByRole('searchbox', { name: 'Filter addons', exact: true })
     .fill('angelo')
   await page.getByRole('checkbox', { name: 'Vim', exact: true }).waitFor()
   assert.doesNotMatch(await loadedModules(), /src\/addons\/vim\/index\./)

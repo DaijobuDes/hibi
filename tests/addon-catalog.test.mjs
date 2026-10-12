@@ -80,7 +80,9 @@ test('catalog emits process-specific lazy entries and separate author/license de
   }
   const main = await load('main')
   const renderer = await load('renderer')
-  const details = await load('renderer', 'details')
+  const authors = await load('renderer', 'details')
+  const licenses = await load('main', 'details')
+  const windows = await load('renderer', 'windows')
   assert.match(main, /loadNative:.*import\(/)
   assert.doesNotMatch(main, /index\.tsx?["']/)
   assert.match(renderer, /load:.*import\(/)
@@ -91,10 +93,15 @@ test('catalog emits process-specific lazy entries and separate author/license de
     /native\.ts|loadNative|node:|electron|authors|licenses/,
   )
   assert.doesNotMatch(main, /"authors"|"licenses"/)
-  const records = JSON.parse(details.slice('export default '.length))
+  assert.match(windows, /load:.*import\(/)
+  assert.doesNotMatch(windows, /flavor-info|flavors:|loadSettings|native\.ts/)
+  const authorRecords = JSON.parse(authors.slice('export default '.length))
+  const licenseRecords = JSON.parse(licenses.slice('export default '.length))
   for (const { manifest } of packages) {
-    assert.deepEqual(records[manifest.id], {
+    assert.deepEqual(authorRecords[manifest.id], {
       ...(manifest.authors ? { authors: manifest.authors } : {}),
+    })
+    assert.deepEqual(licenseRecords[manifest.id], {
       ...(manifest.licenses ? { licenses: manifest.licenses } : {}),
     })
   }

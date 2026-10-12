@@ -84,6 +84,10 @@ test('build catalog contains generated app and lazy worker artifacts, never sour
         [`${root}/src/renderer/src/addon-registry.ts`]: {},
       },
     },
+    'assets/catalog-windows.js': {
+      type: 'chunk',
+      modules: { '\0virtual:hibi-addon-catalog/windows': {} },
+    },
     'assets/catalog-details.js': {
       type: 'chunk',
       modules: { '\0virtual:hibi-addon-catalog/details': {} },
@@ -125,6 +129,7 @@ test('build catalog contains generated app and lazy worker artifacts, never sour
     catalog.artifacts.map(([name]) => name),
     [
       'assets/catalog-details.js',
+      'assets/catalog-windows.js',
       'assets/catalog.js',
       'assets/document.worker-abc.js',
       'assets/frontmatter-source-model-abc.js',

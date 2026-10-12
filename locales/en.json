@@ -1805,7 +1805,6 @@
   "7b09fb630786": "The workspace manifest is invalid.",
   "45d06c4d0746": "The workspace path changed. Try again.",
   "dbb4c5f7df5c": "The {id} addon needs an update before it can run in this version of Hibi.",
-  "3a58d36bd2a4": "The {value1} addon is missing its startup file. Reinstall it.",
   "ef1a419b566d": "The {value1} addon must declare {id} in requires.addons.",
   "ea84903d5e12": "The {value1} syntax does not match its declared preservation contract.",
   "ce3f6b624545": "Theme files must be JSON paths inside the addon folder.",

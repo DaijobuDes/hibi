@@ -162,12 +162,18 @@ const catalogId = 'virtual:hibi-addon-catalog'
 export function addonCatalog(process: 'main' | 'renderer'): Plugin {
   const moduleId = `${catalogId}/${process}`
   const detailsId = `${catalogId}/details`
+  const windowsId = `${catalogId}/windows`
+  const moduleIds = [
+    moduleId,
+    detailsId,
+    ...(process === 'renderer' ? [windowsId] : []),
+  ]
   const inputs = new Set<string>()
   let pending: Promise<AddonPackage[]> | undefined
   return {
     name: `addon-catalog-${process}`,
     resolveId(id) {
-      if (id === moduleId || id === detailsId) return `\0${id}`
+      if (moduleIds.includes(id)) return `\0${id}`
     },
     watchChange(id) {
       if (inputs.has(slash(id))) pending = undefined
@@ -175,7 +181,7 @@ export function addonCatalog(process: 'main' | 'renderer'): Plugin {
     handleHotUpdate({ file, server }) {
       if (!inputs.has(slash(file))) return
       pending = undefined
-      for (const id of [moduleId, detailsId]) {
+      for (const id of moduleIds) {
         const module = server.moduleGraph.getModuleById(`\0${id}`)
         if (module) server.moduleGraph.invalidateModule(module)
       }
@@ -183,7 +189,7 @@ export function addonCatalog(process: 'main' | 'renderer'): Plugin {
       return []
     },
     async load(id) {
-      if (id !== `\0${moduleId}` && id !== `\0${detailsId}`) return
+      if (!moduleIds.some((module) => id === `\0${module}`)) return
       pending ??= readAddonPackages(undefined, (path) => {
         inputs.add(slash(path))
         this.addWatchFile(path)
@@ -195,7 +201,9 @@ export function addonCatalog(process: 'main' | 'renderer'): Plugin {
           Object.fromEntries(
             packages.map(({ manifest }) => [
               manifest.id,
-              { authors: manifest.authors, licenses: manifest.licenses },
+              process === 'main'
+                ? { licenses: manifest.licenses }
+                : { authors: manifest.authors },
             ]),
           ),
         )}`
@@ -222,9 +230,9 @@ export function addonCatalog(process: 'main' | 'renderer'): Plugin {
             )
         } else {
           parts.push(`load:()=>${load(item.entry)}`)
-          if (item.settings)
+          if (id !== `\0${windowsId}` && item.settings)
             parts.push(`loadSettings:()=>${load(item.settings)}`)
-          if (item.flavors) {
+          if (id !== `\0${windowsId}` && item.flavors) {
             imports.push(
               `import flavors${index} from ${JSON.stringify(slash(resolve(item.flavors)))}`,
             )

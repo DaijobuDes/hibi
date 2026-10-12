@@ -5634,9 +5634,6 @@
   "dbb4c5f7df5c": [
     "src/renderer/src/addons.ts"
   ],
-  "3a58d36bd2a4": [
-    "src/renderer/src/addon-registry.ts"
-  ],
   "ef1a419b566d": [
     "src/renderer/src/addon-exchange.ts"
   ],
@@ -5671,7 +5668,7 @@
     "src/renderer/src/addon-global-shortcuts.ts"
   ],
   "7b1a3f290d48": [
-    "src/renderer/src/addon-registry.ts"
+    "src/renderer/src/addon-definition.ts"
   ],
   "a8a565024afb": [
     "src/main/addon-hotkeys.ts",
@@ -5696,7 +5693,7 @@
     "src/main/addons.ts"
   ],
   "a5631e854921": [
-    "src/renderer/src/addon-registry.ts"
+    "src/renderer/src/addon-definition.ts"
   ],
   "0d3f68fa85cf": [
     "src/renderer/src/addon-exchange.ts",
@@ -5801,7 +5798,7 @@
     "src/main/addon-windows.ts"
   ],
   "a7742e0a996e": [
-    "src/renderer/src/addon-registry.ts"
+    "src/renderer/src/addon-definition.ts"
   ],
   "92382357bcdf": [
     "src/main/workspace-files.ts"
