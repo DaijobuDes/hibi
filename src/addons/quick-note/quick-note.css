@@ -40,3 +40,8 @@
   color: var(--status-danger);
   white-space: normal;
 }
+
+.quick-note-meta.quick-note-warning {
+  color: var(--status-warning);
+  white-space: normal;
+}

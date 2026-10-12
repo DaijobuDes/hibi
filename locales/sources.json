@@ -2319,11 +2319,20 @@
   "cc05d3346ee5": [
     "src/main/workspace.ts"
   ],
+  "a0b88bf9965c": [
+    "src/addons/quick-note/CaptureWindow.tsx"
+  ],
   "87c719d7d306": [
     "src/main/history.ts"
   ],
   "c2dd1f633965": [
     "src/main/workspace-actions.ts"
+  ],
+  "4e0319875c9d": [
+    "src/addons/quick-note/CaptureWindow.tsx"
+  ],
+  "a08c88d1a75f": [
+    "src/addons/quick-note/CaptureWindow.tsx"
   ],
   "9ba584a1febb": [
     "src/main/workspace-actions.ts"
