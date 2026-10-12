@@ -66,11 +66,15 @@ const partial =
 // starts a slash command, mention, tag, emoji, escape, entity, path, or url.
 const opening = /^(?:[("'“‘*_~]|\[(?!\[))*$/u
 
+// A backtick fence's info string has no backticks, so a line starting with
+// inline code such as ```a``` is not a fence (CommonMark example 145).
+const fence = /^ {0,3}(?:`{3,}[^`\n]*|~{3,}.*)$/gm
+
 /** True inside inline code or a fenced block that opens within `before`. */
 function inCode(before: string, line: string) {
   return (
     codeSpans(line).some(({ closed }) => !closed) ||
-    (before.match(/^ {0,3}(?:```|~~~)/gm)?.length ?? 0) % 2 === 1
+    (before.match(fence)?.length ?? 0) % 2 === 1
   )
 }
 
