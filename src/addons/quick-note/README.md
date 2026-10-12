@@ -8,6 +8,6 @@ The shortcut and the command open a capture window of its own, above other appli
 
 The note's first heading becomes its file name; without one, Hibi uses the default title. **Ask for a title** starts each note with the default title as its heading. Repeated names receive a number so an existing note is never replaced.
 
-Press `Escape`, `Cmd/Ctrl+W`, or **Cancel** to close the window without saving. Your unsaved note is kept, even if Hibi quits unexpectedly, and shown the next time the window opens. Each note keeps the destination it had when you started writing it. Only one capture window is open at a time, and Hibi remembers its size and position on each display.
+Press `Escape`, `Cmd/Ctrl+W`, or **Cancel** to close the window without saving. Your unsaved note is kept, even if Hibi quits unexpectedly, and shown the next time the window opens. A note saves to the destination currently set, which the bar at the bottom of the window shows. Only one capture window is open at a time, and Hibi remembers its size and position on each display.
 
 The shortcut works only while Hibi is running. On macOS, it keeps working after you close Hibi's last window. Quitting Hibi releases the shortcut.
