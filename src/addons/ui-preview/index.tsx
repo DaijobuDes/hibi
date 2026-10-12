@@ -40,6 +40,7 @@ function saveError(status: string) {
 export default defineAddon({
   manifest,
   windows: {
+    editor: ({ Editor }) => <Editor label="Preview note" />,
     preview: ({ close }) => (
       <section
         style={{
@@ -57,7 +58,6 @@ export default defineAddon({
         <Button onClick={close}>Close</Button>
       </section>
     ),
-    editor: ({ Editor }) => <Editor label="Preview note" />,
   },
   async start(context) {
     const storage = await context.storage.global<unknown>('custom-css', 1)

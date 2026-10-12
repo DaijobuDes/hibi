@@ -1138,6 +1138,9 @@
   "f56d1f9d0955": [
     "src/main/updates.ts"
   ],
+  "8f95a0391d5d": [
+    "src/addons/quick-note/native.ts"
+  ],
   "349ceed84d07": [
     "src/renderer/src/LicenseSettings.tsx"
   ],
@@ -5197,6 +5200,9 @@
   "8572af154dbc": [
     "src/main/addons.ts"
   ],
+  "2fb4a91a3476": [
+    "src/renderer/src/addons.ts"
+  ],
   "36568e2b608a": [
     "src/main/addons.ts"
   ],
@@ -5530,6 +5536,9 @@
   ],
   "20cfcb2cec56": [
     "src/main/links.ts"
+  ],
+  "5470a94f5135": [
+    "src/preload/addon-window.ts"
   ],
   "c04f0fb5e9da": [
     "src/addons/ui-preview/index.tsx"

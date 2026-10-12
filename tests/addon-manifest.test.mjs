@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { readdir } from 'node:fs/promises'
-import { join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import test from 'node:test'
 import { build } from 'esbuild'
 import {
@@ -148,7 +148,7 @@ test('network declarations reject malformed metadata and unsafe origins', () => 
     )
 })
 
-test('bundled addon manifests have valid network and addon requirements', async () => {
+test('bundled addon manifests have valid network and addon requirements and match their folders', async () => {
   const files = await readdir('src/addons', { recursive: true })
   const { outputFiles } = await build({
     entryPoints: files
@@ -168,6 +168,8 @@ test('bundled addon manifests have valid network and addon requirements', async 
       `data:text/javascript;base64,${Buffer.from(file.contents).toString('base64')}`
     )
     manifests.push(manifest)
+    // Addon windows load their owner's module by folder name.
+    assert.equal(basename(dirname(file.path)), manifest.id)
     if (manifest.network !== undefined)
       assert.doesNotThrow(
         () => parseAddonNetwork(manifest.network),

@@ -26,8 +26,10 @@ import {
 } from '../../addons/api'
 import {
   addonDependents,
+  backgroundAddonDependencies,
   requiredAddonDependencyMap,
   resolveAddonDependencies,
+  startsInWindow,
 } from '../../shared/addon-dependencies'
 import type { AddonHotkeyRegistration } from '../../shared/addon-hotkeys'
 import {
@@ -69,7 +71,12 @@ import { onEditorInput, onEditorKeyEvent } from './editor-events'
 import { countEditorInteractionProvider } from './editor-interaction-presence'
 import { createEditorViewScope, editorViewRegistry } from './editor-view-api'
 import { explorerDecorations } from './explorer-decorations'
-import { flavors, renderMarkdown, renderMarkdownAsync } from './flavors'
+import {
+  flavors,
+  type RegisteredFlavor,
+  renderMarkdown,
+  renderMarkdownAsync,
+} from './flavors'
 import { projectMarkdown } from './markdown-projection'
 import { markdownSyntax } from './markdown-syntax'
 import { registrationBatch } from './registration-batch'
@@ -176,10 +183,71 @@ type Environment = Omit<
   closeSidebar: (side: 'left' | 'right') => void
   openTab: () => void
   focusDocument: (tabId: string) => Promise<boolean>
+  /** Addon state changes made elsewhere, for hosts outside the main window. */
+  subscribeStates?: (listener: (states: AddonState[]) => void) => () => void
   captureCommandContext?: (
     source: CommandExecutionContext['source'],
   ) => CommandExecutionContext
   isCommandContextCurrent?: (context: CommandExecutionContext) => boolean
+}
+
+/** A toggled addon, and failed addons it requires or that require it, may start again. */
+function retrySettled(
+  current: ReadonlyMap<string, boolean>,
+  id: string,
+  enabled: boolean,
+  started: ReadonlySet<string>,
+  dependencies: ReadonlyMap<string, readonly string[]>,
+  manifests: readonly AddonManifest[],
+) {
+  const next = new Map(current)
+  if (!started.has(id) || !enabled) next.delete(id)
+  for (const dependency of dependencies.get(id) ?? [])
+    if (next.get(dependency) === false) next.delete(dependency)
+  for (const dependent of addonDependents(manifests, id))
+    if (next.get(dependent) === false) next.delete(dependent)
+  return next
+}
+
+/** Editor props derived from the addon host. Stable identities keep typing from rebuilding the editor's snapshot. */
+export function useEditorAddons(
+  host: Pick<ReturnType<typeof useAddons>, 'catalog' | 'states'>,
+  availableFlavors: readonly RegisteredFlavor[],
+) {
+  const knownFlavors = useMemo(
+    () => [
+      ...host.catalog.flatMap((addon) =>
+        (addon.flavors ?? []).map((flavor) => ({
+          ...flavor,
+          id: `${addon.manifest.id}.${flavor.id}`,
+          addonId: addon.manifest.id,
+        })),
+      ),
+      ...availableFlavors.filter(
+        (flavor) =>
+          !host.catalog.some((addon) =>
+            addon.flavors?.some(
+              (known) => `${addon.manifest.id}.${known.id}` === flavor.id,
+            ),
+          ),
+      ),
+    ],
+    [host.catalog, availableFlavors],
+  )
+  const manifests = useMemo(
+    () => host.catalog.map((addon) => addon.manifest),
+    [host.catalog],
+  )
+  const enabledAddons = useMemo(
+    () =>
+      new Set(
+        host.states
+          .filter((state) => state.enabled && !state.blockedBy?.length)
+          .map((state) => state.id),
+      ),
+    [host.states],
+  )
+  return { knownFlavors, manifests, enabledAddons }
 }
 
 export function useAddons(
@@ -277,12 +345,45 @@ export function useAddons(
     (manifest: AddonManifest) => relevantIds.has(manifest.id),
     [relevantIds],
   )
+  // Editor windows refuse addons whose requirements would start background addons there.
+  const refused = useMemo(
+    () =>
+      new Map(
+        editorOnly
+          ? manifests.flatMap((manifest) => {
+              const blocked = backgroundAddonDependencies(
+                manifests,
+                dependencies.get(manifest.id) ?? [],
+              )
+              return blocked.length ? [[manifest.id, blocked] as const] : []
+            })
+          : [],
+      ),
+    [editorOnly, manifests, dependencies],
+  )
+  // Neither startup nor on-demand activation starts these in an editor window.
+  const windowBlocked = useCallback(
+    (id: string) => {
+      if (!editorOnly) return false
+      const manifest = manifests.find((item) => item.id === id)
+      return !manifest || !startsInWindow(manifest) || refused.has(id)
+    },
+    [editorOnly, manifests, refused],
+  )
+  useEffect(() => {
+    for (const [id, blocked] of refused)
+      if (states.some((state) => state.id === id && state.enabled))
+        console.warn(
+          `The ${id} addon did not start in this window because it requires ${blocked.join(', ')}, which starts only in the main window.`,
+        )
+  }, [refused, states])
   const required = useMemo(
     () =>
       new Set(
         catalog
           .filter((addon) => {
-            if (!triggered(addon.manifest)) return false
+            if (!triggered(addon.manifest) || refused.has(addon.manifest.id))
+              return false
             if (
               addon.manifest.startup === 'background' ||
               addon.manifest.activation === 'command'
@@ -293,7 +394,11 @@ export function useAddons(
               !extensions?.length ||
               !documentName ||
               extensions.includes(documentExtension(documentName)) ||
-              (!!(addon.flavors?.length || addon.manifest.syntax?.length) &&
+              (!!(
+                addon.flavors?.length ||
+                addon.manifest.syntax?.length ||
+                addon.manifest.capabilities?.includes('markdown')
+              ) &&
                 isMarkdownDocument(documentName))
             )
           })
@@ -306,7 +411,7 @@ export function useAddons(
               : []),
           ]),
       ),
-    [catalog, documentName, triggered, dependencies, states],
+    [catalog, documentName, triggered, refused, dependencies, states],
   )
   const enabledStates = states.filter(
     (state) => state.enabled && available.has(state.id),
@@ -392,6 +497,7 @@ export function useAddons(
     catalog,
     available,
     dependencies,
+    windowBlocked,
   })
   currentActivation.current = {
     states,
@@ -399,11 +505,14 @@ export function useAddons(
     catalog,
     available,
     dependencies,
+    windowBlocked,
   }
   const activateAddon = useCallback(
     async (owner: string) => {
       if (!currentActivation.current.available.has(owner))
         throw new Error('Enable this addon before running its command.')
+      if (currentActivation.current.windowBlocked(owner))
+        throw new Error('This addon does not run in this window.')
       if (!started.has(owner)) {
         if (currentActivation.current.settled.get(owner) === false)
           throw new Error(
@@ -541,6 +650,40 @@ export function useAddons(
         request.reject(new Error('The addon host stopped.'))
     }
   }, [running, activation])
+  useEffect(
+    () =>
+      latest.current.subscribeStates?.((next) => {
+        // Toggling elsewhere retries failed addons, as toggling here does.
+        const {
+          states: previous,
+          dependencies,
+          catalog,
+        } = currentActivation.current
+        const manifests = catalog.map((addon) => addon.manifest)
+        const changed = next.filter(
+          (state) =>
+            previous.find((item) => item.id === state.id)?.enabled !==
+            state.enabled,
+        )
+        if (changed.length)
+          setSettled((current) =>
+            changed.reduce(
+              (settled, state) =>
+                retrySettled(
+                  settled,
+                  state.id,
+                  state.enabled,
+                  started,
+                  dependencies,
+                  manifests,
+                ),
+              current,
+            ),
+          )
+        setStates(next)
+      }),
+    [started],
+  )
   useEffect(() => {
     void window.hibi.bootstrap
       .addons()
@@ -586,6 +729,7 @@ export function useAddons(
       if (
         !addon ||
         running.has(id) ||
+        windowBlocked(id) ||
         !relevant(addon.manifest) ||
         (!required.has(id) && !requested.has(id) && (!ready || editorOnly)) ||
         (dependencies.get(id) ?? []).some(
@@ -1929,6 +2073,7 @@ export function useAddons(
   }, [
     catalog,
     editorOnly,
+    windowBlocked,
     relevant,
     resolution,
     available,
@@ -2072,15 +2217,9 @@ export function useAddons(
             next.delete(id)
             return next
           })
-        setSettled((current) => {
-          const next = new Map(current)
-          if (!started.has(id) || !enabled) next.delete(id)
-          for (const dependency of dependencies.get(id) ?? [])
-            if (next.get(dependency) === false) next.delete(dependency)
-          for (const dependent of addonDependents(manifests, id))
-            if (next.get(dependent) === false) next.delete(dependent)
-          return next
-        })
+        setSettled((current) =>
+          retrySettled(current, id, enabled, started, dependencies, manifests),
+        )
         if (enabled && nextModal && !started.has(nextModal)) {
           modalSwitch.current = {
             requested: id,

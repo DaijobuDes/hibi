@@ -2,10 +2,12 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   addonDependents,
+  backgroundAddonDependencies,
   parseAddonRequirements,
   requiredAddonDependencies,
   requiredAddonDependencyMap,
   resolveAddonDependencies,
+  startsInWindow,
   validateAddonRequirements,
 } from '../src/shared/addon-dependencies.ts'
 
@@ -481,4 +483,37 @@ test('empty graphs work and graph helpers preserve frozen inputs', () => {
   assert.deepEqual(requiredAddonDependencies(manifests, 'consumer'), ['base'])
   assert.deepEqual(addonDependents(manifests, 'base'), ['consumer'])
   assert.doesNotThrow(() => validateAddonRequirements(manifests))
+})
+
+test('editor windows find background addons among transitive requirements', () => {
+  const manifests = [
+    addon('editor', 'helper'),
+    addon('helper', 'service'),
+    { ...addon('service'), startup: 'background' },
+    { ...addon('palette'), activation: 'command' },
+    addon('syntax', 'palette'),
+  ]
+  const dependencies = requiredAddonDependencyMap(manifests)
+  assert.deepEqual(
+    backgroundAddonDependencies(manifests, dependencies.get('editor')),
+    ['service'],
+  )
+  assert.deepEqual(
+    backgroundAddonDependencies(manifests, dependencies.get('syntax')),
+    ['palette'],
+  )
+  assert.deepEqual(
+    backgroundAddonDependencies(manifests, dependencies.get('service')),
+    [],
+  )
+})
+
+test('editor windows start only document addons, including on demand', () => {
+  assert.equal(startsInWindow({ id: 'syntax' }), true)
+  assert.equal(startsInWindow({ id: 'source', activation: 'source' }), true)
+  assert.equal(
+    startsInWindow({ id: 'quick-note', startup: 'background' }),
+    false,
+  )
+  assert.equal(startsInWindow({ id: 'palette', activation: 'command' }), false)
 })

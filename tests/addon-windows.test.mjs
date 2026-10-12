@@ -11,7 +11,12 @@ const windowUrl = 'app://hibi/addon-window.html'
 const appWindows = (app) =>
   app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()
-      .map((window) => window.webContents.getURL())
+      // A window mid-destroy can report null contents (seen on Windows).
+      .flatMap((window) =>
+        window.webContents && !window.webContents.isDestroyed()
+          ? [window.webContents.getURL()]
+          : [],
+      )
       .filter((url) => !url.startsWith('hibi-analysis:')),
   )
 
@@ -118,11 +123,10 @@ test('addon windows open once per id and close with their addon', {
       },
     },
   )
-  // Native requests always go to the window's own addon.
-  assert.ok(
-    Array.isArray(
-      await second.evaluate(() => window.hibiAddonWindow.query('targets')),
-    ),
+  // The window host takes the bridge at boot, so page code cannot reach native handlers.
+  await assert.rejects(
+    second.evaluate(() => window.hibiAddonWindow.query('targets')),
+    /bridge is closed/,
   )
   assert.equal(await second.locator('.addon-window-titlebar').count(), 0)
   const first = await until(() => addonPage(app, 'one'))
@@ -218,7 +222,12 @@ async function launch(t, addons, env) {
     ...(env ? { env: { ...process.env, ...env } } : {}),
   })
   t.after(async () => {
-    const child = app.process()
+    let child
+    try {
+      child = app.process()
+    } catch {
+      return // The app already quit and closed its connection.
+    }
     if (child.exitCode === null && child.signalCode === null) {
       // Answer the unsaved-changes prompt with "Don't save" so quitting completes.
       await app
