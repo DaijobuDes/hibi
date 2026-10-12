@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { errorMessage } from '../../shared/errors'
+import type { AddonWindowProps } from '../api'
 import { Button, TextArea, TextInput } from '../ui'
-import type { QuickNoteSettings } from './settings'
+import { readSettings, settingsKey } from './settings'
 import './quick-note.css'
 
 const draftKey = 'hibi:quick-note-draft'
 const savedDelay = 900
 const mac = navigator.userAgent.includes('Mac')
+type Destination = { id: string; path: string } | { error: string }
 
 function readDraft(): { title?: string; markdown?: string } {
   try {
@@ -17,15 +19,9 @@ function readDraft(): { title?: string; markdown?: string } {
   }
 }
 
-export function CaptureWindow({
-  settings,
-  destination,
-  save,
-}: {
-  settings: QuickNoteSettings
-  destination: { path: string } | { error: string } | null
-  save: (title: string, markdown: string) => Promise<string>
-}) {
+export function CaptureWindow({ native, close }: AddonWindowProps) {
+  const [settings, setSettings] = useState(readSettings)
+  const [destination, setDestination] = useState<Destination | null>(null)
   const [title, setTitle] = useState(
     () => readDraft().title ?? settings.defaultTitle,
   )
@@ -35,6 +31,26 @@ export function CaptureWindow({
   const [error, setError] = useState('')
   const busy = saving || !!saved
   const submitRef = useRef<() => void>(() => {})
+  // Settings and the draft share the main window's storage.
+  useEffect(() => {
+    const changed = (event: StorageEvent) => {
+      if (event.key === settingsKey) setSettings(readSettings())
+    }
+    window.addEventListener('storage', changed)
+    return () => window.removeEventListener('storage', changed)
+  }, [])
+  useEffect(() => {
+    let active = true
+    native
+      .query<{ id: string; path: string }>('destination', settings.workspaceId)
+      .then(
+        (target) => active && setDestination(target),
+        (failure) => active && setDestination({ error: errorMessage(failure) }),
+      )
+    return () => {
+      active = false
+    }
+  }, [native, settings.workspaceId])
   // Closing keeps the text for next time; only saving clears it.
   useEffect(() => {
     if (saved) return
@@ -47,10 +63,15 @@ export function CaptureWindow({
     setSaving(true)
     setError('')
     try {
-      const name = await save(title, markdown)
+      const result = await native.invoke<{ name: string }>('save', {
+        workspaceId: destination.id,
+        folder: settings.folder,
+        title,
+        markdown,
+      })
       localStorage.removeItem(draftKey)
-      setSaved(name)
-      setTimeout(() => window.close(), savedDelay)
+      setSaved(result.name)
+      setTimeout(close, savedDelay)
     } catch (failure) {
       setError(errorMessage(failure) || 'Could not save this note.')
     } finally {
@@ -67,7 +88,7 @@ export function CaptureWindow({
         (command && event.key.toLowerCase() === 'w')
       ) {
         event.preventDefault()
-        window.close()
+        close()
       } else if (command && event.key === 'Enter') {
         event.preventDefault()
         submitRef.current()
@@ -75,18 +96,14 @@ export function CaptureWindow({
     }
     window.addEventListener('keydown', keydown)
     return () => window.removeEventListener('keydown', keydown)
-  }, [])
-  const unavailable = !destination || 'error' in destination
+  }, [close])
   return (
-    <main className="quick-note-window" aria-labelledby="quick-note-heading">
-      <header>
-        <h1 id="quick-note-heading">Quick note</h1>
-        {destination && 'path' in destination && (
-          <p id="quick-note-destination">
-            {`Save to ${destination.path}${settings.folder ? ` / ${settings.folder}` : ''}`}
-          </p>
-        )}
-      </header>
+    <main className="quick-note-window" aria-label="Quick note">
+      {destination && 'path' in destination && (
+        <p id="quick-note-destination" className="quick-note-hint">
+          {`Save to ${destination.path}${settings.folder ? ` / ${settings.folder}` : ''}`}
+        </p>
+      )}
       {destination && 'error' in destination && (
         <p role="alert">{destination.error}</p>
       )}
@@ -107,8 +124,11 @@ export function CaptureWindow({
           Note
           <TextArea
             id="quick-note-body"
+            className="quick-note-body"
             autoFocus={!settings.promptForTitle}
-            aria-describedby="quick-note-hint"
+            aria-describedby="quick-note-destination quick-note-hint"
+            placeholder="Write in Markdown…"
+            spellCheck
             value={markdown}
             onChange={(event) => setMarkdown(event.target.value)}
             readOnly={busy}
@@ -124,13 +144,13 @@ export function CaptureWindow({
           {saved && `Saved ${saved}.`}
         </p>
         <div className="quick-note-actions">
-          <Button onClick={() => window.close()} disabled={busy}>
+          <Button onClick={close} disabled={busy}>
             Close
           </Button>
           <Button
             variant="primary"
             onClick={() => void submit()}
-            disabled={busy || unavailable}
+            disabled={busy || !destination || 'error' in destination}
           >
             {saving ? 'Saving…' : 'Save note'}
           </Button>

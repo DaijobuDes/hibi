@@ -15,10 +15,14 @@
   flex: 1;
 }
 
-.quick-note-form textarea {
+/* Match the editor's text so a capture reads like a Hibi note. */
+.quick-note-body {
   flex: 1;
   min-height: 6rem;
   resize: none;
+  font-size: var(--text-editor);
+  line-height: 1.75;
+  tab-size: 4;
 }
 
 .quick-note-window [role="alert"] {
@@ -50,19 +54,6 @@
   padding: var(--space-4);
 }
 
-.quick-note-window header {
-  display: flex;
-  flex-direction: column;
-  gap: 0.125rem;
-}
-
-.quick-note-window h1 {
-  margin: 0;
-  font-size: 0.9375rem;
-  font-weight: 600;
-}
-
-.quick-note-window header p,
 .quick-note-hint {
   margin: 0;
   color: var(--muted);
@@ -74,6 +65,7 @@
   margin: 0;
 }
 
+/* Keep the empty live region in the accessibility tree without taking space. */
 .quick-note-status:empty {
-  display: none;
+  position: absolute;
 }

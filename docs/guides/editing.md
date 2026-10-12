@@ -66,6 +66,8 @@ Use **File → Save** (`Cmd/Ctrl+S`) or **Save as** (`Cmd/Ctrl+Shift+S`). New no
 
 Empty paragraphs are saved as blank lines without nonbreaking-space placeholders. Consecutive empty lines collapse to normal paragraph spacing in exported HTML.
 
+When normal view rewrites Markdown, entity references such as `&copy;` can save as their decoded characters. Typed and pasted characters stay literal unless Markdown would change or discard them, such as literal line-break characters from entity references or tabs and nonbreaking spaces at paragraph line edges. Literal Markdown punctuation stays protected, and code keeps its literal text.
+
 To rename a note, run **Rename document…** from the command palette or choose **Rename** in its workspace menu. Renaming keeps unsaved edits and does not replace another file.
 
 Files must use UTF-8 and be no larger than 2 MiB. Save your work regularly: unsaved drafts can be lost in an app or machine crash. [Version history](../editing/version-history.md) stores previous saves.
@@ -77,5 +79,7 @@ Enable **Mermaid** to edit `.mmd` diagrams and render Mermaid code blocks in Mar
 Under **Settings → Addons**, enable **Word count** for word and character totals, or **Block dragging** to rearrange formatted text using a grip beside each block. The grip also offers **Move block up/down**, and moves support undo.
 
 Enable **Writing suggestions** for workspace tag completions after `#`, note-path completions after `[[` in Source view, and a `;todo` text snippet in either editing view. Choose a suggestion with Enter or Tab; Escape leaves the text unchanged.
+
+Enable **Dictionary and thesaurus** to look up definitions and synonyms for the word at the cursor in English, Chinese, Cantonese, Japanese, Filipino, or French, then replace it with a synonym. Looked-up words are sent to online services unless an offline pack answers, so the addon is off by default. Its readme in **Settings → Addons** describes which services it uses.
 
 The **Frontmatter** addon adds editable [page properties](frontmatter.md). **Settings → Editor → Writing → Spell check** controls spelling underlines in formatted text. See [settings](settings.md) for other preferences.

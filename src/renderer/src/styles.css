@@ -2035,3 +2035,8 @@ summary {
   font: var(--text-sm) var(--font-ui);
   white-space: nowrap;
 }
+.addon-window-error {
+  margin: 0;
+  padding: var(--space-4);
+  color: var(--status-danger);
+}

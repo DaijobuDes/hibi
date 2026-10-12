@@ -1,4 +1,6 @@
 import { defineAddon } from '../api'
+import { CaptureWindow } from './CaptureWindow'
+import { captureWindow } from './capture'
 import manifest from './manifest'
 import { readSettings, settingsChanged } from './settings'
 import './quick-note.css'
@@ -7,12 +9,15 @@ let stopSettings: (() => void) | undefined
 
 export default defineAddon({
   manifest,
+  windows: { capture: CaptureWindow },
   async start(context) {
     context.commands.register({
       id: 'capture',
       label: 'Quick note: capture',
       keywords: 'note inbox global shortcut',
-      run: () => context.native.invoke('open'),
+      run: async () => {
+        await context.windows.open(captureWindow)
+      },
     })
     let removeShortcut: (() => void) | undefined
     let generation = 0

@@ -12,21 +12,19 @@ import {
   refreshWorkspace,
   scanWorkspace,
   workspaceId,
-  workspaceRoot,
 } from '../../main/workspace'
 import { validateWorkspaceName } from '../../main/workspace-actions'
 import type { WorkspaceEntry } from '../../shared/workspace'
-import type { NativeAddon } from '../api'
-import type { QuickNoteRequest } from './ipc'
+import type { NativeAddon, NativeAddonContext } from '../api'
+import { captureWindow } from './capture'
 import manifest from './manifest'
-import { closeCaptureWindow, openCaptureWindow } from './window'
 
-async function target(id: unknown, current: string | null) {
+async function target(id: unknown, context: NativeAddonContext) {
   if (typeof id !== 'string') throw new Error('Choose a workspace.')
   const path = id
     ? ((await getKnownWorkspaces()).find((item) => item.id === id)?.path ??
-      (id === workspaceId() ? current : null))
-    : current
+      (id === workspaceId() ? context.workspace.directory() : null))
+    : context.workspace.directory()
   if (!path) throw new Error('Open a workspace or choose a recent one.')
   const info = await lstat(path)
   if (!info.isDirectory() || info.isSymbolicLink())
@@ -69,51 +67,17 @@ function folders(entries: WorkspaceEntry[], found: string[] = []): string[] {
   return found
 }
 
-async function saveNote(input: unknown, current: string | null) {
-  if (!input || typeof input !== 'object')
-    throw new Error('Could not read this note. Try again.')
-  const request = input as Record<string, unknown>
-  const root = await target(request.workspaceId, current)
-  const directory = await folderPath(root, request.folder)
-  if (typeof request.title !== 'string') throw new Error('Enter a note title.')
-  const stem = request.title.trim().replace(/\.md$/i, '')
-  validateWorkspaceName(stem)
-  if (typeof request.markdown !== 'string' || !request.markdown.trim())
-    throw new Error('Write a note before saving.')
-  for (let number = 1; number <= 10000; number++) {
-    const name = `${stem}${number === 1 ? '' : ` ${number}`}.md`
-    validateWorkspaceName(name)
-    const path = join(directory, name)
-    try {
-      await writeMarkdown(path, request.markdown, true)
-      if (current === root)
-        await refreshWorkspace().catch((error) =>
-          console.error('could not refresh quick note workspace:', error),
-        )
-      return { path, name: basename(path) }
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
-    }
-  }
-  throw new Error('This folder has too many notes with that title.')
-}
-
-const openCapture = () =>
-  openCaptureWindow({
-    destination: async (id) => {
-      const path = await target(id, workspaceRoot())
-      return { id: createHash('sha256').update(path).digest('hex'), path }
-    },
-    save: async (request: QuickNoteRequest) => ({
-      name: (await saveNote(request, workspaceRoot())).name,
-    }),
-  })
-
 export default {
   id: manifest.id,
-  globalShortcuts: { capture: openCapture },
-  stop: closeCaptureWindow,
+  globalShortcuts: {
+    capture: ({ windows }) => windows.open(captureWindow),
+  },
   queries: {
+    /** Pin the destination when capture opens, so a workspace switch cannot move the note. */
+    async destination(input, context) {
+      const path = await target(input, context)
+      return { id: createHash('sha256').update(path).digest('hex'), path }
+    },
     async targets(selected) {
       const recent = await getRecentWorkspaces()
       if (
@@ -128,7 +92,7 @@ export default {
       return chosen ? [...recent, { id: chosen.id, path: chosen.path }] : recent
     },
     async folders(input, context) {
-      const root = await target(input, context.workspace.directory())
+      const root = await target(input, context)
       return folders(await scanWorkspace(root))
     },
   },
@@ -146,8 +110,34 @@ export default {
       await rememberWorkspace(path)
       return (await getRecentWorkspaces()).find((entry) => entry.path === path)
     },
-    save: async (input, context) =>
-      saveNote(input, context.workspace.directory()),
-    open: openCapture,
+    async save(input, context) {
+      if (!input || typeof input !== 'object')
+        throw new Error('Could not read this note. Try again.')
+      const request = input as Record<string, unknown>
+      const root = await target(request.workspaceId, context)
+      const directory = await folderPath(root, request.folder)
+      if (typeof request.title !== 'string')
+        throw new Error('Enter a note title.')
+      const stem = request.title.trim().replace(/\.md$/i, '')
+      validateWorkspaceName(stem)
+      if (typeof request.markdown !== 'string' || !request.markdown.trim())
+        throw new Error('Write a note before saving.')
+      for (let number = 1; number <= 10000; number++) {
+        const name = `${stem}${number === 1 ? '' : ` ${number}`}.md`
+        validateWorkspaceName(name)
+        const path = join(directory, name)
+        try {
+          await writeMarkdown(path, request.markdown, true)
+          if (context.workspace.directory() === root)
+            await refreshWorkspace().catch((error) =>
+              console.error('could not refresh quick note workspace:', error),
+            )
+          return { path, name: basename(path) }
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+        }
+      }
+      throw new Error('This folder has too many notes with that title.')
+    },
   },
 } satisfies NativeAddon

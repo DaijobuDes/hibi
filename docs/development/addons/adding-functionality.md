@@ -179,7 +179,7 @@ const remove = await context.globalShortcuts.register(
 )
 ```
 
-The command receives a context captured when the shortcut is pressed. Existing addons may still pass a callback as the third argument. Choose a shortcut that does not overlap with a Hibi editing command. System-wide shortcuts are active only while Hibi is running and this addon is enabled. The operating system may reserve some combinations.
+The command receives a context captured when the shortcut is pressed. Existing addons may still pass a callback as the third argument. Choose a shortcut that does not overlap with a Hibi editing command. System-wide shortcuts are active only while Hibi is running and this addon is enabled. The operating system may reserve some combinations. To open an [addon window](addon-windows.md#open-a-window-from-a-global-shortcut) without showing the main window, handle the shortcut in your native module.
 
 ## Clean up
 

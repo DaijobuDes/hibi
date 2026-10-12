@@ -62,7 +62,7 @@ export default defineConfig({
       rollupOptions: {
         input: {
           index: resolve('src/renderer/index.html'),
-          'quick-note': resolve('src/renderer/quick-note.html'),
+          'addon-window': resolve('src/renderer/addon-window.html'),
         },
       },
     },

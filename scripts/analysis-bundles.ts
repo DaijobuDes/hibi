@@ -44,7 +44,7 @@ export function analysisBundles(): Plugin {
 export function sandboxPreloads(): Plugin {
   const entries = {
     'analysis.cjs': 'src/preload/analysis.ts',
-    'quick-note.cjs': 'src/addons/quick-note/preload.ts',
+    'addon-window.cjs': 'src/preload/addon-window.ts',
   }
   return {
     name: 'sandbox-preloads',

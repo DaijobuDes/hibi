@@ -16,7 +16,7 @@ import { setTimeout } from 'node:timers/promises'
 import { electron } from './electron.mjs'
 import { clickMenu } from './keyboard.mjs'
 
-const captureUrl = /\/quick-note\.html$/
+const captureUrl = /\/addon-window\.html$/
 
 async function captureWindow(app) {
   const deadline = performance.now() + 10000
@@ -446,7 +446,7 @@ test('quick note shortcut opens one capture window without raising Hibi', {
   const id = await app.evaluate(
     ({ BrowserWindow }) =>
       BrowserWindow.getAllWindows().find((window) =>
-        window.webContents.getURL().endsWith('quick-note.html'),
+        window.webContents.getURL().endsWith('addon-window.html'),
       ).webContents.id,
   )
   await press()
@@ -458,7 +458,7 @@ test('quick note shortcut opens one capture window without raising Hibi', {
     await app.evaluate(
       ({ BrowserWindow }) =>
         BrowserWindow.getAllWindows().find((window) =>
-          window.webContents.getURL().endsWith('quick-note.html'),
+          window.webContents.getURL().endsWith('addon-window.html'),
         ).webContents.id,
     ),
     id,

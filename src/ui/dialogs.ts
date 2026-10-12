@@ -5,10 +5,19 @@ export type DialogOptions<T> = {
   description?: string
   size?: 'normal' | 'wide' | 'fullscreen'
   closeOnOutsideClick?: boolean
-  /** Use a component for content that needs React hooks. */
-  content: (controls: { close: (value: T | null) => void }) => ReactNode
+  /**
+   * Use a component for content that needs React hooks. `signal` aborts as
+   * soon as the dialog starts closing, before its exit animation.
+   */
+  content: (controls: {
+    close: (value: T | null) => void
+    signal: AbortSignal
+  }) => ReactNode
   /** Optional actions outside the scrolling content. */
-  footer?: (controls: { close: (value: T | null) => void }) => ReactNode
+  footer?: (controls: {
+    close: (value: T | null) => void
+    signal: AbortSignal
+  }) => ReactNode
 }
 
 export type DialogHandle<T> = {
