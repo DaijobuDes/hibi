@@ -8,7 +8,7 @@ import { yours } from '../dictionary/custom-words.ts'
 import { matchCase } from '../dictionary/lookup.ts'
 import type { Lang } from '../dictionary/providers.ts'
 import type { createLearning } from './learning.ts'
-import type { PersonalScope } from './model.ts'
+import { hasInternalCapitals, type PersonalScope } from './model.ts'
 import type { AutocompletePreferences } from './settings.ts'
 
 const MIN_PREFIX = 3
@@ -75,6 +75,17 @@ export function rankWords(
     if (ranked.length === MAX_ITEMS) break
   }
   return ranked
+}
+
+/** Match typed casing while retaining learned names with internal capitals. */
+export function insertionText(
+  prefix: string,
+  word: string,
+  source: 'baseline' | 'personal',
+) {
+  return source === 'personal' && hasInternalCapitals(word)
+    ? word
+    : matchCase(prefix, word)
 }
 
 export type TypingSession = {
@@ -183,7 +194,7 @@ export function autocompleteCompletions(
         : several
           ? { detail: languageName(lang) }
           : {}),
-      insertText: source === 'personal' ? word : matchCase(typed, word),
+      insertText: insertionText(typed, word, source),
       from: head - typed.length,
       to: head,
       rank: score * 100,

@@ -3,6 +3,7 @@ import test from 'node:test'
 import { createPersonalModel } from '../src/addons/autocomplete/model.ts'
 import {
   autocompleteCompletions,
+  insertionText,
   precedingWords,
 } from '../src/addons/autocomplete/suggestions.ts'
 
@@ -135,6 +136,51 @@ test('prefix results require explicit enter selection and retain tab preference'
       ),
     )
   }
+})
+
+test('personal insertion matches prefix case and preserves internal capitals', async () => {
+  const f = fixture()
+  f.dictionary.complete = async () => []
+  const learn = (word, context = []) =>
+    f.model.observe({
+      scope: 'workspace',
+      languages: ['en'],
+      word,
+      context,
+      kind: 'typed',
+    })
+  for (let i = 0; i < 20; i++) learn('Something')
+  assert.equal(
+    (await f.provider(request('say som'), signal()))[0].insertText,
+    'something',
+  )
+  learn('something', ['say'])
+  for (let i = 0; i < 20; i++) learn('Something')
+  assert.equal(
+    (await f.provider(request('say som'), signal()))[0].insertText,
+    'something',
+  )
+  assert.equal(
+    (await f.provider(request('Som'), signal()))[0].insertText,
+    'Something',
+  )
+  for (const word of ['iPhone', 'McDonald']) {
+    learn(word, ['use'])
+    const prefix = word.slice(0, 3).toLowerCase()
+    for (const typed of [prefix, prefix.toUpperCase()])
+      assert.equal(
+        (await f.provider(request(`use ${typed}`), signal()))[0].insertText,
+        word,
+      )
+  }
+  f.dictionary.complete = async () => [{ lang: 'en', words: ['iphone'] }]
+  const items = await f.provider(request('use iph'), signal())
+  assert.equal(items.length, 1)
+  assert.equal(items[0].insertText, 'iPhone')
+  assert.equal(insertionText('Iph', 'iPhone', 'personal'), 'iPhone')
+  assert.equal(insertionText('Iph', 'iPhone', 'baseline'), 'IPhone')
+  assert.equal(insertionText('éco', 'école', 'personal'), 'école')
+  assert.equal(insertionText('Éco', 'école', 'personal'), 'École')
 })
 
 test('unsafe prose and unavailable sessions do not query dictionary or learning', async () => {

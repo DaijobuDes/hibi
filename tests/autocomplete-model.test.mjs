@@ -233,10 +233,7 @@ test('slang, spelling, capitalization and multilingual scripts remain exact', ()
     prefix: 'na',
   }
   assert.equal(words(model, request)[0], 'NaMe')
-  assert.deepEqual(
-    new Set(words(model, request)),
-    new Set(['NaMe', 'name', 'NAME']),
-  )
+  assert.deepEqual(words(model, request), ['NaMe'])
   assert.equal(words(model, { ...request, prefix: '你' })[0], '你好')
   assert.equal(words(model, { ...request, prefix: 'こん' })[0], 'こんにちは')
   assert.equal(words(model, { ...request, prefix: 'kum' })[0], 'kumustaaa')
@@ -250,6 +247,88 @@ test('slang, spelling, capitalization and multilingual scripts remain exact', ()
     words(model, { ...request, prefix: 'anti' })[0],
     'antidisestablishmentarianism',
   )
+})
+
+test('learned casing shares evidence and prefers mid-sentence spelling across saves', () => {
+  const model = createPersonalModel({ now: () => 1_000_000 })
+  learn(model, 'Something', 20)
+  assert.deepEqual(words(model, { ...session, prefix: 'som' }), ['something'])
+  learn(model, 'something', 1, { context: ['say'] })
+  learn(model, 'Something', 20)
+  const saved = model.snapshot()
+  const row = saved.entries.find((entry) => !entry.context.length)
+  assert.equal(row.word, 'something')
+  assert.equal(row.count, 41)
+  assert.equal(row.midSentence, true)
+  const copy = createPersonalModel({ snapshot: saved, now: () => 1_000_000 })
+  for (const prefix of ['som', 'Som', 'SOM'])
+    assert.deepEqual(words(copy, { ...session, prefix }), ['something'])
+  learn(model, 'Berlin', 1, { context: ['visit'] })
+  learn(model, 'berlin', 20)
+  assert.deepEqual(words(model, { ...session, prefix: 'ber' }), ['Berlin'])
+  assert.deepEqual(
+    words(
+      createPersonalModel({ snapshot: model.snapshot(), now: () => 1_000_000 }),
+      { ...session, prefix: 'ber' },
+    ),
+    ['Berlin'],
+  )
+})
+
+test('legacy casing variants coalesce without multiplying snapshot evidence', () => {
+  const model = createPersonalModel({ now: () => 1_000_000 })
+  learn(model, 'Something', 20)
+  const row = model.snapshot().entries[0]
+  const copy = createPersonalModel({
+    now: () => 1_000_000,
+    snapshot: {
+      version: 1,
+      entries: [
+        { ...row, word: 'Something' },
+        { ...row, word: 'something', count: 1, midSentence: true },
+        { ...row, midSentence: 'invalid' },
+      ],
+    },
+  })
+  assert.deepEqual(words(copy, { ...session, prefix: 'som' }), ['something'])
+  assert.equal(copy.snapshot().entries.length, 1)
+  assert.equal(copy.snapshot().entries[0].count, 20)
+  const legacy = createPersonalModel({
+    now: () => 1_000_000,
+    snapshot: {
+      version: 1,
+      entries: [
+        { ...row, word: 'Berlin' },
+        { ...row, word: 'Berlin', context: ['visit'], count: 1 },
+      ],
+    },
+  })
+  assert.deepEqual(words(legacy, { ...session, prefix: 'ber' }), ['Berlin'])
+})
+
+test('case-insensitive context and vocabulary do not split next-word confidence', () => {
+  const model = createPersonalModel({ now: () => 1_000_000 })
+  learn(model, 'Wild', 1, { context: ['That', 'was'] })
+  learn(model, 'wild', 2, { context: ['that', 'was'] })
+  assert.deepEqual(
+    words(model, { ...session, prefix: '', context: ['THAT', 'WAS'] }),
+    ['wild'],
+  )
+  learn(model, 'WILD', 1, { context: ['that', 'was'], kind: 'accepted' })
+  learn(model, 'wild', 1, { context: ['That', 'was'], kind: 'undo' })
+  assert.equal(
+    model.snapshot().entries.find((row) => row.context.length === 2).count,
+    3,
+  )
+  const ranked = model.suggest({
+    ...session,
+    prefix: 'wil',
+    baseline: [
+      { word: 'Wild', lang: 'en' },
+      { word: 'wild', lang: 'tl' },
+    ],
+  })
+  assert.equal(ranked.length, 1)
 })
 
 test('session language sets filter membership without guessing word language', () => {

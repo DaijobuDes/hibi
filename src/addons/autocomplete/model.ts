@@ -33,6 +33,8 @@ type Row = {
   languages: Lang[]
   context: string[]
   word: string
+  /** Context-free spelling learned from within a sentence. */
+  midSentence?: boolean
   count: number
   corrections: number
   updatedAt: number
@@ -88,8 +90,17 @@ function contextWords(input: readonly string[] = []): string[] {
   const invalid = tail.findLastIndex((word) => !safeWord(word))
   return tail.slice(invalid + 1)
 }
+const wordKey = (word: string) => word.normalize('NFC').toLowerCase()
+export const hasInternalCapitals = (word: string) =>
+  /\p{Lu}/u.test([...word].slice(1).join(''))
+
 function rowKey(row: Pick<Row, 'scope' | 'languages' | 'context' | 'word'>) {
-  return JSON.stringify([row.scope, row.languages, row.context, row.word])
+  return JSON.stringify([
+    row.scope,
+    row.languages,
+    row.context.map(wordKey),
+    wordKey(row.word),
+  ])
 }
 function bucketKey(
   scope: PersonalScope,
@@ -97,7 +108,7 @@ function bucketKey(
   context: readonly string[],
   prefix: string,
 ) {
-  return JSON.stringify([scope, lang, context, prefix])
+  return JSON.stringify([scope, lang, context.map(wordKey), prefix])
 }
 
 /** One synchronous, local model per user profile. No IO or document text retention. */
@@ -210,6 +221,8 @@ export function createPersonalModel(options: PersonalModelOptions = {}) {
         !Array.isArray(entry.context) ||
         entry.context.length > 2 ||
         !entry.context.every(safeWord) ||
+        (entry.midSentence !== undefined &&
+          typeof entry.midSentence !== 'boolean') ||
         ![entry.count, entry.corrections].every(
           (value) =>
             typeof value === 'number' &&
@@ -231,7 +244,13 @@ export function createPersonalModel(options: PersonalModelOptions = {}) {
         scope: entry.scope,
         languages: languages(entry.languages),
         context: [...entry.context],
-        word: entry.word,
+        word:
+          entry.context.length ||
+          entry.midSentence ||
+          hasInternalCapitals(entry.word)
+            ? entry.word
+            : wordKey(entry.word),
+        ...(entry.midSentence ? { midSentence: true } : {}),
         count: entry.count,
         corrections: entry.corrections,
         updatedAt: entry.updatedAt,
@@ -239,9 +258,27 @@ export function createPersonalModel(options: PersonalModelOptions = {}) {
       }
       // Duplicate rows cannot amplify supplied evidence.
       const key = rowKey(row)
-      if (!rows.has(key)) rows.set(key, row)
+      const previous = rows.get(key)
+      if (!previous || strength(row, time) > strength(previous, time))
+        rows.set(key, row)
+      if (row.midSentence || previous?.midSentence) {
+        const kept = rows.get(key)
+        if (kept) {
+          kept.word = row.midSentence ? row.word : (previous?.word ?? row.word)
+          kept.midSentence = true
+        }
+      }
     }
     prune(time)
+    // Older snapshots infer preferred spelling from their contextual rows.
+    for (const row of rows.values()) {
+      if (!row.context.length) continue
+      const base = rows.get(rowKey({ ...row, context: [] }))
+      if (base && !base.midSentence) {
+        base.word = row.word
+        base.midSentence = true
+      }
+    }
     rebuild(time)
   }
   load(options.snapshot)
@@ -290,7 +327,10 @@ export function createPersonalModel(options: PersonalModelOptions = {}) {
           scope: event.scope,
           languages: langs,
           context: words,
-          word: event.word,
+          word:
+            context.length || hasInternalCapitals(event.word)
+              ? event.word
+              : wordKey(event.word),
           count: 0,
           corrections: 0,
           updatedAt: time,
@@ -310,6 +350,12 @@ export function createPersonalModel(options: PersonalModelOptions = {}) {
         if (key === exactKey)
           row.corrections = Math.min(MAX_COUNT, row.corrections + 1)
       } else {
+        if (
+          context.length ||
+          (!row.midSentence && hasInternalCapitals(event.word))
+        )
+          row.word = event.word
+        if (context.length && !words.length) row.midSentence = true
         row.count = Math.min(
           MAX_COUNT,
           row.count + (event.kind === 'accepted' ? 2 : 1),
@@ -355,8 +401,9 @@ export function createPersonalModel(options: PersonalModelOptions = {}) {
           ) ?? []) {
             const score = (row.count - 2 * row.corrections) * decay(row, time)
             if (score <= 0) continue
-            if (score > (candidates.get(row.word)?.score ?? 0))
-              candidates.set(row.word, {
+            const key = wordKey(row.word)
+            if (score > (candidates.get(key)?.score ?? 0))
+              candidates.set(key, {
                 word: row.word,
                 lang,
                 score,
@@ -396,8 +443,9 @@ export function createPersonalModel(options: PersonalModelOptions = {}) {
       const score = item.custom
         ? 1.05 + 0.1 * (1 - i / Math.max(1, baseline.length))
         : 1 - i / Math.max(1, baseline.length)
-      if (score > (candidates.get(item.word)?.score ?? -Infinity))
-        candidates.set(item.word, {
+      const key = wordKey(item.word)
+      if (score > (candidates.get(key)?.score ?? -Infinity))
+        candidates.set(key, {
           word: item.word,
           lang: item.lang,
           score,
@@ -416,6 +464,8 @@ export function createPersonalModel(options: PersonalModelOptions = {}) {
     const evidence = new Map<
       string,
       {
+        word: string
+        preferred: boolean
         count: number
         context: number
         penalty: number
@@ -438,12 +488,22 @@ export function createPersonalModel(options: PersonalModelOptions = {}) {
           visited.add(row)
           const factor = decay(row, time)
           if ((row.count + row.corrections) * factor < 0.02) continue
-          const signals = evidence.get(row.word) ?? {
+          const key = wordKey(row.word)
+          const signals = evidence.get(key) ?? {
+            word: row.word,
+            preferred: false,
             count: 0,
             context: 0,
             penalty: 0,
             lastUsed: 0,
             lang,
+          }
+          if (
+            !signals.preferred &&
+            (row.midSentence || words.length || hasInternalCapitals(row.word))
+          ) {
+            signals.word = row.word
+            signals.preferred = true
           }
           // Language-set variants overlap; take strongest evidence rather than counting twice.
           if (!words.length)
@@ -455,14 +515,18 @@ export function createPersonalModel(options: PersonalModelOptions = {}) {
             )
           signals.penalty = Math.max(signals.penalty, row.corrections * factor)
           signals.lastUsed = Math.max(signals.lastUsed, row.lastUsed)
-          evidence.set(row.word, signals)
+          evidence.set(key, signals)
         }
-    for (const [word, signals] of evidence) {
-      const candidate = candidates.get(word) ?? {
-        word,
+    for (const [key, signals] of evidence) {
+      const candidate = candidates.get(key) ?? {
+        word: signals.word,
         lang: signals.lang,
         score: 0,
         source: 'personal' as const,
+      }
+      if (signals.preferred && candidate.word !== signals.word) {
+        candidate.word = signals.word
+        candidate.source = 'personal'
       }
       const confidence = signals.count / (signals.count + 12)
       const observations = Math.max(signals.count, signals.context)
@@ -480,7 +544,7 @@ export function createPersonalModel(options: PersonalModelOptions = {}) {
         signals.count > 0 ||
         signals.context > 0
       )
-        candidates.set(word, candidate)
+        candidates.set(key, candidate)
     }
     return [...candidates.values()]
       .sort((a, b) => b.score - a.score)
