@@ -3,7 +3,6 @@ import { CaptureWindow } from './CaptureWindow'
 import { captureWindow } from './capture'
 import manifest from './manifest'
 import { readSettings, settingsChanged } from './settings'
-import './quick-note.css'
 
 let stopSettings: (() => void) | undefined
 

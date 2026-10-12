@@ -1481,6 +1481,14 @@ button.ui-button.update-download-button:disabled {
   text-decoration-thickness: 1px;
   text-underline-offset: 3px;
 }
+.tiptap [data-raw-html="block"] {
+  max-height: 12em;
+}
+.tiptap [data-raw-html].ProseMirror-selectednode {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-control);
+}
 .format-unavailable {
   color: var(--muted);
   font-size: var(--text-ui);
@@ -1511,6 +1519,37 @@ button.ui-button.update-download-button:disabled {
 }
 :is(.tiptap, .format-content) th {
   background: var(--surface);
+}
+/* Table sizes are editor decorations; rows grow when their content needs more room. */
+.tiptap .tableWrapper[data-columns-sized="all"] > table {
+  width: auto;
+}
+.tiptap tr {
+  height: var(--table-row-height);
+}
+.tiptap :is(th, td) {
+  position: relative;
+}
+.tiptap :is(th, td)[data-resize-handle]::after {
+  content: "";
+  position: absolute;
+  background: var(--accent);
+  opacity: 0.65;
+  pointer-events: none;
+}
+.tiptap :is(th, td)[data-resize-handle="column"]::after {
+  inset: -1px -2px -1px auto;
+  width: 3px;
+}
+.tiptap :is(th, td)[data-resize-handle="row"]::after {
+  inset: auto -1px -2px;
+  height: 3px;
+}
+.tiptap[data-table-resize="column"] {
+  cursor: col-resize;
+}
+.tiptap[data-table-resize="row"] {
+  cursor: row-resize;
 }
 .tiptap ul[data-type="taskList"] {
   padding-left: 0;

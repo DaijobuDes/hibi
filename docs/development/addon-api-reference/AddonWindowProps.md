@@ -2,7 +2,7 @@
 
 # AddonWindowProps
 
-Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L612)
+Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L637)
 
 Props for a component in `Addon.windows`. It runs in a separate renderer with only these APIs.
 
@@ -44,7 +44,7 @@ type AddonWindowProps = {
 
 ### input
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L614)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L639)
 
 The JSON input passed to `windows.open`.
 
@@ -54,7 +54,7 @@ input: unknown
 
 ### Editor
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L623)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L648)
 
 Hibi's editor and formatting toolbar for one untitled Markdown note. Rendering it starts the enabled editor addons in this window.
 
@@ -68,7 +68,7 @@ Related: [AddonWindowEditorProps](AddonWindowEditorProps.md).
 
 ### native.query
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L617)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L642)
 
 ```typescript
 native.query: <T = unknown>(method: string, input?: unknown) => Promise<T>
@@ -85,7 +85,7 @@ native.query: <T = unknown>(method: string, input?: unknown) => Promise<T>
 
 ### native.invoke
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L618)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L643)
 
 ```typescript
 native.invoke: <T = unknown>(method: string, input?: unknown) => Promise<T>
@@ -102,7 +102,7 @@ native.invoke: <T = unknown>(method: string, input?: unknown) => Promise<T>
 
 ### close
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L621)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L646)
 
 Close this window.
 
