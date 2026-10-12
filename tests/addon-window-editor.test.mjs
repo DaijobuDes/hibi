@@ -51,6 +51,18 @@ test('addon windows host the editor without desktop privileges', {
   await preview.locator('.tiptap h1').getByText('Title').waitFor()
   await preview.locator('.tiptap p').getByText('Body').waitFor()
 
+  // Slash transforms that rewrite the whole note apply to the window's note.
+  await preview.keyboard.press('Enter')
+  await preview.keyboard.type('/front')
+  await preview
+    .getByRole('listbox', { name: /slash commands/i })
+    .getByRole('option', { name: /frontmatter add page properties/i })
+    .click()
+  await preview
+    .getByRole('region', { name: /frontmatter properties/i })
+    .waitFor()
+  await preview.locator('.tiptap h1').getByText('Title').waitFor()
+
   // Addons started for the editor cannot take the owner's bridge from the global.
   await assert.rejects(
     preview.evaluate(() => window.hibiAddonWindow.invoke('save', {})),

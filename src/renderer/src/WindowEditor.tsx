@@ -21,6 +21,7 @@ import { loadCursor } from './EditorCursor'
 import { EditorToolbar } from './EditorToolbar'
 import { flavors, loadFlavor, selectedFlavors } from './flavors'
 import { LoadingScreen } from './LoadingScreen'
+import { transformMarkdown } from './markdown-projection'
 import './colorschemes'
 
 const name = 'Untitled.md'
@@ -42,6 +43,7 @@ function Host({
     const saved = localStorage.getItem('default-view')
     return saved && isDocumentView(saved) ? saved : 'normal'
   })
+  const [reset, setReset] = useState(0)
   const [document] = useState(() => {
     const initial: DocumentState = {
       tabId: `window-${crypto.randomUUID()}`,
@@ -82,8 +84,16 @@ function Host({
       invoke: unavailable,
       error: (error) => console.error(error),
       isBusy: () => false,
-      updateMarkdown: () => {
-        throw new Error('This is not available in this window.')
+      updateMarkdown(transform, options) {
+        const markdown = transformMarkdown(
+          documentRuntime.get(document.tabId)?.markdown ?? '',
+          host.markdownExtensions,
+          transform,
+          options,
+        )
+        if (markdown === null) return
+        documentRuntime.replace(markdown, 'visual', undefined, document.tabId)
+        setReset((value) => value + 1)
       },
       runCommand: async () => false,
       runAction: () => {},
@@ -149,6 +159,7 @@ function Host({
         ) : (
           <Suspense fallback={<LoadingScreen />}>
             <ActiveDocumentEditor
+              key={reset}
               Component={Editor}
               markdown
               knownFlavors={known}

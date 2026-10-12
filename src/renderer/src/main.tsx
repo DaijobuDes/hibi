@@ -97,7 +97,7 @@ import {
 } from './flavors'
 import { LoadingScreen } from './LoadingScreen'
 import { installRendererDiagnostics } from './local-diagnostics'
-import { projectMarkdown } from './markdown-projection'
+import { transformMarkdown } from './markdown-projection'
 import {
   type OutlineHeading,
   type OutlineRequest,
@@ -879,14 +879,13 @@ function App() {
         const document = currentDocument.current
         if (busyRef.current || !document)
           throw new Error('The document is busy. Try again in a moment.')
-        const source = options
-          ? projectMarkdown(
-              document.markdown,
-              addonHost.markdownExtensions,
-            ).serialize(options.body)
-          : document.markdown
-        const markdown = transform(source)
-        if (markdown === null || markdown === document.markdown) return
+        const markdown = transformMarkdown(
+          document.markdown,
+          addonHost.markdownExtensions,
+          transform,
+          options,
+        )
+        if (markdown === null) return
         updateMarkdown(markdown)
         setResetEditor((value) => value + 1)
       },
