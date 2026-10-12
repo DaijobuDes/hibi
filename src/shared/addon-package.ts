@@ -15,7 +15,7 @@ export function validAddonInventoryPath(value: unknown): value is string {
           !!part &&
           part !== '.' &&
           part !== '..' &&
-          !/[\\:?%#<>"|*]|\p{Cc}/u.test(part) &&
+          !/[\\:?<>"|*]|\p{Cc}/u.test(part) &&
           !/[. ]$/.test(part) &&
           !/^(?:con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\.|$)/i.test(part),
       )
@@ -34,6 +34,7 @@ export function excludedAddonPath(path: string): boolean {
 export function validAddonPath(value: unknown): value is string {
   return (
     validAddonInventoryPath(value) &&
+    !/[%#]/.test(value) &&
     value.split('/').every((part) => !part.startsWith('.'))
   )
 }

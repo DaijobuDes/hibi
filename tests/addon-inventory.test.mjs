@@ -214,6 +214,32 @@ test('archive structure rejects central/local disagreement, truncation and damag
   await assert.rejects(archive([{ name: 'folder/', mode: 0x8000 }]), /modes/)
 })
 
+test('repository names allow URL punctuation outside selected package files', async (t) => {
+  const root = await temporary(t)
+  const files = [
+    ...packageFiles('prepared#/'),
+    { name: 'docs/C#.md', content: 'repository notes' },
+    { name: 'assets/100%.png', content: 'repository asset' },
+    ...packageFiles('invalid/'),
+    { name: 'invalid/notes#.md', content: 'not an installed filename' },
+  ]
+  await fixture(root, files)
+  for (const inventory of [
+    await archive(files),
+    await inventoryAddonDirectory(root),
+  ]) {
+    assert.deepEqual(addonCandidatePaths(inventory), ['invalid', 'prepared#'])
+    assert.deepEqual(addonPackageFiles(inventory, 'prepared#'), [
+      'README.md',
+      'hibi-addon.json',
+      'index.js',
+    ])
+    assert.throws(() => addonPackageFiles(inventory, 'invalid'), /invalid path/)
+  }
+  assert.equal(validAddonPath('docs/C#.md'), false)
+  assert.equal(validAddonPath('assets/100%.png'), false)
+})
+
 test('archive Windows reparse attributes are refused even for ignored directories', async () => {
   for (const name of ['junction/', '.git/junction/']) {
     const zip = zipFiles([{ name, mode: 0x4000 }])

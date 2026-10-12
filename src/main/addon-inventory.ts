@@ -494,7 +494,7 @@ export function addonPackageFiles(
   inventory: AddonInventory,
   folder: string,
 ): string[] {
-  if (folder && !validAddonPath(folder))
+  if (folder && !validAddonInventoryPath(folder))
     throw new Error('The selected addon folder is invalid.')
   const prefix = folder ? `${folder}/` : ''
   const files: string[] = []
@@ -505,6 +505,8 @@ export function addonPackageFiles(
     if (!entry.path.startsWith(prefix) || entry.path === folder) continue
     const path = entry.path.slice(prefix.length)
     if (excludedAddonPath(path)) continue
+    if (!validAddonPath(path))
+      throw new Error('The addon repository contains an invalid path.')
     register.add(path, entry.directory)
     const parts = path.split('/')
     for (let index = 1; index <= parts.length; index++)
