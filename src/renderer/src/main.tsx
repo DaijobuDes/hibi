@@ -82,10 +82,10 @@ import {
 } from './document-runtime'
 import { subscribeDocumentShell } from './document-shell'
 import type { ViewMode } from './Editor'
-import { loadCursor } from './EditorCursor'
 import { EditorToolbar } from './EditorToolbar'
 import { isEditorCommandTargetCurrent } from './editor-command-targets'
 import { setEditorCommandMenu } from './editor-interaction-presence'
+import { editorPreferences, useEditorPreference } from './editor-preferences'
 import { FlavorPicker } from './FlavorPicker'
 import { FormatEditor } from './FormatEditor'
 import {
@@ -742,28 +742,18 @@ function App() {
     ...rightSidebarResize,
     onCollapse: closeRightSidebar,
   }
-  const [cursorSettings, setCursorSettings] = useState(loadCursor)
-  const [showLineNumbers, setShowLineNumbers] = useState(
-    () => localStorage.getItem('line-numbers') === 'true',
+  const [cursorSettings, setCursorSettings] = useEditorPreference(
+    editorPreferences.cursor,
   )
-  const [spellCheck, setSpellCheck] = useState(
-    () => localStorage.getItem('spell-check') !== 'false',
+  const [showLineNumbers, setShowLineNumbers] = useEditorPreference(
+    editorPreferences.lineNumbers,
   )
-  const [showMarkdownMarkers, setShowMarkdownMarkers] = useState(
-    () => localStorage.getItem('markdown-markers') !== 'false',
+  const [spellCheck, setSpellCheck] = useEditorPreference(
+    editorPreferences.spellCheck,
   )
-  useEffect(() => {
-    localStorage.setItem('markdown-markers', String(showMarkdownMarkers))
-  }, [showMarkdownMarkers])
-  useEffect(() => {
-    localStorage.setItem('spell-check', String(spellCheck))
-  }, [spellCheck])
-  useEffect(() => {
-    localStorage.setItem('line-numbers', String(showLineNumbers))
-  }, [showLineNumbers])
-  useEffect(() => {
-    localStorage.setItem('cursor-settings', JSON.stringify(cursorSettings))
-  }, [cursorSettings])
+  const [showMarkdownMarkers, setShowMarkdownMarkers] = useEditorPreference(
+    editorPreferences.markers,
+  )
   function captureAddonCommandContext(
     source: CommandExecutionContext['source'],
   ): CommandExecutionContext {

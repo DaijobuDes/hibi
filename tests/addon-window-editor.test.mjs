@@ -67,6 +67,20 @@ test('addon windows host the editor without desktop privileges', {
     .waitFor()
   await preview.locator('.tiptap h1').getByText('Title').waitFor()
 
+  // Preferences saved in the main window apply to open windows.
+  assert.equal(await editor.getAttribute('spellcheck'), 'true')
+  await page.evaluate(() => {
+    localStorage.setItem('spell-check', 'false')
+    localStorage.setItem('hibi:toolbar', JSON.stringify({ mode: 'text' }))
+  })
+  await preview.locator('.tiptap[spellcheck="false"]').waitFor()
+  await preview.locator('.editor-toolbar[data-mode="text"]').waitFor()
+  await page.evaluate(() => {
+    localStorage.removeItem('spell-check')
+    localStorage.removeItem('hibi:toolbar')
+  })
+  await preview.locator('.tiptap[spellcheck="true"]').waitFor()
+
   // Addons started for the editor cannot take the owner's bridge from the global.
   await assert.rejects(
     preview.evaluate(() => window.hibiAddonWindow.invoke('save', {})),

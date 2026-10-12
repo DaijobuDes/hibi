@@ -20,8 +20,8 @@ import { documentFormats, editorDocument } from './document-formats'
 import { documentRuntime } from './document-runtime'
 import { subscribeDocumentShell } from './document-shell'
 import type { MarkdownEditor, ViewMode } from './Editor'
-import { loadCursor } from './EditorCursor'
 import { EditorToolbar } from './EditorToolbar'
+import { editorPreferences, useEditorPreference } from './editor-preferences'
 import { flavors, loadFlavor, selectedFlavors } from './flavors'
 import { LoadingScreen } from './LoadingScreen'
 import { transformMarkdown } from './markdown-projection'
@@ -138,12 +138,10 @@ function Host({
       setEditor(() => MarkdownEditor),
     )
   }, [])
-  const [settings] = useState(() => ({
-    cursor: loadCursor(),
-    lineNumbers: localStorage.getItem('line-numbers') === 'true',
-    spellCheck: localStorage.getItem('spell-check') !== 'false',
-    markers: localStorage.getItem('markdown-markers') !== 'false',
-  }))
+  const [cursor] = useEditorPreference(editorPreferences.cursor)
+  const [lineNumbers] = useEditorPreference(editorPreferences.lineNumbers)
+  const [spellCheck] = useEditorPreference(editorPreferences.spellCheck)
+  const [markers] = useEditorPreference(editorPreferences.markers)
   return (
     <div className="editor-surface">
       <EditorToolbar mode={mode} />
@@ -181,10 +179,10 @@ function Host({
               sourceExtensions={host.sourceExtensions}
               richExtensions={host.richExtensions}
               documentRevision={current.revision}
-              showLineNumbers={settings.lineNumbers}
-              spellCheck={settings.spellCheck}
-              showMarkdownMarkers={settings.markers}
-              cursorSettings={settings.cursor}
+              showLineNumbers={lineNumbers}
+              spellCheck={spellCheck}
+              showMarkdownMarkers={markers}
+              cursorSettings={cursor}
               markdownExtensions={host.markdownExtensions}
               onChange={(value, group) =>
                 documentRuntime.replace(value, 'visual', group, document.tabId)
