@@ -376,6 +376,11 @@ test('autocomplete learns locally, disables learning, excludes documents and cle
     .getByRole('button', { name: /^open workspace$/i, exact: true })
     .click()
   await page.getByRole('treeitem', { name: /^note\.md$/i, exact: true }).click()
+  await waitForAsync(page, async () => {
+    const document = await window.hibi.getDocument()
+    const workspace = await window.hibi.getWorkspace()
+    return document.name === 'note.md' && workspace?.activePath === 'note.md'
+  })
   await waitForDocumentEditor(app, page)
   await learnWord('workspaceword')
   const workspaceId = await page.evaluate(
