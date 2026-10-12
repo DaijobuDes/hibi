@@ -384,3 +384,74 @@ test('autocomplete learns locally, disables learning, excludes documents and cle
   assert.deepEqual(await app.evaluate(() => globalThis.autocompleteNetwork), [])
   assert.deepEqual(errors, [])
 })
+
+test('legacy dictionary suggestions enable autocomplete at startup while explicit off stays off', {
+  timeout: 30000,
+}, async (t) => {
+  const profile = await mkdtemp(join(tmpdir(), 'hibi-autocomplete-migration-'))
+  await writeFile(
+    join(profile, 'addons.json'),
+    JSON.stringify({ dictionary: true }),
+  )
+  const app = await electron.launch({
+    args: [resolve('.'), `--user-data-dir=${profile}`],
+  })
+  t.after(async () => {
+    await app.close()
+    await rm(profile, { recursive: true, force: true })
+  })
+  const page = await app.firstWindow()
+  await waitForDocumentEditor(app, page)
+  const seedLegacy = () =>
+    page.evaluate(() => {
+      localStorage.removeItem('hibi:autocomplete')
+      localStorage.setItem(
+        'hibi:dictionary:typing',
+        JSON.stringify({
+          suggest: true,
+          languages: ['fr', 'en'],
+          tabAccepts: false,
+        }),
+      )
+    })
+  await seedLegacy()
+  await page.reload()
+  await waitForDocumentEditor(app, page)
+  await waitForAsync(page, async () => {
+    const { states } = await window.hibi.bootstrap.addons()
+    return (
+      states.some((state) => state.id === 'autocomplete' && state.enabled) &&
+      localStorage.getItem('hibi:dictionary:typing') === null
+    )
+  })
+  const migrated = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem('hibi:autocomplete')),
+  )
+  assert.equal(migrated.suggest, true)
+  assert.equal(migrated.tabAccepts, false)
+  assert.deepEqual(migrated.languages, ['fr', 'en'])
+  assert.equal(
+    JSON.parse(await readFile(join(profile, 'addons.json'), 'utf8'))
+      .autocomplete,
+    true,
+  )
+
+  await page.evaluate(() => window.hibi.setAddonEnabled('autocomplete', false))
+  await seedLegacy()
+  await page.reload()
+  await waitForDocumentEditor(app, page)
+  await waitForAsync(
+    page,
+    () => localStorage.getItem('hibi:dictionary:typing') === null,
+  )
+  const { states } = await page.evaluate(() => window.hibi.bootstrap.addons())
+  assert.equal(
+    states.find((state) => state.id === 'autocomplete').enabled,
+    false,
+  )
+  assert.equal(
+    JSON.parse(await readFile(join(profile, 'addons.json'), 'utf8'))
+      .autocomplete,
+    false,
+  )
+})
