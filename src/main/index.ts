@@ -1497,6 +1497,9 @@ if (!app.requestSingleInstanceLock()) {
           addonWindowSender(event)
         return { addonId, id, input, title, titleBar, platform }
       })
+      ipcMain.handle(ADDON_WINDOW_CHANNELS.closeSelf, (event) => {
+        addonWindowSender(event).window.close()
+      })
       ipcMain.handle(
         ADDON_WINDOW_CHANNELS.query,
         (event, method: unknown, input: unknown) => {

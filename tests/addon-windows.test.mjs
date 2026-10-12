@@ -193,7 +193,8 @@ test('addon windows open once per id and close with their addon', {
     window.marker = 'still here'
   })
   await open('kept')
-  await page.evaluate(() => window.hibi.closeAddonWindow('quick-note', 'kept'))
+  // Closing from inside the window goes through the same path as its close button.
+  await kept.evaluate(() => window.hibiAddonWindow.close())
   await page.waitForFunction(() =>
     window.closedAddonWindows.includes('quick-note/kept'),
   )
