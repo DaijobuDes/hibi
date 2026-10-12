@@ -19,7 +19,7 @@ const details = (id, extra = {}) => ({
   ...extra,
 })
 const requires = (...ids) => ({ addons: ids.map((id) => ({ id })) })
-const hostImporter = /[\\/](addons|sideload)\.ts$/
+const hostImporter = /[\\/](addons|sideload|addon-inventory)\.ts$/
 
 async function fixture(root, manifest, installed = false) {
   const folder = join(root, manifest.id)
@@ -54,7 +54,8 @@ async function host(t, builtins = [details('markdown')]) {
         loadNative: state.nativeModules[path.replace('/manifest.ts', '/native.ts')],
       }));`,
     'virtual:hibi-addon-catalog/details': `export default ${JSON.stringify(Object.fromEntries(builtins.map((manifest) => [manifest.id, { authors: manifest.authors, licenses: manifest.licenses }])))};`,
-    electron: `import {rm} from 'node:fs/promises';
+    electron: `import {rm} from 'node:fs/promises';import {EventEmitter} from 'node:events';
+      export const window = Object.assign(new EventEmitter(), {id:1,isDestroyed:()=>false});
       export const state = {root:${JSON.stringify(root)}, manifests:${JSON.stringify(modules)}, nativeModules:{}, natives:{}, source:null, failTrash:false, failRename:false, reviews:[]};
       state.nativeModules = Object.fromEntries(Object.values(state.manifests).map(manifest => [
         '../addons/' + manifest.id + '/native.ts', async () => state.natives[manifest.id],
@@ -67,7 +68,7 @@ async function host(t, builtins = [details('markdown')]) {
       export const shell = {trashItem:async path=>{if(state.failTrash)throw new Error('trash failed');await rm(path,{recursive:true,force:true})}};
     `,
     'node:fs/promises': `import * as fs from 'node:fs/promises';import {basename} from 'node:path';import {state} from 'electron';
-      export const {lstat,readFile,realpath,writeFile,mkdir,mkdtemp,readdir,rm}=fs;
+      export const {lstat,readFile,realpath,writeFile,mkdir,mkdtemp,readdir,rm,open,opendir}=fs;
       export const rename=async(from,to)=>{if(state.failRename&&basename(from).startsWith('.staging-'))throw new Error('replace failed');return fs.rename(from,to)};
     `,
     './appearance': 'export const exportedAppearance=()=>({})',
@@ -79,11 +80,13 @@ async function host(t, builtins = [details('markdown')]) {
     './addon-repository':
       'export const repositoryUrl=()=>false,downloadRepository=()=>{throw new Error("No downloads in this test")}',
     './addon-download': 'export const downloadAddon=()=>{},unpackAddon=()=>{}',
+    './zip-reader.ts':
+      'export const openBoundedZip=()=>{throw new Error("No downloads in this test")}',
   }
   const { outputFiles } = await build({
     stdin: {
       contents:
-        "export * from './src/main/addons.ts'; export * from './src/main/sideload.ts'; export {state} from 'electron'",
+        "export * from './src/main/addons.ts'; export * from './src/main/sideload.ts'; export {state,window} from 'electron'",
       resolveDir: resolve('.'),
     },
     bundle: true,
@@ -214,7 +217,7 @@ test('installed ids matching inherited object properties remain disabled until e
     join(h.state.root, 'sources'),
     details('constructor'),
   )
-  await h.installAddon({})
+  await h.installAddon(h.window)
   assert.deepEqual(stateOf(h, 'constructor'), {
     id: 'constructor',
     enabled: false,
@@ -271,13 +274,13 @@ test('sideload parses requirements and rejects malformed, missing, and cyclic in
       source,
       details('invalid-self', { requires: invalid }),
     )
-    await assert.rejects(h.installAddon({}), /requirements/)
+    await assert.rejects(h.installAddon(h.window), /requirements/)
   }
   h.state.source = await fixture(
     source,
     details('consumer', { requires: requires('provider') }),
   )
-  await assert.rejects(h.installAddon({}), /unknown addon "provider"/)
+  await assert.rejects(h.installAddon(h.window), /unknown addon "provider"/)
   assert.equal(h.state.reviews.length, 0)
   h.state.source = await fixture(
     source,
@@ -285,12 +288,12 @@ test('sideload parses requirements and rejects malformed, missing, and cyclic in
       requires: { addons: [{ id: 'absent', optional: true }] },
     }),
   )
-  await h.installAddon({})
+  await h.installAddon(h.window)
   h.state.source = await fixture(
     source,
     details('consumer', { requires: requires('provider') }),
   )
-  await h.installAddon({})
+  await h.installAddon(h.window)
   assert.deepEqual(
     h.installedAddons().find((addon) => addon.manifest.id === 'consumer')
       .manifest.requires,
@@ -300,7 +303,7 @@ test('sideload parses requirements and rejects malformed, missing, and cyclic in
     source,
     details('provider', { requires: requires('consumer') }),
   )
-  await assert.rejects(h.installAddon({}), /dependency cycle/)
+  await assert.rejects(h.installAddon(h.window), /dependency cycle/)
   assert.equal(h.state.reviews.length, 2)
   assert.equal(
     h.installedAddons().find((addon) => addon.manifest.id === 'provider')
@@ -318,7 +321,7 @@ test('replacement and removal block dependents, retain their preferences, and re
     details('consumer', { requires: requires('provider') }),
   ]) {
     h.state.source = await fixture(source, manifest)
-    await h.installAddon({})
+    await h.installAddon(h.window)
   }
   await h.enableAddon('consumer', true, true)
   const generation = h.getAddonActivationGeneration('consumer')
@@ -327,7 +330,7 @@ test('replacement and removal block dependents, retain their preferences, and re
     details('provider', { version: '2.0.0' }),
   )
   h.state.failRename = true
-  await assert.rejects(h.installAddon({}), /replace failed/)
+  await assert.rejects(h.installAddon(h.window), /replace failed/)
   assert.equal(stateOf(h, 'provider').enabled, true)
   assert.equal(stateOf(h, 'consumer').blockedBy, undefined)
   assert.equal(
@@ -336,7 +339,7 @@ test('replacement and removal block dependents, retain their preferences, and re
     '1.0.0',
   )
   h.state.failRename = false
-  await h.installAddon({})
+  await h.installAddon(h.window)
   assert.equal(stateOf(h, 'provider').enabled, false)
   assert.deepEqual(stateOf(h, 'consumer'), {
     id: 'consumer',
@@ -364,16 +367,16 @@ test('replacement and removal block dependents, retain their preferences, and re
     /requires missing addons: provider/,
   )
   h.state.source = await fixture(source, details('unrelated'))
-  await h.installAddon({})
+  await h.installAddon(h.window)
   assert.equal(stateOf(h, 'unrelated').enabled, false)
   assert.deepEqual(stateOf(h, 'consumer').blockedBy, ['provider'])
   h.state.source = await fixture(
     source,
     details('new-consumer', { requires: requires('consumer') }),
   )
-  await assert.rejects(h.installAddon({}), /unknown addon "provider"/)
+  await assert.rejects(h.installAddon(h.window), /unknown addon "provider"/)
   h.state.source = await fixture(source, details('provider'))
-  await h.installAddon({})
+  await h.installAddon(h.window)
   assert.equal(stateOf(h, 'provider').enabled, false)
   await h.enableAddon('provider', true)
   assert.equal(stateOf(h, 'consumer').blockedBy, undefined)
@@ -453,8 +456,10 @@ test('installation rejects reserved ids, privileges, and pending resources befor
   ]
   for (const manifest of invalid) {
     h.state.source = await fixture(source, manifest)
+    for (const path of [...(manifest.styles ?? []), ...(manifest.themes ?? [])])
+      await writeFile(join(h.state.source, path), '{}')
     await assert.rejects(
-      h.installAddon({}),
+      h.installAddon(h.window),
       /built-in addon|cannot declare|SDK capabilities|not supported/,
     )
   }
@@ -545,7 +550,7 @@ test('installer accepts the full typst notice but keeps the 64 kib manifest boun
   const atLimit = raw + ' '.repeat(64 * 1024 - Buffer.byteLength(raw))
   const path = join(h.state.source, 'hibi-addon.json')
   await writeFile(path, atLimit)
-  await h.installAddon({})
+  await h.installAddon(h.window)
   const expected = h.installedAddons()
   assert.equal(expected[0].manifest.licenses[0].text, text)
   assert.equal(expected[0].manifest.apiVersion, 2)
@@ -554,7 +559,7 @@ test('installer accepts the full typst notice but keeps the 64 kib manifest boun
   await h.loadAddons()
   assert.deepEqual(h.installedAddons(), expected)
   await writeFile(path, `${atLimit} `)
-  await assert.rejects(h.installAddon({}), /no larger than 64 KiB/)
+  await assert.rejects(h.installAddon(h.window), /no larger than 64 KiB/)
   assert.equal(h.state.reviews.length, 1)
   assert.deepEqual(h.installedAddons(), expected)
 })
@@ -574,7 +579,7 @@ test('real installed fixture retains normalization through installation and rest
   const input = await read('installed')
   const expected = await read('installed-expected')
   h.state.source = await fixture(join(h.state.root, 'sources'), input)
-  await h.installAddon({})
+  await h.installAddon(h.window)
   const installed = h.installedAddons()
   assert.deepEqual(installed[0].manifest, expected.manifest)
   assert.deepEqual(installed[0].themes, expected.themes)
