@@ -59,7 +59,7 @@ export type AddonWindowBridge = {
   query: (method: string, input?: unknown) => Promise<unknown>
   invoke: (method: string, input?: unknown) => Promise<unknown>
 }
-/** `window.hibiAddonWindow`. `seal` hands the bridge over once and makes these methods refuse. */
+/** `window.hibiAddonWindow`. `seal` hands the bridge over once; afterwards only `context` and `close` answer. */
 export type AddonWindowGlobal = AddonWindowBridge & {
   seal: () => AddonWindowBridge | undefined
 }

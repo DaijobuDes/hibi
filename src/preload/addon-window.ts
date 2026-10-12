@@ -28,10 +28,10 @@ const closed = () => Promise.reject(new Error('This window bridge is closed.'))
 // Addon windows get only their owner's identity and native handlers, never window.hibi.
 if (process.isMainFrame)
   contextBridge.exposeInMainWorld('hibiAddonWindow', {
-    context: () => (sealed ? closed() : bridge.context()),
+    context: () => bridge.context(),
     states: () => (sealed ? closed() : bridge.states()),
     onStates: (listener) => (sealed ? () => {} : bridge.onStates(listener)),
-    close: () => (sealed ? closed() : bridge.close()),
+    close: () => bridge.close(),
     query: (method, input) => (sealed ? closed() : bridge.query(method, input)),
     invoke: (method, input) =>
       sealed ? closed() : bridge.invoke(method, input),

@@ -1,10 +1,33 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { setTimeout } from 'node:timers/promises'
 import { electron } from './electron.mjs'
+
+test('addon window boot code loads no addon module before taking the bridge', async () => {
+  const chunks = JSON.parse(
+    await readFile('out/renderer/startup-bundle.json', 'utf8'),
+  )
+  const byFile = new Map(chunks.map((chunk) => [chunk.file, chunk]))
+  const entry = chunks.find((chunk) =>
+    chunk.modules.includes('src/renderer/src/addon-window.tsx'),
+  )
+  assert.ok(entry?.entry)
+  const reached = new Set()
+  const visit = (file) => {
+    if (reached.has(file)) return
+    reached.add(file)
+    for (const dependency of byFile.get(file)?.imports ?? []) visit(dependency)
+  }
+  visit(entry.file)
+  // Manifests are addon code too; an eager one could otherwise take the bridge first.
+  const addonModules = [...reached]
+    .flatMap((file) => byFile.get(file).modules)
+    .filter((module) => /^src\/(?:user)?addons\/[^/]+\//.test(module))
+  assert.deepEqual(addonModules, [])
+})
 
 test('addon windows host the editor without desktop privileges', {
   timeout: 45000,

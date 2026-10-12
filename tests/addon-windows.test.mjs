@@ -118,11 +118,10 @@ test('addon windows open once per id and close with their addon', {
       },
     },
   )
-  // Native requests always go to the window's own addon.
-  assert.ok(
-    Array.isArray(
-      await second.evaluate(() => window.hibiAddonWindow.query('targets')),
-    ),
+  // The window host takes the bridge at boot, so page code cannot reach native handlers.
+  await assert.rejects(
+    second.evaluate(() => window.hibiAddonWindow.query('targets')),
+    /bridge is closed/,
   )
   assert.equal(await second.locator('.addon-window-titlebar').count(), 0)
   const first = await until(() => addonPage(app, 'one'))
