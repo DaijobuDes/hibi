@@ -65,6 +65,7 @@ export type {
 } from '../ui/dialogs'
 export type { MenuApi, MenuItem } from '../ui/menus'
 export type {
+  ToastAction,
   ToastApi,
   ToastHandle,
   ToastOptions,

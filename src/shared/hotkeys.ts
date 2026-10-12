@@ -23,6 +23,12 @@ export const actions = [
   { id: 'find', label: 'Find in document', category: 'edit', key: 'f' },
   { id: 'settings', label: 'Open settings', category: 'preferences', key: ',' },
   {
+    id: 'focus-notifications',
+    label: 'Focus notifications',
+    category: 'app',
+    key: '',
+  },
+  {
     id: 'previous-tab',
     label: 'Previous tab',
     category: 'view',
