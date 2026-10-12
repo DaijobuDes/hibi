@@ -47,6 +47,8 @@ capture.onClosed(() => console.log('closed'))
 
 The returned [AddonWindowHandle](../addon-api-reference/AddonWindowHandle.md) can focus or close the window and report when it closes. Hibi remembers the size and position the user chooses for each window ID on each display. `position: 'cursor-display'` opens new windows near the top of the display with the pointer; `center` centers them on that display.
 
+Set `titleBar: 'hibi'` to replace the system title bar with Hibi's compact bar, as in the main window. Hibi draws the window title in a draggable strip above your component and keeps the system window controls: inset on macOS and drawn over the bar's right edge on Windows and Linux. Your component fills the space below it.
+
 Set `panel: true` for short tasks that should appear over whatever the user is doing. On macOS, a panel floats over full-screen apps on every Space and takes keyboard focus without bringing Hibi's main window forward. Other systems ignore `panel`; use `alwaysOnTop` to keep the window above other applications there.
 
 Hibi closes an addon's windows when the addon is disabled. Closing the main window does not close addon windows.

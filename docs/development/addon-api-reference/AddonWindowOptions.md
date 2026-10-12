@@ -17,6 +17,8 @@ type AddonWindowOptions = {
   size?: { width: number; height: number }
   /** `cursor-display` opens near the top of the display with the pointer; `center` centers on that display. Defaults to `center`. */
   position?: 'cursor-display' | 'center'
+  /** `hibi` replaces the system title bar with Hibi's compact bar and window controls, as in the main window. Defaults to `native`. */
+  titleBar?: 'native' | 'hibi'
   /** Keep the window above other applications. */
   alwaysOnTop?: boolean
   /** On macOS, float over full-screen apps on every Space and take keyboard focus without bringing Hibi forward. Ignored elsewhere. */
@@ -36,6 +38,7 @@ type AddonWindowOptions = {
 - [title](#title)
 - [size](#size)
 - [position](#position)
+- [titleBar](#titlebar)
 - [alwaysOnTop](#alwaysontop)
 - [panel](#panel)
 - [input](#input)
@@ -82,9 +85,19 @@ Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/shared/
 position?: 'cursor-display' | 'center'
 ```
 
-### alwaysOnTop
+### titleBar
 
 Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/shared/addon-windows.ts#L22)
+
+`hibi` replaces the system title bar with Hibi's compact bar and window controls, as in the main window. Defaults to `native`.
+
+```typescript
+titleBar?: 'native' | 'hibi'
+```
+
+### alwaysOnTop
+
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/shared/addon-windows.ts#L24)
 
 Keep the window above other applications.
 
@@ -94,7 +107,7 @@ alwaysOnTop?: boolean
 
 ### panel
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/shared/addon-windows.ts#L24)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/shared/addon-windows.ts#L26)
 
 On macOS, float over full-screen apps on every Space and take keyboard focus without bringing Hibi forward. Ignored elsewhere.
 
@@ -104,7 +117,7 @@ panel?: boolean
 
 ### input
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/shared/addon-windows.ts#L26)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/shared/addon-windows.ts#L28)
 
 JSON value passed to the window component. Limited to 64 KB.
 

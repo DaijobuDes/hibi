@@ -18,6 +18,8 @@ export type AddonWindowOptions = {
   size?: { width: number; height: number }
   /** `cursor-display` opens near the top of the display with the pointer; `center` centers on that display. Defaults to `center`. */
   position?: 'cursor-display' | 'center'
+  /** `hibi` replaces the system title bar with Hibi's compact bar and window controls, as in the main window. Defaults to `native`. */
+  titleBar?: 'native' | 'hibi'
   /** Keep the window above other applications. */
   alwaysOnTop?: boolean
   /** On macOS, float over full-screen apps on every Space and take keyboard focus without bringing Hibi forward. Ignored elsewhere. */
@@ -31,6 +33,9 @@ export type AddonWindowContext = {
   addonId: string
   id: string
   input: unknown
+  title: string
+  titleBar: 'native' | 'hibi'
+  platform: string
 }
 
 /** The only desktop requests available inside an addon window. */
