@@ -436,6 +436,12 @@ test('local chosen links, ancestor links, junctions, special files and replaceme
     inventoryAddonDirectory(`${link}/../source`),
     /links|junctions/,
   )
+  if (process.platform === 'win32')
+    for (const chosen of [
+      `${link.replaceAll('\\', '/')}/../source`,
+      `${link}\\..\\source`,
+    ])
+      await assert.rejects(inventoryAddonDirectory(chosen), /links|junctions/)
   const inventory = await inventoryAddonDirectory(source)
   await rename(join(source, 'nested/index.js'), join(source, 'nested/old.js'))
   await writeFile(join(source, 'nested/index.js'), 'replacement')

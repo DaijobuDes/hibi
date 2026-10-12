@@ -353,7 +353,10 @@ function sameFile(a: Stats, b: Stats): boolean {
 async function canonicalRoot(root: string): Promise<string> {
   const absolute = isAbsolute(root) ? root : `${process.cwd()}${sep}${root}`
   let current = parse(absolute).root
-  const parts = absolute.slice(current.length).split(sep).filter(Boolean)
+  const parts = absolute
+    .slice(current.length)
+    .split(process.platform === 'win32' ? /[\\/]/ : sep)
+    .filter(Boolean)
   for (const [index, part] of parts.entries()) {
     current = join(current, part)
     const stat = await lstat(current)
