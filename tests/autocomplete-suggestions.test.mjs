@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { safeCompletionContext } from '../src/shared/completions.ts'
 import { createPersonalModel } from '../src/addons/autocomplete/model.ts'
 import {
   autocompleteCompletions,
   insertionText,
   precedingWords,
 } from '../src/addons/autocomplete/suggestions.ts'
+import { safeCompletionContext } from '../src/shared/completions.ts'
 
 const request = (before, prose = { before, after: '' }) => ({
   view: {
