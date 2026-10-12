@@ -3,6 +3,7 @@ import { once } from 'node:events'
 import {
   mkdir,
   mkdtemp,
+  readdir,
   readFile,
   realpath,
   rename,
@@ -141,7 +142,7 @@ const noteText = async (capture) =>
   (await capture.locator('.tiptap[contenteditable="true"]').innerText()).trim()
 
 /** A workspace and profile shared by one or more launches, cleaned up together. */
-async function harness(t, { draft } = {}) {
+async function harness(t, { draft, draftFile } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'hibi-quick-note-'))
   const workspace = join(root, 'workspace')
   const profile = join(root, 'profile')
@@ -156,6 +157,8 @@ async function harness(t, { draft } = {}) {
       join(profile, 'quick-note-draft.json'),
       JSON.stringify({ markdown: draft, destination: null }),
     )
+  if (draftFile !== undefined)
+    await writeFile(join(profile, 'quick-note-draft.json'), draftFile)
   const apps = []
   t.after(async () => {
     // Playwright drops a killed app's handle, so use the child captured at launch.
@@ -968,4 +971,150 @@ test('a shortcut press from a stale activation opens nothing', {
     ),
   )
   assert.equal(await captureWindows(), 0)
+})
+
+test('an unreadable draft is kept aside and an older one is recovered', {
+  timeout: 60000,
+}, async (t) => {
+  const damaged = await harness(t, { draftFile: '{"markdown": "half' })
+  let session = await damaged.launch()
+  let capture = await openCapture(session.app, session.page)
+  await capture
+    .getByRole('alert')
+    .getByText(/kept the file as quick-note-draft\.unreadable-\d+\.json/)
+    .waitFor()
+  const kept = (await readdir(damaged.profile)).find((name) =>
+    name.startsWith('quick-note-draft.unreadable-'),
+  )
+  assert.equal(
+    await readFile(join(damaged.profile, kept), 'utf8'),
+    '{"markdown": "half',
+  )
+  await writeNote(capture, 'new note')
+  await until(
+    async () => (await readDraft(damaged.profile))?.markdown === 'new note',
+  )
+  assert.equal(
+    await readFile(join(damaged.profile, kept), 'utf8'),
+    '{"markdown": "half',
+  )
+
+  // A draft from before destinations were stored is recovered, not replaced.
+  const older = await harness(t, {
+    draftFile: JSON.stringify({ markdown: 'recover me' }),
+  })
+  session = await older.launch()
+  capture = await openCapture(session.app, session.page)
+  assert.equal(await noteText(capture), 'recover me')
+  await until(async () => (await readDraft(older.profile))?.destination)
+  assert.equal((await readDraft(older.profile)).markdown, 'recover me')
+})
+
+test('a discarded or kept-over note does not keep the old destination', {
+  timeout: 60000,
+}, async (t) => {
+  const h = await harness(t)
+  await mkdir(join(h.workspace, 'Inbox'))
+  const { app, page } = await h.launch()
+  const setFolder = (folder) =>
+    page.evaluate((folder) => {
+      localStorage.setItem('hibi:quick-note', JSON.stringify({ folder }))
+    }, folder)
+  // Typing pins the root; deleting everything discards that note.
+  let capture = await openCapture(app, page)
+  await writeNote(capture, 'temporary')
+  await until(async () => (await readDraft(h.profile))?.destination)
+  await writeNote(capture, '')
+  await until(async () => !(await readDraft(h.profile)))
+  const before = await captureHides(app)
+  await capture.keyboard.press('Escape')
+  await hidden(app, before)
+  await setFolder('Inbox')
+  capture = await openCapture(app, page)
+  await writeNote(capture, 'fresh')
+  await saveCapture(app, capture, 'Quick note.md')
+  assert.equal(
+    await readFile(join(h.workspace, 'Inbox', 'Quick note.md'), 'utf8'),
+    'fresh',
+  )
+  // Text kept after a stalled save is a new note with its own destination.
+  await setFolder('')
+  capture = await openCapture(app, page)
+  await writeNote(capture, 'alpha')
+  await until(async () => (await readDraft(h.profile))?.destination)
+  await pause(app, 'quick-note-save')
+  await capture.keyboard.press('ControlOrMeta+Enter')
+  await capture.getByRole('button', { name: 'Saving…' }).waitFor()
+  await capture.keyboard.press('Enter')
+  await capture.keyboard.type('beta')
+  await setFolder('Inbox')
+  await resume(app, 'quick-note-save')
+  await until(async () => (await noteText(capture)) === 'beta')
+  await until(
+    async () => (await readDraft(h.profile))?.destination?.folder === 'Inbox',
+  )
+  await saveCapture(app, capture, 'Quick note 2.md')
+  assert.equal(
+    await readFile(join(h.workspace, 'Quick note.md'), 'utf8'),
+    'alpha',
+  )
+  assert.equal(
+    await readFile(join(h.workspace, 'Inbox', 'Quick note 2.md'), 'utf8'),
+    'beta',
+  )
+})
+
+test('a draft from the previous version is imported once', {
+  timeout: 45000,
+}, async (t) => {
+  const h = await harness(t)
+  const { app, page } = await h.launch()
+  await page.evaluate(() => {
+    localStorage.setItem(
+      'hibi:quick-note-draft',
+      JSON.stringify({ markdown: 'legacy note' }),
+    )
+  })
+  const capture = await openCapture(app, page)
+  assert.equal(await noteText(capture), 'legacy note')
+  await until(
+    async () => (await readDraft(h.profile))?.markdown === 'legacy note',
+  )
+  await until(async () =>
+    page.evaluate(() => localStorage.getItem('hibi:quick-note-draft') === null),
+  )
+})
+
+test('the window warns while the draft cannot be kept', {
+  timeout: 45000,
+}, async (t) => {
+  const h = await harness(t)
+  // A directory where the temporary draft file goes makes every write fail.
+  const blocker = join(h.profile, 'quick-note-draft.json.tmp')
+  await mkdir(blocker)
+  const { app, page } = await h.launch()
+  const capture = await openCapture(app, page)
+  await writeNote(capture, 'at risk')
+  const warning = capture.getByText(/cannot keep this note right now/)
+  await warning.waitFor()
+  await rm(blocker, { recursive: true })
+  await warning.waitFor({ state: 'hidden' })
+  assert.equal((await readDraft(h.profile))?.markdown, 'at risk')
+})
+
+test('frontmatter does not become the file name', {
+  timeout: 45000,
+}, async (t) => {
+  const h = await harness(t, {
+    draft: '---\ntitle: metadata\n---\n\n# Real heading\n\nBody\n',
+  })
+  const { app, page } = await h.launch()
+  const capture = await openCapture(app, page)
+  const before = await captureHides(app)
+  await capture.keyboard.press('ControlOrMeta+Enter')
+  await capture
+    .getByRole('status')
+    .getByText('Saved Real heading.md.')
+    .waitFor()
+  await hidden(app, before)
 })
