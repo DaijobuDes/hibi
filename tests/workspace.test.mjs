@@ -328,7 +328,13 @@ test('nested workspace editing, addon lifecycle, and offline static export', {
         document.querySelector('[aria-label="toggle navigation" i]').click()
         const samples = []
         const start = performance.now()
-        while (performance.now() - start < 320) {
+        const moving = () =>
+          ['.sidebar', '.site-content'].some(
+            (selector) =>
+              document.querySelector(selector).getAnimations().length,
+          )
+        // Slow runners can start the transition late; sample until it ends.
+        while (performance.now() - start < 320 || moving()) {
           await new Promise(requestAnimationFrame)
           const sidebar = document.querySelector('.sidebar')
           const content = document.querySelector('.site-content')
@@ -424,7 +430,10 @@ test('nested workspace editing, addon lifecycle, and offline static export', {
       button.click()
       const frames = []
       const start = performance.now()
-      while (performance.now() - start < 230) {
+      while (
+        performance.now() - start < 230 ||
+        document.querySelector('.sidebar-selection').getAnimations().length
+      ) {
         await new Promise(requestAnimationFrame)
         const selected = document.querySelector(
           '[role="treeitem"][aria-selected="true"]',
