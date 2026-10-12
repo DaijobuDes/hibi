@@ -1,5 +1,9 @@
 import type { AddonManifest } from '../addons/api'
 
+export const MAX_URL_LENGTH = 2048
+export const LOCAL_HOSTNAME_SUFFIX =
+  /\.(?:localhost|local|lan|internal|home\.arpa)$/
+
 /** This first network capability reads bounded UTF-8 text over HTTPS GET. */
 export const HOST_NETWORK_CHANNELS = {
   getText: 'host-network:get-text',
@@ -55,7 +59,8 @@ export function parseAddonNetwork(
   )
     return invalid()
   for (const origin of origins) {
-    if (typeof origin !== 'string' || origin.length > 2048) return invalid()
+    if (typeof origin !== 'string' || origin.length > MAX_URL_LENGTH)
+      return invalid()
     let url: URL
     try {
       url = new URL(origin)
@@ -68,7 +73,7 @@ export function parseAddonNetwork(
       url.port === '0' ||
       /^[\d.]+$/.test(url.hostname) ||
       !url.hostname.includes('.') ||
-      /\.(?:localhost|local|lan|internal|home\.arpa)$/.test(url.hostname) ||
+      LOCAL_HOSTNAME_SUFFIX.test(url.hostname) ||
       url.hostname === 'home.arpa' ||
       url.hostname.length > 253 ||
       !url.hostname

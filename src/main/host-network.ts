@@ -7,11 +7,13 @@ import { pipeline } from 'node:stream/promises'
 import { createBrotliDecompress, createGunzip, createInflate } from 'node:zlib'
 import type { AddonOwner } from '../shared/foundation-contracts'
 import type { CredentialResult } from '../shared/host-credentials'
-import type {
-  HostNetworkFailure,
-  HostTextResponse,
-  HostTextResult,
-} from '../shared/host-network'
+import {
+  type HostNetworkFailure,
+  type HostTextResponse,
+  type HostTextResult,
+  LOCAL_HOSTNAME_SUFFIX,
+  MAX_URL_LENGTH,
+} from '../shared/host-network.ts'
 
 const MAX_ACTIVE = 4
 const MAX_PER_OWNER = 2
@@ -19,7 +21,6 @@ const MAX_PER_OWNER = 2
 // use a cancelable resolver if this bound becomes a practical bottleneck.
 const MAX_PENDING_EXTERNAL = 16
 const MAX_REDIRECTS = 3
-const MAX_URL_LENGTH = 2048
 const MAX_RAW_BYTES = 2 * 1024 * 1024
 const MAX_TEXT_BYTES = 1024 * 1024
 const REQUEST_TIMEOUT_MS = 60_000
@@ -299,7 +300,7 @@ function localName(hostname: string): boolean {
   return (
     !name.includes('.') ||
     name === 'localhost' ||
-    /\.(?:localhost|local|lan|internal|home\.arpa)$/.test(name)
+    LOCAL_HOSTNAME_SUFFIX.test(name)
   )
 }
 
