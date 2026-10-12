@@ -8,6 +8,7 @@ import {
 } from 'react'
 import type { AddonWindowEditorProps } from '../../addons/api'
 import type { DocumentState } from '../../shared/desktop'
+import { isDocumentView } from '../../shared/document-types'
 import { DialogProvider } from '../../ui/DialogProvider'
 import { MenuHost } from '../../ui/MenuHost'
 import { ToastProvider } from '../../ui/Sonner'
@@ -15,7 +16,7 @@ import { ActiveDocumentEditor } from './ActiveDocumentEditor'
 import { useAddons } from './addons'
 import { documentFormats, editorDocument } from './document-formats'
 import { documentRuntime } from './document-runtime'
-import type { MarkdownEditor } from './Editor'
+import type { MarkdownEditor, ViewMode } from './Editor'
 import { loadCursor } from './EditorCursor'
 import { EditorToolbar } from './EditorToolbar'
 import { flavors, loadFlavor, selectedFlavors } from './flavors'
@@ -32,6 +33,11 @@ function Host({
   onChange,
   label = 'Note',
 }: AddonWindowEditorProps) {
+  // The same view new documents open in, as chosen in the main window.
+  const [mode] = useState<ViewMode>(() => {
+    const saved = localStorage.getItem('default-view')
+    return saved && isDocumentView(saved) ? saved : 'normal'
+  })
   const [document] = useState(() => {
     const initial: DocumentState = {
       tabId: `window-${crypto.randomUUID()}`,
@@ -84,7 +90,7 @@ function Host({
       focusDocument: async () => true,
     },
     name,
-    'normal',
+    mode,
     true,
   )
   useSyncExternalStore(documentFormats.subscribe, documentFormats.snapshot)
@@ -126,7 +132,7 @@ function Host({
   }))
   return (
     <div className="editor-surface">
-      <EditorToolbar mode="normal" />
+      <EditorToolbar mode={mode} />
       <section
         className="editor-page"
         aria-label={label}
@@ -168,7 +174,7 @@ function Host({
               onChange={(value, group) =>
                 documentRuntime.replace(value, 'visual', group, document.tabId)
               }
-              mode="normal"
+              mode={mode}
               disabled={false}
               findOpen={false}
               onCloseFind={() => {}}

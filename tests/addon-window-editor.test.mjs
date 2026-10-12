@@ -67,6 +67,27 @@ test('addon windows host the editor without desktop privileges', {
     'background addons such as quick note did not start in the window',
   )
 
+  // The window opens in the user's default view, here the source editor.
+  await page.evaluate(async () => {
+    localStorage.setItem('default-view', 'markdown')
+    await window.hibi.closeAddonWindow('ui-preview', 'editor')
+  })
+  while (findPreview()) await setTimeout(30)
+  await page.evaluate(() =>
+    window.hibi.openAddonWindow('ui-preview', { id: 'editor' }),
+  )
+  while (!findPreview()) await setTimeout(30)
+  const source = findPreview()
+  await source.locator('.cm-content[contenteditable="true"]').waitFor()
+  assert.equal(
+    await source.locator('.cm-content[contenteditable="true"]').isVisible(),
+    true,
+  )
+  await page.evaluate(() =>
+    window.hibi.closeAddonWindow('ui-preview', 'editor'),
+  )
+  while (findPreview()) await setTimeout(30)
+
   // Window ids are looked up as own keys, so inherited names render nothing.
   await page.evaluate(() =>
     window.hibi.openAddonWindow('ui-preview', { id: 'constructor' }),
