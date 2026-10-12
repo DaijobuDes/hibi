@@ -600,6 +600,14 @@ export type AddonWindowHandle = {
   /** Called once when the window closes, including when the user closes it. */
   onClosed: (listener: () => void) => () => void
 }
+/** Props for `AddonWindowProps.Editor`. */
+export type AddonWindowEditorProps = {
+  /** Initial Markdown. Later edits are reported through `onChange`. */
+  defaultValue?: string
+  onChange?: (markdown: string) => void
+  /** Accessible name for the editor. */
+  label?: string
+}
 /** Props for a component in `Addon.windows`. It runs in a separate renderer with only these APIs. */
 export type AddonWindowProps = {
   /** The JSON input passed to `windows.open`. */
@@ -611,6 +619,8 @@ export type AddonWindowProps = {
   }
   /** Close this window. */
   close: () => void
+  /** Hibi's editor and formatting toolbar for one untitled Markdown note. Rendering it starts the enabled editor addons in this window. */
+  Editor: ComponentType<AddonWindowEditorProps>
 }
 
 /** APIs available while your renderer addon is enabled. Registrations are removed when it stops. */

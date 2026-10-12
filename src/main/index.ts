@@ -1496,6 +1496,10 @@ if (!app.requestSingleInstanceLock()) {
         const { window: _window, ...context } = addonWindowSender(event)
         return context
       })
+      ipcMain.handle(ADDON_WINDOW_CHANNELS.states, (event) => {
+        addonWindowSender(event)
+        return getAddonStates()
+      })
       ipcMain.handle(
         ADDON_WINDOW_CHANNELS.query,
         (event, method: unknown, input: unknown) => {

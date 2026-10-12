@@ -1,4 +1,4 @@
-import { type ReactNode, StrictMode } from 'react'
+import { lazy, type ReactNode, StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import type { Addon, AddonManifest, AddonWindowProps } from '../../addons/api'
 import type {
@@ -8,6 +8,7 @@ import type {
 import { errorMessage } from '../../shared/errors'
 import { createColorschemeStore } from '../../ui/colorschemes'
 import './styles.css'
+import { windowDesktop } from './window-desktop'
 import '../../ui/ui-case'
 
 declare global {
@@ -39,6 +40,14 @@ const request = async <T,>(pending: Promise<unknown>) => {
 }
 
 let context: AddonWindowContext | undefined
+// The editor host's modules expect window.hibi; give them a privilege-free stand-in.
+const Editor = lazy(async () => {
+  Object.defineProperty(window, 'hibi', {
+    value: windowDesktop(bridge),
+    configurable: true,
+  })
+  return { default: (await import('./WindowEditor')).WindowEditor }
+})
 
 function show(children: ReactNode) {
   root.render(
@@ -73,6 +82,7 @@ async function render() {
       invoke: (method, value) => request(bridge.invoke(method, value)),
     },
     close: () => window.close(),
+    Editor,
   }
   show(<Content {...props} />)
 }
