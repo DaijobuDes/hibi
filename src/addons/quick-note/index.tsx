@@ -42,14 +42,22 @@ export default defineAddon({
         )
       }
     }
-    const changed = () => void updateShortcut()
+    // The host rejects a registration while the previous one is in flight.
+    let updates = Promise.resolve()
+    let stopped = false
+    const update = () => (stopped ? undefined : updateShortcut())
+    const changed = () => {
+      updates = updates.then(update, update)
+      return updates
+    }
     window.addEventListener(settingsChanged, changed)
     stopSettings = () => {
+      stopped = true
       generation++
       window.removeEventListener(settingsChanged, changed)
       removeShortcut?.()
     }
-    await updateShortcut()
+    await changed()
   },
   stop() {
     stopSettings?.()
