@@ -130,6 +130,19 @@ The command receives the clicked entry even when another note is active. Hibi re
 
 Use `menu: { location: 'editor' }` for a command in the source and rich editor context menus. Its invocation includes the captured document, view, and `selection` with editor-specific offsets, content version, and up to 256 characters of selected text. Hibi checks that target again after command activation. Existing context-action providers appear in the same menu and continue to apply version-checked edits.
 
+## Show notifications
+
+`context.notify(message)` shows a short notice. Use `context.toasts.show()` when a notice should lead somewhere. An `action` makes the whole notification clickable and adds a button with its label. Clicking either runs the action and closes the notification.
+
+```typescript
+context.toasts.show({
+  message: 'Export finished.',
+  action: { label: 'Open the note', run: () => void context.workspace.openFile('export.md') },
+})
+```
+
+Write the label as what happens next, such as **Open the note**. Screen readers announce it after the message. Add an action only when the destination is useful; plain notices stay informational.
+
 ## Read the workspace
 
 Use `context.workspace.index()` for note text and drafts. It returns `null` when no workspace is open. Use `snapshot()` when you also need the export data. Pass a workspace-relative path to `openFile()` to open a document.

@@ -2,7 +2,7 @@
 
 # AddonCapability
 
-Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L101)
+Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L102)
 
 Metadata used to list an addon before its code loads.
 

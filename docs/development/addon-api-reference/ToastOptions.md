@@ -2,7 +2,7 @@
 
 # ToastOptions
 
-Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/ui/toasts.ts#L11)
+Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/ui/toasts.ts#L17)
 
 <details>
 <summary>Declaration</summary>
@@ -14,6 +14,8 @@ type ToastOptions = {
   variant?: 'info' | 'success' | 'error'
   /** Milliseconds; zero keeps the notification until dismissed. */
   duration?: number
+  /** Makes the whole notification clickable. Clicking it or its action button runs `run`, then closes it. */
+  action?: ToastAction
 }
 ```
 
@@ -27,12 +29,13 @@ type ToastOptions = {
 - [description](#description)
 - [variant](#variant)
 - [duration](#duration)
+- [action](#action)
 
 ## Properties
 
 ### message
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/ui/toasts.ts#L12)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/ui/toasts.ts#L18)
 
 ```typescript
 message: string
@@ -40,7 +43,7 @@ message: string
 
 ### description
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/ui/toasts.ts#L13)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/ui/toasts.ts#L19)
 
 ```typescript
 description?: string
@@ -48,7 +51,7 @@ description?: string
 
 ### variant
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/ui/toasts.ts#L14)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/ui/toasts.ts#L20)
 
 ```typescript
 variant?: 'info' | 'success' | 'error'
@@ -56,10 +59,26 @@ variant?: 'info' | 'success' | 'error'
 
 ### duration
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/ui/toasts.ts#L16)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/ui/toasts.ts#L22)
 
 Milliseconds; zero keeps the notification until dismissed.
 
 ```typescript
 duration?: number
 ```
+
+### action
+
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/ui/toasts.ts#L24)
+
+Makes the whole notification clickable. Clicking it or its action button runs `run`, then closes it.
+
+```typescript
+action?: ToastAction
+```
+
+Related: [ToastAction](ToastAction.md).
+
+## Related types
+
+[ToastAction](ToastAction.md).
