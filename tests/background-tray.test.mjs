@@ -556,11 +556,17 @@ test('hidden renderer crash shows recovery and clean tray quit stays hidden', {
       (await window.hibi.getDocument()).markdown === 'recover hidden draft',
   )
   await app.evaluate(() => {
-    globalThis.backgroundTestWindow.showInactive()
+    const window = globalThis.backgroundTestWindow
+    window.showInactive()
     globalThis.backgroundTestCrashShown = false
-    globalThis.backgroundTestWindow.once('show', () => {
-      globalThis.backgroundTestCrashShown = true
-    })
+    // Hidden local test windows emit no show event; record recovery's call.
+    for (const name of ['show', 'showInactive']) {
+      const show = window[name].bind(window)
+      window[name] = () => {
+        globalThis.backgroundTestCrashShown = true
+        return show()
+      }
+    }
   })
   const original = await windowState(app)
   await closeMain(app)
