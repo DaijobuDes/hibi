@@ -129,7 +129,8 @@ export function CaptureWindow({ native, close }: AddonWindowProps) {
       <footer className="quick-note-bar">
         {error || (destination && 'error' in destination) ? (
           <p role="alert" className="quick-note-meta">
-            {error || (destination && 'error' in destination && destination.error)}
+            {error ||
+              (destination && 'error' in destination && destination.error)}
           </p>
         ) : (
           <p
