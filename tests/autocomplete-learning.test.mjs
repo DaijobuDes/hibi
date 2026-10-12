@@ -95,10 +95,10 @@ function idleQueue() {
       return () => callbacks.delete(key)
     },
     size: () => callbacks.size,
-    run() {
+    run(deadline) {
       const batch = [...callbacks.values()]
       callbacks.clear()
-      for (const run of batch) run()
+      for (const run of batch) run(deadline)
     },
   }
 }
@@ -525,6 +525,67 @@ test('idle learning batches once, caps pending words and persists only aggregate
   assert.ok(disk.entries.every((row) => row.context.length <= 2))
   assert.ok(
     disk.entries.every((row) => !('before' in row) && !('after' in row)),
+  )
+})
+
+test('idle deadlines yield queued observations, timeout makes one step, persist drains remainder', async (t) => {
+  const f = await fixture(t)
+  const suggested = (prefix) =>
+    f.learning
+      .suggest({ scope: 'notes', languages, prefix })
+      .map((item) => item.word)
+  for (const word of ['fresh', 'other', 'final'])
+    f.learning.observe(observation(word))
+  f.idle.run({ didTimeout: false, timeRemaining: () => 0 })
+  assert.deepEqual(suggested('fre'), [])
+  assert.equal(f.idle.size(), 1)
+  let checks = 0
+  f.idle.run({
+    didTimeout: false,
+    timeRemaining: () => (++checks === 1 ? 5 : 0),
+  })
+  assert.deepEqual(suggested('fre'), ['fresh'])
+  assert.deepEqual(suggested('oth'), [])
+  assert.equal(f.idle.size(), 1)
+  f.idle.run({ didTimeout: true, timeRemaining: () => 0 })
+  assert.deepEqual(suggested('oth'), ['other'])
+  assert.deepEqual(suggested('fin'), [])
+  assert.equal(f.idle.size(), 1)
+  await f.learning.persist()
+  assert.equal(f.idle.size(), 0)
+  const disk = await f.disk()
+  for (const word of ['fresh', 'other', 'final'])
+    assert.ok(count(disk, word) > 0.99)
+})
+
+test('discard after a partial idle flush cancels queued remainder', async (t) => {
+  const f = await fixture(t)
+  f.learning.observe(observation('committed'))
+  f.learning.observe(observation('pending'))
+  f.idle.run({ didTimeout: true, timeRemaining: () => 0 })
+  f.learning.discard()
+  assert.equal(f.idle.size(), 0)
+  f.idle.run()
+  await f.learning.persist()
+  assert.deepEqual(
+    (await f.disk()).entries.map((row) => row.word),
+    ['committed'],
+  )
+})
+
+test('saving prunes aging evidence without needing another typing observation', async (t) => {
+  let time = 1_000_000
+  t.mock.method(Date, 'now', () => time)
+  const f = await fixture(t)
+  f.learning.observe(observation('stale', { context: ['that', 'was'] }))
+  await f.learning.persist()
+  assert.equal((await f.disk()).entries.length, 3)
+  time += 1000 * 86_400_000
+  await f.learning.persist()
+  assert.deepEqual((await f.disk()).entries, [])
+  assert.deepEqual(
+    f.learning.suggest({ scope: 'notes', languages, prefix: 'sta' }),
+    [],
   )
 })
 

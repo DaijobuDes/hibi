@@ -141,42 +141,63 @@ export function createPersonalModel(options: PersonalModelOptions = {}) {
           lower.slice(0, length),
         )
         const list = buckets.get(key) ?? []
-        if (!list.includes(row)) list.push(row)
-        list.sort(
-          (a, b) =>
-            strength(b, time) - strength(a, time) || b.lastUsed - a.lastUsed,
-        )
-        list.length = Math.min(list.length, CANDIDATES)
+        const previous = list.indexOf(row)
+        if (previous >= 0) list.splice(previous, 1)
+        let from = 0
+        let to = list.length
+        while (from < to) {
+          const middle = (from + to) >>> 1
+          const other = list[middle] as Row
+          const order =
+            strength(other, time) - strength(row, time) ||
+            other.lastUsed - row.lastUsed
+          if (order >= 0) from = middle + 1
+          else to = middle
+        }
+        // Keep overflow members so removals reveal the next candidate without a rebuild.
+        list.splice(from, 0, row)
         buckets.set(key, list)
       }
   }
-  function rebuild(time: number) {
-    buckets.clear()
-    for (const row of rows.values()) index(row, time)
+  function remove(key: string, row: Row) {
+    rows.delete(key)
+    accepted.delete(key)
+    if (!buckets.size) return
+    const lower = wordKey(row.word)
+    for (const lang of row.languages)
+      for (let length = 0; length <= lower.length; length++) {
+        const bucket = bucketKey(
+          row.scope,
+          lang,
+          row.context,
+          lower.slice(0, length),
+        )
+        const list = buckets.get(bucket)
+        if (!list) continue
+        const at = list.indexOf(row)
+        if (at >= 0) list.splice(at, 1)
+        if (!list.length) buckets.delete(bucket)
+      }
   }
   function prune(time: number) {
-    let changed = false
-    for (const [key, row] of rows)
-      if (strength(row, time) < 0.02) {
-        rows.delete(key)
-        accepted.delete(key)
-        changed = true
-      }
     const scopes = new Map<PersonalScope, number>()
-    for (const row of rows.values())
-      scopes.set(row.scope, Math.max(scopes.get(row.scope) ?? 0, row.lastUsed))
-    const keepScopes = new Set(
-      [...scopes]
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, MAX_SCOPES)
-        .map(([scope]) => scope),
-    )
     for (const [key, row] of rows)
-      if (!keepScopes.has(row.scope)) {
-        rows.delete(key)
-        accepted.delete(key)
-        changed = true
-      }
+      if (strength(row, time) < 0.02) remove(key, row)
+      else
+        scopes.set(
+          row.scope,
+          Math.max(scopes.get(row.scope) ?? 0, row.lastUsed),
+        )
+    if (scopes.size > MAX_SCOPES) {
+      const keepScopes = new Set(
+        [...scopes]
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, MAX_SCOPES)
+          .map(([scope]) => scope),
+      )
+      for (const [key, row] of rows)
+        if (!keepScopes.has(row.scope)) remove(key, row)
+    }
     if (rows.size > maxEntries) {
       const keep = new Set(
         [...rows]
@@ -188,14 +209,8 @@ export function createPersonalModel(options: PersonalModelOptions = {}) {
           .slice(0, Math.max(1, Math.floor(maxEntries * 0.9)))
           .map(([key]) => key),
       )
-      for (const key of rows.keys())
-        if (!keep.has(key)) {
-          rows.delete(key)
-          accepted.delete(key)
-        }
-      changed = true
+      for (const [key, row] of rows) if (!keep.has(key)) remove(key, row)
     }
-    if (changed) rebuild(time)
   }
 
   function load(snapshot: unknown) {
@@ -279,7 +294,7 @@ export function createPersonalModel(options: PersonalModelOptions = {}) {
         base.midSentence = true
       }
     }
-    rebuild(time)
+    for (const row of rows.values()) index(row, time)
   }
   load(options.snapshot)
 
@@ -396,9 +411,11 @@ export function createPersonalModel(options: PersonalModelOptions = {}) {
       for (let length = context.length; length > 0; length--) {
         const candidates = new Map<string, PersonalSuggestion>()
         for (const lang of langs)
-          for (const row of buckets.get(
-            bucketKey(request.scope, lang, context.slice(-length), ''),
-          ) ?? []) {
+          for (const row of (
+            buckets.get(
+              bucketKey(request.scope, lang, context.slice(-length), ''),
+            ) ?? []
+          ).slice(0, CANDIDATES)) {
             const score = (row.count - 2 * row.corrections) * decay(row, time)
             if (score <= 0) continue
             const key = wordKey(row.word)
@@ -477,9 +494,9 @@ export function createPersonalModel(options: PersonalModelOptions = {}) {
     const visited = new Set<Row>()
     for (const words of contexts)
       for (const lang of langs)
-        for (const row of buckets.get(
-          bucketKey(request.scope, lang, words, prefix),
-        ) ?? []) {
+        for (const row of (
+          buckets.get(bucketKey(request.scope, lang, words, prefix)) ?? []
+        ).slice(0, CANDIDATES)) {
           if (
             visited.has(row) ||
             row.word.normalize('NFC').toLowerCase() === prefix
@@ -568,12 +585,13 @@ export function createPersonalModel(options: PersonalModelOptions = {}) {
   }
 
   function clear(scope?: PersonalScope): void {
-    for (const [key, row] of rows)
-      if (scope === undefined || row.scope === scope) {
-        rows.delete(key)
-        accepted.delete(key)
-      }
-    rebuild(now())
+    if (scope === undefined) {
+      rows.clear()
+      accepted.clear()
+      buckets.clear()
+      return
+    }
+    for (const [key, row] of rows) if (row.scope === scope) remove(key, row)
   }
 
   return { observe, suggest, snapshot, clear }

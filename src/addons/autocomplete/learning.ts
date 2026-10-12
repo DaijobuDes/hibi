@@ -9,7 +9,7 @@ import {
 /** Idle learning and serialized atomic writes; only aggregates reach storage. */
 export function createLearning(
   storage: AddonStorageHandle<PersonalSnapshot>,
-  schedule = (run: () => void) => {
+  schedule = (run: (deadline?: IdleDeadline) => void) => {
     const id = requestIdleCallback(run, { timeout: 1000 })
     return () => cancelIdleCallback(id)
   },
@@ -86,14 +86,24 @@ export function createLearning(
     return operation
   }
 
-  function flush() {
+  function flush(deadline?: IdleDeadline) {
     cancelIdle?.()
     cancelIdle = undefined
     if (disposed || clearing) return
-    const batch = pending
-    pending = []
-    for (const observation of batch) model.observe(observation)
-    if (!batch.length) return
+    let consumed = 0
+    while (consumed < pending.length) {
+      if (
+        deadline &&
+        deadline.timeRemaining() <= 1 &&
+        !(deadline.didTimeout && !consumed)
+      )
+        break
+      model.observe(pending[consumed] as PersonalObservation)
+      consumed++
+    }
+    pending = pending.slice(consumed)
+    if (pending.length) cancelIdle = schedule(flush)
+    if (!consumed) return
     clearTimeout(timer)
     timer = setTimeout(() => {
       timer = undefined

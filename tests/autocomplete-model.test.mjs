@@ -625,6 +625,64 @@ test('entry and scope caps prune while keeping strong evidence', () => {
   )
 })
 
+test('repeated undo removal keeps common-prefix overflow candidates indexed', () => {
+  const model = createPersonalModel({ now: () => 1_000_000 })
+  for (let i = 0; i < 50; i++)
+    learn(
+      model,
+      `prefix${String.fromCharCode(97 + (i % 26))}${String.fromCharCode(97 + Math.floor(i / 26))}`,
+    )
+  const request = { ...session, prefix: 'pre' }
+  const before = words(model, request)
+  assert.equal(before.length, 8)
+  for (let i = 0; i < 40; i++) {
+    learn(model, 'prefixghost', 1, {
+      context: ['that', 'was'],
+      kind: 'accepted',
+    })
+    learn(model, 'prefixghost', 1, { context: ['that', 'was'], kind: 'undo' })
+    assert.deepEqual(words(model, request), before)
+  }
+  assert.equal(model.snapshot().entries.length, 51)
+})
+
+test('trimmed indexes match a fresh load and continuous typing evicts old scopes before saving', () => {
+  const timer = clock()
+  const model = createPersonalModel({ now: timer.now, maxEntries: 48 })
+  for (let i = 0; i < 100; i++) {
+    timer.advance(1)
+    learn(
+      model,
+      `word${String.fromCharCode(97 + (i % 26))}${String.fromCharCode(97 + Math.floor(i / 26))}`,
+      1,
+      { context: ['that', 'was'] },
+    )
+  }
+  const copy = createPersonalModel({
+    snapshot: model.snapshot(),
+    now: timer.now,
+  })
+  for (const prefix of ['wor', 'worda', 'wordz'])
+    for (const context of [[], ['was'], ['that', 'was']])
+      assert.deepEqual(
+        model.suggest({ ...session, prefix, context }),
+        copy.suggest({ ...session, prefix, context }),
+      )
+  const scopes = createPersonalModel({ now: timer.now })
+  for (let i = 0; i < 25; i++) {
+    timer.advance(1)
+    learn(scopes, 'vocabulary', 1, { scope: `workspace-${i}` })
+  }
+  assert.deepEqual(
+    words(scopes, { ...session, scope: 'workspace-0', prefix: 'voc' }),
+    [],
+  )
+  assert.deepEqual(
+    words(scopes, { ...session, scope: 'workspace-24', prefix: 'voc' }),
+    ['vocabulary'],
+  )
+})
+
 test('rapid requests are synchronous, independent and cannot publish stale results', () => {
   const model = createPersonalModel()
   learn(model, 'craycray', 40)
