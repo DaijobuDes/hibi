@@ -75,7 +75,7 @@ test('addon archives preserve wrappers and reject unsafe or oversized contents',
   const many = zipFiles(packageFiles)
   many.writeUInt16LE(65535, many.length - 14)
   many.writeUInt16LE(65535, many.length - 12)
-  await assert.rejects(unpackAddon(many, root), /1,000 entries/)
+  await assert.rejects(unpackAddon(many, root), /5,000 entries/)
   await assert.rejects(
     unpackAddon(Buffer.from('not a zip'), root),
     /This is not a valid addon ZIP file\./,
@@ -96,6 +96,22 @@ test('addon urls stay https through redirects and downloads remain bounded', asy
   assert.throws(() => addonPackageUrl(undefined), {
     message: 'Enter an HTTPS URL for an addon ZIP file or Git repository.',
   })
+  const canceled = new AbortController()
+  canceled.abort(new Error('fixture canceled'))
+  await assert.rejects(
+    downloadAddon('https://example.com/a.zip', canceled.signal),
+    /fixture canceled/,
+  )
+  const pendingController = new AbortController()
+  globalThis.fetch = async (_url, options) => {
+    assert.equal(options.signal.aborted, false)
+    pendingController.abort(new Error('fixture canceled'))
+    return new Promise(() => {})
+  }
+  await assert.rejects(
+    downloadAddon('https://example.com/a.zip', pendingController.signal),
+    /fixture canceled/,
+  )
   let calls = 0
   globalThis.fetch = async (_url, options) => {
     assert.equal(options.redirect, 'manual')
