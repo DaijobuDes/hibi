@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Select, SettingRow } from '../ui'
 import type { LanguagePreferences } from './lookup'
+import { PackSettings } from './PackSettings'
 import { languageNames, readPreferences, writePreferences } from './settings'
 
 export function Settings() {
@@ -26,7 +27,7 @@ export function Settings() {
             })
           }
         >
-          {(['en', 'fr', 'tl'] as const).map((lang) => (
+          {(['en', 'fr', 'de', 'tl'] as const).map((lang) => (
             <option key={lang} value={lang}>
               {languageNames[lang]}
             </option>
@@ -52,6 +53,7 @@ export function Settings() {
           ))}
         </Select>
       </SettingRow>
+      <PackSettings />
     </>
   )
 }

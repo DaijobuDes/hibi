@@ -59,6 +59,13 @@ for (const entry of await readdir('src', {
   if (!entry.isFile() || !/\.(?:ts|tsx)$/.test(entry.name)) continue
   const file = join(entry.parentPath, entry.name)
   if (file.includes('useraddons') || /\.(?:d|worker)\.ts$/.test(file)) continue
+  // Worker failures are logged and mapped to one installation message in main.
+  if (
+    /src\/addons\/dictionary\/pack-(?:converters|index|runtime|worker)\.ts$/.test(
+      file.replaceAll('\\', '/'),
+    )
+  )
+    continue
   const source = parse(await readFile(file, 'utf8'), {
     sourceType: 'module',
     plugins: file.endsWith('.tsx') ? ['typescript', 'jsx'] : ['typescript'],

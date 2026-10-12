@@ -1,6 +1,14 @@
 /** Lookup languages. `zh` covers simplified and traditional Mandarin; `yue` is Cantonese. */
-export type Lang = 'en' | 'zh' | 'yue' | 'ja' | 'tl' | 'fr'
-export const LANGS: readonly Lang[] = ['en', 'zh', 'yue', 'ja', 'tl', 'fr']
+export type Lang = 'en' | 'zh' | 'yue' | 'ja' | 'tl' | 'fr' | 'de'
+export const LANGS: readonly Lang[] = [
+  'en',
+  'zh',
+  'yue',
+  'ja',
+  'tl',
+  'fr',
+  'de',
+]
 
 /** Shown with every result so attribution travels with the text. */
 export type Source = { name: string; license: string; url?: string }
@@ -50,6 +58,13 @@ export interface DictionaryProvider {
     signal: AbortSignal,
     cachedOnly?: boolean,
   ): Promise<Entry[]>
+  /** Prefix matches retain source spelling. Defaults to 8 results, at most 32. */
+  complete?(
+    prefix: string,
+    lang: Lang,
+    signal: AbortSignal,
+    limit?: number,
+  ): Promise<string[]>
   /** Null means no related words were found. */
   related?(
     term: string,

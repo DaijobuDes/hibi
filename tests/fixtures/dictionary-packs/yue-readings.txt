@@ -1,0 +1,10 @@
+# CC-CEDICT Cantonese Readings
+# Version 2015-09-23
+#
+# Copyright (c) 2015 Pleco Software Incorporated
+# Distributed under a Creative Commons Attribution-Share Alike 3.0 license (http://creativecommons.org/licenses/by-sa/3.0/)
+#
+# For more information + to submit feedback, see our website at cccanto.org
+#
+伊莉莎白 伊莉莎白 [Yi1 li4 sha1 bai2] {ji1 lei6 saa1 baak6}
+淒切 凄切 [qi1 qie4] {cai1 cit3}

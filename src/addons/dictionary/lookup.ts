@@ -13,7 +13,7 @@ export type LookupTarget = {
 /** Which language a word in each script is looked up in first. */
 export type LanguagePreferences = {
   han: 'zh' | 'yue' | 'ja'
-  latin: 'en' | 'tl' | 'fr'
+  latin: 'en' | 'tl' | 'fr' | 'de'
 }
 
 const kana = /[\p{Script=Hiragana}\p{Script=Katakana}]/u
@@ -34,7 +34,7 @@ export function detectLangs(
   if (kana.test(term)) return ['ja']
   if (han.test(term)) return ordered(preferences.han, ['zh', 'yue', 'ja'])
   if (/\p{Script=Latin}/u.test(term))
-    return ordered(preferences.latin, ['en', 'tl', 'fr'])
+    return ordered(preferences.latin, ['en', 'tl', 'fr', 'de'])
   return []
 }
 
