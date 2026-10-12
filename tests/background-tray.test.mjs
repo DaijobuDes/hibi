@@ -376,7 +376,7 @@ test('tray preserves drafts, restores the same renderer and cancels unsafe quits
   assert.equal(await readFile(file, 'utf8'), 'external change')
 })
 
-test('tray quick note follows UI registration and invokes the hidden renderer', {
+test('tray quick note follows UI registration and opens capture without the main window', {
   timeout: 30000,
 }, async (t) => {
   const { app, page } = await launch(t)
@@ -432,9 +432,13 @@ test('tray quick note follows UI registration and invokes the hidden renderer', 
   assert.equal(await captureHasHotkey(), false)
   assert.equal(typeof command.token, 'string')
   assert.notEqual(command.token, '')
-  assert.deepEqual(await windowState(app), original)
-  await page.getByRole('dialog').getByRole('button', { name: /^ok$/i }).click()
-  assert.deepEqual(await windowState(app), original)
+  // The capture opens in its own window and the main window stays hidden.
+  await waitForAsync(app, ({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows().some((window) =>
+      window.webContents.getURL().endsWith('/addon-window.html'),
+    ),
+  )
+  assert.deepEqual(await windowState(app), { ...original, visible: false })
   await trayClick(app, 'Settings')
   await page.getByRole('tab', { name: /^addon manager$/i }).click()
   await checkbox.click()
