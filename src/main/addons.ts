@@ -37,6 +37,7 @@ import {
   loadInstalledAddons,
   removePackage,
 } from './sideload'
+import { testPause } from './test-pauses'
 import {
   getWorkspace,
   refreshWorkspace,
@@ -66,6 +67,15 @@ const pendingNatives = new Map<string, Promise<NativeAddon>>()
 const generations = new Map<string, number>()
 let onAddonDeactivated: (id: string, generation: number) => Promise<void> =
   async () => {}
+
+let onAddonStatesChanged: (states: AddonState[]) => void = () => {}
+
+/** Called after each accepted addon state change. */
+export function setAddonStatesHandler(
+  handler: (states: AddonState[]) => void,
+): void {
+  onAddonStatesChanged = handler
+}
 
 /** Register host cleanup before addon state changes are accepted. */
 export function setAddonDeactivationHandler(
@@ -286,6 +296,42 @@ export async function convertImport(
   return addon.import(files)
 }
 
+/** Name of an enabled addon compiled with Hibi; only these can open addon windows. */
+export function windowAddonName(id: unknown): string {
+  const manifest = bundledManifests.find((entry) => entry.id === id)
+  if (!manifest || getAddonActivationGeneration(manifest.id) === null)
+    throw new Error('Enable this addon in Settings → Addons first.')
+  return manifest.name
+}
+
+/** Run an enabled native handler for a global shortcut id such as `quick-note.capture`. */
+export async function runNativeGlobalShortcut(
+  id: string,
+  openWindow: (addonId: string, options: unknown) => Promise<void>,
+): Promise<boolean> {
+  const [owner = '', local = ''] = id.split('.')
+  const generation = getAddonActivationGeneration(owner)
+  if (generation === null) return false
+  const handlers = (await nativeAddon(owner))?.globalShortcuts
+  const handler = handlers && Object.hasOwn(handlers, local) && handlers[local]
+  if (!handler) return false
+  // Disabling or re-enabling while the module loads retires this press.
+  const current = () => getAddonActivationGeneration(owner) === generation
+  await testPause('global-shortcut-loaded')
+  if (!current()) return true
+  await testPause('global-shortcut-handler')
+  await handler({
+    windows: {
+      open: async (options) => {
+        if (!current())
+          throw new Error('This addon was disabled. Enable it to continue.')
+        await openWindow(owner, options)
+      },
+    },
+  })
+  return true
+}
+
 export async function enableAddon(
   id: unknown,
   value: unknown,
@@ -359,7 +405,9 @@ async function savePreferences(
   await rename(`${path}.tmp`, path)
   enabled = next
   await deactivateUnavailable(before)
-  return getAddonStates()
+  const states = getAddonStates()
+  onAddonStatesChanged(states)
+  return states
 }
 
 async function deactivateUnavailable(before: readonly AddonState[]) {

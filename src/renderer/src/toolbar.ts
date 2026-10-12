@@ -22,23 +22,26 @@ const validPlacements = (
         ),
       )
     : {}
-let preferences: ToolbarPreferences = {
-  visible: true,
-  mode: 'icons',
-  autoHide: false,
+function load(): ToolbarPreferences {
+  const loaded: ToolbarPreferences = {
+    visible: true,
+    mode: 'icons',
+    autoHide: false,
+  }
+  try {
+    const saved = JSON.parse(localStorage.getItem(key) ?? '{}')
+    if (typeof saved?.visible === 'boolean') loaded.visible = saved.visible
+    if (typeof saved?.autoHide === 'boolean') loaded.autoHide = saved.autoHide
+    if (['icons', 'icons-and-text', 'text'].includes(saved?.mode))
+      loaded.mode = saved.mode
+    loaded.order = validOrder(saved?.order)
+    loaded.placements = validPlacements(saved?.placements)
+  } catch {
+    /* Keep defaults when stored preferences cannot be read. */
+  }
+  return loaded
 }
-try {
-  const saved = JSON.parse(localStorage.getItem(key) ?? '{}')
-  if (typeof saved?.visible === 'boolean') preferences.visible = saved.visible
-  if (typeof saved?.autoHide === 'boolean')
-    preferences.autoHide = saved.autoHide
-  if (['icons', 'icons-and-text', 'text'].includes(saved?.mode))
-    preferences.mode = saved.mode
-  preferences.order = validOrder(saved?.order)
-  preferences.placements = validPlacements(saved?.placements)
-} catch {
-  /* Keep defaults when stored preferences cannot be read. */
-}
+let preferences = load()
 type RegisteredToolbarItem = ToolbarItem & {
   onClick: (context?: CommandExecutionContext) => Promise<void>
 }
@@ -69,7 +72,15 @@ const publish = () => {
   }
   for (const listener of listeners) listener()
 }
+// Addon editor windows share this storage; keep each window's toolbar current.
+window.addEventListener('storage', (event) => {
+  if (event.key !== key && event.key !== null) return
+  preferences = load()
+  publish()
+})
 function setPreferences(changes: Partial<ToolbarPreferences>) {
+  // Merge with what another window may have saved since this one loaded.
+  preferences = load()
   preferences = {
     autoHide:
       typeof changes.autoHide === 'boolean'

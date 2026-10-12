@@ -2,7 +2,7 @@
 
 # AddonContext
 
-Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L621)
+Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L653)
 
 APIs available while your renderer addon is enabled. Registrations are removed when it stops.
 
@@ -11,6 +11,10 @@ APIs available while your renderer addon is enabled. Registrations are removed w
 
 ```typescript
 type AddonContext = {
+  /** Separate desktop windows that render a component from `Addon.windows`. Built-in and local source addons only. */
+  windows: {
+    open: (options: AddonWindowOptions) => Promise<AddonWindowHandle>
+  }
   /** Same-renderer API exchange for trusted addons; declarations are not a security boundary. */
   addons: AddonAccessApi
   exports: AddonExportsApi
@@ -315,6 +319,7 @@ type AddonContext = {
 
 **Methods**
 
+- [windows.open](#windowsopen)
 - [globalShortcuts.register](#globalshortcutsregister)
 - [colorschemes.register](#colorschemesregister)
 - [colorschemes.list](#colorschemeslist)
@@ -384,7 +389,7 @@ type AddonContext = {
 
 ### addons
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L623)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L659)
 
 Same-renderer API exchange for trusted addons; declarations are not a security boundary.
 
@@ -396,7 +401,7 @@ Related: [AddonAccessApi](AddonAccessApi.md).
 
 ### exports
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L624)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L660)
 
 ```typescript
 exports: AddonExportsApi
@@ -406,7 +411,7 @@ Related: [AddonExportsApi](AddonExportsApi.md).
 
 ### dependencies
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L635)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L671)
 
 ```typescript
 dependencies: import('../shared/dependencies').DependencyApi
@@ -416,7 +421,7 @@ Related: [DependencyApi](DependencyApi.md).
 
 ### storage
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L637)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L673)
 
 Namespaced JSON state retained across disablement. Session values expire on stop.
 
@@ -426,7 +431,7 @@ storage: import('../shared/addon-storage').AddonStorageApi
 
 ### settings
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L639)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L675)
 
 Enabled addon settings. Registrations are removed when the addon stops.
 
@@ -438,7 +443,7 @@ Related: [SettingsApi](SettingsApi.md).
 
 ### dialogs
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L650)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L686)
 
 ```typescript
 dialogs: DialogApi
@@ -448,7 +453,7 @@ Related: [DialogApi](DialogApi.md).
 
 ### sidebar
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L651)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L687)
 
 ```typescript
 sidebar: SidebarApi
@@ -458,7 +463,7 @@ Related: [SidebarApi](SidebarApi.md).
 
 ### views
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L652)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L688)
 
 ```typescript
 views: ViewApi
@@ -468,7 +473,7 @@ Related: [ViewApi](ViewApi.md).
 
 ### analysis
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L653)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L689)
 
 ```typescript
 analysis: import('../shared/analysis').AnalysisApi
@@ -478,7 +483,7 @@ Related: [AnalysisApi](AnalysisApi.md).
 
 ### toasts
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L654)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L690)
 
 ```typescript
 toasts: ToastApi
@@ -488,7 +493,7 @@ Related: [ToastApi](ToastApi.md).
 
 ### menus
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L655)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L691)
 
 ```typescript
 menus: MenuApi
@@ -498,7 +503,7 @@ Related: [MenuApi](MenuApi.md).
 
 ### toolbar
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L656)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L692)
 
 ```typescript
 toolbar: ToolbarApi
@@ -508,7 +513,7 @@ Related: [ToolbarApi](ToolbarApi.md).
 
 ### tooltips
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L657)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L693)
 
 ```typescript
 tooltips: TooltipApi
@@ -518,7 +523,7 @@ Related: [TooltipApi](TooltipApi.md).
 
 ### app
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L658)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L694)
 
 ```typescript
 app: AddonApp
@@ -528,7 +533,7 @@ Related: [AddonApp](AddonApp.md).
 
 ### patches
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L666)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L702)
 
 ```typescript
 patches: PatchApi
@@ -538,7 +543,7 @@ Related: [PatchApi](PatchApi.md).
 
 ### documents
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L765)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L801)
 
 ```typescript
 documents: DocumentsApi
@@ -548,7 +553,7 @@ Related: [DocumentsApi](DocumentsApi.md).
 
 ### editorViews
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L766)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L802)
 
 ```typescript
 editorViews: EditorViewsApi
@@ -558,7 +563,7 @@ Related: [EditorViewsApi](EditorViewsApi.md).
 
 ### host.selectedText
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L768)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L804)
 
 ```typescript
 host.selectedText: import('../shared/selected-text').SelectedTextHostApi
@@ -566,7 +571,7 @@ host.selectedText: import('../shared/selected-text').SelectedTextHostApi
 
 ### host.selectedIo
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L769)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L805)
 
 ```typescript
 host.selectedIo: import('../shared/host-selected-io').HostSelectedIoHostApi
@@ -574,7 +579,7 @@ host.selectedIo: import('../shared/host-selected-io').HostSelectedIoHostApi
 
 ### host.credentials
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L777)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L813)
 
 Store and inspect host-owned secrets without returning stored plaintext.
 
@@ -584,9 +589,27 @@ host.credentials: import('../shared/host-credentials').CredentialHostApi
 
 ## Methods
 
+### windows.open
+
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L656)
+
+```typescript
+windows.open: (options: AddonWindowOptions) => Promise<AddonWindowHandle>
+```
+
+Related: [AddonWindowOptions](AddonWindowOptions.md), [AddonWindowHandle](AddonWindowHandle.md).
+
+**Parameters**
+
+| Name | Type |
+| --- | --- |
+| <code>options</code> | <code><a href="AddonWindowOptions.md">AddonWindowOptions</a></code> |
+
+**Returns:** <code>Promise&lt;<a href="AddonWindowHandle.md">AddonWindowHandle</a>&gt;</code>
+
 ### globalShortcuts.register
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L628)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L664)
 
 Electron accelerator, such as CommandOrControl+Alt+N. Registration can fail if another app owns it.
 
@@ -611,7 +634,7 @@ globalShortcuts.register: (
 
 ### colorschemes.register
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L641)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L677)
 
 ```typescript
 colorschemes.register: (scheme: ColorschemeInput) => () => void
@@ -629,7 +652,7 @@ Related: [ColorschemeInput](ColorschemeInput.md).
 
 ### colorschemes.list
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L642)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L678)
 
 ```typescript
 colorschemes.list: () => readonly Colorscheme[]
@@ -641,7 +664,7 @@ Related: [Colorscheme](Colorscheme.md).
 
 ### colorschemes.getPreferences
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L643)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L679)
 
 ```typescript
 colorschemes.getPreferences: () => ThemePreferences
@@ -653,7 +676,7 @@ Related: [ThemePreferences](ThemePreferences.md).
 
 ### colorschemes.getActive
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L645)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L681)
 
 The colorscheme resolved from the selected mode and system appearance.
 
@@ -667,7 +690,7 @@ Related: [Colorscheme](Colorscheme.md).
 
 ### colorschemes.subscribe
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L647)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L683)
 
 Called when the active colorscheme or preferences change.
 
@@ -685,7 +708,7 @@ colorschemes.subscribe: (listener: () => void) => () => void
 
 ### colorschemes.setPreferences
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L648)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L684)
 
 ```typescript
 colorschemes.setPreferences: (preferences: Partial<ThemePreferences>) => void
@@ -703,7 +726,7 @@ Related: [ThemePreferences](ThemePreferences.md).
 
 ### styles.register
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L660)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L696)
 
 ```typescript
 styles.register: (
@@ -727,7 +750,7 @@ Related: [StyleHandle](StyleHandle.md).
 
 ### statusBar.register
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L667)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L703)
 
 ```typescript
 statusBar.register: (item: StatusItem) => StatusHandle
@@ -745,7 +768,7 @@ Related: [StatusItem](StatusItem.md), [StatusHandle](StatusHandle.md).
 
 ### editor.applySourceEdits
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L670)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L706)
 
 Apply version-checked UTF-16 source edits as one undo operation. Rich view accepts only proven literal text edits.
 
@@ -767,7 +790,7 @@ Related: [SourceEditRequest](SourceEditRequest.md), [SourceEditResult](SourceEdi
 
 ### editor.getTextProjection
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L674)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L710)
 
 Lazily read exact literal text spans for analysis; null while the active editor is unavailable.
 
@@ -783,7 +806,7 @@ Related: [TextProjection](TextProjection.md).
 
 ### editor.setDecorations
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L678)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L714)
 
 Show up to 32 exact analysis ranges. Returns false for stale or invalid projections.
 
@@ -807,7 +830,7 @@ Related: [TextDecoration](TextDecoration.md).
 
 ### editor.clearDecorations
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L682)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L718)
 
 ```typescript
 editor.clearDecorations: () => void
@@ -817,7 +840,7 @@ editor.clearDecorations: () => void
 
 ### editor.onProjectionChange
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L684)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L720)
 
 Observe changes to the active view or schema; text changes use onDocumentChange.
 
@@ -835,7 +858,7 @@ editor.onProjectionChange: (listener: () => void) => () => void
 
 ### editor.getDocument
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L686)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L722)
 
 Read the active document, or null when no editor document is available.
 
@@ -851,7 +874,7 @@ Related: [DocumentState](DocumentState.md).
 
 ### editor.onDocumentChange
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L690)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L726)
 
 Subscribe to active-document changes. Returns a function that removes the listener.
 
@@ -875,7 +898,7 @@ Related: [DocumentState](DocumentState.md).
 
 ### editor.registerDocumentFormat
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L696)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L732)
 
 Add a format's editor, preview, and export behavior. Returns a function that unregisters it.
 
@@ -895,7 +918,7 @@ Related: [DocumentFormat](DocumentFormat.md).
 
 ### editor.renderDocument
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L698)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L734)
 
 Async document export, including registered format renderers and flavor transforms.
 
@@ -921,7 +944,7 @@ Related: [RenderedMarkdown](RenderedMarkdown.md).
 
 ### editor.registerCodeLanguage
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L704)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L740)
 
 Register or override fenced-code highlighting; restored automatically on addon stop.
 
@@ -941,7 +964,7 @@ Related: [CodeLanguage](CodeLanguage.md).
 
 ### editor.resolveCodeLanguage
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L706)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L742)
 
 Resolve enabled highlighting, including contributions from other addons.
 
@@ -961,7 +984,7 @@ editor.resolveCodeLanguage: (
 
 ### editor.renderCode
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L710)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L746)
 
 Escaped code HTML using the app's enabled languages and shared token classes.
 
@@ -980,7 +1003,7 @@ editor.renderCode: (source: string, language: string) => string
 
 ### editor.onCodeHighlightingChange
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L711)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L747)
 
 ```typescript
 editor.onCodeHighlightingChange: (listener: () => void) => () => void
@@ -996,7 +1019,7 @@ editor.onCodeHighlightingChange: (listener: () => void) => () => void
 
 ### editor.registerSyntax
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L713)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L749)
 
 Contribute a renderer toggle; disabled tokens remain literal, editable Markdown.
 
@@ -1016,7 +1039,7 @@ Related: [MarkdownSyntaxFeature](MarkdownSyntaxFeature.md).
 
 ### editor.registerDocumentSyntax
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L715)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L751)
 
 Format-specific rendering control, without a Markdown token matcher.
 
@@ -1038,7 +1061,7 @@ Related: [DocumentSyntaxFeature](DocumentSyntaxFeature.md).
 
 ### editor.isSyntaxEnabled
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L719)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L755)
 
 Query this addon's local syntax id.
 
@@ -1056,7 +1079,7 @@ editor.isSyntaxEnabled: (id: string) => boolean
 
 ### editor.getSyntaxFeatures
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L721)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L757)
 
 Registered Markdown syntax and enabled state, including other addons.
 
@@ -1072,7 +1095,7 @@ Related: [MarkdownSyntaxFeature](MarkdownSyntaxFeature.md).
 
 ### editor.getMetadataSyntax
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L725)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L761)
 
 Built-in metadata syntax for one file; unsupported addon syntax reports incomplete.
 
@@ -1098,7 +1121,7 @@ editor.getMetadataSyntax: (
 
 ### editor.onSyntaxChange
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L733)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L769)
 
 ```typescript
 editor.onSyntaxChange: (listener: () => void) => () => void
@@ -1114,7 +1137,7 @@ editor.onSyntaxChange: (listener: () => void) => () => void
 
 ### editor.onKeyEvent
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L735)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L771)
 
 Observe editor keydown/keyup without consuming input. Removed on addon stop.
 
@@ -1134,7 +1157,7 @@ Related: [EditorKeyEvent](EditorKeyEvent.md).
 
 ### editor.onInput
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L737)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L773)
 
 Observe committed typing, including IME composition. Removed on addon stop.
 
@@ -1154,7 +1177,7 @@ Related: [EditorInputEvent](EditorInputEvent.md).
 
 ### editor.registerCompletionProvider
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L739)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L775)
 
 Data-only suggestions; provider work is bounded and stopped with this addon.
 
@@ -1174,7 +1197,7 @@ editor.registerCompletionProvider: (
 
 ### editor.registerHoverProvider
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L743)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L779)
 
 Plain-text hover content. Work is cancelled when the hovered target changes.
 
@@ -1194,7 +1217,7 @@ editor.registerHoverProvider: (
 
 ### editor.registerContextActionProvider
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L747)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L783)
 
 Data-only actions whose edits are checked against the captured document.
 
@@ -1214,7 +1237,7 @@ editor.registerContextActionProvider: (
 
 ### editor.registerRich
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L750)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L786)
 
 ```typescript
 editor.registerRich: (extension: RichExtension) => () => void
@@ -1232,7 +1255,7 @@ Related: [RichExtension](RichExtension.md).
 
 ### editor.registerMarkdown
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L751)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L787)
 
 ```typescript
 editor.registerMarkdown: (extension: MarkdownExtension) => () => void
@@ -1250,7 +1273,7 @@ Related: [MarkdownExtension](MarkdownExtension.md).
 
 ### editor.registerSource
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L752)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L788)
 
 ```typescript
 editor.registerSource: (extension: SourceExtension) => () => void
@@ -1268,7 +1291,7 @@ Related: [SourceExtension](SourceExtension.md).
 
 ### editor.registerFlavor
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L753)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L789)
 
 ```typescript
 editor.registerFlavor: (flavor: MarkdownFlavor) => () => void
@@ -1286,7 +1309,7 @@ Related: [MarkdownFlavor](MarkdownFlavor.md).
 
 ### editor.renderMarkdown
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L755)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L791)
 
 Render with the file's flavor choice and active projections for static export.
 
@@ -1307,7 +1330,7 @@ Related: [RenderedMarkdown](RenderedMarkdown.md).
 
 ### editor.runCommand
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L757)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L793)
 
 Uses the app's file dialogs, draft checks, and save handling.
 
@@ -1327,7 +1350,7 @@ Related: [DocumentCommand](DocumentCommand.md).
 
 ### editor.updateMarkdown
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L759)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L795)
 
 Apply a synchronous source transform to the active note; throws while busy.
 
@@ -1350,7 +1373,7 @@ editor.updateMarkdown: (
 
 ### host.network.getText
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L772)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L808)
 
 Ask the user for each HTTPS GET destination and return bounded UTF-8 text.
 
@@ -1370,7 +1393,7 @@ host.network.getText: (
 
 ### commands.execute
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L781)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L817)
 
 Invoke this addon's registered command through the same guarded dispatcher as the palette.
 
@@ -1388,7 +1411,7 @@ commands.execute: (id: string) => Promise<void>
 
 ### commands.register
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L782)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L818)
 
 ```typescript
 commands.register: (command: AddonCommand) => () => void
@@ -1406,7 +1429,7 @@ Related: [AddonCommand](AddonCommand.md).
 
 ### commands.getSlashCommands
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L784)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L820)
 
 Enabled commands whose slash action is available for the active note.
 
@@ -1420,7 +1443,7 @@ Related: [AddonSlashCommand](AddonSlashCommand.md).
 
 ### workspace.registerDecorations
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L788)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L824)
 
 Explorer-only badges/colors. Removed with this addon's lifecycle.
 
@@ -1440,7 +1463,7 @@ Related: [ExplorerDecorationProvider](ExplorerDecorationProvider.md).
 
 ### workspace.index
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L790)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L826)
 
 Read note text and workspace drafts without embedding media or blocking writes.
 
@@ -1454,7 +1477,7 @@ Related: [WorkspaceIndex](WorkspaceIndex.md).
 
 ### workspace.snapshot
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L791)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L827)
 
 ```typescript
 workspace.snapshot: () => Promise<WorkspaceSnapshot>
@@ -1466,7 +1489,7 @@ Related: [WorkspaceSnapshot](WorkspaceSnapshot.md).
 
 ### workspace.changeSnapshot
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L793)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L829)
 
 Snapshot and sequenced changes for this workspace generation.
 
@@ -1482,7 +1505,7 @@ Related: [WorkspaceStreamSnapshot](WorkspaceStreamSnapshot.md).
 
 ### workspace.listPage
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L797)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L833)
 
 Bounded flat entries tied to one workspace change sequence.
 
@@ -1504,7 +1527,7 @@ Related: [WorkspaceEntryPageRequest](WorkspaceEntryPageRequest.md), [WorkspaceEn
 
 ### workspace.subscribeChanges
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L800)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L836)
 
 ```typescript
 workspace.subscribeChanges: (
@@ -1524,7 +1547,7 @@ Related: [WorkspaceChangeListener](WorkspaceChangeListener.md), [WorkspaceChange
 
 ### workspace.readText
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L804)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L840)
 
 Read persisted UTF-8 text at a captured workspace target.
 
@@ -1552,7 +1575,7 @@ Related: [WorkspaceTarget](WorkspaceTarget.md), [WorkspaceFileResult](WorkspaceF
 
 ### workspace.readBinary
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L813)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L849)
 
 Read bounded persisted attachment bytes at a captured workspace target.
 
@@ -1580,7 +1603,7 @@ Related: [WorkspaceTarget](WorkspaceTarget.md), [WorkspaceFileResult](WorkspaceF
 
 ### workspace.createText
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L822)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L858)
 
 Create new text with exclusive commit at a captured workspace target.
 
@@ -1610,7 +1633,7 @@ Related: [WorkspaceTarget](WorkspaceTarget.md), [WorkspaceFileResult](WorkspaceF
 
 ### workspace.createBinary
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L832)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L868)
 
 Create a new binary attachment without replacing another file.
 
@@ -1640,7 +1663,7 @@ Related: [WorkspaceTarget](WorkspaceTarget.md), [WorkspaceFileResult](WorkspaceF
 
 ### workspace.updateText
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L842)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L878)
 
 Replace a closed file using its disk version and an explicit metadata reset.
 
@@ -1674,7 +1697,7 @@ Related: [WorkspaceTarget](WorkspaceTarget.md), [WorkspaceTextUpdateOptions](Wor
 
 ### workspace.renameFile
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L854)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L890)
 
 Move a closed file to a new path using its last-read disk version.
 
@@ -1706,7 +1729,7 @@ Related: [WorkspaceTarget](WorkspaceTarget.md), [WorkspaceFileVersion](Workspace
 
 ### workspace.trashFile
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L865)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L901)
 
 Send a closed file to the OS trash using its last-read disk version.
 
@@ -1736,7 +1759,7 @@ Related: [WorkspaceTarget](WorkspaceTarget.md), [WorkspaceFileVersion](Workspace
 
 ### workspace.query
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L875)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L911)
 
 Bounded metadata and text queries over one captured workspace generation.
 
@@ -1763,7 +1786,7 @@ Related: [OperationResult](OperationResult.md).
 
 ### workspace.get
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L883)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L919)
 
 ```typescript
 workspace.get: () => Promise<WorkspaceState | null>
@@ -1775,7 +1798,7 @@ Related: [WorkspaceState](WorkspaceState.md).
 
 ### workspace.open
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L884)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L920)
 
 ```typescript
 workspace.open: () => Promise<WorkspaceState | null>
@@ -1787,7 +1810,7 @@ Related: [WorkspaceState](WorkspaceState.md).
 
 ### workspace.openFile
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L885)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L921)
 
 ```typescript
 workspace.openFile: (path: string) => Promise<void>
@@ -1803,7 +1826,7 @@ workspace.openFile: (path: string) => Promise<void>
 
 ### native.query
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L890)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L926)
 
 Only explicitly exported native queries; does not lock editor/file actions.
 
@@ -1822,7 +1845,7 @@ native.query: <T = unknown>(method: string, input?: unknown) => Promise<T>
 
 ### native.invoke
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L891)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L927)
 
 ```typescript
 native.invoke: <T = unknown>(method: string, input?: unknown) => Promise<T>
@@ -1839,7 +1862,7 @@ native.invoke: <T = unknown>(method: string, input?: unknown) => Promise<T>
 
 ### notify
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L893)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L929)
 
 ```typescript
 notify: (message: string) => void
@@ -1855,4 +1878,4 @@ notify: (message: string) => void
 
 ## Related types
 
-[AddonAccessApi](AddonAccessApi.md), [AddonExportsApi](AddonExportsApi.md), [DependencyApi](DependencyApi.md), [SettingsApi](SettingsApi.md), [ColorschemeInput](ColorschemeInput.md), [Colorscheme](Colorscheme.md), [ThemePreferences](ThemePreferences.md), [DialogApi](DialogApi.md), [SidebarApi](SidebarApi.md), [ViewApi](ViewApi.md), [AnalysisApi](AnalysisApi.md), [ToastApi](ToastApi.md), [MenuApi](MenuApi.md), [ToolbarApi](ToolbarApi.md), [TooltipApi](TooltipApi.md), [AddonApp](AddonApp.md), [StyleHandle](StyleHandle.md), [PatchApi](PatchApi.md), [StatusItem](StatusItem.md), [StatusHandle](StatusHandle.md), [SourceEditRequest](SourceEditRequest.md), [SourceEditResult](SourceEditResult.md), [TextProjection](TextProjection.md), [TextDecoration](TextDecoration.md), [DocumentState](DocumentState.md), [DocumentFormat](DocumentFormat.md), [RenderedMarkdown](RenderedMarkdown.md), [CodeLanguage](CodeLanguage.md), [MarkdownSyntaxFeature](MarkdownSyntaxFeature.md), [DocumentSyntaxFeature](DocumentSyntaxFeature.md), [EditorKeyEvent](EditorKeyEvent.md), [EditorInputEvent](EditorInputEvent.md), [RichExtension](RichExtension.md), [MarkdownExtension](MarkdownExtension.md), [SourceExtension](SourceExtension.md), [MarkdownFlavor](MarkdownFlavor.md), [DocumentCommand](DocumentCommand.md), [DocumentsApi](DocumentsApi.md), [EditorViewsApi](EditorViewsApi.md), [AddonCommand](AddonCommand.md), [AddonSlashCommand](AddonSlashCommand.md), [ExplorerDecorationProvider](ExplorerDecorationProvider.md), [WorkspaceIndex](WorkspaceIndex.md), [WorkspaceSnapshot](WorkspaceSnapshot.md), [WorkspaceStreamSnapshot](WorkspaceStreamSnapshot.md), [WorkspaceEntryPageRequest](WorkspaceEntryPageRequest.md), [WorkspaceEntryPageResult](WorkspaceEntryPageResult.md), [WorkspaceChangeListener](WorkspaceChangeListener.md), [WorkspaceChangeSubscription](WorkspaceChangeSubscription.md), [WorkspaceTarget](WorkspaceTarget.md), [WorkspaceFileResult](WorkspaceFileResult.md), [WorkspaceTextRead](WorkspaceTextRead.md), [WorkspaceBinaryRead](WorkspaceBinaryRead.md), [WorkspaceTextCreation](WorkspaceTextCreation.md), [WorkspaceBinaryCreation](WorkspaceBinaryCreation.md), [WorkspaceTextUpdateOptions](WorkspaceTextUpdateOptions.md), [WorkspaceTextUpdate](WorkspaceTextUpdate.md), [WorkspaceFileVersion](WorkspaceFileVersion.md), [WorkspaceFileRename](WorkspaceFileRename.md), [WorkspaceFileTrash](WorkspaceFileTrash.md), [OperationResult](OperationResult.md), [WorkspaceState](WorkspaceState.md).
+[Addon](Addon.md), [AddonWindowOptions](AddonWindowOptions.md), [AddonWindowHandle](AddonWindowHandle.md), [AddonAccessApi](AddonAccessApi.md), [AddonExportsApi](AddonExportsApi.md), [DependencyApi](DependencyApi.md), [SettingsApi](SettingsApi.md), [ColorschemeInput](ColorschemeInput.md), [Colorscheme](Colorscheme.md), [ThemePreferences](ThemePreferences.md), [DialogApi](DialogApi.md), [SidebarApi](SidebarApi.md), [ViewApi](ViewApi.md), [AnalysisApi](AnalysisApi.md), [ToastApi](ToastApi.md), [MenuApi](MenuApi.md), [ToolbarApi](ToolbarApi.md), [TooltipApi](TooltipApi.md), [AddonApp](AddonApp.md), [StyleHandle](StyleHandle.md), [PatchApi](PatchApi.md), [StatusItem](StatusItem.md), [StatusHandle](StatusHandle.md), [SourceEditRequest](SourceEditRequest.md), [SourceEditResult](SourceEditResult.md), [TextProjection](TextProjection.md), [TextDecoration](TextDecoration.md), [DocumentState](DocumentState.md), [DocumentFormat](DocumentFormat.md), [RenderedMarkdown](RenderedMarkdown.md), [CodeLanguage](CodeLanguage.md), [MarkdownSyntaxFeature](MarkdownSyntaxFeature.md), [DocumentSyntaxFeature](DocumentSyntaxFeature.md), [EditorKeyEvent](EditorKeyEvent.md), [EditorInputEvent](EditorInputEvent.md), [RichExtension](RichExtension.md), [MarkdownExtension](MarkdownExtension.md), [SourceExtension](SourceExtension.md), [MarkdownFlavor](MarkdownFlavor.md), [DocumentCommand](DocumentCommand.md), [DocumentsApi](DocumentsApi.md), [EditorViewsApi](EditorViewsApi.md), [AddonCommand](AddonCommand.md), [AddonSlashCommand](AddonSlashCommand.md), [ExplorerDecorationProvider](ExplorerDecorationProvider.md), [WorkspaceIndex](WorkspaceIndex.md), [WorkspaceSnapshot](WorkspaceSnapshot.md), [WorkspaceStreamSnapshot](WorkspaceStreamSnapshot.md), [WorkspaceEntryPageRequest](WorkspaceEntryPageRequest.md), [WorkspaceEntryPageResult](WorkspaceEntryPageResult.md), [WorkspaceChangeListener](WorkspaceChangeListener.md), [WorkspaceChangeSubscription](WorkspaceChangeSubscription.md), [WorkspaceTarget](WorkspaceTarget.md), [WorkspaceFileResult](WorkspaceFileResult.md), [WorkspaceTextRead](WorkspaceTextRead.md), [WorkspaceBinaryRead](WorkspaceBinaryRead.md), [WorkspaceTextCreation](WorkspaceTextCreation.md), [WorkspaceBinaryCreation](WorkspaceBinaryCreation.md), [WorkspaceTextUpdateOptions](WorkspaceTextUpdateOptions.md), [WorkspaceTextUpdate](WorkspaceTextUpdate.md), [WorkspaceFileVersion](WorkspaceFileVersion.md), [WorkspaceFileRename](WorkspaceFileRename.md), [WorkspaceFileTrash](WorkspaceFileTrash.md), [OperationResult](OperationResult.md), [WorkspaceState](WorkspaceState.md).

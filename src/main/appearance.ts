@@ -70,6 +70,14 @@ export function appearanceColors() {
       : appearance.preferences.mode
   return appearance[mode]
 }
+/** Window-control colors for frameless windows on Windows and Linux. */
+export function titleBarColors() {
+  return {
+    color: appearanceColors().background,
+    symbolColor: appearanceColors().foreground,
+    height: 36,
+  }
+}
 export function exportedAppearance() {
   return { ...appearance.preferences }
 }

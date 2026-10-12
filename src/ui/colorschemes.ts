@@ -1,6 +1,7 @@
 import { bundledColorschemes } from '../shared/color-palettes'
 import {
   COLOR_TOKENS,
+  type Colorscheme,
   type ColorschemeInput,
   DEFAULT_THEME,
   defineColorscheme,
@@ -8,6 +9,56 @@ import {
   type ThemePreferences,
   themePreferences,
 } from '../shared/colorschemes'
+
+/** The main window's light and dark colorschemes, including ones registered by addons. */
+export const activePaletteKey = 'hibi:active-palette'
+type Palettes = {
+  mode: ThemePreferences['mode']
+  light: Colorscheme
+  dark: Colorscheme
+}
+
+export function publishActivePalette({ mode, light, dark }: Palettes) {
+  try {
+    localStorage.setItem(
+      activePaletteKey,
+      JSON.stringify({ mode, light: light.colors, dark: dark.colors }),
+    )
+  } catch {
+    /* Other windows keep their bundled colorscheme. */
+  }
+}
+
+/** Apply the published palette for the current appearance; false when none is stored or it is invalid. */
+export function applyActivePalette(style: HTMLStyleElement): boolean {
+  try {
+    const value = JSON.parse(localStorage.getItem(activePaletteKey) ?? 'null')
+    const appearance =
+      value?.mode === 'system'
+        ? matchMedia('(prefers-color-scheme: dark)').matches
+          ? 'dark'
+          : 'light'
+        : value?.mode
+    if (appearance !== 'light' && appearance !== 'dark') return false
+    const colors: unknown = value[appearance]
+    if (!colors || typeof colors !== 'object') return false
+    const entries = Object.entries(colors)
+    if (
+      !entries.every(
+        ([token, color]) =>
+          COLOR_TOKENS.includes(token as (typeof COLOR_TOKENS)[number]) &&
+          typeof color === 'string' &&
+          /^#[\da-f]{6}(?:[\da-f]{2})?$/i.test(color),
+      )
+    )
+      return false
+    document.documentElement.dataset.appearance = appearance
+    style.textContent = `:root { color-scheme: ${appearance}; ${entries.map(([token, color]) => `--${token}: ${color};`).join(' ')} }`
+    return true
+  } catch {
+    return false
+  }
+}
 
 export function createColorschemeStore(
   storageKey: string,
@@ -127,6 +178,14 @@ export function createColorschemeStore(
         active = false
         schemes.delete(scheme.id)
         publish()
+      }
+    },
+    /** The selected mode and the colorscheme for each appearance. */
+    resolved(): Palettes {
+      return {
+        mode: preferences.mode,
+        light: selected('light'),
+        dark: selected('dark'),
       }
     },
     native(): NativeAppearance {
