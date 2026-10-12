@@ -32,6 +32,12 @@
   "8b13cd5c78ad": [
     "src/renderer/src/markdown-syntax.ts"
   ],
+  "521d1fae9db7": [
+    "src/renderer/src/SettingsScreen.tsx"
+  ],
+  "c2b2634cc749": [
+    "src/renderer/src/SettingsScreen.tsx"
+  ],
   "5b4ca976c25a": [
     "src/addons/ui-preview/index.tsx"
   ],
@@ -869,6 +875,9 @@
   "97ebc02f32f0": [
     "src/main/workspace-settings.ts"
   ],
+  "e77e7823e59a": [
+    "src/main/background.ts"
+  ],
   "83e12ba9ce92": [
     "src/main/workspace-settings.ts"
   ],
@@ -969,6 +978,9 @@
   ],
   "31a8910a7cf4": [
     "src/renderer/src/DocumentTabs.tsx"
+  ],
+  "49f09fa5195f": [
+    "src/renderer/src/HibiSettings.tsx"
   ],
   "2cae577523a5": [
     "src/renderer/src/CodeSyntaxSettings.tsx",
@@ -1676,6 +1688,9 @@
   "b07a24db4354": [
     "src/renderer/src/EditorToolbar.tsx"
   ],
+  "faac854ffc99": [
+    "src/renderer/src/DocumentTabs.tsx"
+  ],
   "f5d8a4fcbe0e": [
     "src/addons/block-drag/manifest.ts"
   ],
@@ -2218,6 +2233,9 @@
   "cd533847a0a4": [
     "src/renderer/src/AddonPanel.tsx"
   ],
+  "b2ec5f521746": [
+    "src/shared/hotkeys.ts"
+  ],
   "384706288140": [
     "src/renderer/src/SettingsScreen.tsx"
   ],
@@ -2269,6 +2287,9 @@
   ],
   "c7a8f9cd36ee": [
     "src/addons/frontmatter/Properties.tsx"
+  ],
+  "c910d474dcd7": [
+    "src/renderer/src/HibiSettings.tsx"
   ],
   "a659b60d246d": [
     "src/addons/dictionary/packs.ts",
@@ -2542,6 +2563,9 @@
   ],
   "7cfcf0528fc4": [
     "src/renderer/src/FormattingToolbar.tsx"
+  ],
+  "5583bb8f9f9e": [
+    "src/renderer/src/SettingsScreen.tsx"
   ],
   "996d077b651b": [
     "src/renderer/src/markdown-syntax.ts"
@@ -2901,6 +2925,9 @@
   ],
   "5720aebea161": [
     "src/addons/documentation/options.ts"
+  ],
+  "801c0e70112e": [
+    "src/renderer/src/HibiSettings.tsx"
   ],
   "566c3a93a25f": [
     "src/renderer/src/main.tsx"
@@ -3295,6 +3322,9 @@
   "4643fac966e8": [
     "src/addons/frontmatter/Properties.tsx"
   ],
+  "c116a4594ad5": [
+    "src/main/background.ts"
+  ],
   "a25d48f8077d": [
     "src/renderer/src/WorkspaceSidebar.tsx",
     "src/renderer/src/main.tsx"
@@ -3554,6 +3584,9 @@
   "48b28302e75c": [
     "src/renderer/src/FormatsSettings.tsx"
   ],
+  "4dfb4b4c8f10": [
+    "src/main/background.ts"
+  ],
   "54ae80c30bea": [
     "src/renderer/src/WorkspaceSettings.tsx"
   ],
@@ -3632,6 +3665,9 @@
   "48a7ae24583b": [
     "src/renderer/src/ImportDialog.tsx"
   ],
+  "b52d8596aa3f": [
+    "src/renderer/src/addons.ts"
+  ],
   "29c10407db3a": [
     "src/renderer/src/AddonSettings.tsx"
   ],
@@ -3683,6 +3719,9 @@
   ],
   "b54029154628": [
     "src/site/bootstrap.tsx"
+  ],
+  "dafff0444fbc": [
+    "src/renderer/src/main.tsx"
   ],
   "b3e34b185d06": [
     "src/main/workspace.ts",
@@ -3859,6 +3898,10 @@
   "ac81d61ec2b5": [
     "src/renderer/src/DependencySettings.tsx"
   ],
+  "34ad0a098e65": [
+    "src/renderer/src/Editor.tsx",
+    "src/renderer/src/SourceEditor.tsx"
+  ],
   "95d3d7e8feed": [
     "src/renderer/src/AddonHotkeySettings.tsx",
     "src/renderer/src/HotkeySettings.tsx"
@@ -3990,6 +4033,7 @@
     "src/addons/ui-preview/index.tsx"
   ],
   "b3eb37acb66b": [
+    "src/main/background.ts",
     "src/main/index.ts"
   ],
   "eb4cdebd82bf": [
@@ -4519,6 +4563,7 @@
     "src/addons/diagnostics/Settings.tsx"
   ],
   "74a883a037bc": [
+    "src/main/background.ts",
     "src/main/index.ts",
     "src/renderer/src/SettingsScreen.tsx",
     "src/renderer/src/Titlebar.tsx"
@@ -4896,8 +4941,14 @@
   "49c50576529d": [
     "src/addons/writing-suggestions/index.ts"
   ],
+  "70a91037b87d": [
+    "src/renderer/src/SettingsScreen.tsx"
+  ],
   "16d1c9050a0b": [
     "src/renderer/src/FormattingToolbar.tsx"
+  ],
+  "8e5ea509893e": [
+    "src/renderer/src/SettingsScreen.tsx"
   ],
   "ba4c743a7c81": [
     "src/addons/tags/index.tsx"
@@ -5835,6 +5886,9 @@
   "7c37fac1f988": [
     "src/renderer/src/DependencySettings.tsx"
   ],
+  "fb665036c60b": [
+    "src/renderer/src/SettingsScreen.tsx"
+  ],
   "3d678d549c61": [
     "src/renderer/src/SettingsScreen.tsx"
   ],
@@ -6126,6 +6180,9 @@
   ],
   "681bf81aba87": [
     "src/renderer/src/DependencySettings.tsx"
+  ],
+  "5e1f3a989ef5": [
+    "src/renderer/src/SettingsScreen.tsx"
   ],
   "bdb464803da1": [
     "src/addons/discord-presence/Settings.tsx"

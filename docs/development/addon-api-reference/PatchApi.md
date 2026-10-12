@@ -2,7 +2,7 @@
 
 # PatchApi
 
-Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L238)
+Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L239)
 
 Patches mutable renderer methods. Every registration returns an undo function.
 
@@ -55,7 +55,7 @@ type PatchApi = {
 
 ### before
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L239)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L240)
 
 ```typescript
 before: <T extends object, K extends MethodKey<T>>(
@@ -83,7 +83,7 @@ Related: [MethodKey](MethodKey.md), [MethodOf](MethodOf.md).
 
 ### after
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L248)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L249)
 
 ```typescript
 after: <T extends object, K extends MethodKey<T>>(
@@ -111,7 +111,7 @@ Related: [MethodKey](MethodKey.md), [MethodOf](MethodOf.md).
 
 ### instead
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L257)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L258)
 
 ```typescript
 instead: <T extends object, K extends MethodKey<T>>(

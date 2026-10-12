@@ -10,9 +10,16 @@ import {
   selectedCompletion,
   startCompletion,
 } from '@codemirror/autocomplete'
-import { defaultKeymap, isolateHistory, selectAll } from '@codemirror/commands'
+import {
+  defaultKeymap,
+  indentLess,
+  indentMore,
+  isolateHistory,
+  selectAll,
+} from '@codemirror/commands'
 import {
   HighlightStyle,
+  indentUnit,
   type Language,
   syntaxHighlighting,
   syntaxTree,
@@ -30,7 +37,13 @@ import {
   EditorState,
   Transaction,
 } from '@codemirror/state'
-import { EditorView, keymap, lineNumbers, placeholder } from '@codemirror/view'
+import {
+  type Command,
+  EditorView,
+  keymap,
+  lineNumbers,
+  placeholder,
+} from '@codemirror/view'
 import { tags } from '@lezer/highlight'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { DocumentFormat, SourceExtension } from '../../addons/api'
@@ -85,12 +98,14 @@ import {
   type SourceFormatting,
   sourceFormatting,
 } from './source-formatting'
+import { sourceIndentation } from './source-indent'
 import { createSourceSession, sourceEditorText } from './source-session'
 import {
   registerSourceView,
   type SourceReferenceResult,
   type SourceReferenceSyntax,
 } from './source-view'
+import { tabIndent } from './tab-indent'
 import { textProjection } from './text-projection'
 
 const highlighting = HighlightStyle.define([
@@ -271,6 +286,7 @@ export function SourceEditor({
   const editable = useRef(new Compartment())
   const numbers = useRef(new Compartment())
   const addons = useRef(new Compartment())
+  const indentation = useRef(new Compartment())
   const find = useRef({
     active: findActive,
     query: findQuery,
@@ -537,6 +553,7 @@ export function SourceEditor({
         ),
         EditorView.contentAttributes.of({
           'aria-label': markdownMode ? 'Markdown editor' : `${label} editor`,
+          'aria-description': 'Press Escape, then Tab, to leave the editor.',
         }),
       ]
     }
@@ -557,6 +574,7 @@ export function SourceEditor({
       character: string
     } | null = null
     let closingCompletion = false
+    let escaped = false
     const captureCompletion = (
       trigger: CompletionRequest['trigger'],
     ): CompletionRequest | null => {
@@ -817,6 +835,26 @@ export function SourceEditor({
         pending.waiting.push(resolve),
       )
     }
+    const indentSource = (view: EditorView, command: Command) => {
+      if (
+        !tabIndent.snapshot().enabled ||
+        view.state.readOnly ||
+        view.scrollDOM.classList.contains('cm-vimMode')
+      )
+        return false
+      // An open menu declines Tab briefly after appearing; never indent beneath it.
+      if (completionStatus(view.state) === 'active') return true
+      if (
+        command === indentLess ||
+        view.state.selection.ranges.some((range) => !range.empty)
+      )
+        return command(view)
+      view.dispatch(view.state.replaceSelection(view.state.facet(indentUnit)), {
+        scrollIntoView: true,
+        userEvent: 'input',
+      })
+      return true
+    }
     const editor = new EditorView({
       parent: host.current,
       dispatchTransactions(transactions, editor) {
@@ -848,6 +886,7 @@ export function SourceEditor({
           language.of(markdown()),
           sourceAnnotationExtension,
           autocompletion({ override: [sourceCompletions] }),
+          indentation.current.of(sourceIndentation(tabIndent.snapshot().unit)),
           keymap.of([
             {
               key: 'Tab',
@@ -858,8 +897,26 @@ export function SourceEditor({
                 )
               },
             },
+            {
+              key: 'Tab',
+              run: (view) => indentSource(view, indentMore),
+              shift: (view) => indentSource(view, indentLess),
+            },
           ]),
           EditorView.domEventHandlers({
+            keydown(event, view) {
+              // CodeMirror arms Tab focus for two seconds after an unhandled Escape;
+              // keep it armed until another key or blur so nobody has to hurry.
+              if (!['Shift', 'Control', 'Alt', 'Meta'].includes(event.key))
+                escaped = false
+              if (event.key === 'Escape')
+                queueMicrotask(() => {
+                  if (event.defaultPrevented) return
+                  view.setTabFocusMode(Infinity)
+                  escaped = true
+                })
+              return false
+            },
             beforeinput(event) {
               if (
                 event.inputType !== 'historyUndo' &&
@@ -872,6 +929,8 @@ export function SourceEditor({
                 : bridge.redo()
             },
             blur(_event, view) {
+              if (escaped) view.setTabFocusMode(false)
+              escaped = false
               const selection = view.state.selection
               if (selection.ranges.some((range) => range.empty && range.assoc))
                 view.dispatch({
@@ -1443,6 +1502,17 @@ export function SourceEditor({
       canceled = true
     }
   }, [bridge, sourceExtensions])
+  useEffect(
+    () =>
+      tabIndent.subscribe(() =>
+        view.current?.dispatch({
+          effects: indentation.current.reconfigure(
+            sourceIndentation(tabIndent.snapshot().unit),
+          ),
+        }),
+      ),
+    [],
+  )
   useEffect(() => {
     view.current?.dispatch({
       effects: editable.current.reconfigure([

@@ -122,6 +122,7 @@ function sameHotkey(left: HotkeyDescriptor, right: HotkeyDescriptor): boolean {
   return (
     left.label === right.label &&
     left.defaultShortcut === right.defaultShortcut &&
+    left.runnableOnly === right.runnableOnly &&
     left.menu?.location === right.menu?.location &&
     left.menu?.group === right.menu?.group &&
     left.menu?.order === right.menu?.order
@@ -158,6 +159,7 @@ type Environment = Omit<
   | 'exports'
 > & {
   openDependencySettings: () => void
+  openAddonSettings: (id?: string) => void
   workspace: Pick<
     AddonContext['workspace'],
     'index' | 'snapshot' | 'get' | 'open' | 'openFile'
@@ -543,7 +545,15 @@ export function useAddons(
         setStates(states)
         addonRegistry.hydrate(installed)
         for (const message of notices)
-          toastService.api.show({ message, variant: 'error', duration: 0 })
+          toastService.api.show({
+            message,
+            variant: 'error',
+            duration: 0,
+            action: {
+              label: 'Open addon settings',
+              run: () => latest.current.openAddonSettings(),
+            },
+          })
         setLoaded(true)
       })
       .catch((error: unknown) => {
@@ -893,6 +903,11 @@ export function useAddons(
                 description: `Report this problem at ${ADDON_ISSUE_URL}.`,
                 variant: 'error',
                 duration: 0,
+                action: {
+                  label: 'Open addon settings',
+                  run: () =>
+                    latest.current.openAddonSettings(failedSwitch.requested),
+                },
               })
             } else {
               modalSwitch.current = null
@@ -901,6 +916,11 @@ export function useAddons(
                 description: `Report this problem at ${ADDON_ISSUE_URL}.`,
                 variant: 'error',
                 duration: 0,
+                action: {
+                  label: 'Open addon settings',
+                  run: () =>
+                    latest.current.openAddonSettings(failedSwitch.requested),
+                },
               })
             }
           } catch {
@@ -923,6 +943,11 @@ export function useAddons(
               description: `Report this problem at ${ADDON_ISSUE_URL}.`,
               variant: 'error',
               duration: 0,
+              action: {
+                label: 'Open addon settings',
+                run: () =>
+                  latest.current.openAddonSettings(failedSwitch.requested),
+              },
             })
           }
         })()
@@ -2139,22 +2164,19 @@ export function useAddons(
   ])
   useEffect(() => {
     const desired = new Map<string, HotkeyDescriptor>(
-      visibleCommands
-        .filter(
-          (command) =>
-            command.defaultShortcut || command.menu?.location === 'app',
-        )
-        .map((command) => [
-          command.id,
-          {
-            id: command.id,
-            label: command.label,
-            ...(command.defaultShortcut
-              ? { defaultShortcut: command.defaultShortcut }
-              : {}),
-            ...(command.menu?.location === 'app' ? { menu: command.menu } : {}),
-          },
-        ]),
+      visibleCommands.map((command) => [
+        command.id,
+        {
+          id: command.id,
+          label: command.label,
+          runnableOnly:
+            !command.defaultShortcut && command.menu?.location !== 'app',
+          ...(command.defaultShortcut
+            ? { defaultShortcut: command.defaultShortcut }
+            : {}),
+          ...(command.menu?.location === 'app' ? { menu: command.menu } : {}),
+        },
+      ]),
     )
     for (const [id, current] of hotkeyRegistrations) {
       const next = desired.get(id)

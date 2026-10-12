@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { Readable } from 'node:stream'
 import test from 'node:test'
+import { fileURLToPath } from 'node:url'
 import { build } from 'esbuild'
 import {
   datamuseProvider,
@@ -12,7 +13,9 @@ import { HostNetwork, parseAddonNetwork } from '../src/main/host-network.ts'
 
 const bundled = await build({
   entryPoints: [
-    new URL('../src/addons/dictionary/manifest.ts', import.meta.url).pathname,
+    fileURLToPath(
+      new URL('../src/addons/dictionary/manifest.ts', import.meta.url),
+    ),
   ],
   bundle: true,
   platform: 'node',

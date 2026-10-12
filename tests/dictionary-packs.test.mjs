@@ -14,7 +14,7 @@ import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { Worker } from 'node:worker_threads'
 import { gzipSync } from 'node:zlib'
 import { build } from 'esbuild'
@@ -34,8 +34,9 @@ const worker = join(buildRoot, 'worker.mjs')
 const require = createRequire(import.meta.url)
 await build({
   entryPoints: [
-    new URL('../src/addons/dictionary/pack-worker.ts', import.meta.url)
-      .pathname,
+    fileURLToPath(
+      new URL('../src/addons/dictionary/pack-worker.ts', import.meta.url),
+    ),
   ],
   outfile: worker,
   bundle: true,
@@ -46,7 +47,8 @@ await build({
       name: 'external-unzipper',
       setup(b) {
         b.onResolve({ filter: /^unzipper$/ }, () => ({
-          path: require.resolve('unzipper'),
+          // Windows needs a file URL: Node's ESM loader rejects drive paths.
+          path: pathToFileURL(require.resolve('unzipper')).href,
           external: true,
         }))
       },
@@ -55,7 +57,9 @@ await build({
 })
 await build({
   entryPoints: [
-    new URL('../src/addons/dictionary/pack-store.ts', import.meta.url).pathname,
+    fileURLToPath(
+      new URL('../src/addons/dictionary/pack-store.ts', import.meta.url),
+    ),
   ],
   outfile: join(buildRoot, 'store.mjs'),
   bundle: true,
@@ -219,7 +223,7 @@ test('offline lookups keep working during another pack download, blocked convers
     stdin: {
       contents: `
         import { parentPort } from 'node:worker_threads'
-        import { PackIndex } from '${new URL('../src/addons/dictionary/pack-index.ts', import.meta.url).pathname}'
+        import { PackIndex } from ${JSON.stringify(fileURLToPath(new URL('../src/addons/dictionary/pack-index.ts', import.meta.url)))}
         const index = new PackIndex()
         let queue = Promise.resolve()
         parentPort.on('message', job => {

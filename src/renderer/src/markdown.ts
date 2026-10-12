@@ -26,6 +26,7 @@ import {
 import { markdownSyntax } from './markdown-syntax.ts'
 import { preserveHtml, rawHtml } from './RawHtml.ts'
 import { installSyntaxPreferences } from './syntax-parser.ts'
+import { TabIndent } from './tab-indent.ts'
 
 export { projectMarkdown } from './markdown-projection.ts'
 
@@ -136,22 +137,7 @@ export function editorExtensions(
       >,
       markedOptions: options,
     }),
-    Extension.create({
-      name: 'listTabFocus',
-      // After list keymaps: keep focus when an item cannot indent further.
-      priority: 50,
-      addKeyboardShortcuts() {
-        const inListItem = () => {
-          if (!this.editor.isEditable) return false
-          const { $from } = this.editor.state.selection
-          for (let depth = $from.depth; depth > 0; depth--)
-            if (['listItem', 'taskItem'].includes($from.node(depth).type.name))
-              return true
-          return false
-        }
-        return { Tab: inListItem, 'Shift-Tab': inListItem }
-      },
-    }),
+    TabIndent,
     CodeHighlight,
     BlockExit,
     MarkdownMarkExit,

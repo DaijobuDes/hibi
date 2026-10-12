@@ -12,15 +12,15 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { build } from 'esbuild'
 
 const root = await mkdtemp(join(tmpdir(), 'hibi-index-tests-'))
 const source = new URL('../src/addons/dictionary/', import.meta.url)
 await build({
   entryPoints: [
-    new URL('pack-index.ts', source).pathname,
-    new URL('pack-runtime.ts', source).pathname,
+    fileURLToPath(new URL('pack-index.ts', source)),
+    fileURLToPath(new URL('pack-runtime.ts', source)),
   ],
   outdir: root,
   bundle: true,
@@ -28,7 +28,7 @@ await build({
   format: 'esm',
 })
 await build({
-  entryPoints: [new URL('pack-worker.ts', source).pathname],
+  entryPoints: [fileURLToPath(new URL('pack-worker.ts', source))],
   outfile: join(root, 'worker.mjs'),
   bundle: true,
   platform: 'node',

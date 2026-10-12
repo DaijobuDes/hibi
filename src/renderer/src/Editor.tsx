@@ -596,6 +596,7 @@ export function MarkdownEditor({
         },
         attributes: {
           'aria-label': 'Document editor',
+          'aria-description': 'Press Escape, then Tab, to leave the editor.',
           role: 'textbox',
           'aria-multiline': 'true',
           tabindex: '0',

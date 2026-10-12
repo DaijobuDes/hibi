@@ -191,6 +191,7 @@ For installed packages, use the [SideloadFactory](SideloadFactory.md) and the [s
 
 ## Notifications
 
+- [ToastAction](ToastAction.md)
 - [ToastApi](ToastApi.md)
 - [ToastHandle](ToastHandle.md)
 - [ToastOptions](ToastOptions.md)
