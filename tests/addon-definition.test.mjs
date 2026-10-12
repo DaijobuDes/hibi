@@ -22,25 +22,32 @@ const fixture = `
     stop() {},
   }
 `
-
-test('direct definitions and factories share one descriptor path', {
-  timeout: 30000,
-}, async (t) => {
+async function registry(t) {
   const server = await createServer({
     configFile: false,
     root: resolve('.'),
     server: { middlewareMode: true },
     appType: 'custom',
   })
-  t.after(async () => {
-    await server.close()
+  t.after(() => server.close())
+  const { addonRegistry } = await server.ssrLoadModule(
+    '/src/renderer/src/addon-registry.ts',
+  )
+  t.after(() => addonRegistry.hydrate([]))
+  const find = (id) =>
+    addonRegistry.snapshot().find((addon) => addon.manifest.id === id)
+  return { server, addonRegistry, find }
+}
+
+test('direct definitions and factories share one descriptor path', {
+  timeout: 30000,
+}, async (t) => {
+  const { server, addonRegistry, find } = await registry(t)
+  t.after(() => {
     delete globalThis.definitionStarts
     delete globalThis.definitionSdk
     delete globalThis.definitionFactoryCalls
   })
-  const { addonRegistry } = await server.ssrLoadModule(
-    '/src/renderer/src/addon-registry.ts',
-  )
   globalThis.definitionStarts = []
   globalThis.definitionFactoryCalls = 0
   addonRegistry.hydrate([
@@ -72,9 +79,6 @@ test('direct definitions and factories share one descriptor path', {
       themes: [],
     },
   ])
-  t.after(() => addonRegistry.hydrate([]))
-  const find = (id) =>
-    addonRegistry.snapshot().find((addon) => addon.manifest.id === id)
   const direct = find('direct-probe')
   const factory = find('factory-probe')
   assert.equal(direct.Settings, undefined)
@@ -114,4 +118,34 @@ test('direct definitions and factories share one descriptor path', {
   assert.equal(direct.Settings, undefined)
   assert.equal(direct.flavors, undefined)
   assert.equal(find('direct-probe'), undefined)
+})
+
+test('stopping while the module loads never invokes its factory', {
+  timeout: 30000,
+}, async (t) => {
+  const { addonRegistry, find } = await registry(t)
+  let release
+  globalThis.definitionGate = new Promise((resolve) => {
+    release = resolve
+  })
+  globalThis.definitionFactoryCalls = 0
+  t.after(() => {
+    delete globalThis.definitionGate
+    delete globalThis.definitionFactoryCalls
+  })
+  addonRegistry.hydrate([
+    {
+      manifest: manifest('cancel-probe', { capabilities: [] }),
+      url: module(
+        `await globalThis.definitionGate; export default () => { globalThis.definitionFactoryCalls++; return { start() {} } }`,
+      ),
+      themes: [],
+    },
+  ])
+  const addon = find('cancel-probe')
+  const starting = addon.start({})
+  addon.stop()
+  release()
+  await starting
+  assert.equal(globalThis.definitionFactoryCalls, 0)
 })

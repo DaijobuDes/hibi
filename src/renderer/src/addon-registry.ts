@@ -30,7 +30,8 @@ const component = (value: unknown) =>
 async function normalizeDefinition(
   exported: unknown,
   manifest: AddonManifest,
-): Promise<Definition> {
+  cancelled = () => false,
+): Promise<Definition | undefined> {
   if (
     typeof exported !== 'function' &&
     (typeof exported !== 'object' || exported === null)
@@ -39,11 +40,15 @@ async function normalizeDefinition(
       'This addon has no valid startup function. Contact its author.',
     )
   // Capabilities select the optional SDK; omitting them keeps the legacy factory contract.
+  const sdk =
+    typeof exported === 'function'
+      ? await loadAddonSdk(manifest.capabilities)
+      : undefined
+  // A stop during loading must not run factory code that would own resources.
+  if (cancelled()) return
   const definition: Partial<Definition> | null | undefined =
     typeof exported === 'function'
-      ? (exported as (sdk: unknown) => Definition)(
-          await loadAddonSdk(manifest.capabilities),
-        )
+      ? (exported as (sdk: unknown) => Definition)(sdk)
       : exported
   if (
     !definition ||
@@ -95,10 +100,15 @@ function describeAddon(
       }
       const definition = await startupSpan(
         `addon-load:${manifest.id}`,
-        async () => normalizeDefinition(await load(), manifest),
+        async () =>
+          normalizeDefinition(
+            await load(),
+            manifest,
+            () => token !== generation,
+          ),
         { addonName: manifest.name },
       )
-      if (token !== generation) return
+      if (!definition || token !== generation) return
       instance = definition
       let changed = false
       if (
@@ -167,7 +177,7 @@ const bundled = Object.entries(manifests).map(([path, manifest]): Addon => {
             default: settingsLoader
               ? (await settingsLoader()).Settings
               : ((await normalizeDefinition(await importer(), manifest))
-                  .Settings ?? (() => null)),
+                  ?.Settings ?? (() => null)),
           })),
         }
       : {}),
