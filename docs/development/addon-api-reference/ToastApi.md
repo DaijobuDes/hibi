@@ -2,7 +2,7 @@
 
 # ToastApi
 
-Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/ui/toasts.ts#L23)
+Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/ui/toasts.ts#L31)
 
 Shared sonner service. Addon scopes can only dismiss their own notifications.
 
@@ -33,7 +33,7 @@ type ToastApi = {
 
 ### show
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/ui/toasts.ts#L24)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/ui/toasts.ts#L32)
 
 ```typescript
 show: (options: ToastOptions) => ToastHandle
@@ -51,7 +51,7 @@ Related: [ToastOptions](ToastOptions.md), [ToastHandle](ToastHandle.md).
 
 ### dismissAll
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/ui/toasts.ts#L25)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/ui/toasts.ts#L33)
 
 ```typescript
 dismissAll: () => void
@@ -61,7 +61,7 @@ dismissAll: () => void
 
 ### getPreferences
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/ui/toasts.ts#L26)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/ui/toasts.ts#L34)
 
 ```typescript
 getPreferences: () => ToastPreferences
@@ -73,7 +73,7 @@ Related: [ToastPreferences](ToastPreferences.md).
 
 ### setPreferences
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/ui/toasts.ts#L27)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/ui/toasts.ts#L35)
 
 ```typescript
 setPreferences: (changes: Partial<ToastPreferences>) => void

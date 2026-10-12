@@ -2,7 +2,7 @@
 
 # ToastHandle
 
-Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/ui/toasts.ts#L18)
+Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/ui/toasts.ts#L26)
 
 <details>
 <summary>Declaration</summary>
@@ -27,7 +27,7 @@ type ToastHandle = {
 
 ### update
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/ui/toasts.ts#L19)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/ui/toasts.ts#L27)
 
 ```typescript
 update: (changes: Partial<ToastOptions>) => void
@@ -45,7 +45,7 @@ Related: [ToastOptions](ToastOptions.md).
 
 ### dismiss
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/ui/toasts.ts#L20)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/ui/toasts.ts#L28)
 
 ```typescript
 dismiss: () => void
