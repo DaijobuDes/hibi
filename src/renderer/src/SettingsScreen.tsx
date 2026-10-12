@@ -95,6 +95,7 @@ export function SettingsScreen({
   hideTitlebar,
   onHideTitlebar,
   info,
+  onShowIntroduction,
   hotkeys,
   onHotkeys,
   addonStates,
@@ -138,6 +139,7 @@ export function SettingsScreen({
   hideTitlebar: boolean
   onHideTitlebar: (hide: boolean) => void
   info: AppInfo | null
+  onShowIntroduction: () => void
   hotkeys: Hotkeys
   onHotkeys: (hotkeys: Hotkeys) => void
   addonStates: AddonState[]
@@ -382,7 +384,10 @@ export function SettingsScreen({
             hidden={category !== 'hibi'}
           >
             {(discover || (open && (category === 'hibi' || searching))) && (
-              <HibiSettings info={info} />
+              <HibiSettings
+                info={info}
+                onShowIntroduction={onShowIntroduction}
+              />
             )}
           </section>
           <section
