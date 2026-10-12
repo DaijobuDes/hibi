@@ -204,6 +204,8 @@ test('candidate review reports invalid metadata, duplicate ids before policy, an
       requires: { addons: [{ id: 'absent' }] },
     }),
     ...packageFiles('b', 'duplicate', { native: false }),
+    ...packageFiles('c', 'duplicate', { importer: false }),
+    ...packageFiles('d', 'duplicate', { windows: false }),
     ...packageFiles('outer', 'outer'),
     ...packageFiles('outer/child', 'child'),
     { name: 'broken/hibi-addon.json', content: '{' },
@@ -226,6 +228,8 @@ test('candidate review reports invalid metadata, duplicate ids before policy, an
       'a',
       'b',
       'broken',
+      'c',
+      'd',
       'outer',
       'outer/child',
       'reserved',
@@ -233,7 +237,7 @@ test('candidate review reports invalid metadata, duplicate ids before policy, an
       'source/prepared',
     ],
   )
-  for (const folder of ['a', 'b'])
+  for (const folder of ['a', 'b', 'c', 'd'])
     assert.match(byFolder.get(folder).reasons.join(' '), /Duplicate addon ID/)
   for (const folder of ['outer', 'outer/child'])
     assert.match(byFolder.get(folder).reasons.join(' '), /folders overlap/)

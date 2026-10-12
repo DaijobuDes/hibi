@@ -131,7 +131,7 @@ test('compiled importer retains instructions and source order after validation',
     assert.throws(() => compiled({ importer }), /importer/)
 })
 
-test('installed trust rejects privileged metadata regardless of claimed origin', () => {
+test('installed admission rejects privileged metadata after inert parsing regardless of claimed origin', () => {
   for (const field of ['native', 'windows', 'importer']) {
     for (const value of [null, false, {}, { entry: 'native.js' }]) {
       const input = {
@@ -141,10 +141,10 @@ test('installed trust rejects privileged metadata regardless of claimed origin',
         origin: 'local',
         trust: 'compiled',
       }
-      assert.throws(() => parseAddonManifest(input), /cannot declare/)
-      assert.throws(
-        () => parseAddonManifest(input, 'installed'),
-        /cannot declare/,
+      assert.deepEqual(parseAddonManifest(input), parseAddonManifest(base))
+      assert.deepEqual(
+        parseAddonManifest(input, 'installed'),
+        parseAddonManifest(base),
       )
       assert.throws(() => admitInstalledAddon(input, []), /cannot declare/)
       assert.deepEqual(

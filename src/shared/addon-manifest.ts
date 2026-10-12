@@ -53,18 +53,11 @@ export function parseAddonManifest(
   if (!value || typeof value !== 'object')
     throw new Error('The addon details in hibi-addon.json are invalid.')
   const data = value as Record<string, unknown>
-  if (
-    trust === 'installed' &&
-    ['native', 'importer', 'windows'].some((key) => data[key] !== undefined)
-  )
-    throw new Error(
-      'Installed addons cannot declare native handlers, importers, or windows.',
-    )
   const modulePath = (entry: unknown): entry is string =>
     validPath(entry) &&
     (trust === 'compiled' ? /\.(m?js|tsx?)$/ : /\.m?js$/).test(entry)
   let native: ParsedAddonManifest['native']
-  if (data.native !== undefined) {
+  if (trust === 'compiled' && data.native !== undefined) {
     const entry =
       data.native &&
       typeof data.native === 'object' &&
@@ -192,7 +185,7 @@ export function parseAddonManifest(
     ...(data.analysis === undefined
       ? {}
       : { analysis: parseAnalysis(data.analysis, trust) }),
-    ...(data.importer === undefined
+    ...(trust !== 'compiled' || data.importer === undefined
       ? {}
       : { importer: parseImporter(data.importer) }),
     ...(data.syntax === undefined
@@ -336,6 +329,10 @@ export function admitInstalledAddon(
   if (compiledIds.includes(parsed.manifest.id))
     throw new Error(
       'This addon uses the ID of a built-in addon and cannot replace it.',
+    )
+  if (['native', 'importer', 'windows'].some((key) => data[key] !== undefined))
+    throw new Error(
+      'Installed addons cannot declare native handlers, importers, or windows.',
     )
   if (parsed.manifest.capabilities?.includes('modalEditing'))
     throw new Error('The addon lists invalid SDK capabilities.')
