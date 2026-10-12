@@ -53,6 +53,7 @@ import {
   type WorkspaceState,
 } from '../../shared/workspace'
 import { Button, IconButton } from '../../ui/Controls'
+import { publishActivePalette } from '../../ui/colorschemes'
 import { DocumentNotice } from '../../ui/DocumentNotice'
 import { settingsIndex } from '../../ui/settings-index'
 import {
@@ -173,6 +174,8 @@ function App() {
     colorschemes.subscribe,
     colorschemes.snapshot,
   )
+  // Addon windows follow this, including colorschemes registered by addons.
+  useEffect(() => publishActivePalette(themeSnapshot.active), [themeSnapshot])
   const toolbarSnapshot = useSyncExternalStore(
     toolbar.subscribe,
     toolbar.snapshot,

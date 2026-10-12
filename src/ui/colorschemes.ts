@@ -1,6 +1,7 @@
 import { bundledColorschemes } from '../shared/color-palettes'
 import {
   COLOR_TOKENS,
+  type Colorscheme,
   type ColorschemeInput,
   DEFAULT_THEME,
   defineColorscheme,
@@ -8,6 +9,49 @@ import {
   type ThemePreferences,
   themePreferences,
 } from '../shared/colorschemes'
+
+/** The main window's resolved colorscheme, including ones registered by addons. */
+export const activePaletteKey = 'hibi:active-palette'
+
+export function publishActivePalette(scheme: Colorscheme) {
+  try {
+    localStorage.setItem(
+      activePaletteKey,
+      JSON.stringify({ appearance: scheme.appearance, colors: scheme.colors }),
+    )
+  } catch {
+    /* Other windows keep their bundled colorscheme. */
+  }
+}
+
+/** Apply the published palette to `style`; false when none is stored or it is invalid. */
+export function applyActivePalette(style: HTMLStyleElement): boolean {
+  try {
+    const value = JSON.parse(localStorage.getItem(activePaletteKey) ?? 'null')
+    const colors: unknown = value?.colors
+    if (
+      !['light', 'dark'].includes(value?.appearance) ||
+      !colors ||
+      typeof colors !== 'object'
+    )
+      return false
+    const entries = Object.entries(colors)
+    if (
+      !entries.every(
+        ([token, color]) =>
+          COLOR_TOKENS.includes(token as (typeof COLOR_TOKENS)[number]) &&
+          typeof color === 'string' &&
+          /^#[\da-f]{6}(?:[\da-f]{2})?$/i.test(color),
+      )
+    )
+      return false
+    document.documentElement.dataset.appearance = value.appearance
+    style.textContent = `:root { color-scheme: ${value.appearance}; ${entries.map(([token, color]) => `--${token}: ${color};`).join(' ')} }`
+    return true
+  } catch {
+    return false
+  }
+}
 
 export function createColorschemeStore(
   storageKey: string,

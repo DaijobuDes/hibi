@@ -5268,6 +5268,12 @@
   "2d715c5a75aa": [
     "src/main/addons.ts"
   ],
+  "b442d72f5b4f": [
+    "src/main/addons.ts"
+  ],
+  "fb7b1ce534c5": [
+    "src/main/addon-windows.ts"
+  ],
   "6f81d1a9cd1d": [
     "src/main/addon-windows.ts"
   ],

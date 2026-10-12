@@ -300,11 +300,23 @@ export async function runNativeGlobalShortcut(
   openWindow: (addonId: string, options: unknown) => Promise<void>,
 ): Promise<boolean> {
   const [owner = '', local = ''] = id.split('.')
-  if (getAddonActivationGeneration(owner) === null) return false
+  const generation = getAddonActivationGeneration(owner)
+  if (generation === null) return false
   const handlers = (await nativeAddon(owner))?.globalShortcuts
   const handler = handlers && Object.hasOwn(handlers, local) && handlers[local]
   if (!handler) return false
-  await handler({ windows: { open: (options) => openWindow(owner, options) } })
+  // Disabling or re-enabling while the module loads retires this press.
+  const current = () => getAddonActivationGeneration(owner) === generation
+  if (!current()) return true
+  await handler({
+    windows: {
+      open: async (options) => {
+        if (!current())
+          throw new Error('This addon was disabled. Enable it to continue.')
+        await openWindow(owner, options)
+      },
+    },
+  })
   return true
 }
 
