@@ -7,11 +7,11 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { createPersonalModel } from '../src/addons/autocomplete/model.ts'
 import {
+  insertionText,
   precedingWords,
   prefixAt,
   rankWords,
 } from '../src/addons/autocomplete/suggestions.ts'
-import { matchCase } from '../src/addons/dictionary/lookup.ts'
 
 const fixtureDirectory = new URL(
   '../tests/fixtures/autocomplete/',
@@ -174,9 +174,11 @@ export async function evaluateCorpus(corpus, complete) {
         baseline: ranked,
       })
       const personalElapsed = performance.now() - personalStart
-      const baseline = ranked.map((item) => matchCase(prefix, item.word))
+      const baseline = ranked.map((item) =>
+        insertionText(prefix, item.word, 'baseline'),
+      )
       const personal = suggested.map((item) =>
-        item.source === 'personal' ? item.word : matchCase(prefix, item.word),
+        insertionText(prefix, item.word, item.source),
       )
       for (const group of [
         queries[kind],

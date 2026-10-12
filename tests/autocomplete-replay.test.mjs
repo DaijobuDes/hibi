@@ -72,6 +72,20 @@ test('prefix save counts subtract typed prefix and acceptance; baseline case mat
   assert.equal(report.queries.nextWord.baseline.charactersSaved, 0)
 })
 
+test('personal scoring follows real insertion casing and preserves internal capitals', async () => {
+  const { report } = await evaluateCorpus(
+    {
+      ...corpus,
+      training:
+        'Something works. Something stays. we saw something nearby. we saw something again. we carry iPhone. we carry iPhone.',
+      heldOut: 'later something happened. Something changed. iPhone arrived.',
+    },
+    fixtureComplete,
+  )
+  assert.equal(report.queries.prefix.personal.topOneHits, 3)
+  assert.equal(report.queries.prefix.personal.charactersSaved, 12)
+})
+
 test('replay reports separate modes, sources, novel targets and internally consistent counts', async () => {
   const report = await replay({ fixturesOnly: true })
   assert.equal(report.corpora.length, 3)
