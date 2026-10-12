@@ -80,6 +80,7 @@ test('addon windows open once per id and close with their addon', {
     title: 'First',
     position: 'cursor-display',
     panel: true,
+    titleBar: 'hibi',
   })
   await open('one')
   await open('two', { input: { note: 'second' } })
@@ -107,7 +108,14 @@ test('addon windows open once per id and close with their addon', {
     })),
     {
       hibi: 'undefined',
-      context: { addonId: 'quick-note', id: 'two', input: { note: 'second' } },
+      context: {
+        addonId: 'quick-note',
+        id: 'two',
+        input: { note: 'second' },
+        title: 'Quick note',
+        titleBar: 'native',
+        platform: process.platform,
+      },
     },
   )
   // Native requests always go to the window's own addon.
@@ -115,6 +123,12 @@ test('addon windows open once per id and close with their addon', {
     Array.isArray(
       await second.evaluate(() => window.hibiAddonWindow.query('targets')),
     ),
+  )
+  assert.equal(await second.locator('.addon-window-titlebar').count(), 0)
+  const first = await until(() => addonPage(app, 'one'))
+  assert.equal(
+    await first.locator('.addon-window-titlebar').innerText(),
+    'First',
   )
   await second
     .getByRole('alert')
