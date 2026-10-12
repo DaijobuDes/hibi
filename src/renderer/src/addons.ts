@@ -190,6 +190,24 @@ type Environment = Omit<
   isCommandContextCurrent?: (context: CommandExecutionContext) => boolean
 }
 
+/** A toggled addon, and failed addons it requires or that require it, may start again. */
+function retrySettled(
+  current: ReadonlyMap<string, boolean>,
+  id: string,
+  enabled: boolean,
+  started: ReadonlySet<string>,
+  dependencies: ReadonlyMap<string, readonly string[]>,
+  manifests: readonly AddonManifest[],
+) {
+  const next = new Map(current)
+  if (!started.has(id) || !enabled) next.delete(id)
+  for (const dependency of dependencies.get(id) ?? [])
+    if (next.get(dependency) === false) next.delete(dependency)
+  for (const dependent of addonDependents(manifests, id))
+    if (next.get(dependent) === false) next.delete(dependent)
+  return next
+}
+
 /** Editor props derived from the addon host. Stable identities keep typing from rebuilding the editor's snapshot. */
 export function useEditorAddons(
   host: Pick<ReturnType<typeof useAddons>, 'catalog' | 'states'>,
@@ -618,7 +636,40 @@ export function useAddons(
         request.reject(new Error('The addon host stopped.'))
     }
   }, [running, activation])
-  useEffect(() => latest.current.subscribeStates?.(setStates), [])
+  useEffect(
+    () =>
+      latest.current.subscribeStates?.((next) => {
+        // Toggling elsewhere retries failed addons, as toggling here does.
+        const {
+          states: previous,
+          dependencies,
+          catalog,
+        } = currentActivation.current
+        const manifests = catalog.map((addon) => addon.manifest)
+        const changed = next.filter(
+          (state) =>
+            previous.find((item) => item.id === state.id)?.enabled !==
+            state.enabled,
+        )
+        if (changed.length)
+          setSettled((current) =>
+            changed.reduce(
+              (settled, state) =>
+                retrySettled(
+                  settled,
+                  state.id,
+                  state.enabled,
+                  started,
+                  dependencies,
+                  manifests,
+                ),
+              current,
+            ),
+          )
+        setStates(next)
+      }),
+    [started],
+  )
   useEffect(() => {
     void window.hibi.bootstrap
       .addons()
@@ -2150,15 +2201,9 @@ export function useAddons(
             next.delete(id)
             return next
           })
-        setSettled((current) => {
-          const next = new Map(current)
-          if (!started.has(id) || !enabled) next.delete(id)
-          for (const dependency of dependencies.get(id) ?? [])
-            if (next.get(dependency) === false) next.delete(dependency)
-          for (const dependent of addonDependents(manifests, id))
-            if (next.get(dependent) === false) next.delete(dependent)
-          return next
-        })
+        setSettled((current) =>
+          retrySettled(current, id, enabled, started, dependencies, manifests),
+        )
         if (enabled && nextModal && !started.has(nextModal)) {
           modalSwitch.current = {
             requested: id,

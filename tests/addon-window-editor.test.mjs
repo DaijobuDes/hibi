@@ -182,3 +182,64 @@ test('addon windows host the editor without desktop privileges', {
     '',
   )
 })
+
+test('addons that failed in a hidden window recover when toggled in settings', {
+  timeout: 45000,
+}, async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'hibi-addon-window-retry-'))
+  const profile = join(root, 'profile')
+  await mkdir(profile)
+  await writeFile(
+    join(profile, 'addons.json'),
+    JSON.stringify({ 'ui-preview': true }),
+  )
+  const app = await electron.launch({
+    args: [resolve('.'), `--user-data-dir=${profile}`],
+  })
+  t.after(async () => {
+    await app.close()
+    await rm(root, { recursive: true, force: true })
+  })
+  // Text extras fails its first start in the window, as a transient error would.
+  await app.context().addInitScript(() => {
+    if (!location.href.endsWith('/addon-window.html')) return
+    window.failExtras = true
+    const insert = Node.prototype.insertBefore
+    Node.prototype.insertBefore = function (node, child) {
+      if (
+        window.failExtras &&
+        node?.dataset?.addonStyle === 'text-extras.text-extras'
+      )
+        throw new Error('transient failure')
+      return insert.call(this, node, child)
+    }
+  })
+  const page = await app.firstWindow()
+  await page.getByRole('textbox', { name: /document editor/i }).waitFor()
+  await page.evaluate(() =>
+    window.hibi.openAddonWindow('ui-preview', {
+      id: 'editor',
+      keepAlive: true,
+    }),
+  )
+  const find = () =>
+    app.windows().find((item) => item.url().endsWith('/addon-window.html'))
+  while (!find()) await setTimeout(30)
+  const kept = find()
+  await kept.locator('.tiptap[contenteditable="true"]').waitFor()
+  const extras = kept.locator(
+    'style[data-addon-style="text-extras.text-extras"]',
+  )
+  assert.equal(await extras.count(), 0)
+  await page.evaluate(() =>
+    window.hibi.closeAddonWindow('ui-preview', 'editor'),
+  )
+  await kept.evaluate(() => {
+    window.failExtras = false
+  })
+  await page.evaluate(async () => {
+    await window.hibi.setAddonEnabled('text-extras', false)
+    await window.hibi.setAddonEnabled('text-extras', true)
+  })
+  await extras.waitFor({ state: 'attached' })
+})
