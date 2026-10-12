@@ -6,7 +6,11 @@ import type {
   AddonWindowContext,
 } from '../../shared/addon-windows'
 import { errorMessage } from '../../shared/errors'
-import { createColorschemeStore } from '../../ui/colorschemes'
+import {
+  activePaletteKey,
+  applyActivePalette,
+  createColorschemeStore,
+} from '../../ui/colorschemes'
 import './styles.css'
 import { windowDesktop } from './window-desktop'
 import '../../ui/ui-case'
@@ -29,6 +33,13 @@ const implementations = import.meta.glob<Addon>(
 
 // Same origin as the main window, so appearance follows its saved choice.
 createColorschemeStore('hibi-colorscheme').start()
+// The main window's resolved palette wins, so addon colorschemes apply here too.
+const palette = document.createElement('style')
+document.head.append(palette)
+applyActivePalette(palette)
+window.addEventListener('storage', (event) => {
+  if (event.key === activePaletteKey) applyActivePalette(palette)
+})
 const bridge = window.hibiAddonWindow
 const root = createRoot(document.getElementById('root') as HTMLElement)
 const request = async <T,>(pending: Promise<unknown>) => {
@@ -76,7 +87,10 @@ async function render() {
   const load =
     implementations[`${directory}/index.ts`] ??
     implementations[`${directory}/index.tsx`]
-  const Content = load && (await load()).windows?.[id]
+  const windows = load && (await load()).windows
+  // Only own keys: an id such as "constructor" must not reach Object.prototype.
+  const Content =
+    windows && Object.hasOwn(windows, id) ? windows[id] : undefined
   if (!Content) throw new Error('This addon window is unavailable.')
   const props: AddonWindowProps = {
     input,
