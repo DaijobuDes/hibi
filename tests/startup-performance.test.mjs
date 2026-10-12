@@ -57,6 +57,72 @@ test('production entry keeps rich and source editor implementations behind deman
   )
 })
 
+test('startup catalog stays within the main byte budget and leaves notices and authors lazy', async () => {
+  const chunks = JSON.parse(
+    await readFile('out/renderer/startup-bundle.json', 'utf8'),
+  )
+  const byFile = new Map(chunks.map((chunk) => [chunk.file, chunk]))
+  const reached = new Set()
+  const visit = (file) => {
+    if (reached.has(file)) return
+    reached.add(file)
+    for (const dependency of byFile.get(file)?.imports ?? []) visit(dependency)
+  }
+  for (const chunk of chunks) if (chunk.entry) visit(chunk.file)
+  const initial = chunks.filter((chunk) => reached.has(chunk.file))
+  // Main at 147e7b1d, with the same production build and dependencies.
+  const bytes = initial.reduce((sum, chunk) => sum + chunk.bytes, 0)
+  assert.ok(bytes <= 765301, `startup catalog grew to ${bytes} bytes`)
+  const modules = initial.flatMap((chunk) => chunk.modules).join('\n')
+  assert.doesNotMatch(
+    modules,
+    /addons\/authors\.ts|addons\/[^/]+\/(?:manifest\.ts|hibi-addon\.json)|docs\/licenses\//,
+  )
+  assert.doesNotMatch(
+    modules,
+    /addons\/[^/]+\/(?:index\.(?:tsx?|m?js)|Settings\.tsx|[^/]+\.md)|addons\/sdk(?:\.ts|-ui\.ts)|hibi-addon-catalog\/details|@codemirror\//,
+  )
+  assert.doesNotMatch(
+    chunks.flatMap((chunk) => chunk.modules).join('\n'),
+    /src\/(?:user)?addons\/[^/]+\/native\.tsx?/,
+  )
+  const code = (
+    await Promise.all(
+      initial.map((chunk) =>
+        readFile(join('out/renderer', chunk.file), 'utf8'),
+      ),
+    )
+  ).join('\n')
+  for (const author of [
+    '1262793452236570667',
+    '297656178358616064',
+    'angelofallars',
+  ])
+    assert.equal(
+      code.includes(author),
+      false,
+      `startup contains author details: ${author}`,
+    )
+  const notice = await readFile('docs/licenses/typst-assets.md', 'utf8')
+  const phrase = notice
+    .split('\n')
+    .find((line) => /^[a-z ]{40}/i.test(line))
+    ?.slice(0, 40)
+  assert.ok(phrase)
+  assert.equal(
+    code.includes(phrase),
+    false,
+    'startup contains bundled license text',
+  )
+  assert.ok(
+    chunks.some((chunk) =>
+      chunk.modules.some((module) =>
+        module.includes('hibi-addon-catalog/details'),
+      ),
+    ),
+  )
+})
+
 test('shared format registration does not statically load source parsers', async () => {
   const chunks = JSON.parse(
     await readFile('out/renderer/startup-bundle.json', 'utf8'),
@@ -124,6 +190,7 @@ test('blank startup leaves disabled runtimes and closed settings unloaded and so
   }
   const initial = await loadedModules()
   assert.match(initial, /src\/renderer\/src\/main\.tsx/)
+  assert.doesNotMatch(initial, /hibi-addon-catalog\/details/)
   assert.doesNotMatch(
     initial,
     /src\/addons\/(?:math|typst|mdx|graph|git|word-count|block-drag|diagnostics)\/index\./,
@@ -187,6 +254,15 @@ test('blank startup leaves disabled runtimes and closed settings unloaded and so
   await clickMenu(app, 'Settings')
   assert.match(await loadedModules(), /src\/renderer\/src\/SettingsScreen\.tsx/)
   await page.getByRole('tab', { name: 'Addon Manager', exact: true }).click()
+  await page
+    .locator('.addon-list [data-discord-id="297656178358616064"]')
+    .waitFor()
+  assert.match(await loadedModules(), /hibi-addon-catalog\/details/)
+  await page
+    .getByRole('textbox', { name: 'Filter addons', exact: true })
+    .fill('angelo')
+  await page.getByRole('checkbox', { name: 'Vim', exact: true }).waitFor()
+  assert.doesNotMatch(await loadedModules(), /src\/addons\/vim\/index\./)
   assert.doesNotMatch(
     await loadedModules(),
     /src\/addons\/(?:math|typst|mdx)\/index\./,

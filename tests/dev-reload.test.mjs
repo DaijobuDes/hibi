@@ -43,6 +43,56 @@ test('development watches main, renderer, preload, addons, and documentation gen
       filter: (file) => !file.split(sep).includes('useraddons'),
     })
   await symlink(resolve('node_modules'), join(root, 'node_modules'), 'junction')
+  const previewFolder = join(root, 'src/addons/ui-preview')
+  const previewManifest = join(previewFolder, 'hibi-addon.json')
+  await writeFile(
+    previewManifest,
+    JSON.stringify(
+      {
+        ...JSON.parse(await readFile(previewManifest, 'utf8')),
+        entry: 'window.tsx',
+        native: { entry: 'host.ts' },
+      },
+      null,
+      2,
+    ),
+  )
+  await writeFile(
+    join(previewFolder, 'host.ts'),
+    "export default { id: 'ui-preview', queries: { probe: async () => 'owner-native' }, methods: {} }",
+  )
+  await writeFile(
+    join(previewFolder, 'window.tsx'),
+    `
+      import { createElement } from 'react'
+      import original from './index'
+      const owner = location.pathname.endsWith('/addon-window.html')
+      const probe = owner ? (window.catalogWindowProbe = {
+        sealed: window.hibiAddonWindow.seal() === undefined,
+        desktop: typeof window.hibi,
+        closed: window.hibiAddonWindow.query('probe').then(() => false, error => /bridge is closed/.test(error.message)),
+        factories: 0, starts: 0,
+      }) : undefined
+      export default () => {
+        if (probe) probe.factories++
+        const { manifest, ...definition } = original
+        return {
+          ...definition,
+          start(context) {
+            if (probe) probe.starts++
+            return original.start(context)
+          },
+          windows: {
+            ...original.windows,
+            preview(props) {
+              if (probe) probe.native ??= props.native.query('probe')
+              return createElement(original.windows.preview, props)
+            },
+          },
+        }
+      }
+    `,
+  )
   const holdMainBuild = join(root, 'hold-main-build')
   const mainBuildPaused = join(root, 'main-build-paused')
   const releaseMainBuild = join(root, 'release-main-build')
@@ -606,8 +656,29 @@ dialog.showMessageBox = (...args) => {
     (await owner.evaluate(() => window.hibiAddonWindow.context())).title,
     'Updated UI preview',
   )
+  await owner.getByRole('button', { name: 'Close', exact: true }).waitFor()
+  assert.deepEqual(
+    await owner.evaluate(async () => {
+      const probe = window.catalogWindowProbe
+      return {
+        ...probe,
+        closed: await probe.closed,
+        native: await probe.native,
+      }
+    }),
+    {
+      sealed: true,
+      desktop: 'undefined',
+      closed: true,
+      factories: 1,
+      starts: 0,
+      native: 'owner-native',
+    },
+  )
   await owner.close()
-  mark('json catalog metadata updates renderer and window owner')
+  mark(
+    'json catalog resolves a declared factory entry after sealing the owner bridge',
+  )
 
   const noticeId = 'addon:typst:typst-assets'
   const originalNotice = await page.evaluate(
