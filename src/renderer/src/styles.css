@@ -2035,12 +2035,7 @@ summary {
   font: var(--text-sm) var(--font-ui);
   white-space: nowrap;
 }
-/* Addon windows: optional Hibi title bar above the addon's content. */
-.addon-window {
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-}
+/* Addon windows reuse the app shell and title bar styles. */
 .addon-window-content {
   display: flex;
   flex: 1;
@@ -2048,19 +2043,10 @@ summary {
   min-height: 0;
 }
 .addon-window-titlebar {
-  height: 36px;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  padding-inline: 80px 12px;
-  color: var(--muted);
-  font-size: 0.8125rem;
-  -webkit-app-region: drag;
-  user-select: none;
+  padding-left: calc(80px + var(--space-2));
 }
-:root:not([data-platform="darwin"]) .addon-window-titlebar {
-  /* Leave room for the system window controls drawn over the bar. */
-  padding-inline: 12px calc(132px + 8px);
+.app:not([data-platform="darwin"]) .addon-window-titlebar {
+  padding-left: var(--space-3);
 }
 .addon-window-error {
   margin: 0;
