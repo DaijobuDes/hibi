@@ -28,7 +28,7 @@ const base = {
   entry: 'index.js',
 }
 const compiled = (fields = {}) =>
-  parseAddonManifest({ ...base, ...fields }, 'compiled')
+  parseAddonManifest({ ...base, ...fields }, { trust: 'compiled' })
 
 test('compiled parser bundles without platform or editor dependencies', () => {
   assert.doesNotMatch(
@@ -143,7 +143,7 @@ test('installed admission rejects privileged metadata after inert parsing regard
       }
       assert.deepEqual(parseAddonManifest(input), parseAddonManifest(base))
       assert.deepEqual(
-        parseAddonManifest(input, 'installed'),
+        parseAddonManifest(input, { trust: 'installed' }),
         parseAddonManifest(base),
       )
       assert.throws(() => admitInstalledAddon(input, []), /cannot declare/)
@@ -227,7 +227,7 @@ test('all compiled legacy metadata survives with only kind and defaultEnabled de
         : {}),
     }
     assert.deepEqual(
-      parseAddonManifest(input, 'compiled').manifest,
+      parseAddonManifest(input, { trust: 'compiled' }).manifest,
       { ...manifest, kind, defaultEnabled: manifest.defaultEnabled ?? false },
       manifest.id,
     )

@@ -59,7 +59,9 @@ export async function exportAddons(source, destination) {
         const text = await readFile(join(source, file), 'utf8')
         if (Buffer.byteLength(text) > MAX_ADDON_MANIFEST_BYTES)
           throw new Error('The addon manifest exceeds 64 KiB.')
-        const { manifest } = parseAddonManifest(JSON.parse(text), 'compiled')
+        const { manifest } = parseAddonManifest(JSON.parse(text), {
+          trust: 'compiled',
+        })
         if (manifest.id !== basename(dirname(file)))
           throw new Error('The addon folder must match its manifest ID.')
         const target = join(dirname(file), 'manifest.ts')

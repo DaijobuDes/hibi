@@ -48,7 +48,7 @@ export type ParsedAddonManifest = {
 
 export function parseAddonManifest(
   value: unknown,
-  trust: 'installed' | 'compiled' = 'installed',
+  { trust = 'installed' }: { trust?: 'installed' | 'compiled' } = {},
 ): ParsedAddonManifest {
   if (!value || typeof value !== 'object')
     throw new Error('The addon details in hibi-addon.json are invalid.')
