@@ -59,6 +59,17 @@ test('all 42 compiled manifests retain their metadata before catalog migration',
   }
 })
 
+test('catalog watches the real files behind metadata imports', async () => {
+  const inputs = new Set()
+  await readAddonPackages(undefined, (file) => inputs.add(file))
+  assert.ok(inputs.has(resolve('src/addons/quick-note/hibi-addon.json')))
+  assert.ok(inputs.has(resolve('src/addons/authors.ts')))
+  assert.ok(inputs.has(resolve('docs/licenses/typst-assets.md')))
+  assert.ok([...inputs].every((file) => !file.includes('?')))
+  assert.equal(inputs.has(resolve('src/addons/quick-note/index.tsx')), false)
+  assert.equal(inputs.has(resolve('src/addons/quick-note/native.ts')), false)
+})
+
 test('catalog emits process-specific lazy entries and separate author/license details', async () => {
   const load = async (process, part = process) => {
     const plugin = addonCatalog(process)
@@ -140,6 +151,57 @@ test('catalog rejects mismatched ids, missing entries and paths outside the pack
     readAddonPackages(root),
     /regular file inside its folder/,
   )
+})
+
+test('catalog combines legacy built-ins and local json without executing their entries', async (t) => {
+  const { root, folder, manifest } = await fixture(t)
+  await rm(join(folder, 'hibi-addon.json'))
+  const { entry: _entry, ...metadata } = manifest
+  await writeFile(
+    join(folder, 'manifest.ts'),
+    `export default ${JSON.stringify(metadata)}`,
+  )
+  await writeFile(join(folder, 'index.ts'), 'throw new Error("never execute")')
+  const local = join(root, 'src/useraddons/local')
+  await mkdir(local, { recursive: true })
+  await writeFile(
+    join(local, 'hibi-addon.json'),
+    JSON.stringify({
+      ...manifest,
+      id: 'local',
+      entry: 'window.tsx',
+      native: { entry: 'host.ts' },
+      analysis: { entry: 'analyzer/run.js' },
+    }),
+  )
+  await writeFile(join(local, 'window.tsx'), 'throw new Error("never execute")')
+  await writeFile(join(local, 'host.ts'), 'throw new Error("never execute")')
+  await mkdir(join(local, 'analyzer'))
+  await writeFile(
+    join(local, 'analyzer/run.js'),
+    'throw new Error("never execute")',
+  )
+  const items = await readAddonPackages(root)
+  assert.deepEqual(
+    items.map(({ manifest, source }) => [manifest.id, source]),
+    [
+      ['sample', 'built-in'],
+      ['local', 'local'],
+    ],
+  )
+  assert.equal(items[1].native, 'src/useraddons/local/host.ts')
+  assert.equal(items[1].analysis, 'src/useraddons/local/analyzer/run.js')
+  const duplicate = join(root, 'src/useraddons/sample')
+  await mkdir(duplicate)
+  await writeFile(
+    join(duplicate, 'hibi-addon.json'),
+    JSON.stringify({ ...manifest, entry: 'index.ts' }),
+  )
+  await writeFile(
+    join(duplicate, 'index.ts'),
+    'throw new Error("never execute")',
+  )
+  await assert.rejects(readAddonPackages(root), /Duplicate addon id/)
 })
 
 test('catalog rejects oversized json before reading addon entries', async (t) => {

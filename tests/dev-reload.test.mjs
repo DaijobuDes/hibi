@@ -581,6 +581,52 @@ dialog.showMessageBox = (...args) => {
   )
   mark('clean rebuild restarts after earlier cancellation')
 
+  const metadataStarts = seenEndpoints.length
+  await replace(
+    'src/addons/ui-preview/hibi-addon.json',
+    '"name": "UI preview"',
+    '"name": "Updated UI preview"',
+  )
+  await connectRestartedPage(metadataStarts)
+  assert.equal(
+    await page.evaluate(async () => {
+      const { addons } = await import('/src/addon-registry.ts')
+      return addons.find(({ manifest }) => manifest.id === 'ui-preview')
+        .manifest.name
+    }),
+    'Updated UI preview',
+  )
+  const opened = page.context().waitForEvent('page')
+  await page.evaluate(() =>
+    window.hibi.openAddonWindow('ui-preview', { id: 'preview' }),
+  )
+  const owner = await opened
+  await owner.waitForFunction(() => Boolean(window.hibiAddonWindow))
+  assert.equal(
+    (await owner.evaluate(() => window.hibiAddonWindow.context())).title,
+    'Updated UI preview',
+  )
+  await owner.close()
+  mark('json catalog metadata updates renderer and window owner')
+
+  const noticeId = 'addon:typst:typst-assets'
+  const originalNotice = await page.evaluate(
+    (id) => window.hibi.getLicense(id),
+    noticeId,
+  )
+  const noticeStarts = seenEndpoints.length
+  const noticePath = join(root, 'docs/licenses/typst-assets.md')
+  await writeFile(
+    noticePath,
+    `Catalog notice probe.\n${await readFile(noticePath, 'utf8')}`,
+  )
+  await connectRestartedPage(noticeStarts)
+  assert.equal(
+    await page.evaluate((id) => window.hibi.getLicense(id), noticeId),
+    `Catalog notice probe.\n${originalNotice}`,
+  )
+  mark('transitive notice input updates lazy catalog details')
+
   await replace('scripts/addon-reference.mjs', '[Source]', '[Updated source]')
   await until(
     async () =>

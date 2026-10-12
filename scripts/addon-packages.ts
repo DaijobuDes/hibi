@@ -75,7 +75,7 @@ export async function readAddonPackages(
       loader: { '.md': 'text' },
     })
     for (const input of Object.keys(result.metafile.inputs))
-      if (input !== '<stdin>') watch(resolve(root, input))
+      if (input !== '<stdin>') watch(resolve(root, input.replace(/\?.*$/, '')))
     const { default: manifests } = await import(
       /* @vite-ignore */ `data:text/javascript;base64,${Buffer.from(result.outputFiles[0]!.contents).toString('base64')}`
     )
