@@ -29,6 +29,7 @@ test('autocomplete learns locally, disables learning, excludes documents and cle
   page.setDefaultTimeout(8000)
   const errors = []
   page.on('pageerror', (error) => errors.push(error.message))
+  await page.clock.install()
   await waitForDocumentEditor(app, page)
   await app.evaluate(({ ipcMain }) => {
     globalThis.autocompleteNetwork = []
@@ -206,18 +207,62 @@ test('autocomplete learns locally, disables learning, excludes documents and cle
   await settings()
   await page.locator('#autocomplete-learning').uncheck()
   await back()
-  const beforeDisabled = await stored()
+  const positiveWrite = async (word) => {
+    await page.keyboard.type(` ${word} `)
+    // Advance both the idle timeout and storage debounce, without sleeping.
+    await page.clock.runFor(2100)
+    await waitForAsync(
+      page,
+      async (word) => {
+        const data = await window.hibi.readAddonStorage({
+          owner: 'autocomplete',
+          scope: { kind: 'global' },
+          key: 'learned-words',
+          version: 1,
+        })
+        return (
+          data.status === 'ready' &&
+          data.value.entries.some((row) => row.word === word)
+        )
+      },
+      word,
+    )
+    assert.ok(
+      (await disk()).entries['learned-words'].value.entries.some(
+        (row) => row.word === word,
+      ),
+    )
+  }
   await page.keyboard.type(' disabledword ')
-  assert.deepEqual((await stored()).value, beforeDisabled.value)
+  await page.clock.runFor(2100)
   await settings()
   await page.locator('#autocomplete-learning').check()
+  await back()
+  await positiveWrite('enabledcontrol')
+  assert.equal(
+    (await disk()).entries['learned-words'].value.entries.some(
+      (row) => row.word === 'disabledword',
+    ),
+    false,
+  )
+  await settings()
   await page.locator('#autocomplete-exclude-document').check()
   await back()
   await page.keyboard.type(' excludedword ')
+  await page.clock.runFor(2100)
+  await settings()
+  await page.locator('#autocomplete-exclude-document').uncheck()
+  await back()
+  await positiveWrite('includedcontrol')
   assert.equal(
-    (await stored()).value.entries.some((row) => row.word === 'excludedword'),
+    (await disk()).entries['learned-words'].value.entries.some(
+      (row) => row.word === 'excludedword',
+    ),
     false,
   )
+  await settings()
+  await page.locator('#autocomplete-exclude-document').check()
+  await back()
 
   await settings()
   const clearButton = page
