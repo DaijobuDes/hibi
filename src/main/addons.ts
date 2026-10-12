@@ -37,6 +37,7 @@ import {
   loadInstalledAddons,
   removePackage,
 } from './sideload'
+import { testPause } from './test-pauses'
 import {
   getWorkspace,
   refreshWorkspace,
@@ -307,7 +308,9 @@ export async function runNativeGlobalShortcut(
   if (!handler) return false
   // Disabling or re-enabling while the module loads retires this press.
   const current = () => getAddonActivationGeneration(owner) === generation
+  await testPause('global-shortcut-loaded')
   if (!current()) return true
+  await testPause('global-shortcut-handler')
   await handler({
     windows: {
       open: async (options) => {
