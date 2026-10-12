@@ -12,6 +12,8 @@ type AddonState = {
   id: string
   /** The user's preference, retained while required addons are unavailable. */
   enabled: boolean
+  /** Explicit saved choice, absent when the manifest default applies. */
+  savedEnabled?: boolean
   /** Missing or disabled required addon IDs. Blocked addons cannot run. */
   blockedBy?: readonly string[]
 }
@@ -25,6 +27,7 @@ type AddonState = {
 
 - [id](#id)
 - [enabled](#enabled)
+- [savedEnabled](#savedenabled)
 - [blockedBy](#blockedby)
 
 ## Properties
@@ -47,9 +50,19 @@ The user's preference, retained while required addons are unavailable.
 enabled: boolean
 ```
 
-### blockedBy
+### savedEnabled
 
 Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L312)
+
+Explicit saved choice, absent when the manifest default applies.
+
+```typescript
+savedEnabled?: boolean
+```
+
+### blockedBy
+
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L314)
 
 Missing or disabled required addon IDs. Blocked addons cannot run.
 

@@ -2,7 +2,7 @@
 
 # AddonAccessApi
 
-Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L325)
+Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L327)
 
 <details>
 <summary>Declaration</summary>
@@ -29,7 +29,7 @@ type AddonAccessApi = {
 
 ### get
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L327)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L329)
 
 Read a declared addon's active API. Undeclared IDs throw. Check the provider's version before use.
 
@@ -49,7 +49,7 @@ Related: [AddonExports](AddonExports.md).
 
 ### ready
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L329)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L331)
 
 Activate an enabled declared addon and await startup. Returns undefined when unavailable, failed, or no API was published.
 
