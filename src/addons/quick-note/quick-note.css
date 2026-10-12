@@ -8,7 +8,7 @@
   min-width: min(100%, 18rem);
 }
 
-/* Capture window: the note fills the space between Hibi's title bar and the action bar. */
+/* Capture window: Hibi's editor above a dialog-style footer. */
 .quick-note-window {
   display: flex;
   flex: 1;
@@ -16,43 +16,23 @@
   min-height: 0;
 }
 
-.quick-note-title,
-.quick-note-body {
-  padding-inline: var(--space-5);
-}
-
-.quick-note-title {
-  padding-block: var(--space-2) 0;
-  font-size: 1.25rem;
-  font-weight: 600;
-}
-
-/* Match the editor's text so a capture reads like a Hibi note. */
-.quick-note-body {
-  flex: 1;
-  min-height: 0;
-  padding-block: var(--space-3);
-  resize: none;
-  font-size: var(--text-editor);
-  line-height: 1.75;
-  tab-size: 4;
-}
-
-.quick-note-title:focus-visible,
-.quick-note-body:focus-visible {
-  box-shadow: none;
-}
-
 .quick-note-bar {
-  display: flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  border-top: 1px solid var(--border);
 }
 
 .quick-note-bar .ui-button {
   gap: var(--space-2);
+}
+
+/* Shortcut hints read as quiet text inside the buttons. */
+.quick-note-bar .shortcut-keys kbd {
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  opacity: 0.6;
 }
 
 .quick-note-meta {
@@ -61,7 +41,7 @@
   margin: 0;
   overflow: hidden;
   color: var(--muted);
-  font-size: 0.8125rem;
+  font-size: var(--text-sm);
   text-overflow: ellipsis;
   white-space: nowrap;
 }

@@ -1,39 +1,57 @@
 import { useEffect, useRef, useState } from 'react'
 import { errorMessage } from '../../shared/errors'
 import type { AddonWindowProps } from '../api'
-import { Button, ShortcutKeys, TextArea, TextInput } from '../ui'
+import { Button, ShortcutKeys } from '../ui'
 import { readSettings, settingsKey } from './settings'
 import './quick-note.css'
 
 const draftKey = 'hibi:quick-note-draft'
-const savedDelay = 900
+const savedDelay = 700
 const mac = navigator.userAgent.includes('Mac')
 const platform = mac ? 'darwin' : 'win32'
-const saveKeys = mac ? 'meta+enter' : 'ctrl+enter'
 type Destination = { id: string; path: string } | { error: string }
 
-function readDraft(): { title?: string; markdown?: string } {
+function readDraft() {
   try {
     const value: unknown = JSON.parse(localStorage.getItem(draftKey) ?? '{}')
-    return value && typeof value === 'object' ? value : {}
+    return value && typeof value === 'object' && 'markdown' in value
+      ? String(value.markdown)
+      : null
   } catch {
-    return {}
+    return null
   }
 }
 
-export function CaptureWindow({ native, close }: AddonWindowProps) {
+/** File name from the note's first heading, or the default title. */
+export function noteTitle(markdown: string, fallback: string) {
+  const first =
+    markdown
+      .split('\n')
+      .find((line) => line.trim())
+      ?.trim() ?? ''
+  const heading = /^#{1,6}\s+(.+)$/.exec(first)?.[1] ?? ''
+  const title = heading
+    .replace(/[\\/:*?"<>|#\p{Cc}]/gu, '')
+    .replace(/\s+/g, ' ')
+    .replace(/^[.\s]+|[.\s]+$/g, '')
+    .slice(0, 100)
+  return title || fallback
+}
+
+export function CaptureWindow({ Editor, native, close }: AddonWindowProps) {
   const [settings, setSettings] = useState(readSettings)
   const [destination, setDestination] = useState<Destination | null>(null)
-  const [title, setTitle] = useState(
-    () => readDraft().title ?? settings.defaultTitle,
+  const [session, setSession] = useState(0)
+  const [initial] = useState(
+    () =>
+      readDraft() ??
+      (settings.promptForTitle ? `# ${settings.defaultTitle}\n\n` : ''),
   )
-  const [markdown, setMarkdown] = useState(() => readDraft().markdown ?? '')
+  const markdown = useRef(initial)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState('')
   const [error, setError] = useState('')
   const busy = saving || !!saved
-  const submitRef = useRef<() => void>(() => {})
-  // Settings and the draft share the main window's storage.
   useEffect(() => {
     const changed = (event: StorageEvent) => {
       if (event.key === settingsKey) setSettings(readSettings())
@@ -53,13 +71,6 @@ export function CaptureWindow({ native, close }: AddonWindowProps) {
       active = false
     }
   }, [native, settings.workspaceId])
-  // Closing keeps the text for next time; only saving clears it.
-  useEffect(() => {
-    if (saved) return
-    if (markdown || title !== settings.defaultTitle)
-      localStorage.setItem(draftKey, JSON.stringify({ title, markdown }))
-    else localStorage.removeItem(draftKey)
-  }, [title, markdown, saved, settings.defaultTitle])
   async function submit() {
     if (busy || !destination || 'error' in destination) return
     setSaving(true)
@@ -68,81 +79,97 @@ export function CaptureWindow({ native, close }: AddonWindowProps) {
       const result = await native.invoke<{ name: string }>('save', {
         workspaceId: destination.id,
         folder: settings.folder,
-        title,
-        markdown,
+        title: noteTitle(markdown.current, settings.defaultTitle),
+        markdown: markdown.current,
       })
       localStorage.removeItem(draftKey)
       setSaved(result.name)
-      setTimeout(close, savedDelay)
+      setTimeout(() => {
+        // The window stays alive hidden; start the next note empty.
+        markdown.current = settings.promptForTitle
+          ? `# ${settings.defaultTitle}\n\n`
+          : ''
+        setSaved('')
+        setSession((value) => value + 1)
+        close()
+      }, savedDelay)
     } catch (failure) {
       setError(errorMessage(failure) || 'Could not save this note.')
     } finally {
       setSaving(false)
     }
   }
-  submitRef.current = () => void submit()
+  const submitRef = useRef(submit)
+  submitRef.current = submit
   useEffect(() => {
-    const keydown = (event: KeyboardEvent) => {
-      if (event.isComposing) return
-      const command = mac ? event.metaKey : event.ctrlKey
-      if (
-        event.key === 'Escape' ||
-        (command && event.key.toLowerCase() === 'w')
-      ) {
+    // Editor popups stop Escape themselves, so it only reaches here to close.
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.isComposing) return
+      event.preventDefault()
+      close()
+    }
+    // Capture so the editor never turns these into a line break first.
+    const command = (event: KeyboardEvent) => {
+      if (event.isComposing || !(mac ? event.metaKey : event.ctrlKey)) return
+      if (event.key.toLowerCase() === 'w') {
         event.preventDefault()
+        event.stopPropagation()
         close()
-      } else if (command && event.key === 'Enter') {
+      } else if (event.key === 'Enter') {
         event.preventDefault()
-        submitRef.current()
+        event.stopPropagation()
+        void submitRef.current()
       }
     }
-    window.addEventListener('keydown', keydown)
-    return () => window.removeEventListener('keydown', keydown)
+    window.addEventListener('keydown', escape)
+    window.addEventListener('keydown', command, true)
+    return () => {
+      window.removeEventListener('keydown', escape)
+      window.removeEventListener('keydown', command, true)
+    }
   }, [close])
-  const unavailable = !destination || 'error' in destination
+  const where =
+    destination && 'path' in destination
+      ? [
+          destination.path.split(/[\\/]/).filter(Boolean).at(-1) ?? '',
+          ...settings.folder.split('/').filter(Boolean),
+        ].join(' › ')
+      : ''
   return (
-    <main className="quick-note-window" aria-label="Quick note">
-      {settings.promptForTitle && (
-        <TextInput
-          className="quick-note-title"
-          variant="inline"
-          aria-label="Title"
-          placeholder="Title"
-          autoFocus
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
-          readOnly={busy}
-        />
-      )}
-      <TextArea
-        className="quick-note-body"
-        variant="inline"
-        aria-label="Note"
-        aria-describedby="quick-note-destination"
-        autoFocus={!settings.promptForTitle}
-        placeholder="Write in Markdown…"
-        spellCheck
-        value={markdown}
-        onChange={(event) => setMarkdown(event.target.value)}
-        readOnly={busy}
+    <div className="quick-note-window">
+      <Editor
+        key={session}
+        label="Note"
+        defaultValue={session ? markdown.current : initial}
+        onChange={(value) => {
+          markdown.current = value
+          if (value.trim())
+            localStorage.setItem(draftKey, JSON.stringify({ markdown: value }))
+          else localStorage.removeItem(draftKey)
+        }}
       />
-      <footer className="quick-note-bar">
+      <footer className="dialog-footer quick-note-bar">
         {error || (destination && 'error' in destination) ? (
           <p role="alert" className="quick-note-meta">
             {error ||
               (destination && 'error' in destination && destination.error)}
           </p>
         ) : (
-          <p
-            id="quick-note-destination"
-            role="status"
-            className="quick-note-meta"
-          >
-            {saved
-              ? `Saved ${saved}.`
-              : destination && 'path' in destination
-                ? `${destination.path}${settings.folder ? ` / ${settings.folder}` : ''}`
-                : ''}
+          <p role="status" className="quick-note-meta">
+            {saved ? (
+              `Saved ${saved}.`
+            ) : (
+              <span
+                data-tooltip={
+                  destination && 'path' in destination
+                    ? `${destination.path}${settings.folder ? `/${settings.folder}` : ''}`
+                    : undefined
+                }
+                data-verbatim="true"
+              >
+                {where}
+              </span>
+            )}
           </p>
         )}
         <Button onClick={close} disabled={busy} aria-keyshortcuts="Escape">
@@ -154,15 +181,18 @@ export function CaptureWindow({ native, close }: AddonWindowProps) {
         <Button
           variant="primary"
           onClick={() => void submit()}
-          disabled={busy || unavailable}
+          disabled={busy || !destination || 'error' in destination}
           aria-keyshortcuts={mac ? 'Meta+Enter' : 'Control+Enter'}
         >
           {saving ? 'Saving…' : 'Save'}
           <span aria-hidden="true">
-            <ShortcutKeys shortcut={saveKeys} platform={platform} />
+            <ShortcutKeys
+              shortcut={mac ? 'meta+enter' : 'ctrl+enter'}
+              platform={platform}
+            />
           </span>
         </Button>
       </footer>
-    </main>
+    </div>
   )
 }

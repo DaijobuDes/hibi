@@ -4,9 +4,10 @@ import type { AddonWindowOptions } from '../api'
 export const captureWindow = {
   id: 'capture',
   title: 'Quick note',
-  size: { width: 560, height: 440 },
+  size: { width: 640, height: 480 },
   position: 'cursor-display',
   titleBar: 'hibi',
   alwaysOnTop: true,
   panel: true,
+  keepAlive: true,
 } satisfies AddonWindowOptions
