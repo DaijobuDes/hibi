@@ -1493,8 +1493,9 @@ if (!app.requestSingleInstanceLock()) {
       )
       // Addon windows reach only their owner's native handlers.
       ipcMain.handle(ADDON_WINDOW_CHANNELS.context, (event) => {
-        const { window: _window, ...context } = addonWindowSender(event)
-        return context
+        const { addonId, id, input, title, titleBar, platform } =
+          addonWindowSender(event)
+        return { addonId, id, input, title, titleBar, platform }
       })
       ipcMain.handle(ADDON_WINDOW_CHANNELS.states, (event) => {
         addonWindowSender(event)
