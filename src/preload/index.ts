@@ -41,6 +41,7 @@ import { DIAGNOSTIC_CHANNEL } from '../shared/local-diagnostics'
 import { MEDIA_CHANNELS } from '../shared/media'
 import { SELECTED_TEXT_CHANNELS } from '../shared/selected-text'
 import { SIDELOAD_CHANNELS } from '../shared/sideload'
+import { TABLE_LAYOUT_CHANNELS } from '../shared/table-layout'
 import { UI_CASE_CHANNEL } from '../shared/ui-case'
 import { UPDATE_CHANNELS, type UpdateState } from '../shared/updates'
 import {
@@ -354,6 +355,10 @@ if (process.isMainFrame) {
     listWorkspaceEntryPage: (owner, request) =>
       ipcRenderer.invoke(WORKSPACE_CHANNELS.listPage, owner, request),
     subscribeWorkspaceChanges,
+    readTableLayout: (tabId) =>
+      ipcRenderer.invoke(TABLE_LAYOUT_CHANNELS.read, tabId),
+    writeTableLayout: (tabId, tables) =>
+      ipcRenderer.invoke(TABLE_LAYOUT_CHANNELS.write, tabId, tables),
     readWorkspaceText: (owner, target, path) =>
       ipcRenderer.invoke(WORKSPACE_CHANNELS.readText, owner, target, path),
     readWorkspaceBinary: (owner, target, path) =>

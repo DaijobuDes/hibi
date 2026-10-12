@@ -4,6 +4,7 @@ Start with [editing](guides/editing.md), or choose a topic below.
 
 ## Write and organize
 
+- [First-run introduction](guides/introduction.md)
 - [Editing, tabs, and saving](guides/editing.md)
 - [Keyboard shortcuts](editing/typing-and-shortcuts.md)
 - [Capture a quick note](guides/quick-note.md)

@@ -38,6 +38,8 @@ Open any folder and choose **Create manifest** in Settings → Workspace. Hibi s
 
 The **Ignore rules** field writes `.hibi/ignore`. It uses gitignore syntax: `drafts/` hides a folder, `*.tmp` hides matching files, and `!keep.tmp` includes an otherwise ignored file. To include a file within an ignored folder, include its parent folder too. Ignored documents stay on disk and are omitted from workspace browsing and export.
 
+Hibi stores table column widths and row heights for workspace files in `.hibi/layout.json`, which it creates the first time you resize a table. Renaming or moving a file in the explorer keeps its sizes; entries for deleted files are removed later. The file stays under 1 MiB: when it would grow larger, Hibi forgets the sizes of the files you resized least recently, and it starts over if it finds a larger file. Deleting `.hibi/layout.json` returns every table to automatic sizes and leaves your notes unchanged.
+
 Older `.hibi.json` and `.hibiignore` files still work. Saving workspace settings writes the new files inside `.hibi/` and keeps the originals. The new files take precedence.
 
 ## Use the page outline

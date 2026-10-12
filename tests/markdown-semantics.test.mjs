@@ -15,6 +15,11 @@ import { EditorState } from '@tiptap/pm/state'
 import { Marked } from 'marked'
 import { alertMarkdown } from '../src/addons/markdown/alerts.ts'
 import { GithubAlert } from '../src/addons/markdown/GithubAlert.ts'
+import {
+  ObsidianHighlight,
+  obsidianMarkdown,
+  WikiLink,
+} from '../src/addons/markdown/obsidian.ts'
 import { Subscript, Subtext } from '../src/addons/text-extras/nodes.ts'
 import { textExtrasMarkdown } from '../src/addons/text-extras/syntax.ts'
 import { documentImage } from '../src/renderer/src/DocumentImage.ts'
@@ -24,6 +29,11 @@ import { createMarkdownSemantics } from '../src/renderer/src/markdown-semantics.
 import { markdownSyntax } from '../src/renderer/src/markdown-syntax.ts'
 
 const flavors = [
+  {
+    id: 'markdown.obsidian',
+    richExtensions: [ObsidianHighlight, WikiLink],
+    export: { extensions: [obsidianMarkdown] },
+  },
   {
     id: 'github-markdown.github',
     markedOptions: { gfm: true },
@@ -44,7 +54,12 @@ const flavors = [
 ]
 const context = { before: false, after: false }
 const tokens = (source, taskGrammar = false) => {
-  const parser = new Marked({ gfm: true }, alertMarkdown, textExtrasMarkdown)
+  const parser = new Marked(
+    { gfm: true },
+    alertMarkdown,
+    textExtrasMarkdown,
+    obsidianMarkdown,
+  )
   if (taskGrammar)
     new MarkdownManager({
       marked: parser,
@@ -111,6 +126,25 @@ test('schema-only consumption matches current editor declarations without creati
     '![photo](image.png "caption")',
     'one\n\n\n\ntwo',
     'é 👩🏽‍💻 &amp; &#13;',
+    '<em>native html</em>',
+    '**<kbd>x</kbd>** and a<BR />b',
+    '<div>\r\nx\r\n</div>',
+    '<details>\n\nbody\n\n</details>',
+    '<img src=x onerror=alert(1)>',
+    '<script>window.attack = true</script>',
+    '<iframe srcdoc="<script>alert(1)</script>"></iframe>',
+    '<style>body { display: none }</style>',
+    '<kbd>&copy;</kbd>',
+    '&copy;<kbd>&copy;</kbd>&#169;',
+    '&copy; &#169; &#xA9; &#38;lt; &amp;copy;',
+    '&nbsp;\n\n**&nbsp;**\n\na&NewLine;b',
+    '# &copy;\n\n> &amp;copy;\n\n- &nbsp;\n- &#38;lt;',
+    '[&copy;](https://example.com/?a=&copy;&b=&amp;copy; "&quot;title&quot;")',
+    '<https://example.com/?a=&copy;> and `&copy; &#169;`',
+    'https://x.com/?a=1&amp;b=2 and https://x.com/?a=1&b=2',
+    '==&copy;== and [[a|lab&copy;]]',
+    '==&amp;copy;== and [[a|lab&#38;copy;]]',
+    '| &copy; | &#38;lt; |\n|---|---|\n| &nbsp; | &#169; |',
   ]) {
     const input = freeze(tokens(source)),
       serialized = JSON.stringify(input),
@@ -149,6 +183,7 @@ test('public task tokenizer output consumes without native source re-lexing', ()
     readFull = fullParser()
   for (const source of [
     '- [ ] todo\n- [x] done',
+    '- [ ] &copy; &#38;lt;\n- [x] **&nbsp;**',
     '- [ ] **bold** H~2~O\n  - [x] nested\n  - ordinary',
     '> - [ ] quote task\n> - [x] complete',
     '- [ ] task\n- ordinary',
@@ -159,6 +194,7 @@ test('public task tokenizer output consumes without native source re-lexing', ()
     '> [!NOTE]\n> - [ ]\n> - [x]',
     '- [ ]\n  lazy',
     '1. [ ]',
+    '- [ ] <em>native html</em>',
   ]) {
     const actual = reader.read(tokens(source, true), context),
       expected = readFull(source)
@@ -202,7 +238,7 @@ test('syntax masking preserves input tokens and stale consumers refuse results',
   }
 })
 
-test('unknown addon grammar, missing native DOM, and task lists use compatibility path', () => {
+test('unknown addon grammar and task lists use compatibility path', () => {
   const unknown = {
     id: 'custom.rich-only',
     richExtensions: [
@@ -216,11 +252,6 @@ test('unknown addon grammar, missing native DOM, and task lists use compatibilit
   }
   assert.equal(createMarkdownSemantics([unknown], 0), null)
   const reader = createMarkdownSemantics(flavors, 0)
-  assert.equal(reader.read(tokens('<em>native html</em>'), context), null)
-  assert.equal(
-    reader.read(tokens('- [ ] <em>native html</em>', true), context),
-    null,
-  )
   assert.equal(reader.read(tokens('- [ ] todo\n- [x] done'), context), null)
   assert.equal(reader.read(tokens('- [ ] task\n- ordinary'), context), null)
   assert.equal(reader.read(tokens('still works'), context).text, 'still works')

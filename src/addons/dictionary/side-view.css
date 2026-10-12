@@ -77,6 +77,12 @@
 .dictionary-side-chips + .dictionary-side-chips {
   margin-top: var(--space-2);
 }
+.dictionary-side-language > .dictionary-source {
+  margin-top: var(--space-2);
+}
+.dictionary-side-section > .dictionary-source {
+  margin-top: 0;
+}
 .dictionary-side-chips button.ui-button {
   min-height: 0;
   padding: 1px var(--space-2);

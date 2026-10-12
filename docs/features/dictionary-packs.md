@@ -8,9 +8,13 @@ Leave Hibi open while the pack downloads and prepares. Progress appears beside t
 
 Once installed, place the cursor in a word or select it, then run **Define word** or **Find synonyms**. Hibi checks installed packs first. If they contain an answer, the lookup needs no network request. If they do not, Hibi can look up the word online. Enabling the addon allows requests to its listed public hosts without another prompt; the addon manager shows those hosts before you enable it.
 
+Lookups use Unicode NFC normalization, which also folds CJK compatibility ideographs; two affected JMdict headwords become reachable only after updating an older Japanese pack.
+
 Installed packs also power the [dictionary side view](../../src/addons/dictionary/README.md#side-view) while it follows the cursor and the separate [Autocomplete addon](../../src/addons/autocomplete/README.md). Autocomplete combines offline vocabulary and [custom words](../../src/addons/dictionary/README.md#custom-words) with word patterns learned on this device. Neither feature sends anything online while you type.
 
 Definitions and readings are more complete than thesaurus data for Chinese and Japanese. Filipino, French, and German use the synonyms and antonyms available in Wiktionary.
+
+German keeps `ß` and `ss` distinct, so Swiss spellings such as `Strasse` miss entries spelled `Straße`. It does not fold `ae`, `oe`, or `ue` into umlauts or split compounds; a compound needs its own dictionary entry. Capitalized input prefers exact matches, including nouns, before lowercase matches.
 
 Choose **Update** to download the latest source again. The old pack stays installed until its replacement is ready, including when a download fails or is canceled. Update regularly for source corrections. **Uninstall** removes the pack; disabling the addon keeps installed packs for later.
 

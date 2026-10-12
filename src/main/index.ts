@@ -64,6 +64,7 @@ import { MEDIA_CHANNELS } from '../shared/media'
 import { SELECTED_TEXT_CHANNELS } from '../shared/selected-text'
 import { SIDELOAD_CHANNELS } from '../shared/sideload'
 import { startupMark, startupSpan } from '../shared/startup'
+import { TABLE_LAYOUT_CHANNELS } from '../shared/table-layout'
 import { UI_CASE_CHANNEL } from '../shared/ui-case'
 import { UPDATE_CHANNELS } from '../shared/updates'
 import { WORKSPACE_CHANNELS } from '../shared/workspace'
@@ -181,6 +182,7 @@ import {
   snapshotWorkspace,
   subscribeWorkspaceChanges,
   workspaceChangeSnapshot,
+  workspaceRelativePath,
   workspaceRoot,
 } from './workspace'
 import { workspaceAction } from './workspace-actions'
@@ -193,6 +195,11 @@ import {
   trashWorkspaceFile,
   updateWorkspaceText,
 } from './workspace-files'
+import {
+  readTableLayout,
+  renameWithTableLayout,
+  writeTableLayout,
+} from './workspace-layout'
 import {
   getWorkspaceSettings,
   openStartupWorkspace,
@@ -1185,6 +1192,11 @@ if (!app.requestSingleInstanceLock()) {
           hotkeys,
           workspace: getWorkspace(),
           externalPending: externalFiles.length > 0 || (await workspacePending),
+          // Files named at launch come first; a restored workspace doesn't defer it.
+          introduction:
+            (app.isPackaged ||
+              app.commandLine.hasSwitch('hibi-introduction')) &&
+            externalFiles.length === 0,
         }),
         Promise.all([documentReady, hotkeysReady, workspacePending]),
       )
@@ -1788,6 +1800,27 @@ if (!app.requestSingleInstanceLock()) {
           ),
         ),
       )
+      const tableLayoutTarget = (tabId: unknown) => {
+        if (typeof tabId !== 'string' || !tabId || tabId.length > 128)
+          throw new Error('Invalid document identity.')
+        const root = workspaceRoot()
+        const path = workspaceRelativePath(getDocumentPathForTab(tabId))
+        return root && path ? { root, path } : null
+      }
+      handle(TABLE_LAYOUT_CHANNELS.read, (event, tabId: unknown) =>
+        readAfterFileOperation(event, async () => {
+          const target = tableLayoutTarget(tabId)
+          return target ? readTableLayout(target.root, target.path) : null
+        }),
+      )
+      handle(
+        TABLE_LAYOUT_CHANNELS.write,
+        (event, tabId: unknown, tables: unknown) =>
+          readAfterFileOperation(event, async () => {
+            const target = tableLayoutTarget(tabId)
+            if (target) await writeTableLayout(target.root, target.path, tables)
+          }),
+      )
       handle(WORKSPACE_CHANNELS.action, (event, input: unknown) =>
         runFileOperation(event, (window) => workspaceAction(window, input)),
       )
@@ -2010,7 +2043,18 @@ if (!app.requestSingleInstanceLock()) {
         runFileOperation(event, async () => {
           const previous = getDocumentPath()
           const pending = getDocument().ephemeral
-          const renamed = await renameDocument(name)
+          const root = workspaceRoot()
+          const renamed = await renameWithTableLayout(
+            () => renameDocument(name),
+            () =>
+              pending || previous === getDocumentPath()
+                ? null
+                : [
+                    root,
+                    workspaceRelativePath(previous),
+                    workspaceRelativePath(getDocumentPath()),
+                  ],
+          )
           if (previous !== getDocumentPath())
             await documentFileChanged(previous, getDocumentPath(), !pending)
           return renamed
