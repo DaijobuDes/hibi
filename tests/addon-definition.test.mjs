@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { mkdir, rm, rmdir, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import test from 'node:test'
-import { createServer } from 'vite'
+import { createServer, loadConfigFromFile } from 'vite'
 
 const manifest = (id, extra = {}) => ({
   id,
@@ -24,8 +24,15 @@ const fixture = `
   }
 `
 async function registry(t) {
+  const { config } = await loadConfigFromFile(
+    { command: 'serve', mode: 'test' },
+    resolve('electron.vite.config.ts'),
+  )
   const server = await createServer({
     configFile: false,
+    plugins: config.renderer.plugins.filter(
+      (plugin) => plugin.name === 'addon-catalog-renderer',
+    ),
     root: resolve('.'),
     server: { middlewareMode: true },
     appType: 'custom',
