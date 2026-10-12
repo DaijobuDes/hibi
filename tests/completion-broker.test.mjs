@@ -424,6 +424,30 @@ const collect = (broker, captured = request(), getCurrent = () => captured) => {
   return { updates, final, cancel }
 }
 
+test('keyboard metadata survives validation and invalid flags are rejected', async () => {
+  const broker = new CompletionBroker()
+  broker.register(owner('flags'), () => [
+    { ...item('next'), preselect: false, acceptOnEnter: false },
+    { ...item('word'), preselect: false, acceptOnEnter: 'selected' },
+    { ...item('disabled-tab'), acceptOnTab: false },
+    { ...item('invalid-preselect'), preselect: 'false' },
+    { ...item('invalid-enter'), acceptOnEnter: 'always' },
+    item('generic'),
+  ])
+  const { items } = await collect(broker).final
+  assert.deepEqual(
+    items.map(({ label }) => label),
+    ['next', 'word', 'disabled-tab', 'generic'],
+  )
+  assert.equal(items[0].preselect, false)
+  assert.equal(items[0].acceptOnEnter, false)
+  assert.equal(items[1].acceptOnEnter, 'selected')
+  assert.equal(items[2].acceptOnTab, false)
+  assert.equal('preselect' in items[3], false)
+  assert.equal('acceptOnEnter' in items[3], false)
+  assert.ok(Object.isFrozen(items[0]))
+})
+
 test('no providers skips capture and emits nothing', () => {
   const broker = new CompletionBroker()
   let captures = 0

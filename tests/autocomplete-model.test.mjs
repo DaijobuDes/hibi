@@ -154,6 +154,61 @@ test('bigram and trigram patterns predict next word after a space', () => {
   assert.ok(model.snapshot().entries.every((row) => row.context.length <= 2))
 })
 
+test('next-word prediction needs matching repeated context, never context-free vocabulary', () => {
+  const model = createPersonalModel({ now: () => 1_000_000 })
+  for (let repeat = 0; repeat < 3; repeat++) {
+    const phrase = ['bro', 'that', 'was', 'wild']
+    for (const [i, word] of phrase.entries())
+      learn(model, word, 1, { context: phrase.slice(0, i) })
+  }
+  const request = { ...session, prefix: '' }
+  assert.deepEqual(words(model, { ...request, context: ['that', 'was'] }), [
+    'wild',
+  ])
+  assert.deepEqual(words(model, { ...request, context: ['was'] }), ['wild'])
+  for (const context of [[], ['purple', 'zebra'], ['done.']])
+    assert.deepEqual(words(model, { ...request, context }), [])
+  assert.deepEqual(
+    words(model, { ...request, baseline: [{ word: 'wild', lang: 'en' }] }),
+    [],
+  )
+  assert.deepEqual(
+    words(model, { ...request, context: ['that', 'was'], enabled: false }),
+    [],
+  )
+  assert.deepEqual(
+    words(model, { ...request, context: ['that', 'was'], limit: 0 }),
+    [],
+  )
+})
+
+test('next-word prediction suppresses one-hit, tied and near-tied contexts', () => {
+  const request = { ...session, prefix: '', context: ['that', 'was'] }
+  for (const kind of ['typed', 'accepted']) {
+    const model = createPersonalModel({ now: () => 1_000_000 })
+    learn(model, 'wild', 1, { kind, context: request.context })
+    assert.deepEqual(words(model, request), [])
+  }
+  for (const [first, second] of [
+    [3, 3],
+    [20, 19],
+  ]) {
+    const model = createPersonalModel({ now: () => 1_000_000 })
+    learn(model, 'wild', first, { context: request.context })
+    learn(model, 'weird', second, { context: request.context })
+    assert.deepEqual(words(model, request), [])
+  }
+  const model = createPersonalModel({ now: () => 1_000_000 })
+  learn(model, 'wild', 3, { context: request.context })
+  learn(model, 'weird', 1, { context: request.context })
+  assert.deepEqual(words(model, request), ['wild'])
+  // Strong one-word evidence must not override an ambiguous longer context.
+  learn(model, 'weird', 100, { context: ['it', 'was'] })
+  assert.deepEqual(words(model, request), ['wild'])
+  learn(model, 'weird', 2, { context: request.context })
+  assert.deepEqual(words(model, request), [])
+})
+
 test('slang, spelling, capitalization and multilingual scripts remain exact', () => {
   const model = createPersonalModel()
   for (const word of [

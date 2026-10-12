@@ -5,9 +5,13 @@ import {
   type CompletionContext,
   type CompletionResult,
   closeCompletion,
+  completionKeymap,
   completionStatus,
+  currentCompletions,
   pickedCompletion,
   selectedCompletion,
+  selectedCompletionIndex,
+  setSelectedCompletion,
   startCompletion,
 } from '@codemirror/autocomplete'
 import { defaultKeymap, isolateHistory, selectAll } from '@codemirror/commands'
@@ -30,6 +34,7 @@ import {
   Compartment,
   EditorSelection,
   EditorState,
+  Prec,
   Transaction,
 } from '@codemirror/state'
 import { EditorView, keymap, lineNumbers, placeholder } from '@codemirror/view'
@@ -68,6 +73,10 @@ import { Button } from '../../ui/Controls'
 import { DocumentNotice } from '../../ui/DocumentNotice'
 import { codeHighlighter, codeLanguages } from './code-languages'
 import { completionBroker, otherPopupOpen } from './completion-broker'
+import {
+  completionForKey,
+  initialCompletionSelection,
+} from './completion-selection'
 import { documentEdits } from './document-edits'
 import { editorDocument } from './document-formats'
 import { documentProjections } from './document-projections'
@@ -746,7 +755,7 @@ export function SourceEditor({
       pending.cancel?.()
       for (const resolve of pending.waiting.splice(0)) resolve(null)
     }
-    const keepTab = new WeakSet<Completion>()
+    const completionItems = new WeakMap<Completion, CompletionItem>()
     const resultFor = (pending: PendingCompletion): CompletionResult => ({
       from: pending.request.selection.head,
       to: pending.request.selection.head,
@@ -811,7 +820,7 @@ export function SourceEditor({
           },
         }
         pending.options.set(item, option)
-        if (item.acceptOnTab === false) keepTab.add(option)
+        completionItems.set(option, item)
         return option
       }),
     })
@@ -938,18 +947,50 @@ export function SourceEditor({
           numbers.current.of([]),
           language.of(markdown()),
           sourceAnnotationExtension,
-          autocompletion({ override: [sourceCompletions] }),
-          keymap.of([
-            {
-              key: 'Tab',
-              run: (view) => {
-                const option = selectedCompletion(view.state)
-                return (
-                  !(option && keepTab.has(option)) && acceptCompletion(view)
-                )
-              },
-            },
-          ]),
+          autocompletion({
+            override: [sourceCompletions],
+            selectOnOpen: false,
+            defaultKeymap: false,
+          }),
+          EditorState.transactionExtender.of((transaction) => {
+            const options = currentCompletions(transaction.state)
+            if (
+              !options.length ||
+              options === currentCompletions(transaction.startState) ||
+              selectedCompletion(transaction.state)
+            )
+              return null
+            const option = options[0]
+            const first = option && completionItems.get(option)
+            return first && initialCompletionSelection([first]) === 0
+              ? { effects: setSelectedCompletion(0) }
+              : null
+          }),
+          Prec.highest(
+            keymap.of([
+              ...completionKeymap.filter((binding) => binding.key !== 'Enter'),
+              ...(['Enter', 'Tab'] as const).map((key) => ({
+                key,
+                run: (view: EditorView) => {
+                  const options = currentCompletions(view.state)
+                  const selected = selectedCompletionIndex(view.state) ?? -1
+                  const option =
+                    options[selected < 0 && key === 'Tab' ? 0 : selected]
+                  const item = option && completionItems.get(option)
+                  if (
+                    !item ||
+                    !completionForKey([item], selected < 0 ? -1 : 0, key)
+                  ) {
+                    if (key === 'Enter') closeCompletion(view)
+                    return false
+                  }
+                  if (selected < 0)
+                    view.dispatch({ effects: setSelectedCompletion(0) })
+                  return acceptCompletion(view)
+                },
+              })),
+            ]),
+          ),
           EditorView.domEventHandlers({
             beforeinput(event) {
               if (

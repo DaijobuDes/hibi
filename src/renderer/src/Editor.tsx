@@ -68,6 +68,10 @@ import { DocumentNotice } from '../../ui/DocumentNotice'
 import { performanceDiagnostics } from '../../ui/diagnostics'
 import { addonRegistry } from './addon-registry'
 import { completionBroker, otherPopupOpen } from './completion-broker'
+import {
+  completionForKey,
+  initialCompletionSelection,
+} from './completion-selection'
 import { documentImage } from './DocumentImage'
 import { documentEdits } from './document-edits'
 import { editorDocument } from './document-formats'
@@ -733,7 +737,7 @@ export function MarkdownEditor({
       request: CompletionRequest
       items: readonly CompletionItem[]
     } | null = null
-    let selected = 0
+    let selected = -1
     let cancel: (() => void) | null = null
     let pending = false
     let frame = 0
@@ -750,6 +754,7 @@ export function MarkdownEditor({
     const open = () => menu.matches(':popover-open')
     const hide = () => {
       visible = null
+      selected = -1
       menu.inert = true
       menu.setAttribute('aria-hidden', 'true')
       if (open()) menu.hidePopover()
@@ -952,7 +957,8 @@ export function MarkdownEditor({
     }
     const select = (index: number) => {
       if (!visible?.items.length) return
-      selected = (index + visible.items.length) % visible.items.length
+      selected =
+        index < 0 ? -1 : (index + visible.items.length) % visible.items.length
       for (const [position, option] of [...menu.children].entries()) {
         const active = position === selected
         option.setAttribute('aria-selected', String(active))
@@ -963,7 +969,7 @@ export function MarkdownEditor({
       if (option) {
         view.dom.setAttribute('aria-activedescendant', option.id)
         option.scrollIntoView({ block: 'nearest' })
-      }
+      } else view.dom.removeAttribute('aria-activedescendant')
     }
     const accept = (index: number) => {
       const shown = visible
@@ -1063,8 +1069,13 @@ export function MarkdownEditor({
         hide()
         return
       }
+      const highlighted = visible?.items[selected]
+      selected = highlighted
+        ? items.indexOf(highlighted)
+        : visible
+          ? -1
+          : initialCompletionSelection(items)
       visible = { request: update.request, items }
-      selected = Math.min(selected, items.length - 1)
       menu.replaceChildren(
         ...items.map((item, index) => {
           const option = document.createElement('div')
@@ -1116,7 +1127,9 @@ export function MarkdownEditor({
         completionBroker.hasTypingListeners() &&
         !event.isComposing &&
         !view.composing &&
-        !visible &&
+        (!visible ||
+          (event.key === 'Enter' &&
+            !completionForKey(visible.items, selected, 'Enter'))) &&
         !event.ctrlKey &&
         !event.metaKey &&
         !event.altKey &&
@@ -1158,20 +1171,29 @@ export function MarkdownEditor({
       }
       if (visible && !event.ctrlKey && !event.metaKey && !event.altKey) {
         if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-          select(selected + (event.key === 'ArrowDown' ? 1 : -1))
+          select(
+            selected < 0
+              ? event.key === 'ArrowDown'
+                ? 0
+                : visible.items.length - 1
+              : (selected +
+                  (event.key === 'ArrowDown' ? 1 : -1) +
+                  visible.items.length) %
+                  visible.items.length,
+          )
           event.preventDefault()
           event.stopPropagation()
           return
         }
-        if (
-          event.key === 'Enter' ||
-          (event.key === 'Tab' &&
-            visible.items[selected]?.acceptOnTab !== false)
-        ) {
-          accept(selected)
-          event.preventDefault()
-          event.stopPropagation()
-          return
+        if (event.key === 'Enter' || event.key === 'Tab') {
+          const item = completionForKey(visible.items, selected, event.key)
+          if (item) {
+            accept(visible.items.indexOf(item))
+            event.preventDefault()
+            event.stopPropagation()
+            return
+          }
+          if (event.key === 'Enter') dismiss()
         }
       }
       if (

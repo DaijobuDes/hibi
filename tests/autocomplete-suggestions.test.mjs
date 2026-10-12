@@ -87,8 +87,54 @@ test('provider combines baseline, exact personal spelling, custom words and next
   assert.equal(next[0].insertText, 'craZy')
   assert.equal(next[0].from, 'bro that was '.length)
   assert.equal(next[0].to, next[0].from)
+  assert.equal(next[0].preselect, false)
+  assert.equal(next[0].acceptOnEnter, false)
   f.settings({ learning: false })
   assert.deepEqual(await words('bro that was '), [])
+})
+
+test('next-word provider rejects unrelated, one-hit and tied contexts', async () => {
+  const f = fixture()
+  f.dictionary.complete = async () => assert.fail('next-word dictionary lookup')
+  const observe = (word) =>
+    f.model.observe({
+      scope: 'workspace',
+      languages: ['en'],
+      context: ['that', 'was'],
+      word,
+      kind: 'typed',
+    })
+  observe('wild')
+  assert.deepEqual(await f.provider(request('bro that was '), signal()), [])
+  observe('wild')
+  observe('wild')
+  assert.equal(
+    (await f.provider(request('bro that was '), signal()))[0].insertText,
+    'wild',
+  )
+  for (const before of ['purple zebra ', 'done. ', ' '])
+    assert.deepEqual(await f.provider(request(before), signal()), [])
+  for (let i = 0; i < 3; i++) observe('weird')
+  assert.deepEqual(await f.provider(request('bro that was '), signal()), [])
+})
+
+test('prefix results require explicit enter selection and retain tab preference', async () => {
+  const f = fixture()
+  for (const tabAccepts of [true, false]) {
+    f.settings({ tabAccepts })
+    const items = await f.provider(request('cra'), signal())
+    assert.ok(items.length)
+    assert.ok(
+      items.every(
+        (item) => item.preselect === false && item.acceptOnEnter === 'selected',
+      ),
+    )
+    assert.ok(
+      items.every(
+        (item) => item.acceptOnTab === (tabAccepts ? undefined : false),
+      ),
+    )
+  }
 })
 
 test('unsafe prose and unavailable sessions do not query dictionary or learning', async () => {

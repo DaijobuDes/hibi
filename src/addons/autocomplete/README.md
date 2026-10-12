@@ -2,9 +2,9 @@
 
 Enable **Autocomplete** in **Settings → Addons**. It requires **Dictionary and thesaurus**. Installed offline dictionary packs supply suggestions before anything has been learned; autocomplete never downloads packs or sends network requests. Dictionary lookups and pack installation remain separate actions in the dictionary addon.
 
-Type at least three Latin letters to see word suggestions. After a space, learned word patterns can suggest the next word: repeatedly writing “bro that was wild” makes “wild” more likely after “that was”. English, French, German, and Filipino can be used together. Choose the languages in Autocomplete settings. Chinese and Japanese word segmentation is not supported yet.
+Type at least three Latin letters to see word suggestions. After a space, the preceding one or two words can suggest the next word when repeated use gives one choice a clear lead. Repeatedly writing “bro that was wild” can suggest “wild” after “that was”; unrelated contexts show nothing. English, French, German, and Filipino can be used together. Choose the languages in Autocomplete settings. Chinese and Japanese word segmentation is not supported yet.
 
-Use the arrow keys to choose a suggestion, Enter to accept it, and Escape to dismiss it. **Accept suggestions with Tab** is on by default. Turn it off to leave Tab to the editor while suggestions are visible. With no suggestion list, Tab behaves normally. Accepting a suggestion makes one undo step. The dictionary's previous suggestion, language, and Tab preferences move to Autocomplete on first use.
+Suggestions start with no word selected. Use the arrow keys to highlight a word completion and Enter to accept it. For next-word suggestions after a space, Enter always starts a new paragraph, even after highlighting a choice. **Accept suggestions with Tab** is on by default: Tab accepts the highlighted suggestion, or the first suggestion when none is highlighted. Turn it off to leave Tab to the editor while suggestions are visible. Escape dismisses the list. Accepting a suggestion makes one undo step. The dictionary's previous suggestion, language, and Tab preferences move to Autocomplete on first use.
 
 ## Learning and privacy
 

@@ -103,13 +103,105 @@ test('autocomplete learns locally, disables learning, excludes documents and cle
       (row) => row.word === 'wild' && row.context.join(' ') === 'that was',
     ),
   )
-  await page.keyboard.type('bro that was ')
-  const popup = page.getByRole('listbox', { name: 'Completions' })
-  await popup.getByRole('option', { name: 'wild', exact: true }).waitFor()
-  await page.keyboard.press('Tab')
-  await waitForAsync(page, async () =>
-    (await window.hibi.getDocument()).markdown.endsWith('bro that was wild'),
-  )
+  for (const mode of ['rich', 'source']) {
+    if (mode === 'source') {
+      await page
+        .getByRole('button', { name: 'Source view', exact: true })
+        .click()
+      await waitForDocumentEditor(app, page, { name: 'Markdown editor' })
+    }
+    const popup =
+      mode === 'rich'
+        ? page.getByRole('listbox', { name: 'Completions' })
+        : page.locator('.cm-tooltip-autocomplete')
+    const reset = async (text) => {
+      if (mode === 'rich') {
+        await rich.evaluate((element, text) => {
+          const editor = element.editor
+          editor.commands.setContent(text, { contentType: 'markdown' })
+          editor.commands.focus('end')
+        }, text)
+      } else {
+        const source = page.getByRole('textbox', {
+          name: 'Markdown editor',
+          exact: true,
+        })
+        await source.focus()
+        await source.press(
+          process.platform === 'darwin' ? 'Meta+a' : 'Control+a',
+        )
+        await page.keyboard.insertText(text)
+      }
+      await page.keyboard.press('Escape')
+      await waitForAsync(
+        page,
+        async (text) => (await window.hibi.getDocument()).markdown === text,
+        text,
+      )
+    }
+    await reset('purple zebra')
+    await page.keyboard.type(' ')
+    await page.keyboard.press('Control+Space')
+    await page.evaluate(
+      () =>
+        new Promise((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(resolve)),
+        ),
+    )
+    await popup.waitFor({ state: 'hidden' })
+    await page.keyboard.press('Enter')
+    await page.keyboard.type('new paragraph')
+    await waitForAsync(page, async () =>
+      /^purple zebra\s*\n+new paragraph$/.test(
+        (await window.hibi.getDocument()).markdown,
+      ),
+    )
+    for (const highlight of [false, true]) {
+      await reset('bro that was')
+      await page.keyboard.type(' ')
+      await popup.getByRole('option', { name: 'wild', exact: true }).waitFor()
+      assert.equal(await popup.locator('[aria-selected="true"]').count(), 0)
+      if (highlight) await page.keyboard.press('ArrowDown')
+      await page.keyboard.press('Enter')
+      await page.keyboard.type('new paragraph')
+      await waitForAsync(page, async () =>
+        /^bro that was\s*\n+new paragraph$/.test(
+          (await window.hibi.getDocument()).markdown,
+        ),
+      )
+    }
+    await reset('bro that was')
+    await page.keyboard.type(' ')
+    await popup.getByRole('option', { name: 'wild', exact: true }).waitFor()
+    await page.keyboard.press('Tab')
+    await waitForAsync(
+      page,
+      async () =>
+        (await window.hibi.getDocument()).markdown === 'bro that was wild',
+    )
+    await reset('bro that was wil')
+    await page.keyboard.press('Control+Space')
+    await popup.getByRole('option', { name: 'wild', exact: true }).waitFor()
+    await page.keyboard.press('Enter')
+    await page.keyboard.type('new paragraph')
+    await waitForAsync(page, async () =>
+      /^bro that was wil\n+new paragraph$/.test(
+        (await window.hibi.getDocument()).markdown,
+      ),
+    )
+    await reset('bro that was wil')
+    await page.keyboard.press('Control+Space')
+    await popup.getByRole('option', { name: 'wild', exact: true }).waitFor()
+    await page.keyboard.press('ArrowDown')
+    await page.keyboard.press('Enter')
+    await waitForAsync(
+      page,
+      async () =>
+        (await window.hibi.getDocument()).markdown === 'bro that was wild',
+    )
+  }
+  await page.getByRole('button', { name: 'normal', exact: true }).click()
+  await waitForDocumentEditor(app, page)
 
   await settings()
   await page.locator('#autocomplete-learning').uncheck()

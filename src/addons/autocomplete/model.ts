@@ -343,6 +343,39 @@ export function createPersonalModel(options: PersonalModelOptions = {}) {
     const limit = Number.isFinite(request.limit)
       ? Math.max(0, Math.min(32, Math.floor(request.limit ?? 8)))
       : 8
+    if (!prefix) {
+      if (request.enabled === false || !limit) return []
+      const context = contextWords(request.context)
+      const time = now()
+      for (let length = context.length; length > 0; length--) {
+        const candidates = new Map<string, PersonalSuggestion>()
+        for (const lang of langs)
+          for (const row of buckets.get(
+            bucketKey(request.scope, lang, context.slice(-length), ''),
+          ) ?? []) {
+            const score = (row.count - 2 * row.corrections) * decay(row, time)
+            if (score <= 0) continue
+            if (score > (candidates.get(row.word)?.score ?? 0))
+              candidates.set(row.word, {
+                word: row.word,
+                lang,
+                score,
+                source: 'personal',
+              })
+          }
+        const ranked = [...candidates.values()].sort(
+          (a, b) => b.score - a.score,
+        )
+        const first = ranked[0]
+        if (!first) continue
+        // An ambiguous longer context must not fall back to a broader habit.
+        return first.score >= 2.5 &&
+          first.score >= 1.5 * (ranked[1]?.score ?? 0)
+          ? [first]
+          : []
+      }
+      return []
+    }
     const candidates = new Map<string, PersonalSuggestion>()
     const baseline = (request.baseline ?? [])
       .slice(0, 128)

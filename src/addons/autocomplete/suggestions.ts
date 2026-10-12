@@ -187,6 +187,8 @@ export function autocompleteCompletions(
       from: head - typed.length,
       to: head,
       rank: score * 100,
+      preselect: false,
+      acceptOnEnter: typed ? 'selected' : false,
       ...(settings.tabAccepts ? {} : { acceptOnTab: false }),
     }))
   }

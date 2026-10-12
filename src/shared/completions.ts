@@ -31,8 +31,12 @@ export interface CompletionItem {
   readonly from: number
   readonly to: number
   readonly rank?: number
-  /** False leaves Tab to the editor; Enter still accepts. Defaults to true. */
+  /** False leaves Tab to the editor. Defaults to true. */
   readonly acceptOnTab?: boolean
+  /** False opens without a highlighted item. Defaults to true. */
+  readonly preselect?: boolean
+  /** False leaves Enter to the editor; 'selected' disables preselection and requires explicit highlighting. Defaults to true. */
+  readonly acceptOnEnter?: boolean | 'selected'
 }
 
 export type CompletionProvider = (
