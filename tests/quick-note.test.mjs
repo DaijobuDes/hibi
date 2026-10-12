@@ -1077,6 +1077,14 @@ test('a refused draft write warns over the recovery notice and retries', {
     name.startsWith('quick-note-draft.unreadable-'),
   )
   assert.equal(await readFile(join(h.profile, kept), 'utf8'), original)
+  // The notice now names the kept file instead of saying notes are not kept.
+  await capture
+    .getByRole('alert')
+    .getByText(`kept the file as ${kept} in its app data folder`, {
+      exact: false,
+    })
+    .waitFor()
+  assert.equal(await capture.getByText(/left the file unchanged/).count(), 0)
 })
 
 test('a draft from the previous version is imported once', {

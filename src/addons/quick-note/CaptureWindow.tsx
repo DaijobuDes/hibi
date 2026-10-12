@@ -133,11 +133,17 @@ export function CaptureWindow({ Editor, native, close }: AddonWindowProps) {
     const draft: Draft = { markdown: value }
     const write = writing.current
       .catch(() => {})
-      .then(() => native.invoke('saveDraft', draft))
+      .then(() =>
+        native.invoke<{ keptAs: string | null }>('saveDraft', draft),
+      )
       .then(
-        () => {
+        ({ keptAs }) => {
           failures.current = 0
           setDraftWarning(false)
+          // Writes succeed again, so the unreadable draft is no longer in place.
+          setUnreadable((notice) =>
+            notice?.keptAs === null ? (keptAs ? { keptAs } : null) : notice,
+          )
           if (legacyPending.current) {
             localStorage.removeItem(legacyDraftKey)
             legacyPending.current = false
@@ -187,6 +193,7 @@ export function CaptureWindow({ Editor, native, close }: AddonWindowProps) {
       else if (legacy) text = legacy
       markdown.current = text
       setInitial(text)
+      // A native draft outranks the previous version's; either way the old one is retired.
       if (legacy) {
         legacyPending.current = true
         void writeDraft()
@@ -197,7 +204,6 @@ export function CaptureWindow({ Editor, native, close }: AddonWindowProps) {
     }
   }, [native, writeDraft])
   useEffect(() => {
-      // A native draft outranks the previous version's; either way the old one is retired.
     refresh()
     window.addEventListener('focus', refresh)
     return () => window.removeEventListener('focus', refresh)
