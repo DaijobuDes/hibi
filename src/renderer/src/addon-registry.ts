@@ -93,8 +93,9 @@ function describeAddon(
     ...(declared.Settings ? { Settings: declared.Settings } : {}),
     async start(context) {
       const token = ++generation
-      if (manifest.kind === 'theme') {
-        for (const theme of declared.themes ?? [])
+      // Installed themes are data; source themes still register colors in `start`.
+      if (manifest.kind === 'theme' && declared.themes) {
+        for (const theme of declared.themes)
           context.colorschemes.register(theme)
         return
       }

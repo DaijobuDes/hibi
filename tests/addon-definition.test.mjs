@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { mkdir, rm, rmdir, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import test from 'node:test'
 import { createServer } from 'vite'
@@ -148,4 +149,38 @@ test('stopping while the module loads never invokes its factory', {
   release()
   await starting
   assert.equal(globalThis.definitionFactoryCalls, 0)
+})
+
+test('source theme addons still register colors from start', {
+  timeout: 30000,
+}, async (t) => {
+  const id = 'definition-theme-probe'
+  const root = resolve('src/useraddons')
+  const folder = resolve(root, id)
+  await mkdir(folder, { recursive: true })
+  t.after(async () => {
+    await rm(folder, { recursive: true, force: true })
+    // Leave a developer's own local addons alone.
+    await rmdir(root).catch(() => {})
+  })
+  await writeFile(
+    resolve(folder, 'manifest.ts'),
+    `export default ${JSON.stringify(manifest(id, { kind: 'theme' }))}`,
+  )
+  await writeFile(
+    resolve(folder, 'index.ts'),
+    `import manifest from './manifest'
+export default {
+  manifest,
+  start(context) {
+    context.colorschemes.register({ id: 'probe', name: 'Probe', appearance: 'dark', colors: {} })
+  },
+}`,
+  )
+  const { find } = await registry(t)
+  const registered = []
+  await find(id).start({
+    colorschemes: { register: (scheme) => registered.push(scheme.id) },
+  })
+  assert.deepEqual(registered, ['probe'])
 })
