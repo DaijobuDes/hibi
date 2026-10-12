@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import test from 'node:test'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { build } from 'esbuild'
 
 const details = (id, extra = {}) => ({
@@ -443,4 +443,153 @@ test('startup loads unordered dependencies and missing consumers while culling o
     h.getAddonStartupNotices().join(' '),
     /dependency cycles.*cycle-alpha.*cycle-beta/,
   )
+})
+
+test('installation rejects reserved ids, privileges, and pending resources before review', async (t) => {
+  const h = await host(t)
+  await h.loadAddons()
+  const source = join(h.state.root, 'sources')
+  const invalid = [
+    details('markdown'),
+    details('native-claim', {
+      native: { entry: 'native.js' },
+      source: 'built-in',
+    }),
+    details('importer-claim', { importer: {} }),
+    details('window-claim', { windows: {} }),
+    details('modal-claim', { capabilities: ['modalEditing'] }),
+    details('style-claim', { styles: ['style.css'] }),
+    details('theme-claim', { themes: ['theme.json'] }),
+    details('empty-style-claim', { styles: [] }),
+    details('empty-theme-claim', { themes: [] }),
+  ]
+  for (const manifest of invalid) {
+    h.state.source = await fixture(source, manifest)
+    await assert.rejects(
+      h.installAddon({}),
+      /built-in addon|cannot declare|SDK capabilities|not supported/,
+    )
+  }
+  assert.equal(h.state.reviews.length, 0)
+  assert.deepEqual(h.installedAddons(), [])
+  const installed = join(h.state.root, 'installed-addons')
+  for (const manifest of invalid) await fixture(installed, manifest, true)
+  const notices = await h.loadInstalledAddons([details('markdown')])
+  assert.equal(notices.length, 1)
+  assert.match(notices[0], /modal-claim/)
+  assert.deepEqual(
+    h
+      .installedAddons()
+      .map((addon) => addon.manifest.id)
+      .sort(),
+    invalid
+      .filter((manifest) => !['markdown', 'modal-claim'].includes(manifest.id))
+      .map((manifest) => manifest.id)
+      .sort(),
+  )
+  for (const addon of h.installedAddons()) {
+    assert.deepEqual(addon.themes, [])
+    assert.equal(addon.manifest.defaultEnabled, false)
+    for (const key of ['styles', 'themes', 'native', 'importer', 'windows'])
+      assert.equal(Object.hasOwn(addon.manifest, key), false)
+  }
+})
+
+test('installed folders with ignored styles and native keys remain listed without notices', async (t) => {
+  const h = await host(t)
+  const input = JSON.parse(
+    await readFile(
+      fileURLToPath(
+        new URL('./fixtures/addon-manifests/installed.json', import.meta.url),
+      ),
+      'utf8',
+    ),
+  )
+  const expected = JSON.parse(
+    await readFile(
+      fileURLToPath(
+        new URL(
+          './fixtures/addon-manifests/installed-expected.json',
+          import.meta.url,
+        ),
+      ),
+      'utf8',
+    ),
+  )
+  await fixture(
+    join(h.state.root, 'installed-addons'),
+    {
+      ...input,
+      styles: [],
+      native: null,
+    },
+    true,
+  )
+  await h.loadAddons()
+  assert.deepEqual(h.getAddonStartupNotices(), [])
+  const [addon] = h.installedAddons()
+  assert.deepEqual(addon.manifest, expected.manifest)
+  assert.deepEqual(addon.themes, expected.themes)
+  assert.equal(stateOf(h, input.id).enabled, false)
+})
+
+test('installer accepts the full typst notice but keeps the 64 kib manifest boundary', async (t) => {
+  const h = await host(t)
+  await h.loadAddons()
+  const text = await readFile(
+    fileURLToPath(new URL('../docs/licenses/typst-assets.md', import.meta.url)),
+    'utf8',
+  )
+  const manifest = details('notice', {
+    apiVersion: 1,
+    defaultEnabled: true,
+    licenses: [
+      {
+        id: 'typst-assets',
+        name: 'Typst assets',
+        license: 'see notices',
+        text,
+      },
+    ],
+  })
+  h.state.source = await fixture(join(h.state.root, 'sources'), manifest)
+  const raw = JSON.stringify(manifest)
+  const atLimit = raw + ' '.repeat(64 * 1024 - Buffer.byteLength(raw))
+  const path = join(h.state.source, 'hibi-addon.json')
+  await writeFile(path, atLimit)
+  await h.installAddon({})
+  const expected = h.installedAddons()
+  assert.equal(expected[0].manifest.licenses[0].text, text)
+  assert.equal(expected[0].manifest.apiVersion, 2)
+  assert.equal(expected[0].manifest.defaultEnabled, false)
+  assert.equal(stateOf(h, 'notice').enabled, false)
+  await h.loadAddons()
+  assert.deepEqual(h.installedAddons(), expected)
+  await writeFile(path, `${atLimit} `)
+  await assert.rejects(h.installAddon({}), /no larger than 64 KiB/)
+  assert.equal(h.state.reviews.length, 1)
+  assert.deepEqual(h.installedAddons(), expected)
+})
+
+test('real installed fixture retains normalization through installation and restart', async (t) => {
+  const h = await host(t)
+  await h.loadAddons()
+  const read = async (name) =>
+    JSON.parse(
+      await readFile(
+        fileURLToPath(
+          new URL(`./fixtures/addon-manifests/${name}.json`, import.meta.url),
+        ),
+        'utf8',
+      ),
+    )
+  const input = await read('installed')
+  const expected = await read('installed-expected')
+  h.state.source = await fixture(join(h.state.root, 'sources'), input)
+  await h.installAddon({})
+  const installed = h.installedAddons()
+  assert.deepEqual(installed[0].manifest, expected.manifest)
+  assert.deepEqual(installed[0].themes, expected.themes)
+  await h.loadAddons()
+  assert.deepEqual(h.installedAddons(), installed)
 })

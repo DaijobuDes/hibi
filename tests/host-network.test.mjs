@@ -12,6 +12,8 @@ import {
   readHostTextBody,
 } from '../src/main/host-network.ts'
 
+import { MAX_URL_LENGTH } from '../src/shared/host-network.ts'
+
 const windowKey = {}
 const publicAddress = { address: '8.8.8.8', family: 4 }
 
@@ -417,6 +419,20 @@ test('malformed requests and non-https destinations fail before a grant', async 
   assert.deepEqual(destinations, [])
 })
 
+test('host requests enforce the shared url length limit at the exact boundary', async (t) => {
+  const { host, destinations, transports } = fixture(t)
+  assert.equal(MAX_URL_LENGTH, 2048)
+  const prefix = 'https://example.test/'
+  const url = prefix + 'x'.repeat(MAX_URL_LENGTH - prefix.length)
+  assert.equal((await host.request('demo', windowKey, { url })).ok, true)
+  failure(
+    await host.request('demo', windowKey, { url: `${url}x` }),
+    'invalid-request',
+  )
+  assert.equal(destinations.length, 1)
+  assert.equal(transports.length, 1)
+})
+
 test('stored bearer use follows destination and private grants, with no redirect forwarding', async (t) => {
   const events = []
   const { host, destinations, privateGrants, transports } = fixture(t, {
@@ -628,6 +644,38 @@ test('private and local names require separate grants for exact pinned addresses
     address: '8.8.8.8',
   })
   assert.deepEqual(transports[0].address, publicAddress)
+})
+
+test('shared local suffixes retain request grants after hostname normalization', async (t) => {
+  const { host, privateGrants } = fixture(t)
+  const local = [
+    'intranet',
+    'localhost',
+    'API.LOCALHOST.',
+    'server.local',
+    'server.lan',
+    'server.internal',
+    'router.home.arpa',
+  ]
+  for (const hostname of local)
+    assert.equal(
+      (await host.request('demo', windowKey, { url: `https://${hostname}/` }))
+        .ok,
+      true,
+    )
+  assert.equal(privateGrants.length, local.length)
+  for (const hostname of [
+    'localhost.example.test',
+    'home.arpa',
+    '8.8.8.8',
+    '[2606:4700:4700::1111]',
+  ])
+    assert.equal(
+      (await host.request('demo', windowKey, { url: `https://${hostname}/` }))
+        .ok,
+      true,
+    )
+  assert.equal(privateGrants.length, local.length)
 })
 
 test('each redirect gets a new destination and private-address grant', async (t) => {
