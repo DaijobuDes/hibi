@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
+import { createServer } from 'vite'
 import { codeHtml, codeLanguages } from '../src/renderer/src/code-languages.ts'
 import { electron, waitForDocumentEditor } from './electron.mjs'
 import { clickMenu, pressShortcut } from './keyboard.mjs'
@@ -70,9 +71,9 @@ test('startup catalog stays within the main byte budget and leaves notices and a
   }
   for (const chunk of chunks) if (chunk.entry) visit(chunk.file)
   const initial = chunks.filter((chunk) => reached.has(chunk.file))
-  // Phase 2 ceiling at 147e7b1d; merged main df5ae17c measures 765879 bytes.
+  // Catalog baseline: 689137 bytes, plus 318 bytes for declarative styles/themes (#218).
   const bytes = initial.reduce((sum, chunk) => sum + chunk.bytes, 0)
-  assert.ok(bytes <= 765301, `startup catalog grew to ${bytes} bytes`)
+  assert.ok(bytes <= 689455, `startup catalog grew to ${bytes} bytes`)
   const modules = initial.flatMap((chunk) => chunk.modules).join('\n')
   assert.doesNotMatch(
     modules,
@@ -94,27 +95,54 @@ test('startup catalog stays within the main byte budget and leaves notices and a
         .map((chunk) => readFile(join('out/renderer', chunk.file), 'utf8')),
     )
   ).join('\n')
-  for (const author of [
-    '1262793452236570667',
-    '297656178358616064',
-    'angelofallars',
-  ])
-    assert.equal(
-      code.includes(author),
-      false,
-      `startup contains author details: ${author}`,
+  const server = await createServer({
+    configFile: false,
+    optimizeDeps: { noDiscovery: true },
+    root: resolve('.'),
+    server: { middlewareMode: true },
+    appType: 'custom',
+  })
+  try {
+    const { readAddonPackages } = await server.ssrLoadModule(
+      '/scripts/addon-packages.ts',
     )
-  const notice = await readFile('docs/licenses/typst-assets.md', 'utf8')
-  const phrase = notice
-    .split('\n')
-    .find((line) => /^[a-z ]{40}/i.test(line))
-    ?.slice(0, 40)
-  assert.ok(phrase)
-  assert.equal(
-    code.includes(phrase),
-    false,
-    'startup contains bundled license text',
-  )
+    const packages = await readAddonPackages()
+    let notices = 0
+    for (const { manifest } of packages) {
+      for (const author of manifest.authors ?? [])
+        for (const identity of [author.discordId, author.github].filter(
+          Boolean,
+        ))
+          assert.equal(
+            code.includes(identity),
+            false,
+            `startup contains author details: ${manifest.id}`,
+          )
+      for (const license of manifest.licenses ?? []) {
+        const lines = license.text
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter((line) => line.length >= 40)
+        assert.ok(
+          lines.length,
+          `missing notice probe: ${manifest.id}/${license.id}`,
+        )
+        assert.equal(
+          lines.every(
+            (line) =>
+              code.includes(line) ||
+              code.includes(JSON.stringify(line).slice(1, -1)),
+          ),
+          false,
+          `startup contains bundled license text: ${manifest.id}/${license.id}`,
+        )
+        notices++
+      }
+    }
+    assert.ok(notices > 0)
+  } finally {
+    await server.close()
+  }
   assert.ok(
     chunks.some((chunk) =>
       chunk.modules.some((module) =>

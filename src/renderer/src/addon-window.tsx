@@ -73,10 +73,9 @@ async function render() {
     import('virtual:hibi-addon-catalog/windows'),
     import('./addon-definition'),
   ])
-  const owner = catalog.find(({ manifest }) => manifest.id === addonId)
+  const owner = catalog.find(({ id }) => id === addonId)
   const addon =
-    owner &&
-    (await normalizeDefinition((await owner.load()).default, owner.manifest))
+    owner && (await normalizeDefinition((await owner.load()).default, owner))
   const windows = addon?.windows
   // Only own keys: an id such as "constructor" must not reach Object.prototype.
   const Content =

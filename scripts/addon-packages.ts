@@ -42,7 +42,9 @@ export async function readAddonPackages(
         throw error
       },
     )
-    for (const folder of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+    for (const folder of entries.sort((a, b) =>
+      a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
+    )) {
       if (!folder.isDirectory()) continue
       const path = join(parent, folder.name)
       const files = await readdir(path)
@@ -86,29 +88,29 @@ export async function readAddonPackages(
   const packages: AddonPackage[] = []
   for (const { path, files, source } of folders) {
     const json = files.includes('hibi-addon.json')
-    let value: Record<string, unknown>
-    if (json) {
-      const file = join(path, 'hibi-addon.json')
-      watch(file)
-      const text = await readFile(file, 'utf8')
-      if (Buffer.byteLength(text) > MAX_ADDON_MANIFEST_BYTES)
-        throw new Error(`${file}: addon manifest exceeds 64 KiB.`)
-      value = JSON.parse(text)
-    } else {
-      const metadata = values.get(path)!
-      value = {
-        ...metadata,
-        kind: metadata.kind ?? 'extension',
-        entry: files.includes('index.ts') ? 'index.ts' : 'index.tsx',
-        ...(files.includes('native.ts')
-          ? { native: { entry: 'native.ts' } }
-          : {}),
-      }
-    }
+    const manifestPath = join(path, json ? 'hibi-addon.json' : 'manifest.ts')
     try {
+      let value: Record<string, unknown>
+      if (json) {
+        watch(manifestPath)
+        const text = await readFile(manifestPath, 'utf8')
+        if (Buffer.byteLength(text) > MAX_ADDON_MANIFEST_BYTES)
+          throw new Error('The addon manifest exceeds 64 KiB.')
+        value = JSON.parse(text)
+      } else {
+        const metadata = values.get(path)!
+        value = {
+          ...metadata,
+          kind: metadata.kind ?? 'extension',
+          entry: files.includes('index.ts') ? 'index.ts' : 'index.tsx',
+          ...(files.includes('native.ts')
+            ? { native: { entry: 'native.ts' } }
+            : {}),
+        }
+      }
       if (Buffer.byteLength(JSON.stringify(value)) > MAX_ADDON_MANIFEST_BYTES)
         throw new Error('The addon manifest exceeds 64 KiB.')
-      const parsed = parseAddonManifest(value, 'compiled')
+      const parsed = parseAddonManifest(value, { trust: 'compiled' })
       if (parsed.manifest.id !== basename(path))
         throw new Error('The addon folder must match its manifest ID.')
       const file = async (entry: string) => {
@@ -147,7 +149,7 @@ export async function readAddonPackages(
       })
     } catch (error) {
       throw new Error(
-        `${path}: ${error instanceof Error ? error.message : String(error)}`,
+        `${manifestPath}: ${error instanceof Error ? error.message : String(error)}`,
         { cause: error },
       )
     }
@@ -209,6 +211,10 @@ export function addonCatalog(process: 'main' | 'renderer'): Plugin {
         )}`
       const imports: string[] = []
       const entries = packages.map((item, index) => {
+        const load = (path: string) =>
+          `import(${JSON.stringify(slash(resolve(path)))})`
+        if (id === `\0${windowsId}`)
+          return `{id:${JSON.stringify(item.manifest.id)},capabilities:${JSON.stringify(item.manifest.capabilities)},load:()=>${load(item.entry)}}`
         const {
           authors: _authors,
           licenses: _licenses,
@@ -218,8 +224,6 @@ export function addonCatalog(process: 'main' | 'renderer'): Plugin {
           `manifest:${JSON.stringify(manifest)}`,
           `source:${JSON.stringify(item.source)}`,
         ]
-        const load = (path: string) =>
-          `import(${JSON.stringify(slash(resolve(path)))})`
         if (process === 'main') {
           parts.push(
             `directory:${JSON.stringify(item.directory.replace(/^src\//, '../'))}`,
@@ -230,9 +234,9 @@ export function addonCatalog(process: 'main' | 'renderer'): Plugin {
             )
         } else {
           parts.push(`load:()=>${load(item.entry)}`)
-          if (id !== `\0${windowsId}` && item.settings)
+          if (item.settings)
             parts.push(`loadSettings:()=>${load(item.settings)}`)
-          if (id !== `\0${windowsId}` && item.flavors) {
+          if (item.flavors) {
             imports.push(
               `import flavors${index} from ${JSON.stringify(slash(resolve(item.flavors)))}`,
             )

@@ -21,7 +21,8 @@ declare module 'virtual:hibi-addon-catalog/renderer' {
 
 declare module 'virtual:hibi-addon-catalog/windows' {
   const catalog: {
-    manifest: import('../addons/api').AddonManifest
+    id: string
+    capabilities?: import('../addons/api').AddonManifest['capabilities']
     load: () => Promise<{ default: unknown }>
   }[]
   export default catalog

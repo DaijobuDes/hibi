@@ -16,7 +16,7 @@ const component = (value: unknown) =>
 /** Accepts a direct `Addon` or a factory; only factories load an SDK, chosen by the canonical manifest. */
 export async function normalizeDefinition(
   exported: unknown,
-  manifest: AddonManifest,
+  manifest: { id: string; capabilities?: AddonManifest['capabilities'] },
   cancelled = () => false,
 ): Promise<Definition | undefined> {
   if (

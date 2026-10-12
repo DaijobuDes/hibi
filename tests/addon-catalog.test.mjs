@@ -16,6 +16,7 @@ import { createServer } from 'vite'
 
 const server = await createServer({
   configFile: false,
+  optimizeDeps: { noDiscovery: true },
   root: resolve('.'),
   server: { middlewareMode: true },
   appType: 'custom',
@@ -59,6 +60,16 @@ test('all 42 compiled manifests retain their metadata before catalog migration',
   }
 })
 
+test('pilot author metadata stays in sync with the shared author record', async () => {
+  const { authors } = await server.ssrLoadModule('/src/addons/authors.ts')
+  for (const id of ['ui-preview', 'quick-note', 'review'])
+    assert.deepEqual(
+      packages.find(({ manifest }) => manifest.id === id).manifest.authors,
+      [authors.may],
+      id,
+    )
+})
+
 test('catalog watches the real files behind metadata imports', async () => {
   const inputs = new Set()
   await readAddonPackages(undefined, (file) => inputs.add(file))
@@ -95,6 +106,18 @@ test('catalog emits process-specific lazy entries and separate author/license de
   assert.doesNotMatch(main, /"authors"|"licenses"/)
   assert.match(windows, /load:.*import\(/)
   assert.doesNotMatch(windows, /flavor-info|flavors:|loadSettings|native\.ts/)
+  const { default: owners } = await import(
+    `data:text/javascript;base64,${Buffer.from(windows).toString('base64')}`
+  )
+  assert.deepEqual(
+    owners.map(({ id, capabilities }) => ({ id, capabilities })),
+    packages.map(({ manifest: { id, capabilities } }) => ({
+      id,
+      capabilities,
+    })),
+  )
+  for (const owner of owners)
+    assert.deepEqual(Object.keys(owner), ['id', 'capabilities', 'load'])
   const authorRecords = JSON.parse(authors.slice('export default '.length))
   const licenseRecords = JSON.parse(licenses.slice('export default '.length))
   for (const { manifest } of packages) {
@@ -216,4 +239,15 @@ test('catalog rejects oversized json before reading addon entries', async (t) =>
   const { root, manifest, write } = await fixture(t)
   await write({ ...manifest, description: 'x'.repeat(65536) })
   await assert.rejects(readAddonPackages(root), /64 KiB/)
+})
+
+test('catalog names malformed json and recovers after correction', async (t) => {
+  const { root, folder, manifest, write } = await fixture(t)
+  await writeFile(join(folder, 'hibi-addon.json'), '{')
+  await assert.rejects(
+    readAddonPackages(root),
+    /sample[/\\\\]hibi-addon\.json:/,
+  )
+  await write(manifest)
+  assert.equal((await readAddonPackages(root))[0].manifest.id, 'sample')
 })
