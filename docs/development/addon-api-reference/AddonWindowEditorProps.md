@@ -2,7 +2,7 @@
 
 # AddonWindowEditorProps
 
-Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L604)
+Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L629)
 
 Props for `AddonWindowProps.Editor`.
 
@@ -36,7 +36,7 @@ type AddonWindowEditorProps = {
 
 ### defaultValue
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L606)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L631)
 
 Initial Markdown. Later edits are reported through `onChange`.
 
@@ -46,7 +46,7 @@ defaultValue?: string
 
 ### label
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L609)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L634)
 
 Accessible name for the editor.
 
@@ -58,7 +58,7 @@ label?: string
 
 ### onChange
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L607)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L632)
 
 ```typescript
 onChange?: (markdown: string) => void

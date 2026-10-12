@@ -42,6 +42,8 @@ type AddonManifest = {
   fileExtensions?: readonly string[]
   /** Placement and Lucide icon name for the addon's default settings page. */
   settings?: { category?: string; icon?: string }
+  /** Addon requirements, separate from external CLI tools. Required addons start before this addon. */
+  requires?: import('../shared/addon-dependencies').AddonRequirements
   /** External CLI requirements. The host checks and installs these without executing addon-supplied shell commands. */
   dependencies?: readonly import('../shared/dependencies').AddonDependency[]
   authors?: readonly AddonAuthor[]
@@ -78,6 +80,7 @@ type AddonManifest = {
 - [version](#version)
 - [fileExtensions](#fileextensions)
 - [settings](#settings)
+- [requires](#requires)
 - [dependencies](#dependencies)
 - [authors](#authors)
 - [licenses](#licenses)
@@ -256,9 +259,19 @@ Placement and Lucide icon name for the addon's default settings page.
 settings?: { category?: string; icon?: string }
 ```
 
-### dependencies
+### requires
 
 Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L163)
+
+Addon requirements, separate from external CLI tools. Required addons start before this addon.
+
+```typescript
+requires?: import('../shared/addon-dependencies').AddonRequirements
+```
+
+### dependencies
+
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L165)
 
 External CLI requirements. The host checks and installs these without executing addon-supplied shell commands.
 
@@ -270,7 +283,7 @@ Related: [AddonDependency](AddonDependency.md).
 
 ### authors
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L164)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L166)
 
 ```typescript
 authors?: readonly AddonAuthor[]
@@ -280,7 +293,7 @@ Related: [AddonAuthor](AddonAuthor.md).
 
 ### licenses
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L166)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L168)
 
 Shipped third-party notices, shown under hibi's open source licenses.
 
@@ -295,4 +308,4 @@ licenses?: readonly {
 
 ## Related types
 
-[Importer](Importer.md), [ADDON_API_VERSION](ADDON_API_VERSION.md), [AddonCapability](AddonCapability.md), [AddonCommandDescriptor](AddonCommandDescriptor.md), [AddonSyntaxDescriptor](AddonSyntaxDescriptor.md), [AddonDependency](AddonDependency.md), [authors](authors.md), [AddonAuthor](AddonAuthor.md).
+[Importer](Importer.md), [ADDON_API_VERSION](ADDON_API_VERSION.md), [AddonCapability](AddonCapability.md), [AddonCommandDescriptor](AddonCommandDescriptor.md), [AddonSyntaxDescriptor](AddonSyntaxDescriptor.md), [Addon](Addon.md), [AddonDependency](AddonDependency.md), [authors](authors.md), [AddonAuthor](AddonAuthor.md).

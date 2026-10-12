@@ -28,6 +28,7 @@ import {
   workspaceRoot,
 } from './workspace'
 import { copyEntry, moveEntry } from './workspace-entry-transfer'
+import { renameWithTableLayout } from './workspace-layout'
 import { resolveWorkspaceEntry, validateWorkspaceName } from './workspace-paths'
 
 export { validateWorkspaceName } from './workspace-paths'
@@ -189,16 +190,29 @@ export async function workspaceAction(
           rethrowPartialCopy(error, base, source, resultPath),
         )
       } else {
-        const moved = await moveEntry(source, resultPath, folder, async () => {
-          await resolveWorkspaceEntry(base, path)
-          await resolveWorkspaceEntry(
-            base,
-            relative(base, resultPath).split(sep).join('/'),
-            true,
-          )
-          return !getOpenDocuments().some((draft) => draft.file === resultPath)
-        }).catch((error: unknown) =>
-          rethrowPartialCopy(error, base, source, resultPath),
+        const moved = await renameWithTableLayout(
+          () =>
+            moveEntry(source, resultPath, folder, async () => {
+              await resolveWorkspaceEntry(base, path)
+              await resolveWorkspaceEntry(
+                base,
+                relative(base, resultPath).split(sep).join('/'),
+                true,
+              )
+              return !getOpenDocuments().some(
+                (draft) => draft.file === resultPath,
+              )
+            }).catch((error: unknown) =>
+              rethrowPartialCopy(error, base, source, resultPath),
+            ),
+          (moved) =>
+            moved.sourceRemoved
+              ? [
+                  base,
+                  relative(base, source).split(sep).join('/'),
+                  relative(base, resultPath).split(sep).join('/'),
+                ]
+              : null,
         )
         if (!moved.sourceRemoved) {
           try {

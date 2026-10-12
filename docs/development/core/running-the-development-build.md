@@ -31,3 +31,9 @@ npm run dev -- -- --user-data-dir=/path/to/test-profile
 ```
 
 Use a new profile when testing first launch or default settings. Avoid sharing a profile between running instances.
+
+Development and test launches don't show the first-run introduction automatically. Add `--hibi-introduction` to show it when the profile hasn't seen it yet:
+
+```sh
+npm run dev -- -- --user-data-dir=/path/to/test-profile --hibi-introduction
+```

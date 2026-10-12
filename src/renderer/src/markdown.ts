@@ -24,6 +24,7 @@ import {
   renderTableParagraphs,
 } from './markdown-serialization.ts'
 import { markdownSyntax } from './markdown-syntax.ts'
+import { preserveHtml, rawHtml } from './RawHtml.ts'
 import { installSyntaxPreferences } from './syntax-parser.ts'
 
 export { projectMarkdown } from './markdown-projection.ts'
@@ -69,6 +70,7 @@ export function markdownConfiguration(
             taskItems ? parseEmptyTaskItems(extension) : extension,
           )
           .map(guardNativeListTokenizer)
+          .map(preserveHtml)
           .map(guardNativeInputRules) ?? []
       )
     },
@@ -93,6 +95,7 @@ export function markdownConfiguration(
     }),
     ...(history ? [history] : []),
     ...literalMarkdown,
+    ...rawHtml,
   ]
   const addons = flavors
     .flatMap((flavor) => flavor.richExtensions ?? [])
@@ -102,6 +105,7 @@ export function markdownConfiguration(
       taskItems ? parseEmptyTaskItems(extension) : extension,
     )
     .map(guardNativeListTokenizer)
+    .map(preserveHtml)
     .map(guardNativeInputRules)
   return { parser, options, core, addons }
 }
