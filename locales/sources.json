@@ -5542,6 +5542,9 @@
   "20cfcb2cec56": [
     "src/main/links.ts"
   ],
+  "5470a94f5135": [
+    "src/preload/addon-window.ts"
+  ],
   "c04f0fb5e9da": [
     "src/addons/ui-preview/index.tsx"
   ],
