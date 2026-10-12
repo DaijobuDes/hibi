@@ -124,24 +124,25 @@ test('autocomplete learns locally, disables learning, excludes documents and cle
       mode === 'rich'
         ? page.getByRole('listbox', { name: 'Completions' })
         : page.locator('.cm-tooltip-autocomplete')
-    const waitForChoice = async () => {
-      await popup.getByRole('option', { name: 'wild', exact: true }).waitFor()
-      if (mode === 'source') {
-        // Wait for CodeMirror's actual interaction guard, without a fixed sleep.
-        await page.waitForFunction(() => {
-          const state =
-            document.querySelector('.cm-content')?.cmTile?.root?.view?.state
-          const completion = state?.values.find((value) => value?.open?.options)
-          const config = state?.config.staticValues.find(
-            (value) => typeof value?.interactionDelay === 'number',
-          )
-          return (
-            completion?.open &&
-            !completion.open.disabled &&
-            config &&
-            Date.now() - completion.open.timestamp >= config.interactionDelay
-          )
-        })
+    const waitForChoice = () =>
+      popup.getByRole('option', { name: 'wild', exact: true }).waitFor()
+    // Exercise CodeMirror's interaction delay without depending on elapsed time.
+    const pressWhenListIs = async (age, key) => {
+      if (mode === 'rich') return page.keyboard.press(key)
+      await page.evaluate(
+        (shift) => {
+          const now = Date.now
+          Date.now = () => now() + shift
+          window.restoreNow = () => {
+            Date.now = now
+          }
+        },
+        age === 'new' ? -60000 : 60000,
+      )
+      try {
+        await page.keyboard.press(key)
+      } finally {
+        await page.evaluate(() => window.restoreNow())
       }
     }
     const reset = async (text) => {
@@ -274,7 +275,7 @@ test('autocomplete learns locally, disables learning, excludes documents and cle
     await reset('bro that was')
     await page.keyboard.type(' ')
     await waitForChoice()
-    await page.keyboard.press('Tab')
+    await pressWhenListIs('ready', 'Tab')
     await popup.waitFor({ state: 'hidden' })
     // Read editor state directly so a delayed document flush cannot hide acceptance.
     const editorText = () =>
@@ -303,8 +304,8 @@ test('autocomplete learns locally, disables learning, excludes documents and cle
       await reset('bro that was wil')
       await page.keyboard.press('Control+Space')
       await waitForChoice()
-      if (highlighted) await page.keyboard.press('ArrowDown')
-      await page.keyboard.press('Tab')
+      if (highlighted) await pressWhenListIs('ready', 'ArrowDown')
+      await pressWhenListIs('ready', 'Tab')
       await popup.waitFor({ state: 'hidden' })
       assert.equal(
         await editorText(),
@@ -313,10 +314,23 @@ test('autocomplete learns locally, disables learning, excludes documents and cle
       )
     }
     await tabAcceptance(true)
+    if (mode === 'source') {
+      await reset('bro that was wil')
+      await page.keyboard.press('Control+Space')
+      await waitForChoice()
+      const typed = await editorText()
+      await pressWhenListIs('new', 'Tab')
+      assert.equal(
+        await editorText(),
+        `${typed}\t`,
+        'new source list Tab indents',
+      )
+      await popup.waitFor({ state: 'hidden' })
+    }
     await reset('bro that was wil')
     await page.keyboard.press('Control+Space')
     await waitForChoice()
-    await page.keyboard.press('Tab')
+    await pressWhenListIs('ready', 'Tab')
     await waitForAsync(
       page,
       async () =>
@@ -335,9 +349,9 @@ test('autocomplete learns locally, disables learning, excludes documents and cle
     await reset('bro that was wil')
     await page.keyboard.press('Control+Space')
     await waitForChoice()
-    await page.keyboard.press('ArrowDown')
+    await pressWhenListIs('ready', 'ArrowDown')
     assert.equal(await popup.locator('[aria-selected="true"]').count(), 1)
-    await page.keyboard.press('Enter')
+    await pressWhenListIs('ready', 'Enter')
     await waitForAsync(
       page,
       async () =>
