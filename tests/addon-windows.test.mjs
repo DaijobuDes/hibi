@@ -11,7 +11,12 @@ const windowUrl = 'app://hibi/addon-window.html'
 const appWindows = (app) =>
   app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()
-      .map((window) => window.webContents.getURL())
+      // A window mid-destroy can report null contents (seen on Windows).
+      .flatMap((window) =>
+        window.webContents && !window.webContents.isDestroyed()
+          ? [window.webContents.getURL()]
+          : [],
+      )
       .filter((url) => !url.startsWith('hibi-analysis:')),
   )
 
@@ -217,7 +222,12 @@ async function launch(t, addons, env) {
     ...(env ? { env: { ...process.env, ...env } } : {}),
   })
   t.after(async () => {
-    const child = app.process()
+    let child
+    try {
+      child = app.process()
+    } catch {
+      return // The app already quit and closed its connection.
+    }
     if (child.exitCode === null && child.signalCode === null) {
       // Answer the unsaved-changes prompt with "Don't save" so quitting completes.
       await app
