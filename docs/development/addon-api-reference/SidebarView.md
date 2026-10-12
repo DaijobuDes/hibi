@@ -2,7 +2,7 @@
 
 # SidebarView
 
-Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L497)
+Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L522)
 
 <details>
 <summary>Declaration</summary>
@@ -36,7 +36,7 @@ type SidebarView = {
 
 ### id
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L499)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L524)
 
 Local id; the host prefixes it with the addon id.
 
@@ -46,7 +46,7 @@ id: string
 
 ### label
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L500)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L525)
 
 ```typescript
 label: string
@@ -54,7 +54,7 @@ label: string
 
 ### icon
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L501)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L526)
 
 ```typescript
 icon?: import('../ui/toolbar').ToolbarItem['icon']
@@ -64,7 +64,7 @@ Related: [ToolbarItem](ToolbarItem.md).
 
 ### side
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L503)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L528)
 
 Preferred side when opened by the addon. Defaults to left.
 
@@ -74,7 +74,7 @@ side?: 'left' | 'right'
 
 ### Content
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L505)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L530)
 
 Mounted only while this view is visible. Keep durable drafts in addon state.
 

@@ -2,7 +2,7 @@
 
 # DocumentFormat
 
-Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L459)
+Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L484)
 
 <details>
 <summary>Declaration</summary>
@@ -55,7 +55,7 @@ type DocumentFormat = {
 
 ### id
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L460)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L485)
 
 ```typescript
 id: string
@@ -63,7 +63,7 @@ id: string
 
 ### name
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L461)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L486)
 
 ```typescript
 name: string
@@ -71,7 +71,7 @@ name: string
 
 ### extensions
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L462)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L487)
 
 ```typescript
 extensions: readonly string[]
@@ -79,7 +79,7 @@ extensions: readonly string[]
 
 ### editing
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L464)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L489)
 
 Opt into the host's lossless rich Markdown editor. Other formats use source and preview.
 
@@ -89,7 +89,7 @@ editing?: 'markdown'
 
 ### codeLanguage
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L466)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L491)
 
 Registered code language id. Its highlighting preference also applies to source files.
 
@@ -99,7 +99,7 @@ codeLanguage?: string
 
 ### views
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L468)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L493)
 
 Supported editor views. Source ('markdown') is always required; normal means editable rich content.
 
@@ -111,7 +111,7 @@ Related: [DocumentView](DocumentView.md).
 
 ### formatting
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L470)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L495)
 
 Map the shared toolbar and shortcuts to this format; Markdown variants can reuse its mapper.
 
@@ -123,7 +123,7 @@ Related: [DocumentFormatting](DocumentFormatting.md).
 
 ### language
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L472)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L497)
 
 Optional eager source parser. Prefer codeLanguage with a lazy language registration. Omit for plain text.
 
@@ -133,7 +133,7 @@ language?: import('@codemirror/language').Language
 
 ### Preview
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L473)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L498)
 
 ```typescript
 Preview: ComponentType<DocumentPreviewProps>
@@ -145,7 +145,7 @@ Related: [DocumentPreviewProps](DocumentPreviewProps.md).
 
 ### insertMedia
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L474)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L499)
 
 ```typescript
 insertMedia?: (
@@ -165,7 +165,7 @@ Related: [MediaAttachment](MediaAttachment.md).
 
 ### render
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L477)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L502)
 
 ```typescript
 render?: (source: string, documentId?: string) => Promise<RenderedMarkdown>

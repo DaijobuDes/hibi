@@ -8,6 +8,7 @@ import type {
 import type { MarkdownManager } from '@tiptap/markdown'
 import { decodeHTMLStrict, encodeHTML } from 'entities'
 import type { Marked, Token } from 'marked'
+import { preserveInlineHtml } from './RawHtml.ts'
 
 const richParsers = new WeakSet<object>()
 
@@ -18,7 +19,7 @@ export function richTextParser(parser: Marked) {
     RendererOutput = string,
   > extends BaseLexer<ParserOutput, RendererOutput> {
     inlineTokens(source: string, tokens?: Token[]) {
-      const result = super.inlineTokens(source, tokens)
+      const result = preserveInlineHtml(super.inlineTokens(source, tokens))
       // Custom task tokens hide children from walkTokens; normalize at creation.
       for (const token of result) richTextToken(token)
       return result
