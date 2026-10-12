@@ -144,6 +144,45 @@ test('addon urls stay https through redirects and downloads remain bounded', asy
   )
 })
 
+test('repository cancellation reaches both bare clone and archive without starting later work', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'hibi-repo-cancel-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  for (const stage of ['before', 'clone', 'archive']) {
+    const temporary = join(root, stage)
+    await mkdir(temporary)
+    const controller = new AbortController()
+    if (stage === 'before') controller.abort(new Error('fixture canceled'))
+    const calls = []
+    await assert.rejects(
+      downloadRepository(
+        'https://example.com/addon.git',
+        temporary,
+        async (_command, args, options) => {
+          const command = args.includes('clone') ? 'clone' : 'archive'
+          calls.push(command)
+          assert.ok(options.signal)
+          if (command === stage) {
+            controller.abort(new Error('fixture canceled'))
+            options.signal.throwIfAborted()
+          }
+          await mkdir(join(temporary, 'repository.git'))
+          return { stdout: Buffer.alloc(0) }
+        },
+        controller.signal,
+      ),
+      /fixture canceled/,
+    )
+    assert.deepEqual(
+      calls,
+      stage === 'before'
+        ? []
+        : stage === 'clone'
+          ? ['clone']
+          : ['clone', 'archive'],
+    )
+  }
+})
+
 test('repository installs archive without checkout, hooks, or inherited git config', {
   timeout: 30000,
 }, async (t) => {

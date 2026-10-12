@@ -21,7 +21,6 @@ import {
   validAddonInventoryPath,
   validAddonPath,
 } from '../shared/addon-package.ts'
-import { openBoundedZip } from './zip-reader.ts'
 
 const MAX_INVENTORY_ENTRIES = 5000
 const MAX_INVENTORY_BYTES = 64 * 1024 * 1024
@@ -63,7 +62,7 @@ const damaged = () =>
 function pathRegistry() {
   const paths = new Map<string, { path: string; directory: boolean }>()
   const folded = (path: string) =>
-    path.normalize('NFC').toLowerCase().normalize('NFC')
+    path.normalize('NFC').toUpperCase().toLowerCase().normalize('NFC')
   const conflict = () =>
     new Error('The addon repository contains duplicate or conflicting paths.')
   return {
@@ -252,6 +251,7 @@ export async function inventoryAddonArchive(
     throw new Error('This is not a valid addon ZIP file.')
   zip = Buffer.from(zip)
   checkCentralHeaders(zip)
+  const { openBoundedZip } = await import('./zip-reader.ts')
   const directory = await openBoundedZip(zip, MAX_INVENTORY_ENTRIES)
   const register = pathRegistry()
   const entries: AddonInventory['entries'] = []
@@ -269,6 +269,7 @@ export async function inventoryAddonArchive(
     const mode = (file.externalFileAttributes >>> 16) & 0xf000
     if (
       file.flags & 1 ||
+      file.externalFileAttributes & 0x400 ||
       ![0, 0x8000, 0x4000].includes(mode) ||
       (mode === 0x4000 && !folder) ||
       (mode === 0x8000 && folder) ||
@@ -329,7 +330,9 @@ export async function inventoryAddonArchive(
       manifestPath(path) &&
       saved.file.uncompressedSize > MAX_ADDON_MANIFEST_BYTES
     )
-      throw new Error('The addon manifest exceeds the 64 KiB limit.')
+      throw new Error(
+        'hibi-addon.json must be a JSON file no larger than 64 KiB.',
+      )
     return saved.manifest
       ? Buffer.from(saved.manifest)
       : inflateEntry(saved.packed, saved.file, true, signal)
@@ -432,7 +435,9 @@ export async function inventoryAddonDirectory(
       manifestPath(path) &&
       expected.size > MAX_ADDON_MANIFEST_BYTES
     )
-      throw new Error('The addon manifest exceeds the 64 KiB limit.')
+      throw new Error(
+        'hibi-addon.json must be a JSON file no larger than 64 KiB.',
+      )
     const handle = await open(
       join(root, path),
       constants.O_RDONLY |

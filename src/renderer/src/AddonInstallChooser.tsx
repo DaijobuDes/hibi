@@ -1,0 +1,220 @@
+import { useEffect, useId, useState } from 'react'
+import type {
+  AddonInstallResult,
+  AddonInstallSession,
+} from '../../shared/sideload'
+import { Button } from '../../ui/Controls'
+import type { DialogApi } from '../../ui/dialogs'
+
+export async function reviewAddonInstall(
+  dialogs: DialogApi,
+  session: AddonInstallSession,
+): Promise<void> {
+  let operation: Promise<AddonInstallResult[]> | undefined
+  let cancellation: Promise<void> | undefined
+  let finished = false
+  const cancel = () => {
+    if (finished || cancellation) return
+    cancellation = window.hibi.cancelAddonInstall(session.id)
+    void cancellation.catch(() => {})
+  }
+  const install = (keys: string[]) => {
+    operation = window.hibi
+      .installAddonSelection(session.id, keys)
+      .catch((error): AddonInstallResult[] =>
+        keys.map((key) => ({
+          key,
+          status: 'failed',
+          error: error instanceof Error ? error.message : String(error),
+        })),
+      )
+      .finally(() => {
+        finished = true
+      })
+    return operation
+  }
+  try {
+    await dialogs.open({
+      title: 'Install addons',
+      size: 'wide',
+      closeOnOutsideClick: false,
+      description:
+        'Review each addon before installing. Installed addons stay disabled until you enable them.',
+      content: ({ close, signal }) => (
+        <AddonInstallChooser
+          session={session}
+          signal={signal}
+          cancel={cancel}
+          install={install}
+          close={() => close(null)}
+        />
+      ),
+    }).result
+  } finally {
+    cancel()
+    await operation
+    await cancellation
+  }
+}
+
+function AddonInstallChooser({
+  session,
+  signal,
+  cancel,
+  install,
+  close,
+}: {
+  session: AddonInstallSession
+  signal: AbortSignal
+  cancel: () => void
+  install: (keys: string[]) => Promise<AddonInstallResult[]>
+  close: () => void
+}) {
+  const id = useId()
+  const [selected, setSelected] = useState(
+    () =>
+      new Set(
+        session.candidates
+          .filter((candidate) => candidate.status === 'installable')
+          .map((candidate) => candidate.key),
+      ),
+  )
+  const [busy, setBusy] = useState(false)
+  const [results, setResults] = useState<AddonInstallResult[] | null>(null)
+  useEffect(() => {
+    if (signal.aborted) cancel()
+    signal.addEventListener('abort', cancel, { once: true })
+    return () => signal.removeEventListener('abort', cancel)
+  }, [signal, cancel])
+  async function submit() {
+    if (busy || results || !selected.size || signal.aborted) return
+    setBusy(true)
+    const next = await install([...selected])
+    if (signal.aborted) return
+    setResults(next)
+    setBusy(false)
+  }
+  return (
+    <>
+      <ul className="addon-install-list">
+        {session.candidates.map((candidate, index) => {
+          const manifest = candidate.manifest
+          const details = `${id}-${index}-details`
+          const result = results?.find((item) => item.key === candidate.key)
+          const required = manifest?.requires?.addons?.filter(
+            (provider) => !provider.optional,
+          )
+          return (
+            <li key={candidate.key}>
+              <label className="addon-install-label">
+                <input
+                  type="checkbox"
+                  checked={selected.has(candidate.key)}
+                  disabled={
+                    busy || !!results || candidate.status !== 'installable'
+                  }
+                  aria-describedby={details}
+                  onChange={(event) => {
+                    const checked = event.target.checked
+                    setSelected((current) => {
+                      const next = new Set(current)
+                      if (checked) next.add(candidate.key)
+                      else next.delete(candidate.key)
+                      return next
+                    })
+                  }}
+                />
+                <strong>{manifest?.name ?? candidate.folder}</strong>
+              </label>
+              <div id={details} className="addon-install-details">
+                {manifest && (
+                  <p>{`${manifest.id} · v${manifest.version} · ${manifest.kind ?? 'extension'}`}</p>
+                )}
+                <p>{`Folder: ${candidate.folder}`}</p>
+                <p>
+                  {session.source === 'local'
+                    ? 'Source: local folder'
+                    : `Source: third-party · ${session.host ?? ''}`}
+                </p>
+                {manifest?.kind === 'extension' && (
+                  <>
+                    <p>
+                      Can run code and read or edit your documents. Only install
+                      extensions you trust.
+                    </p>
+                    <p>
+                      {manifest.capabilities
+                        ? manifest.capabilities.length
+                          ? `SDK capabilities: ${manifest.capabilities.join(', ')}`
+                          : 'SDK capabilities: document helpers only'
+                        : 'SDK capabilities: all'}
+                    </p>
+                  </>
+                )}
+                {manifest?.kind === 'theme' && <p>Color data only.</p>}
+                {!!manifest?.network?.origins.length && (
+                  <p>{`Network origins: ${manifest.network.origins.join(', ')}`}</p>
+                )}
+                {!!required?.length && (
+                  <p>
+                    Requires:{' '}
+                    {required
+                      .map((provider) => {
+                        const paths = session.candidates
+                          .filter((item) => item.manifest?.id === provider.id)
+                          .map((item) => item.folder)
+                        return paths.length
+                          ? `${provider.id} (${paths.join(', ')})`
+                          : provider.id
+                      })
+                      .join('; ')}
+                  </p>
+                )}
+                {candidate.replaces && (
+                  <p>
+                    {`Replaces v${candidate.replaces.version} (${candidate.replaces.source}) with v${manifest?.version} (${session.source}).`}
+                  </p>
+                )}
+                {candidate.status !== 'installable' && (
+                  <p>
+                    {candidate.status === 'invalid'
+                      ? 'Invalid package'
+                      : 'Blocked package'}
+                  </p>
+                )}
+                {candidate.reasons.map((reason) => (
+                  <p key={reason}>{reason}</p>
+                ))}
+              </div>
+              <p aria-live="polite" aria-atomic="true">
+                {result
+                  ? result.status === 'installed'
+                    ? 'Installed — disabled'
+                    : `Failed: ${result.error ?? 'Could not install this addon.'}`
+                  : busy && selected.has(candidate.key)
+                    ? 'Installing…'
+                    : results && candidate.status === 'installable'
+                      ? 'Not selected'
+                      : null}
+              </p>
+            </li>
+          )
+        })}
+      </ul>
+      <div className="dialog-actions">
+        <Button onClick={busy ? cancel : close}>
+          {results ? 'Close' : 'Cancel'}
+        </Button>
+        {!results && (
+          <Button
+            className="dialog-primary"
+            disabled={busy || !selected.size}
+            onClick={() => void submit()}
+          >
+            {busy ? 'Installing…' : `Install selected (${selected.size})`}
+          </Button>
+        )}
+      </div>
+    </>
+  )
+}

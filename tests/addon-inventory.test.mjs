@@ -164,6 +164,9 @@ test('portable names reject traversal, windows names, collisions and implicit fi
   for (const names of [
     ['same.js', 'same.js'],
     ['A.js', 'a.js'],
+    ['Σ.js', 'ς.js'],
+    ['S.js', 'ſ.js'],
+    ['ß.js', 'ss.js'],
     ['é.js', 'e\u0301.js'],
     ['a.js', 'a.js/file.js'],
     ['a', 'a-z', 'a/file.js'],
@@ -209,6 +212,15 @@ test('archive structure rejects central/local disagreement, truncation and damag
     /damaged/,
   )
   await assert.rejects(archive([{ name: 'folder/', mode: 0x8000 }]), /modes/)
+})
+
+test('archive Windows reparse attributes are refused even for ignored directories', async () => {
+  for (const name of ['junction/', '.git/junction/']) {
+    const zip = zipFiles([{ name, mode: 0x4000 }])
+    const directory = zip.readUInt32LE(zip.length - 6)
+    zip.writeUInt32LE(zip.readUInt32LE(directory + 38) | 0x400, directory + 38)
+    await assert.rejects(inventoryAddonArchive(zip), /symbolic links/)
+  }
 })
 
 test('repository boundaries accept 12 levels, 64 candidates and 5,000 headers; reject one beyond', async () => {
