@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { errorMessage } from '../../shared/errors'
 import type { AddonWindowProps } from '../api'
 import { Button, ShortcutKeys } from '../ui'
-import { readSettings, settingsKey } from './settings'
+import { type QuickNoteSettings, readSettings, settingsKey } from './settings'
 import './quick-note.css'
 
 const draftKey = 'hibi:quick-note-draft'
@@ -22,6 +22,10 @@ function readDraft() {
   }
 }
 
+/** A new note starts with the default title as its heading when Hibi asks for a title. */
+const template = (settings: QuickNoteSettings) =>
+  settings.promptForTitle ? `# ${settings.defaultTitle}\n\n` : ''
+
 /** File name from the note's first heading, or the default title. */
 export function noteTitle(markdown: string, fallback: string) {
   const first =
@@ -40,13 +44,11 @@ export function noteTitle(markdown: string, fallback: string) {
 
 export function CaptureWindow({ Editor, native, close }: AddonWindowProps) {
   const [settings, setSettings] = useState(readSettings)
+  const settingsRef = useRef(settings)
+  settingsRef.current = settings
   const [destination, setDestination] = useState<Destination | null>(null)
   const [session, setSession] = useState(0)
-  const [initial] = useState(
-    () =>
-      readDraft() ??
-      (settings.promptForTitle ? `# ${settings.defaultTitle}\n\n` : ''),
-  )
+  const [initial] = useState(() => readDraft() ?? template(settings))
   const markdown = useRef(initial)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState('')
@@ -54,7 +56,14 @@ export function CaptureWindow({ Editor, native, close }: AddonWindowProps) {
   const busy = saving || !!saved
   useEffect(() => {
     const changed = (event: StorageEvent) => {
-      if (event.key === settingsKey) setSettings(readSettings())
+      if (event.key !== settingsKey) return
+      const next = readSettings()
+      // An untouched note follows the new settings; a started one is kept.
+      if (markdown.current === template(settingsRef.current)) {
+        markdown.current = template(next)
+        setSession((value) => value + 1)
+      }
+      setSettings(next)
     }
     window.addEventListener('storage', changed)
     return () => window.removeEventListener('storage', changed)
@@ -86,9 +95,7 @@ export function CaptureWindow({ Editor, native, close }: AddonWindowProps) {
       setSaved(result.name)
       setTimeout(() => {
         // The window stays alive hidden; start the next note empty.
-        markdown.current = settings.promptForTitle
-          ? `# ${settings.defaultTitle}\n\n`
-          : ''
+        markdown.current = template(settings)
         setSaved('')
         setSession((value) => value + 1)
         close()
@@ -103,7 +110,7 @@ export function CaptureWindow({ Editor, native, close }: AddonWindowProps) {
   submitRef.current = submit
   useEffect(() => {
     // Editor popups stop Escape themselves, so it only reaches here to close.
-    const escape = (event: KeyboardEvent) => {
+    const dismiss = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || event.isComposing) return
       event.preventDefault()
       close()
@@ -121,10 +128,10 @@ export function CaptureWindow({ Editor, native, close }: AddonWindowProps) {
         void submitRef.current()
       }
     }
-    window.addEventListener('keydown', escape)
+    window.addEventListener('keydown', dismiss)
     window.addEventListener('keydown', command, true)
     return () => {
-      window.removeEventListener('keydown', escape)
+      window.removeEventListener('keydown', dismiss)
       window.removeEventListener('keydown', command, true)
     }
   }, [close])

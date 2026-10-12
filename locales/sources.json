@@ -3649,7 +3649,6 @@
     "src/addons/_shared/format-worker.ts"
   ],
   "b7fc47179f67": [
-    "src/addons/quick-note/CaptureWindow.tsx",
     "src/addons/quick-note/capture.ts",
     "src/addons/quick-note/manifest.ts"
   ],
@@ -5319,9 +5318,6 @@
   "1c59a85f5059": [
     "src/addons/quick-note/native.ts"
   ],
-  "7e8cd2056da7": [
-    "src/addons/quick-note/CaptureWindow.tsx"
-  ],
   "dfc1e6d16ba5": [
     "src/site/main.tsx"
   ],
@@ -5823,9 +5819,6 @@
   ],
   "a9ed0d8684a9": [
     "src/addons/mermaid/manifest.ts"
-  ],
-  "b9b8688ec51d": [
-    "src/addons/quick-note/CaptureWindow.tsx"
   ],
   "64ab69baef8f": [
     "src/renderer/src/HibiSettings.tsx"

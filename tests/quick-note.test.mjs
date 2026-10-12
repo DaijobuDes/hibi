@@ -23,7 +23,7 @@ async function captureWindow(app) {
   for (;;) {
     const page = app.windows().find((item) => captureUrl.test(item.url()))
     if (page) {
-      await page.getByRole('textbox', { name: 'Note' }).waitFor()
+      await page.locator('.tiptap[contenteditable="true"]').waitFor()
       return page
     }
     if (performance.now() > deadline)
@@ -41,11 +41,40 @@ async function openCapture(app, page) {
   return captureWindow(app)
 }
 
-async function saveCapture(capture, name) {
-  const closed = capture.waitForEvent('close')
+// The capture window stays alive hidden, so count hides instead of closes.
+const trackCaptureHides = (app) =>
+  app.evaluate(({ app }) => {
+    globalThis.captureHides = 0
+    app.on('browser-window-created', (_event, window) => {
+      const hide = window.hide.bind(window)
+      window.hide = () => {
+        globalThis.captureHides++
+        return hide()
+      }
+    })
+  })
+const captureHides = (app) => app.evaluate(() => globalThis.captureHides)
+async function hidden(app, before) {
+  while ((await captureHides(app)) <= before) await setTimeout(30)
+}
+
+/** Replace the note with Markdown typed line by line. */
+async function writeNote(capture, ...lines) {
+  const editor = capture.locator('.tiptap[contenteditable="true"]')
+  await editor.click()
+  await capture.keyboard.press('ControlOrMeta+a')
+  await capture.keyboard.press('Backspace')
+  for (const [index, line] of lines.entries()) {
+    if (index) await capture.keyboard.press('Enter')
+    await capture.keyboard.type(line)
+  }
+}
+
+async function saveCapture(app, capture, name) {
+  const before = await captureHides(app)
   await capture.getByRole('button', { name: 'Save', exact: true }).click()
   await capture.getByRole('status').getByText(`Saved ${name}.`).waitFor()
-  await closed
+  await hidden(app, before)
 }
 
 const appWindows = (app) =>
@@ -93,6 +122,7 @@ test('quick note captures to a chosen folder without replacing files', {
     await app.close()
     await rm(root, { recursive: true, force: true })
   })
+  await trackCaptureHides(app)
   await app.evaluate(({ dialog }, destination) => {
     dialog.showOpenDialog = async () => ({
       canceled: false,
@@ -104,23 +134,18 @@ test('quick note captures to a chosen folder without replacing files', {
   await page.evaluate(() => window.hibi.openWorkspace())
   await watchMainWindow(app)
   const defaultCapture = await openCapture(app, page)
+  await defaultCapture.getByText('workspace', { exact: true }).waitFor()
   const urls = await appWindows(app)
   assert.equal(urls.length, 2)
   assert.equal(urls.filter((url) => captureUrl.test(url)).length, 1)
-  assert.equal(
-    await defaultCapture.getByRole('textbox', { name: 'Title' }).count(),
-    0,
-  )
-  await defaultCapture
-    .getByRole('textbox', { name: 'Note' })
-    .fill('Default thought')
-  await saveCapture(defaultCapture, 'Quick note.md')
+  assert.equal(await defaultCapture.locator('.editor-toolbar').count(), 1)
+  await writeNote(defaultCapture, 'Default thought')
+  await saveCapture(app, defaultCapture, 'Quick note.md')
   assert.equal(
     await readFile(join(workspace, 'Quick note.md'), 'utf8'),
     'Default thought',
   )
   assert.equal(await mainWindowRaised(app), 0)
-  assert.deepEqual(await appWindows(app), ['app://hibi/'])
   await clickMenu(app, 'Command palette')
   await page
     .getByRole('combobox', { name: /search commands/i })
@@ -136,12 +161,13 @@ test('quick note captures to a chosen folder without replacing files', {
     .getByText('Quick note settings saved.')
     .waitFor()
   const dialog = await openCapture(app, page)
-  await dialog.getByRole('textbox', { name: 'Title' }).fill('Daily')
-  await dialog.getByRole('textbox', { name: 'Note' }).fill('First thought')
-  await saveCapture(dialog, 'Daily.md')
+  // Ask for a title starts the note with the default title as its heading.
+  await dialog.locator('.tiptap h1').getByText('Draft').waitFor()
+  await writeNote(dialog, '# Daily', 'First thought')
+  await saveCapture(app, dialog, 'Daily.md')
   assert.equal(
     await readFile(join(folder, 'Daily.md'), 'utf8'),
-    'First thought',
+    '# Daily\n\nFirst thought',
   )
 
   const request = {
@@ -157,7 +183,7 @@ test('quick note captures to a chosen folder without replacing files', {
   assert.equal(second.name, 'Daily 2.md')
   assert.equal(
     await readFile(join(folder, 'Daily.md'), 'utf8'),
-    'First thought',
+    '# Daily\n\nFirst thought',
   )
   assert.equal(
     await readFile(join(folder, 'Daily 2.md'), 'utf8'),
@@ -205,14 +231,11 @@ test('quick note captures to a chosen folder without replacing files', {
   await settings.getByLabel('Folder', { exact: true }).selectOption('Inbox')
   await page.getByRole('button', { name: 'Save settings' }).click()
   const secondDialog = await openCapture(app, page)
-  await secondDialog.getByRole('textbox', { name: 'Title' }).fill('Elsewhere')
-  await secondDialog
-    .getByRole('textbox', { name: 'Note' })
-    .fill('Another workspace')
-  await saveCapture(secondDialog, 'Elsewhere.md')
+  await writeNote(secondDialog, '# Elsewhere', 'Another workspace')
+  await saveCapture(app, secondDialog, 'Elsewhere.md')
   assert.equal(
     await readFile(join(other, 'Inbox', 'Elsewhere.md'), 'utf8'),
-    'Another workspace',
+    '# Elsewhere\n\nAnother workspace',
   )
 
   await clickMenu(app, 'Command palette')
@@ -226,11 +249,11 @@ test('quick note captures to a chosen folder without replacing files', {
     .selectOption('')
   await page.getByRole('button', { name: 'Save settings' }).click()
   const pinnedDialog = await openCapture(app, page)
-  await pinnedDialog.getByText(await realpath(workspace)).waitFor()
-  await pinnedDialog.getByRole('textbox', { name: 'Title' }).fill('Pinned')
   await pinnedDialog
-    .getByRole('textbox', { name: 'Note' })
-    .fill('Pinned to original workspace')
+    .locator(`[data-tooltip="${await realpath(workspace)}"]`)
+    .getByText('workspace', { exact: true })
+    .waitFor()
+  await writeNote(pinnedDialog, '# Pinned', 'Pinned to original workspace')
   await app.evaluate(({ dialog }, destination) => {
     dialog.showOpenDialog = async () => ({
       canceled: false,
@@ -239,10 +262,10 @@ test('quick note captures to a chosen folder without replacing files', {
   }, other)
   const switched = await page.evaluate(() => window.hibi.openWorkspace())
   assert.equal(switched?.id, otherId)
-  await saveCapture(pinnedDialog, 'Pinned.md')
+  await saveCapture(app, pinnedDialog, 'Pinned.md')
   assert.equal(
     await readFile(join(workspace, 'Pinned.md'), 'utf8'),
-    'Pinned to original workspace',
+    '# Pinned\n\nPinned to original workspace',
   )
   await assert.rejects(readFile(join(other, 'Pinned.md'), 'utf8'), {
     code: 'ENOENT',
@@ -304,13 +327,12 @@ test('quick note captures to a chosen folder without replacing files', {
   )
   await page.getByRole('button', { name: 'Back to app' }).click()
   const oldDialog = await openCapture(app, page)
-  await oldDialog.getByText(originalPath).waitFor()
-  await oldDialog.getByRole('textbox', { name: 'Title' }).fill('Older')
-  await oldDialog.getByRole('textbox', { name: 'Note' }).fill('Still selected')
-  await saveCapture(oldDialog, 'Older.md')
+  await oldDialog.locator(`[data-tooltip="${originalPath}"]`).waitFor()
+  await writeNote(oldDialog, '# Older', 'Still selected')
+  await saveCapture(app, oldDialog, 'Older.md')
   assert.equal(
     await readFile(join(workspace, 'Older.md'), 'utf8'),
-    'Still selected',
+    '# Older\n\nStill selected',
   )
 
   assert.ok(lastChosen)
@@ -391,6 +413,7 @@ test('quick note shortcut opens one capture window without raising Hibi', {
     await app.close()
     await rm(root, { recursive: true, force: true })
   })
+  await trackCaptureHides(app)
   await app.evaluate(({ dialog }, destination) => {
     dialog.showOpenDialog = async () => ({
       canceled: false,
@@ -440,9 +463,19 @@ test('quick note shortcut opens one capture window without raising Hibi', {
       .hide(),
   )
 
+  const noteText = async (capture) =>
+    (
+      await capture.locator('.tiptap[contenteditable="true"]').innerText()
+    ).trim()
+  const closeWith = async (capture, key) => {
+    const before = await captureHides(app)
+    await capture.keyboard.press(key)
+    await hidden(app, before)
+  }
+
   await press()
   const capture = await captureWindow(app)
-  await capture.getByRole('textbox', { name: 'Note' }).fill('Keep this')
+  await writeNote(capture, 'Keep this')
   const id = await app.evaluate(
     ({ BrowserWindow }) =>
       BrowserWindow.getAllWindows().find((window) =>
@@ -464,32 +497,23 @@ test('quick note shortcut opens one capture window without raising Hibi', {
     id,
   )
 
-  // Escape closes the window and keeps the unsaved text as a draft. The page
-  // can close before Playwright releases the key, so only the close is awaited.
-  let closed = capture.waitForEvent('close')
-  await capture.keyboard.press('Escape').catch(() => {})
-  await closed
-  await press()
-  const reopened = await captureWindow(app)
-  assert.equal(
-    await reopened.getByRole('textbox', { name: 'Note' }).inputValue(),
-    'Keep this',
+  // Escape and Cmd/Ctrl+W hide the window and keep the unsaved note, also on disk.
+  await closeWith(capture, 'Escape')
+  assert.match(
+    await capture.evaluate(() => localStorage.getItem('hibi:quick-note-draft')),
+    /Keep this/,
   )
-  closed = reopened.waitForEvent('close')
-  await reopened.keyboard.press('ControlOrMeta+w').catch(() => {})
-  await closed
+  await press()
+  assert.equal(await noteText(await captureWindow(app)), 'Keep this')
+  await closeWith(capture, 'ControlOrMeta+w')
 
   await press()
   const saving = await captureWindow(app)
-  assert.equal(
-    await saving.getByRole('textbox', { name: 'Note' }).inputValue(),
-    'Keep this',
-  )
-  await saving
-    .getByRole('textbox', { name: 'Note' })
-    .press('ControlOrMeta+Enter')
+  assert.equal(await noteText(saving), 'Keep this')
+  const before = await captureHides(app)
+  await saving.keyboard.press('ControlOrMeta+Enter')
   await saving.getByRole('status').getByText('Saved Quick note.md.').waitFor()
-  await saving.waitForEvent('close')
+  await hidden(app, before)
   assert.equal(
     await readFile(join(workspace, 'Quick note.md'), 'utf8'),
     'Keep this',
@@ -504,15 +528,11 @@ test('quick note shortcut opens one capture window without raising Hibi', {
     false,
   )
 
+  // The next capture starts empty.
   await press()
   const empty = await captureWindow(app)
-  assert.equal(
-    await empty.getByRole('textbox', { name: 'Note' }).inputValue(),
-    '',
-  )
-  closed = empty.waitForEvent('close')
-  await empty.keyboard.press('Escape').catch(() => {})
-  await closed
+  assert.equal(await noteText(empty), '')
+  await closeWith(empty, 'Escape')
 
   if (process.platform !== 'darwin') return
   // macOS keeps Hibi and its shortcut running after the last window closes.
@@ -521,17 +541,14 @@ test('quick note shortcut opens one capture window without raising Hibi', {
       .find((window) => window.webContents.getURL() === 'app://hibi/')
       .close(),
   )
-  for (;;) {
-    if ((await appWindows(app)).length === 0) break
-    await setTimeout(30)
-  }
+  while ((await appWindows(app)).includes('app://hibi/')) await setTimeout(30)
   await press()
   const windowless = await captureWindow(app)
-  await windowless.getByRole('textbox', { name: 'Note' }).fill('No main window')
-  await saveCapture(windowless, 'Quick note 2.md')
+  await writeNote(windowless, 'No main window')
+  await saveCapture(app, windowless, 'Quick note 2.md')
   assert.equal(
     await readFile(join(workspace, 'Quick note 2.md'), 'utf8'),
     'No main window',
   )
-  assert.deepEqual(await appWindows(app), [])
+  assert.equal((await appWindows(app)).includes('app://hibi/'), false)
 })
