@@ -119,6 +119,7 @@ export default {
     /** The workspace a note saves into: the chosen one, or the current one for an empty id. */
     async destination(input, context) {
       const path = await target(input, context)
+      await testPause('quick-note-destination')
       return { id: createHash('sha256').update(path).digest('hex'), path }
     },
     async targets(selected) {
@@ -178,19 +179,23 @@ export default {
       if (!draft) throw new Error('Could not keep this note. Try again.')
       const path = draftPath()
       const write = draftWrites.then(async () => {
+        let keptAs: string | null = null
         // Retry moving an unreadable draft aside; refuse only this write if it stays.
         if (unreadableInPlace) {
-          await keepAside(path)
+          keptAs = (await keepAside(path)).keptAs
           if (unreadableInPlace)
             throw new Error('Could not keep this note. Try again.')
         }
-        if (!draft.markdown) return rm(path, { force: true })
-        await writeFile(`${path}.tmp`, JSON.stringify(draft), { mode: 0o600 })
-        await rename(`${path}.tmp`, path)
+        if (!draft.markdown) await rm(path, { force: true })
+        else {
+          await writeFile(`${path}.tmp`, JSON.stringify(draft), { mode: 0o600 })
+          await rename(`${path}.tmp`, path)
+        }
+        return keptAs
       })
       draftWrites = write.catch(() => {})
-      await write
-      return true
+      // Names the unreadable draft this write moved aside, if any.
+      return { keptAs: await write }
     },
     async save(input, context) {
       await testPause('quick-note-save')

@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { electron } from './electron.mjs'
 import { pressShortcut } from './keyboard.mjs'
+import { waitForAsync } from './poll.mjs'
 import { uiName } from './ui.mjs'
 
 test('extension and core fields share themes, focus states, and narrow layouts', {
@@ -33,6 +34,12 @@ test('extension and core fields share themes, focus states, and narrow layouts',
   }
   await page.getByRole('textbox', { name: /document editor/i }).waitFor()
   await choose('enable graph')
+  // The palette runs its command after closing; reload only once it is saved.
+  await waitForAsync(page, async () =>
+    (await window.hibi.getAddonStates()).some(
+      (state) => state.id === 'graph' && state.enabled,
+    ),
+  )
   const fieldStyle = (field) =>
     field.evaluate((element) => {
       const style = getComputedStyle(element)

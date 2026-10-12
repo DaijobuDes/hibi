@@ -3,7 +3,12 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { electron, stopElectronTree } from './electron.mjs'
+import {
+  electron,
+  stopElectronTree,
+  waitForDocumentEditor,
+} from './electron.mjs'
+import { replaceSourceText } from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
 
 test('S01/S03/S07/J01: accepted rich transformations are savable before callbacks and rejected changes stay atomic', {
@@ -253,9 +258,12 @@ test('S01/S03/S07/J01: accepted rich transformations are savable before callback
 
   stage = 'failed source echo stays read-only until retry'
   await page.getByRole('button', { name: 'Source view', exact: true }).click()
-  await page
-    .getByRole('textbox', { name: 'Markdown editor', exact: true })
-    .fill('source echo fixture')
+  await waitForDocumentEditor(app, page, { name: 'Markdown editor' })
+  await replaceSourceText(
+    page,
+    page.getByRole('textbox', { name: 'Markdown editor', exact: true }),
+    'source echo fixture',
+  )
   await waitForAsync(
     page,
     async () =>

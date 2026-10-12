@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { codeHtml, codeLanguages } from '../src/renderer/src/code-languages.ts'
-import { electron } from './electron.mjs'
+import { electron, waitForDocumentEditor } from './electron.mjs'
 import { clickMenu, pressShortcut } from './keyboard.mjs'
 
 test('language loading deduplicates aliases and respects disabled preferences during import', async () => {
@@ -253,12 +253,11 @@ test('unrelated enabled formats defer source parsers until first source use', as
     ready: performance.getEntriesByName('hibi:editing-capabilities')[0]
       ?.startTime,
     format: performance.getEntriesByName('hibi:addon:rst')[0]?.startTime,
-    editable:
-      document.querySelector('.tiptap')?.isContentEditable &&
-      !document.querySelector('.tiptap')?.closest('[inert]'),
   }))
-  assert.equal(order.editable, true)
   assert.ok(order.format >= order.ready, JSON.stringify(order))
+  // Formats start from an idle callback that can run before the editor
+  // commits its editable state, so wait for that state instead of sampling it.
+  await waitForDocumentEditor(app, page)
   await page.waitForFunction(
     () => performance.getEntriesByName('hibi:addon:html').length,
   )

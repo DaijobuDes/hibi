@@ -113,10 +113,14 @@ export function CaptureWindow({ Editor, native, close }: AddonWindowProps) {
       return { error: errorMessage(failure) }
     }
   }, [native])
-  const refresh = useCallback(
-    () => void resolve().then(setDestination),
-    [resolve],
-  )
+  // A slow lookup must not replace the footer from a newer one.
+  const refreshes = useRef(0)
+  const refresh = useCallback(() => {
+    const id = ++refreshes.current
+    void resolve().then((next) => {
+      if (id === refreshes.current) setDestination(next)
+    })
+  }, [resolve])
 
   // Drafts go to the main process, which acknowledges each write.
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
@@ -129,11 +133,15 @@ export function CaptureWindow({ Editor, native, close }: AddonWindowProps) {
     const draft: Draft = { markdown: value }
     const write = writing.current
       .catch(() => {})
-      .then(() => native.invoke('saveDraft', draft))
+      .then(() => native.invoke<{ keptAs: string | null }>('saveDraft', draft))
       .then(
-        () => {
+        ({ keptAs }) => {
           failures.current = 0
           setDraftWarning(false)
+          // Writes succeed again, so the unreadable draft is no longer in place.
+          setUnreadable((notice) =>
+            notice?.keptAs === null ? (keptAs ? { keptAs } : null) : notice,
+          )
           if (legacyPending.current) {
             localStorage.removeItem(legacyDraftKey)
             legacyPending.current = false
@@ -176,14 +184,14 @@ export function CaptureWindow({ Editor, native, close }: AddonWindowProps) {
     void open().then((result) => {
       if (!active || !result) return
       let text = template(settingsRef.current)
-      let legacy = ''
+      const legacy = result.status === 'unreadable' ? '' : readLegacyDraft()
       if (result.status === 'ready' && result.draft.markdown)
         text = result.draft.markdown
       else if (result.status === 'unreadable') setUnreadable(result)
-      else if (result.status === 'none') legacy = readLegacyDraft()
-      if (legacy) text = legacy
+      else if (legacy) text = legacy
       markdown.current = text
       setInitial(text)
+      // A native draft outranks the previous version's; either way the old one is retired.
       if (legacy) {
         legacyPending.current = true
         void writeDraft()
