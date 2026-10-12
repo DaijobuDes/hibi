@@ -368,25 +368,71 @@ test('side view follows the caret offline, replaces in one undo step, and pack s
     exact: true,
   })
   const options = page.locator('.cm-tooltip-autocomplete [role="option"]')
+  // The editor's own state, so focus, caret, and text are read before any flush.
+  await page.evaluate(() => {
+    window.sourceView = () =>
+      document.querySelector('.cm-content').cmTile.root.view
+  })
+  const sourceText = () =>
+    page.evaluate(() => window.sourceView().state.doc.toString())
   const typeAtEnd = async (text) => {
     await source.focus()
     await source.press('ControlOrMeta+End')
+    await waitForAsync(page, async () => {
+      const { hasFocus, state } = window.sourceView()
+      return hasFocus && state.selection.main.head === state.doc.length
+    })
     await page.keyboard.type(text)
+    await waitForAsync(
+      page,
+      (text) => window.sourceView().state.doc.toString().endsWith(text),
+      text,
+    )
+  }
+  const happy = async () => {
+    try {
+      await options.filter({ hasText: /^happy(English)?$/ }).waitFor()
+    } catch (error) {
+      const state = await page.evaluate(() => {
+        const { hasFocus, state } = window.sourceView()
+        return {
+          hasFocus,
+          windowFocused: document.hasFocus(),
+          active: document.activeElement?.className,
+          head: state.selection.main.head,
+          tail: state.doc.toString().slice(-12),
+        }
+      })
+      throw new Error(`${error.message}\n${JSON.stringify(state)}`)
+    }
   }
   await typeAtEnd(' hap')
-  await options.filter({ hasText: /^happy(English)?$/ }).waitFor()
+  await happy()
   await page.keyboard.press('Tab')
   await waitForAsync(page, async () =>
     (await window.hibi.getDocument()).markdown.endsWith(' happy hap\t'),
   )
   await page.keyboard.press('Backspace')
+  await waitForAsync(
+    page,
+    () =>
+      window.sourceView().state.doc.toString().endsWith(' happy hap') &&
+      !document.querySelector('.cm-tooltip-autocomplete'),
+  )
   await toggle('dictionary-tab-accepts', { name: 'Markdown editor' })
   await typeAtEnd('p')
-  await options.filter({ hasText: /^happy(English)?$/ }).waitFor()
-  await page.keyboard.press('Tab')
-  await waitForAsync(page, async () =>
-    (await window.hibi.getDocument()).markdown.endsWith(' happy happy'),
-  )
+  await happy()
+  // CodeMirror ignores Tab for a moment after the list opens so a key meant
+  // for the text is not taken as a choice; such a Tab changes nothing.
+  const typed = await sourceText()
+  const deadline = performance.now() + APP_STATE_TIMEOUT
+  for (;;) {
+    await page.keyboard.press('Tab')
+    const text = await sourceText()
+    if (text.endsWith(' happy happy')) break
+    assert.equal(text, typed)
+    assert.ok(performance.now() < deadline, 'Tab never accepted the suggestion')
+  }
   await page.keyboard.type(' zq')
   await page.keyboard.press('Tab')
   await waitForAsync(page, async () =>
