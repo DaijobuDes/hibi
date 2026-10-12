@@ -909,7 +909,7 @@ export type Addon = {
   stop?: () => void
   /** Optional settings content. The host supplies its heading and metadata. */
   Settings?: ComponentType
-  /** Window content by local window ID. Hibi loads this module in the window's own renderer and never calls `start` there. */
+  /** Window content by local window ID. Hibi loads this module in the window's own renderer. `start` runs there only for document addons when the window shows `Editor`. */
   windows?: Record<string, ComponentType<AddonWindowProps>>
 }
 
