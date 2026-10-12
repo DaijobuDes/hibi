@@ -123,6 +123,7 @@ import {
   sourcePosition,
   sourceView,
 } from './source-view'
+import { tableLayout } from './table-layout'
 import { textProjection } from './text-projection'
 import { useEditorPanes } from './use-editor-panes'
 
@@ -557,8 +558,9 @@ export function MarkdownEditor({
       ...(markdownSyntax.enabled('core.images')
         ? [documentImage(documentRevision)]
         : []),
+      tableLayout.configure({ tabId: documentState.tabId }),
     ],
-    [flavors, syntaxVersion, documentRevision],
+    [flavors, syntaxVersion, documentRevision, documentState.tabId],
   )
   const editor = useEditor(
     {

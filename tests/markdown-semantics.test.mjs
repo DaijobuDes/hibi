@@ -126,6 +126,16 @@ test('schema-only consumption matches current editor declarations without creati
     '![photo](image.png "caption")',
     'one\n\n\n\ntwo',
     'é 👩🏽‍💻 &amp; &#13;',
+    '<em>native html</em>',
+    '**<kbd>x</kbd>** and a<BR />b',
+    '<div>\r\nx\r\n</div>',
+    '<details>\n\nbody\n\n</details>',
+    '<img src=x onerror=alert(1)>',
+    '<script>window.attack = true</script>',
+    '<iframe srcdoc="<script>alert(1)</script>"></iframe>',
+    '<style>body { display: none }</style>',
+    '<kbd>&copy;</kbd>',
+    '&copy;<kbd>&copy;</kbd>&#169;',
     '&copy; &#169; &#xA9; &#38;lt; &amp;copy;',
     '&nbsp;\n\n**&nbsp;**\n\na&NewLine;b',
     '# &copy;\n\n> &amp;copy;\n\n- &nbsp;\n- &#38;lt;',
@@ -184,6 +194,7 @@ test('public task tokenizer output consumes without native source re-lexing', ()
     '> [!NOTE]\n> - [ ]\n> - [x]',
     '- [ ]\n  lazy',
     '1. [ ]',
+    '- [ ] <em>native html</em>',
   ]) {
     const actual = reader.read(tokens(source, true), context),
       expected = readFull(source)
@@ -227,7 +238,7 @@ test('syntax masking preserves input tokens and stale consumers refuse results',
   }
 })
 
-test('unknown addon grammar, missing native DOM, and task lists use compatibility path', () => {
+test('unknown addon grammar and task lists use compatibility path', () => {
   const unknown = {
     id: 'custom.rich-only',
     richExtensions: [
@@ -241,11 +252,6 @@ test('unknown addon grammar, missing native DOM, and task lists use compatibilit
   }
   assert.equal(createMarkdownSemantics([unknown], 0), null)
   const reader = createMarkdownSemantics(flavors, 0)
-  assert.equal(reader.read(tokens('<em>native html</em>'), context), null)
-  assert.equal(
-    reader.read(tokens('- [ ] <em>native html</em>', true), context),
-    null,
-  )
   assert.equal(reader.read(tokens('- [ ] todo\n- [x] done'), context), null)
   assert.equal(reader.read(tokens('- [ ] task\n- ordinary'), context), null)
   assert.equal(reader.read(tokens('still works'), context).text, 'still works')

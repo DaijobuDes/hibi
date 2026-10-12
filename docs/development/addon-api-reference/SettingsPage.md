@@ -2,7 +2,7 @@
 
 # SettingsPage
 
-Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L580)
+Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L605)
 
 <details>
 <summary>Declaration</summary>
@@ -35,7 +35,7 @@ type SettingsPage = {
 
 ### id
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L581)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L606)
 
 ```typescript
 id: string
@@ -43,7 +43,7 @@ id: string
 
 ### label
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L582)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L607)
 
 ```typescript
 label: string
@@ -51,7 +51,7 @@ label: string
 
 ### category
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L584)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L609)
 
 general, editing, interface, addons, or a local category ID. Defaults to addons.
 
@@ -61,7 +61,7 @@ category?: string
 
 ### icon
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L585)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L610)
 
 ```typescript
 icon?: SidebarView['icon']
@@ -71,7 +71,7 @@ Related: [SidebarView](SidebarView.md).
 
 ### Content
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L587)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L612)
 
 Use shared SettingRow controls to include individual settings in search.
 

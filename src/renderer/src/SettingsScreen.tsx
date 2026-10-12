@@ -95,6 +95,7 @@ export function SettingsScreen({
   hideTitlebar,
   onHideTitlebar,
   info,
+  onShowIntroduction,
   hotkeys,
   onHotkeys,
   addonStates,
@@ -138,6 +139,7 @@ export function SettingsScreen({
   hideTitlebar: boolean
   onHideTitlebar: (hide: boolean) => void
   info: AppInfo | null
+  onShowIntroduction: () => void
   hotkeys: Hotkeys
   onHotkeys: (hotkeys: Hotkeys) => void
   addonStates: AddonState[]
@@ -176,7 +178,10 @@ export function SettingsScreen({
     settingsPages.snapshot,
   )
   const extraPages = registered.pages.filter((page) =>
-    addonStates.some((state) => state.id === page.owner && state.enabled),
+    addonStates.some(
+      (state) =>
+        state.id === page.owner && state.enabled && !state.blockedBy?.length,
+    ),
   )
   const searchable = [
     ...indexed,
@@ -205,7 +210,10 @@ export function SettingsScreen({
     (addon) =>
       (!!addon.manifest.fileExtensions?.length || addon.Settings) &&
       addonStates.some(
-        (state) => state.id === addon.manifest.id && state.enabled,
+        (state) =>
+          state.id === addon.manifest.id &&
+          state.enabled &&
+          !state.blockedBy?.length,
       ),
   )
   const items: SidebarItem[] = settingsNavigation(
@@ -376,7 +384,10 @@ export function SettingsScreen({
             hidden={category !== 'hibi'}
           >
             {(discover || (open && (category === 'hibi' || searching))) && (
-              <HibiSettings info={info} />
+              <HibiSettings
+                info={info}
+                onShowIntroduction={onShowIntroduction}
+              />
             )}
           </section>
           <section

@@ -157,6 +157,8 @@ export type AddonManifest = {
   fileExtensions?: readonly string[]
   /** Placement and Lucide icon name for the addon's default settings page. */
   settings?: { category?: string; icon?: string }
+  /** Addon requirements, separate from external CLI tools. Required addons start before this addon. */
+  requires?: import('../shared/addon-dependencies').AddonRequirements
   /** External CLI requirements. The host checks and installs these without executing addon-supplied shell commands. */
   dependencies?: readonly import('../shared/dependencies').AddonDependency[]
   authors?: readonly AddonAuthor[]
@@ -302,7 +304,30 @@ export type AddonSlashCommand = {
 }
 
 export type ExportResult = { path: string; pages: number }
-export type AddonState = { id: string; enabled: boolean }
+export type AddonState = {
+  id: string
+  /** The user's preference, retained while required addons are unavailable. */
+  enabled: boolean
+  /** Missing or disabled required addon IDs. Blocked addons cannot run. */
+  blockedBy?: readonly string[]
+}
+
+/** A renderer API object with a positive integer contract version chosen by its provider. */
+export type AddonExports = { readonly version: number }
+
+export type AddonExportsApi = {
+  /** Publish a plain object. It becomes available after start succeeds and is removed on stop.
+   * Returns a disposer for this publication; a newer publication is not affected.
+   */
+  provide: <T extends AddonExports>(api: T) => () => void
+}
+
+export type AddonAccessApi = {
+  /** Read a declared addon's active API. Undeclared IDs throw. Check the provider's version before use. */
+  get: <T extends AddonExports>(id: string) => T | undefined
+  /** Activate an enabled declared addon and await startup. Returns undefined when unavailable, failed, or no API was published. */
+  ready: <T extends AddonExports>(id: string) => Promise<T | undefined>
+}
 
 export type SourcePreservation = {
   level: 'semantic' | 'verbatim'
@@ -593,6 +618,9 @@ export type SettingsApi = {
 
 /** APIs available while your renderer addon is enabled. Registrations are removed when it stops. */
 export type AddonContext = {
+  /** Same-renderer API exchange for trusted addons; declarations are not a security boundary. */
+  addons: AddonAccessApi
+  exports: AddonExportsApi
   /** OS-wide shortcuts work while Hibi runs, even when another app has focus. */
   globalShortcuts: {
     /** Electron accelerator, such as CommandOrControl+Alt+N. Registration can fail if another app owns it. */
