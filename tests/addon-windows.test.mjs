@@ -186,6 +186,20 @@ test('addon windows open once per id and close with their addon', {
     moved,
   )
 
+  // Kept-alive windows hide on close, keep their renderer, and report closing.
+  await open('kept', { keepAlive: true, show: false })
+  const kept = await until(() => addonPage(app, 'kept'))
+  await kept.evaluate(() => {
+    window.marker = 'still here'
+  })
+  await open('kept')
+  await page.evaluate(() => window.hibi.closeAddonWindow('quick-note', 'kept'))
+  await page.waitForFunction(() =>
+    window.closedAddonWindows.includes('quick-note/kept'),
+  )
+  await open('kept')
+  assert.equal(await kept.evaluate(() => window.marker), 'still here')
+
   await page.evaluate(() => window.hibi.setAddonEnabled('quick-note', false))
   await until(async () => (await appWindows(app)).length === 1)
 })

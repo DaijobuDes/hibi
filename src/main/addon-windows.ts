@@ -14,7 +14,14 @@ import type {
 import { appearanceColors, titleBarColors } from './appearance'
 import { isTrustedRendererUrl } from './security'
 
-type Entry = AddonWindowContext & { window: BrowserWindow }
+type Entry = AddonWindowContext & {
+  window: BrowserWindow
+  keepAlive: boolean
+  /** Hidden by the user or `close`, so `closed` was already reported. */
+  hidden: boolean
+  /** Close for real, even with keepAlive. */
+  release: boolean
+}
 type Options = Required<Omit<AddonWindowOptions, 'title' | 'input'>> & {
   title: string | undefined
   input: unknown
@@ -30,6 +37,10 @@ const entries = new Map<string, Entry>()
 const opening = new Map<string, Promise<void>>()
 const closedListeners = new Set<(addonId: string, id: string) => void>()
 let writing: Promise<void> = Promise.resolve()
+let quitting = false
+app.on('before-quit', () => {
+  quitting = true
+})
 
 const key = (addonId: string, id: string) => `${addonId}/${id}`
 
@@ -59,7 +70,9 @@ function validate(value: unknown): Options {
     ![undefined, 'cursor-display', 'center'].includes(options.position) ||
     ![undefined, 'native', 'hibi'].includes(options.titleBar) ||
     ![undefined, true, false].includes(options.alwaysOnTop) ||
-    ![undefined, true, false].includes(options.panel)
+    ![undefined, true, false].includes(options.panel) ||
+    ![undefined, true, false].includes(options.keepAlive) ||
+    ![undefined, true, false].includes(options.show)
   )
     throw new Error('This addon supplied invalid window options.')
   return {
@@ -70,6 +83,8 @@ function validate(value: unknown): Options {
     titleBar: options.titleBar ?? 'native',
     alwaysOnTop: options.alwaysOnTop ?? false,
     panel: options.panel ?? false,
+    keepAlive: options.keepAlive ?? false,
+    show: options.show ?? true,
     input,
   }
 }
@@ -136,7 +151,13 @@ function rememberBounds(windowKey: string, bounds: Rectangle) {
     )
 }
 
-function reveal(window: BrowserWindow) {
+const notifyClosed = (entry: Entry) => {
+  for (const listener of closedListeners) listener(entry.addonId, entry.id)
+}
+
+function reveal(entry: Entry) {
+  entry.hidden = false
+  const { window } = entry
   // Local tests never take desktop focus; CI's launcher shows test windows.
   if (testing) return
   window.show()
@@ -186,6 +207,9 @@ async function create(addonId: string, name: string, options: Options) {
     titleBar: options.titleBar,
     platform: process.platform,
     window,
+    keepAlive: options.keepAlive,
+    hidden: !options.show,
+    release: false,
   }
   entries.set(windowKey, entry)
   if (process.platform !== 'darwin') window.removeMenu()
@@ -200,12 +224,22 @@ async function create(addonId: string, name: string, options: Options) {
   window.webContents.on('will-attach-webview', (event) =>
     event.preventDefault(),
   )
-  window.once('ready-to-show', () => reveal(window))
-  window.on('close', () => rememberBounds(windowKey, window.getBounds()))
+  window.once('ready-to-show', () => {
+    if (!entry.hidden) reveal(entry)
+  })
+  window.on('close', (event) => {
+    rememberBounds(windowKey, window.getBounds())
+    if (!entry.keepAlive || entry.release || quitting) return
+    event.preventDefault()
+    window.hide()
+    if (entry.hidden) return
+    entry.hidden = true
+    notifyClosed(entry)
+  })
   window.on('closed', () => {
     if (entries.get(windowKey) !== entry) return
     entries.delete(windowKey)
-    for (const listener of closedListeners) listener(addonId, options.id)
+    if (!entry.hidden) notifyClosed(entry)
   })
   await window.loadURL(url)
 }
@@ -219,7 +253,10 @@ export async function openAddonWindow(
   const options = validate(value)
   const windowKey = key(addonId, options.id)
   const existing = entries.get(windowKey)
-  if (existing) return reveal(existing.window)
+  if (existing) {
+    if (options.show) reveal(existing)
+    return
+  }
   const pending = opening.get(windowKey)
   if (pending) return pending
   if (
@@ -236,16 +273,20 @@ export async function openAddonWindow(
 
 export function focusAddonWindow(addonId: string, id: unknown): void {
   const entry = typeof id === 'string' && entries.get(key(addonId, id))
-  if (entry) reveal(entry.window)
+  if (entry) reveal(entry)
 }
 
 export function closeAddonWindow(addonId: string, id: unknown): void {
   if (typeof id === 'string') entries.get(key(addonId, id))?.window.close()
 }
 
+/** Close every window of an addon, including kept-alive ones. */
 export function closeAddonWindows(addonId: string): void {
   for (const entry of entries.values())
-    if (entry.addonId === addonId) entry.window.close()
+    if (entry.addonId === addonId) {
+      entry.release = true
+      entry.window.close()
+    }
 }
 
 /** Follow appearance changes in window backgrounds and Hibi-drawn window controls. */

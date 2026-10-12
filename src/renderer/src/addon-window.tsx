@@ -1,4 +1,4 @@
-import { type ReactNode, StrictMode } from 'react'
+import { lazy, type ReactNode, StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import type { Addon, AddonManifest, AddonWindowProps } from '../../addons/api'
 import type {
@@ -8,6 +8,7 @@ import type {
 import { errorMessage } from '../../shared/errors'
 import { createColorschemeStore } from '../../ui/colorschemes'
 import './styles.css'
+import { windowDesktop } from './window-desktop'
 import '../../ui/ui-case'
 
 declare global {
@@ -39,13 +40,25 @@ const request = async <T,>(pending: Promise<unknown>) => {
 }
 
 let context: AddonWindowContext | undefined
+// The editor host's modules expect window.hibi; give them a privilege-free stand-in.
+const Editor = lazy(async () => {
+  Object.defineProperty(window, 'hibi', {
+    value: windowDesktop(bridge),
+    configurable: true,
+  })
+  return { default: (await import('./WindowEditor')).WindowEditor }
+})
 
 function show(children: ReactNode) {
   root.render(
     <StrictMode>
-      <div className="addon-window">
+      <div className="app addon-window" data-platform={context?.platform}>
         {context?.titleBar === 'hibi' && (
-          <header className="addon-window-titlebar">{context.title}</header>
+          <header className="titlebar addon-window-titlebar">
+            <div className="document-title">
+              <span>{context.title}</span>
+            </div>
+          </header>
         )}
         <div className="addon-window-content">{children}</div>
       </div>
@@ -55,8 +68,7 @@ function show(children: ReactNode) {
 
 async function render() {
   context = await bridge.context()
-  const { addonId, id, input, platform } = context
-  document.documentElement.dataset.platform = platform
+  const { addonId, id, input } = context
   const path = Object.keys(manifests).find(
     (candidate) => manifests[candidate]?.id === addonId,
   )
@@ -73,6 +85,7 @@ async function render() {
       invoke: (method, value) => request(bridge.invoke(method, value)),
     },
     close: () => window.close(),
+    Editor,
   }
   show(<Content {...props} />)
 }

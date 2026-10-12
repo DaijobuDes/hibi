@@ -4,7 +4,7 @@ An addon compiled with Hibi can open its own desktop windows, such as a capture 
 
 ## Define the window content
 
-List window components by local ID in the `windows` field of your addon. Hibi loads your addon module in the new window and renders the component. It never calls `start` there, so commands, shortcuts, settings, and other registrations from `start` do not exist in the window.
+List window components by local ID in the `windows` field of your addon. Hibi loads your addon module in the new window and renders the component. It does not call your addon's `start` there, so commands, shortcuts, settings, and other registrations from `start` do not exist in the window. A window that shows Hibi's editor is the one exception for document addons, described below.
 
 ```tsx
 import { type AddonWindowProps, defineAddon } from '../api'
@@ -30,6 +30,28 @@ The component receives only [AddonWindowProps](../addon-api-reference/AddonWindo
 
 Native handlers called from a window receive that window as the parent for dialogs. Their document actions still apply to the main window, so keep window handlers to work that does not depend on the open document.
 
+## Show Hibi's editor
+
+Render `props.Editor` to give a window Hibi's editor and formatting toolbar for one untitled Markdown note. It reads `defaultValue` once and reports each change through `onChange`; the note exists only in memory until your addon saves it, for example with a native method.
+
+```tsx
+function Capture({ Editor, native, close }: AddonWindowProps) {
+  const text = useRef('')
+  return (
+    <>
+      <Editor label="Note" onChange={(markdown) => (text.current = markdown)} />
+      <button onClick={() => void native.invoke('save', text.current).then(close)}>Save</button>
+    </>
+  )
+}
+```
+
+The first render starts an editor host inside the window:
+
+- The editor uses the same Markdown format, flavors, syntax, and code languages as the main window. To provide them, Hibi starts the enabled addons that an untitled Markdown document needs in the main window. Background addons, command-activated addons, and sideloaded packages never start in a window. Their `start` runs with the same `AddonContext` as in the main window, so registrations made there apply only inside that window.
+- The window has no access to Hibi's desktop bridge. Its `window.hibi` is a local stand-in: edits stay in the window's memory, addon states are read from the main process, workspace lookups return nothing, event listeners never fire, and every other request is refused with "not available in this window". A window cannot read or change files, the open document, or the workspace, and it never runs workspace content.
+- Appearance, colorschemes, cursor style, spell check, and Markdown marker preferences come from the user's settings.
+
 ## Open and control a window
 
 Call `context.windows.open()` with [AddonWindowOptions](../addon-api-reference/AddonWindowOptions.md). Opening an ID that is already open brings the existing window forward instead of creating another one; its original input is kept. An addon can have up to eight windows open.
@@ -50,6 +72,8 @@ The returned [AddonWindowHandle](../addon-api-reference/AddonWindowHandle.md) ca
 Set `titleBar: 'hibi'` to replace the system title bar with Hibi's compact bar, as in the main window. Hibi draws the window title in a draggable strip above your component and keeps the system window controls: inset on macOS and drawn over the bar's right edge on Windows and Linux. Your component fills the space below it.
 
 Set `panel: true` for short tasks that should appear over whatever the user is doing. On macOS, a panel floats over full-screen apps on every Space and takes keyboard focus without bringing Hibi's main window forward. Other systems ignore `panel`; use `alwaysOnTop` to keep the window above other applications there.
+
+Set `keepAlive: true` for a window people open often. Closing it then hides it and keeps its renderer and state, so reopening is immediate; `onClosed` still reports each close. To prepare such a window before it is first needed, call `open` with `show: false`, for example from `requestIdleCallback` after your addon starts. A hidden window costs about as much memory as a small open one.
 
 Hibi closes an addon's windows when the addon is disabled. Closing the main window does not close addon windows.
 

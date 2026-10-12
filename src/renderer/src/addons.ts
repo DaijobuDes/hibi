@@ -176,6 +176,8 @@ export function useAddons(
   environment: Environment,
   documentName?: string,
   activeView: import('../../shared/document-types').DocumentView = 'normal',
+  /** Editor windows start only what the document needs, never background addons. */
+  editorOnly = false,
 ) {
   const catalog = useSyncExternalStore(
     addonRegistry.subscribe,
@@ -491,7 +493,7 @@ export function useAddons(
         running.has(id) ||
         !relevant(addon.manifest) ||
         settled.get(id) === false ||
-        (!required.has(id) && !ready) ||
+        (!required.has(id) && (!ready || editorOnly)) ||
         !states.some((state) => state.id === id && state.enabled)
       )
         continue

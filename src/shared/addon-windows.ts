@@ -5,6 +5,7 @@ export const ADDON_WINDOW_CHANNELS = {
   closed: 'addon-windows:closed',
   /** Requests from inside an addon window, scoped to the addon that owns it. */
   context: 'addon-windows:context',
+  states: 'addon-windows:states',
   invoke: 'addon-windows:invoke',
   query: 'addon-windows:query',
 } as const
@@ -24,6 +25,10 @@ export type AddonWindowOptions = {
   alwaysOnTop?: boolean
   /** On macOS, float over full-screen apps on every Space and take keyboard focus without bringing Hibi forward. Ignored elsewhere. */
   panel?: boolean
+  /** Closing hides the window and keeps its renderer, so reopening is immediate. Disabling the addon or quitting still closes it. */
+  keepAlive?: boolean
+  /** Set to false to prepare the window without showing it, for example at idle. Defaults to true. */
+  show?: boolean
   /** JSON value passed to the window component. Limited to 64 KB. */
   input?: unknown
 }
@@ -41,6 +46,8 @@ export type AddonWindowContext = {
 /** The only desktop requests available inside an addon window. */
 export type AddonWindowBridge = {
   context: () => Promise<AddonWindowContext>
+  /** Enabled and disabled addons, so an editor window can start the same editor addons. */
+  states: () => Promise<import('../addons/api').AddonState[]>
   query: (method: string, input?: unknown) => Promise<unknown>
   invoke: (method: string, input?: unknown) => Promise<unknown>
 }
