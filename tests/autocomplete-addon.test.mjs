@@ -29,7 +29,6 @@ test('autocomplete learns locally, disables learning, excludes documents and cle
   page.setDefaultTimeout(8000)
   const errors = []
   page.on('pageerror', (error) => errors.push(error.message))
-  await page.clock.install()
   await waitForDocumentEditor(app, page)
   await app.evaluate(({ ipcMain }) => {
     globalThis.autocompleteNetwork = []
@@ -209,8 +208,7 @@ test('autocomplete learns locally, disables learning, excludes documents and cle
   await back()
   const positiveWrite = async (word) => {
     await page.keyboard.type(` ${word} `)
-    // Advance both the idle timeout and storage debounce, without sleeping.
-    await page.clock.runFor(2100)
+    // A real debounced disk write is the positive control for both exclusions.
     await waitForAsync(
       page,
       async (word) => {
@@ -234,7 +232,7 @@ test('autocomplete learns locally, disables learning, excludes documents and cle
     )
   }
   await page.keyboard.type(' disabledword ')
-  await page.clock.runFor(2100)
+  // Changing the preference flushes queued learning before the positive control.
   await settings()
   await page.locator('#autocomplete-learning').check()
   await back()
@@ -249,7 +247,7 @@ test('autocomplete learns locally, disables learning, excludes documents and cle
   await page.locator('#autocomplete-exclude-document').check()
   await back()
   await page.keyboard.type(' excludedword ')
-  await page.clock.runFor(2100)
+  // Changing the preference flushes queued learning before the positive control.
   await settings()
   await page.locator('#autocomplete-exclude-document').uncheck()
   await back()
@@ -418,7 +416,7 @@ test('legacy dictionary suggestions enable autocomplete at startup while explici
   await page.reload()
   await waitForDocumentEditor(app, page)
   await waitForAsync(page, async () => {
-    const { states } = await window.hibi.bootstrap.addons()
+    const states = await window.hibi.getAddonStates()
     return (
       states.some((state) => state.id === 'autocomplete' && state.enabled) &&
       localStorage.getItem('hibi:dictionary:typing') === null
@@ -444,7 +442,7 @@ test('legacy dictionary suggestions enable autocomplete at startup while explici
     page,
     () => localStorage.getItem('hibi:dictionary:typing') === null,
   )
-  const { states } = await page.evaluate(() => window.hibi.bootstrap.addons())
+  const states = await page.evaluate(() => window.hibi.getAddonStates())
   assert.equal(
     states.find((state) => state.id === 'autocomplete').enabled,
     false,
