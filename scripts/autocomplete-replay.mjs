@@ -1,33 +1,81 @@
-import { readdirSync, readFileSync } from 'node:fs'
+import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { stripTypeScriptTypes } from 'node:module'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { createPersonalModel } from '../src/addons/autocomplete/model.ts'
-import { rankWords } from '../src/addons/autocomplete/suggestions.ts'
+import {
+  precedingWords,
+  prefixAt,
+  rankWords,
+} from '../src/addons/autocomplete/suggestions.ts'
+import { matchCase } from '../src/addons/dictionary/lookup.ts'
 
 const fixtureDirectory = new URL(
   '../tests/fixtures/autocomplete/',
   import.meta.url,
 )
 const topK = 3
+const digest = (text) => createHash('sha256').update(text).digest('hex')
+const wordKey = (word) => word.normalize('NFC').toLowerCase()
+
+export function textItems(text) {
+  return [...text.matchAll(/[\p{L}\p{M}]+(?:['’-][\p{L}\p{M}]+)*/gu)].map(
+    (match) => {
+      const before = text.slice(0, match.index)
+      return { word: match[0], before, context: precedingWords(before) }
+    },
+  )
+}
+
+function requests(item) {
+  const result = []
+  const prefix = item.word.slice(0, 3)
+  if (item.word.length > 3 && prefixAt(item.before + prefix, '') === prefix)
+    result.push({ kind: 'prefix', prefix })
+  if (/[ \t]$/.test(item.before) && item.context.length)
+    result.push({ kind: 'nextWord', prefix: '' })
+  return result
+}
+
+const queryKey = (item, prefix) => JSON.stringify([prefix, item.context])
 function metrics() {
   return { topOneHits: 0, topKHits: 0, charactersSaved: 0, timings: [] }
 }
+function pair() {
+  return { baseline: metrics(), personal: metrics() }
+}
+function modes() {
+  return Object.fromEntries(
+    ['prefix', 'nextWord'].map((kind) => [
+      kind,
+      {
+        ...pair(),
+        firstTime: pair(),
+        unseenTrainingTarget: pair(),
+      },
+    ]),
+  )
+}
 function record(result, target, prefix, elapsed, metric) {
   metric.timings.push(elapsed)
-  if (result[0]?.word === target) {
+  if (result[0] === target) {
     metric.topOneHits++
-    // One acceptance key; prefix has already been typed.
     metric.charactersSaved += Math.max(0, target.length - prefix.length - 1)
   }
-  if (result.slice(0, topK).some((item) => item.word === target))
-    metric.topKHits++
+  if (result.slice(0, topK).includes(target)) metric.topKHits++
 }
 function summary(metric) {
   const timings = [...metric.timings].sort((a, b) => a - b)
   const samples = timings.length
   return {
+    samples,
     topOneHits: metric.topOneHits,
-    acceptanceProxy: samples ? metric.topOneHits / samples : 0,
+    topOneRate: samples ? metric.topOneHits / samples : 0,
     topKHits: metric.topKHits,
-    topKRelevance: samples ? metric.topKHits / samples : 0,
+    topKRate: samples ? metric.topKHits / samples : 0,
     charactersSaved: metric.charactersSaved,
     latency: {
       samples,
@@ -38,142 +86,352 @@ function summary(metric) {
     },
   }
 }
-
-const baseline = metrics()
-const personal = metrics()
-const corpora = []
-const queries = {
-  prefix: { baseline: metrics(), personal: metrics() },
-  nextWord: { baseline: metrics(), personal: metrics() },
+function summarizePair(value) {
+  return {
+    baseline: summary(value.baseline),
+    personal: summary(value.personal),
+  }
 }
-const feedback = {
-  accepted: 0,
-  undo: 0,
-  overwrite: 0,
-  ignored: 0,
-  excludedSensitive: 0,
+function summarizeModes(value) {
+  return Object.fromEntries(
+    Object.entries(value).map(([kind, metric]) => [
+      kind,
+      {
+        ...summarizePair(metric),
+        firstTime: summarizePair(metric.firstTime),
+        unseenTrainingTarget: summarizePair(metric.unseenTrainingTarget),
+      },
+    ]),
+  )
 }
-let typedCharacters = 0
-// Warm only isolated throwaway data; evaluation models start empty.
-const warm = createPersonalModel({ now: () => 1_000_000 })
-const warmFound = [{ lang: 'en', words: ['prefix', 'prefer', 'present'] }]
-warm.observe({ scope: null, languages: ['en'], kind: 'typed', word: 'prefix' })
-for (let i = 0; i < 200; i++)
-  warm.suggest({
-    scope: null,
-    languages: ['en'],
-    prefix: 'pre',
-    baseline: rankWords('pre', warmFound),
-  })
 
-for (const name of readdirSync(fixtureDirectory)
-  .filter((name) => name.endsWith('.json'))
-  .sort()) {
-  const corpus = JSON.parse(
-    readFileSync(new URL(name, fixtureDirectory), 'utf8'),
+/** One pass through training prose, then read-only queries from different prose. */
+export async function evaluateCorpus(corpus, complete) {
+  const training = textItems(corpus.training)
+  const heldOut = textItems(corpus.heldOut)
+  assert.ok(
+    training.length && heldOut.length,
+    'both text segments must contain words',
+  )
+  assert.notDeepEqual(
+    training.map((item) => item.word),
+    heldOut.map((item) => item.word),
+    'held-out tokens must differ from training tokens',
   )
   let time = 1_000_000
   const model = createPersonalModel({ now: () => time })
-  const corpusBaseline = metrics()
-  const corpusPersonal = metrics()
-  for (const event of corpus.events) {
-    time += event.gapMs ?? 0
-    for (let i = 0; i < (event.repeat ?? 1); i++) {
-      time += 250
-      const kind = event.kind ?? 'typed'
-      const prefix = event.prefix ?? event.word.slice(0, 3)
-      const target = event.expected ?? event.word
-      const session = {
-        scope: event.scope,
-        languages: event.languages,
-        context: event.context ?? [],
-        sensitive: event.sensitive === true,
+  const session = { scope: corpus.scope, languages: corpus.languages }
+  const trainingKeys = { prefix: new Set(), nextWord: new Set() }
+  for (const item of training) {
+    time += 250
+    model.observe({
+      ...session,
+      word: item.word,
+      context: item.context,
+      kind: 'typed',
+    })
+    for (const { kind, prefix } of requests(item))
+      trainingKeys[kind].add(queryKey(item, prefix))
+  }
+  const frozen = model.snapshot()
+  const trainedWords = new Set(training.map((item) => wordKey(item.word)))
+  const seen = {
+    prefix: new Set(trainingKeys.prefix),
+    nextWord: new Set(trainingKeys.nextWord),
+  }
+  const queries = modes()
+  const counts = {
+    prefix: {
+      trainingUniqueKeys: trainingKeys.prefix.size,
+      heldOutUniqueKeys: new Set(),
+      unseenTrainingQueryOccurrences: 0,
+    },
+    nextWord: {
+      trainingUniqueKeys: trainingKeys.nextWord.size,
+      heldOutUniqueKeys: new Set(),
+      unseenTrainingQueryOccurrences: 0,
+    },
+  }
+  // Time stays fixed, and no evaluation target is ever observed.
+  for (const item of heldOut) {
+    for (const { kind, prefix } of requests(item)) {
+      const key = queryKey(item, prefix)
+      const firstTime = !seen[kind].has(key)
+      seen[kind].add(key)
+      counts[kind].heldOutUniqueKeys.add(key)
+      if (!trainingKeys[kind].has(key))
+        counts[kind].unseenTrainingQueryOccurrences++
+      const unseenTarget = !trainedWords.has(wordKey(item.word))
+      const found = prefix ? await complete(prefix, corpus) : []
+      const start = performance.now()
+      const ranked = prefix ? rankWords(prefix, found) : []
+      const baselineElapsed = performance.now() - start
+      const personalStart = performance.now()
+      const suggested = model.suggest({
+        ...session,
+        context: item.context,
+        prefix,
+        baseline: ranked,
+      })
+      const personalElapsed = performance.now() - personalStart
+      const baseline = ranked.map((item) => matchCase(prefix, item.word))
+      const personal = suggested.map((item) =>
+        item.source === 'personal' ? item.word : matchCase(prefix, item.word),
+      )
+      for (const group of [
+        queries[kind],
+        ...(firstTime ? [queries[kind].firstTime] : []),
+        ...(unseenTarget ? [queries[kind].unseenTrainingTarget] : []),
+      ]) {
+        record(baseline, item.word, prefix, baselineElapsed, group.baseline)
+        record(personal, item.word, prefix, personalElapsed, group.personal)
       }
-      if (event.sensitive) feedback.excludedSensitive++
-      else if (kind === 'typed' || kind === 'accepted') {
-        // Fixture packs simulate the offline provider's prefix matches.
-        const found = event.languages.map((lang) => ({
-          lang,
-          words: (corpus.dictionary[lang] ?? []).filter((word) =>
-            word.toLowerCase().startsWith(prefix.toLowerCase()),
-          ),
-        }))
-        const baselineStart = performance.now()
-        // Existing dictionary pipeline offers no next-word predictions after a space.
-        const ranked = prefix ? rankWords(prefix, found) : []
-        const baselineElapsed = performance.now() - baselineStart
-        const personalStart = performance.now()
-        const suggested = model.suggest({
-          ...session,
-          prefix,
-          baseline: ranked,
-        })
-        const personalElapsed = performance.now() - personalStart
-        record(ranked, target, prefix, baselineElapsed, baseline)
-        record(suggested, target, prefix, personalElapsed, personal)
-        record(ranked, target, prefix, baselineElapsed, corpusBaseline)
-        record(suggested, target, prefix, personalElapsed, corpusPersonal)
-        const mode = prefix ? queries.prefix : queries.nextWord
-        record(ranked, target, prefix, baselineElapsed, mode.baseline)
-        record(suggested, target, prefix, personalElapsed, mode.personal)
-        typedCharacters += target.length
-      }
-      if (Object.hasOwn(feedback, kind)) feedback[kind]++
-      // Predict before observing; no future target enters the model.
-      model.observe({ ...session, kind, word: event.word })
     }
   }
-  corpora.push({
-    name: corpus.name,
-    description: corpus.description,
-    samples: corpusPersonal.timings.length,
-    baseline: summary(corpusBaseline),
-    personal: summary(corpusPersonal),
-    snapshotEntries: model.snapshot().entries.length,
-  })
-}
-
-console.log(
-  JSON.stringify(
-    {
-      samples: personal.timings.length,
-      topK,
-      typedCharacters,
-      method:
-        'chronological predict-before-learn replay from synthetic fixture packs; real rankWords baseline; exact-case top-1 acceptance proxy and top-3 relevance; saved characters subtract one acceptance key; performance.now timing after 200 isolated warmups',
-      machine: {
-        node: process.version,
-        platform: process.platform,
-        arch: process.arch,
+  assert.deepEqual(
+    model.snapshot(),
+    frozen,
+    'evaluation must not change the trained model',
+  )
+  return {
+    metrics: queries,
+    report: {
+      name: corpus.name,
+      description: corpus.description,
+      source: corpus.source,
+      scope: corpus.scope,
+      languages: corpus.languages,
+      training: {
+        tokens: training.length,
+        sha256: digest(corpus.training),
+        snapshotEntries: frozen.entries.length,
       },
-      baseline: summary(baseline),
-      personal: summary(personal),
-      feedback,
-      queries: Object.fromEntries(
-        Object.entries(queries).map(([kind, metric]) => [
+      heldOut: {
+        tokens: heldOut.length,
+        sha256: digest(corpus.heldOut),
+        unseenTrainingTargetTokens: heldOut.filter(
+          (item) => !trainedWords.has(wordKey(item.word)),
+        ).length,
+      },
+      modelFrozen: true,
+      queries: summarizeModes(queries),
+      queryCounts: Object.fromEntries(
+        Object.entries(counts).map(([kind, count]) => [
           kind,
           {
-            samples: metric.personal.timings.length,
-            baseline: summary(metric.baseline),
-            personal: summary(metric.personal),
+            ...count,
+            heldOutUniqueKeys: count.heldOutUniqueKeys.size,
+            firstTimeQueries: queries[kind].firstTime.personal.timings.length,
           },
         ]),
       ),
-      rankingBudgetMs: 5,
-      meetsRankingBudget: summary(personal).latency.p95Ms < 5,
-      corpora,
-      limitations: [
-        'Synthetic, small repeated corpus chosen to exercise learning; not evidence of real-world acceptance or generalization.',
-        'Top-1 exact target match is an acceptance proxy, not observed suggestion acceptance.',
-        'Reported undo and overwrite counts are fixture feedback, not predicted correction rates or insertion behavior.',
-        'Latency measures in-process ranking only; pack retrieval, UI, persistence, and boundary observation costs are excluded.',
-        'Personal latency is additional to baseline ranking; neither benchmark sends requests or loads user documents.',
-        'Prefix candidates are bounded; a rare completion outside a bucket may be missed.',
-        'Space queries have no baseline next-word predictions; prefix and next-word metrics are reported separately.',
-        'Fixtures include short and non-Latin prefixes to exercise the model; UI prefix eligibility is not simulated.',
-      ],
     },
-    null,
-    2,
-  ),
-)
+  }
+}
+
+export function fixtureComplete(prefix, corpus) {
+  return corpus.languages.map((lang) => ({
+    lang,
+    // Match the pack's alphabetical, bounded candidate list, not target frequency.
+    words: (corpus.dictionary[lang] ?? [])
+      .filter((word) => wordKey(word).startsWith(wordKey(prefix)))
+      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+      .slice(0, 24),
+  }))
+}
+
+async function dictionary(roots, fixturesOnly) {
+  const sources = []
+  const installed = new Map()
+  if (!fixturesOnly) {
+    for (const lang of ['en', 'tl', 'fr', 'de']) {
+      const directory = roots
+        .map((root) => join(root, lang))
+        .find((path) => existsSync(join(path, 'manifest.json')))
+      if (!directory) continue
+      const manifest = JSON.parse(
+        readFileSync(join(directory, 'manifest.json'), 'utf8'),
+      )
+      assert.equal(
+        manifest.id,
+        lang,
+        'pack manifest language must match directory',
+      )
+      assert.equal(manifest.format, 1, 'unsupported installed pack format')
+      installed.set(lang, directory)
+      sources.push({
+        lang,
+        kind: 'installed-pack',
+        directory,
+        entries: manifest.entries,
+        installedAt: manifest.installedAt,
+        data: manifest.data,
+        index: manifest.index,
+        sources: manifest.sources,
+      })
+    }
+  }
+  let index
+  if (installed.size) {
+    // Reuse the production read-only pack reader without building Electron output.
+    const code = stripTypeScriptTypes(
+      readFileSync(
+        new URL('../src/addons/dictionary/pack-index.ts', import.meta.url),
+        'utf8',
+      ),
+      { mode: 'transform' },
+    )
+    const { PackIndex } = await import(
+      `data:text/javascript;base64,${Buffer.from(code).toString('base64')}`
+    )
+    index = new PackIndex()
+    for (const [lang, directory] of installed)
+      await index.preload(lang, directory)
+  }
+  for (const lang of ['en', 'tl', 'fr', 'de'])
+    if (!installed.has(lang))
+      sources.push({
+        lang,
+        kind: 'fixture-fallback',
+        reason: fixturesOnly
+          ? 'explicit --fixture-dictionaries'
+          : 'no installed pack found in searched roots',
+        path: 'tests/fixtures/autocomplete/*.json',
+      })
+  return {
+    report: {
+      searchedRoots: fixturesOnly ? [] : roots,
+      sources,
+      installedLanguages: [...installed.keys()],
+      candidateLimitPerLanguage: 24,
+    },
+    async complete(prefix, corpus) {
+      const found = []
+      for (const lang of corpus.languages)
+        found.push({
+          lang,
+          words: installed.has(lang)
+            ? await index.complete(lang, installed.get(lang), prefix, 24)
+            : fixtureComplete(prefix, { ...corpus, languages: [lang] })[0]
+                .words,
+        })
+      return found
+    },
+    close: () => index?.unload(),
+  }
+}
+
+export async function replay({
+  roots = [
+    join(homedir(), 'Library/Application Support/hibi/dictionary-packs'),
+    join(homedir(), 'Library/Application Support/hibi-dev/dictionary-packs'),
+  ],
+  fixturesOnly = false,
+} = {}) {
+  const packs = await dictionary(roots, fixturesOnly)
+  const aggregate = modes()
+  const corpora = []
+  // Warm only throwaway data; evaluated models are independently trained.
+  const warm = createPersonalModel({ now: () => 1_000_000 })
+  const baseline = rankWords('pre', [
+    { lang: 'en', words: ['prefix', 'prefer', 'present'] },
+  ])
+  warm.observe({
+    scope: null,
+    languages: ['en'],
+    word: 'prefix',
+    kind: 'typed',
+  })
+  for (let i = 0; i < 200; i++)
+    warm.suggest({ scope: null, languages: ['en'], prefix: 'pre', baseline })
+  try {
+    for (const file of readdirSync(fixtureDirectory)
+      .filter((name) => name.endsWith('.json'))
+      .sort()) {
+      const corpus = JSON.parse(
+        readFileSync(new URL(file, fixtureDirectory), 'utf8'),
+      )
+      const result = await evaluateCorpus(corpus, packs.complete)
+      corpora.push({
+        fixture: `tests/fixtures/autocomplete/${file}`,
+        ...result.report,
+      })
+      for (const kind of ['prefix', 'nextWord'])
+        for (const group of ['', 'firstTime', 'unseenTrainingTarget'])
+          for (const mode of ['baseline', 'personal']) {
+            const from = group
+              ? result.metrics[kind][group][mode]
+              : result.metrics[kind][mode]
+            const to = group
+              ? aggregate[kind][group][mode]
+              : aggregate[kind][mode]
+            for (const key of ['topOneHits', 'topKHits', 'charactersSaved'])
+              to[key] += from[key]
+            to.timings.push(...from.timings)
+          }
+    }
+  } finally {
+    await packs.close()
+  }
+  return {
+    samples:
+      aggregate.prefix.personal.timings.length +
+      aggregate.nextWord.personal.timings.length,
+    topK,
+    method:
+      'distinct synthetic training and held-out prose; one typed observation per training token; frozen time and model during evaluation; real rankWords baseline; exact-case insertion top1/top3; save counts subtract one acceptance key',
+    definitions: {
+      prefix:
+        'one query after three Latin-script characters for each eligible held-out word longer than three characters',
+      nextWord:
+        'one empty-prefix query before each held-out word after whitespace with contiguous preceding word context; dictionary baseline is empty',
+      firstTime:
+        'first held-out occurrence of a query key never present in training or earlier evaluation; key = scope, language order, mode, exact prefix, exact preceding up-to-two words; target excluded; scope and languages fixed per corpus',
+      unseenTrainingTarget:
+        'all query occurrences whose target, NFC-normalized and lowercased, never occurs in training',
+      charactersSaved:
+        'top1 exact insertion only: max(0, target UTF-16 length - prefix length - 1 acceptance key); top3 navigation and acceptance are not credited',
+    },
+    machine: {
+      node: process.version,
+      platform: process.platform,
+      arch: process.arch,
+    },
+    dictionary: packs.report,
+    queries: summarizeModes(aggregate),
+    rankingBudgetMs: 5,
+    meetsRankingBudget: Object.values(aggregate).every(
+      (metric) => summary(metric.personal).latency.p95Ms < 5,
+    ),
+    corpora,
+    limitations: [
+      'Small original synthetic passages, with fixture dictionaries when real local packs are absent; no claim of real-world acceptance or generalization.',
+      'Shared training and held-out vocabulary is deliberate; unseen query contexts and unseen target words are counted separately.',
+      'Each target may have both a prefix and a next-word query; compare those modes separately, never sum their save counts as document savings.',
+      'Top1/top3 exact insertion matches are proxies, not observed acceptance; no evaluation feedback or correction events are simulated.',
+      'Personal latency is additional to rankWords latency; pack retrieval, UI, persistence, boundary observation and cold startup costs are excluded.',
+      'Training words are treated as individually typed and committed; multilingual membership is configured per passage, not inferred.',
+      'Installed pack metadata and checksums are reported from manifests; PackIndex validates loaded index structure, but this replay does not rehash pack data.',
+    ],
+  }
+}
+
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
+  const roots = process.argv
+    .slice(2)
+    .filter((arg) => arg.startsWith('--pack-root='))
+    .map((arg) => arg.slice('--pack-root='.length))
+  console.log(
+    JSON.stringify(
+      await replay({
+        ...(roots.length ? { roots } : {}),
+        fixturesOnly: process.argv.includes('--fixture-dictionaries'),
+      }),
+      null,
+      2,
+    ),
+  )
+}

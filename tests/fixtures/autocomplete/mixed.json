@@ -1,21 +1,60 @@
 {
   "name": "mixed",
-  "description": "synthetic session-tagged code-switching with preserved spelling and case",
+  "description": "invented multilingual chat; language membership fixed per passage, accents and names preserved",
+  "scope": "chat",
+  "languages": ["en", "tl", "fr", "de"],
+  "training": "Kumusta friend. Salamat for bringing coffee to the garden. We ordered café drinks and talked about our Reise tomorrow. The morning conversation felt relaxed. My friend mentioned a Bahnhof near the river. Kumusta everyone and salamat for the lovely evening. We planned another café visit before the Reise begins.",
+  "heldOut": "Salamat neighbor for sharing your umbrella. Kumusta from our rainy courtyard. The café opened early so everyone found a warm seat. After our Reise we might explore a different Bahnhof. Today my friend asked about astronomy and unfamiliar recipes. We talked beside the river until sunset. Tomorrow the conversation will continue in the library with bagong stories.",
   "dictionary": {
     "en": [
-      "kumquat",
-      "name",
-      "namesake",
-      "naming",
-      "NaMe",
-      "hola",
-      "hold",
-      "holiday",
+      "another",
+      "asked",
+      "astronomy",
+      "begins",
+      "beside",
+      "bringing",
       "coffee",
-      "cooperate",
-      "computer"
+      "continue",
+      "conversation",
+      "courtyard",
+      "different",
+      "drinks",
+      "early",
+      "evening",
+      "everyone",
+      "explore",
+      "felt",
+      "found",
+      "friend",
+      "garden",
+      "library",
+      "lovely",
+      "mentioned",
+      "might",
+      "morning",
+      "neighbor",
+      "opened",
+      "ordered",
+      "planned",
+      "rainy",
+      "recipes",
+      "relaxed",
+      "river",
+      "seat",
+      "sharing",
+      "stories",
+      "sunset",
+      "talked",
+      "today",
+      "tomorrow",
+      "umbrella",
+      "unfamiliar",
+      "visit",
+      "warm",
+      "with"
     ],
     "tl": [
+      "bagong",
       "kumusta",
       "kumustahan",
       "kumpanya",
@@ -25,53 +64,7 @@
       "salaysay"
     ],
     "fr": ["café", "cafétéria", "cafard"],
-    "zh": ["你好", "你们", "你"],
-    "ja": ["こんにちは", "こんばんは"]
+    "de": ["Reise", "Reisender", "Reiseführer", "Bahnhof", "Bahnsteig"]
   },
-  "events": [
-    {
-      "scope": "chat",
-      "languages": ["en", "tl"],
-      "word": "kumustaaa",
-      "prefix": "kum",
-      "context": ["hey", "bro"],
-      "repeat": 30
-    },
-    {
-      "scope": "chat",
-      "languages": ["en", "tl"],
-      "word": "salamat",
-      "prefix": "sal",
-      "context": ["thank", "you"],
-      "repeat": 20
-    },
-    {
-      "scope": "chat",
-      "languages": ["en", "tl"],
-      "word": "NaMe",
-      "prefix": "na",
-      "repeat": 30
-    },
-    {
-      "scope": "chat",
-      "languages": ["en", "fr"],
-      "word": "café",
-      "prefix": "caf",
-      "repeat": 15
-    },
-    {
-      "scope": "chat",
-      "languages": ["zh", "en"],
-      "word": "你好",
-      "prefix": "你",
-      "repeat": 15
-    },
-    {
-      "scope": "chat",
-      "languages": ["ja", "en"],
-      "word": "こんにちは",
-      "prefix": "こん",
-      "repeat": 15
-    }
-  ]
+  "source": "original synthetic prose supplied with this replay; no user documents or dictionary-derived target lists"
 }

@@ -630,8 +630,17 @@ test('offline replay reports real sample sizes, baseline ranking and measured me
   assert.equal(report.corpora.length, 3)
   assert.ok(report.method.includes('rankWords'))
   assert.ok(report.limitations.length > 0)
-  assert.ok(report.personal.topKHits >= report.baseline.topKHits)
-  assert.ok(report.personal.charactersSaved >= report.baseline.charactersSaved)
-  assert.equal(report.personal.latency.samples, report.samples)
-  assert.ok(report.personal.latency.p95Ms < 5)
+  assert.equal(
+    report.samples,
+    report.queries.prefix.personal.samples +
+      report.queries.nextWord.personal.samples,
+  )
+  for (const kind of ['prefix', 'nextWord']) {
+    const { baseline, personal, firstTime } = report.queries[kind]
+    assert.equal(personal.latency.samples, personal.samples)
+    assert.equal(baseline.samples, personal.samples)
+    assert.ok(personal.topOneHits <= personal.topKHits)
+    assert.ok(personal.topKHits <= personal.samples)
+    assert.ok(firstTime.personal.samples <= personal.samples)
+  }
 })

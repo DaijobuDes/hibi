@@ -1,118 +1,64 @@
 {
   "name": "casual",
-  "description": "synthetic repeated slang, phrase and correction events; no user text",
+  "description": "invented journal prose; distinct training and held-out passages with slang and novel contexts",
+  "scope": "journal",
+  "languages": ["en"],
+  "training": "Yesterday the bus ride was wild. That old story sounded crazy. We called the detour craycray and laughed near the station. My brother brought coffee while everyone waited outside. Later the music was wild again. Our neighbors shared stories about broken bicycles and late trains. I wrote that the evening felt peaceful despite the noise.",
+  "heldOut": "This morning the weather turned wild before breakfast. Nobody called the quiet garden craycray today. A friend described a crazy dream about purple bicycles. After lunch we carried coffee across the courtyard. The station looked empty and the pavement smelled fresh. That evening sounded peaceful from our window. Tomorrow we might visit the observatory and sketch unfamiliar constellations.",
   "dictionary": {
     "en": [
-      "crack",
+      "bus",
+      "brother",
+      "brought",
+      "broken",
+      "breakfast",
+      "bicycle",
+      "bicycles",
+      "coffee",
+      "coffin",
+      "cold",
+      "courtyard",
       "crazy",
+      "crack",
+      "craft",
       "crayon",
       "crayfish",
-      "craft",
+      "detour",
+      "dream",
+      "empty",
+      "evening",
+      "everyone",
+      "fresh",
+      "friend",
+      "garden",
+      "morning",
+      "music",
+      "neighbors",
+      "noise",
+      "observatory",
+      "outside",
+      "peace",
+      "peaceful",
+      "purple",
+      "quiet",
+      "shared",
+      "sketch",
+      "smelled",
+      "sounded",
+      "station",
+      "stories",
+      "story",
+      "tomorrow",
+      "trains",
+      "turned",
+      "visit",
+      "waited",
+      "weather",
       "wild",
       "wilderness",
-      "will",
-      "wise",
-      "work",
-      "world",
-      "actually",
-      "act",
-      "active",
-      "insane",
-      "inside",
-      "instant",
-      "bro",
-      "brown",
-      "broken",
-      "happen",
-      "happy",
-      "happiness",
-      "happy hour",
-      "Hapsburg"
+      "window",
+      "wrote"
     ]
   },
-  "events": [
-    {
-      "scope": "journal",
-      "languages": ["en"],
-      "word": "craycray",
-      "prefix": "cra",
-      "repeat": 35
-    },
-    {
-      "scope": "journal",
-      "languages": ["en"],
-      "word": "wild",
-      "context": ["that", "was"],
-      "prefix": "",
-      "repeat": 30
-    },
-    {
-      "scope": "journal",
-      "languages": ["en"],
-      "word": "insane",
-      "context": ["was", "actually"],
-      "prefix": "ins",
-      "repeat": 25
-    },
-    {
-      "scope": "journal",
-      "languages": ["en"],
-      "word": "broooo",
-      "prefix": "bro",
-      "repeat": 25
-    },
-    {
-      "scope": "journal",
-      "languages": ["en"],
-      "word": "crazy",
-      "expected": "crack",
-      "prefix": "cra",
-      "kind": "accepted",
-      "repeat": 1
-    },
-    {
-      "scope": "journal",
-      "languages": ["en"],
-      "word": "crazy",
-      "kind": "undo",
-      "repeat": 1
-    },
-    {
-      "scope": "journal",
-      "languages": ["en"],
-      "word": "crazy",
-      "expected": "crack",
-      "prefix": "cra",
-      "kind": "accepted",
-      "repeat": 1
-    },
-    {
-      "scope": "journal",
-      "languages": ["en"],
-      "word": "crazy",
-      "kind": "overwrite",
-      "repeat": 1
-    },
-    {
-      "scope": "journal",
-      "languages": ["en"],
-      "word": "crack",
-      "prefix": "cra",
-      "repeat": 10
-    },
-    {
-      "scope": "journal",
-      "languages": ["en"],
-      "word": "ignoredword",
-      "kind": "ignored",
-      "repeat": 2
-    },
-    {
-      "scope": "journal",
-      "languages": ["en"],
-      "word": "sk_private",
-      "sensitive": true,
-      "repeat": 2
-    }
-  ]
+  "source": "original synthetic prose supplied with this replay; no user documents or dictionary-derived target lists"
 }
