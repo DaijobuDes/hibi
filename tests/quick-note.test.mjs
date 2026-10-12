@@ -1120,3 +1120,27 @@ test('a draft from the previous version is imported once', {
   const again = await openCapture(second.app, second.page)
   assert.equal(await noteText(again), '')
 })
+
+test('a native draft retires a stale draft from the previous version', {
+  timeout: 60000,
+}, async (t) => {
+  const h = await harness(t, { draft: 'native note' })
+  const first = await h.launch()
+  const legacyDraft = () =>
+    first.page.evaluate(() => localStorage.getItem('hibi:quick-note-draft'))
+  await first.page.evaluate(() => {
+    localStorage.setItem(
+      'hibi:quick-note-draft',
+      JSON.stringify({ markdown: 'stale legacy' }),
+    )
+  })
+  const capture = await openCapture(first.app, first.page)
+  assert.equal(await noteText(capture), 'native note')
+  await until(async () => (await legacyDraft()) === null)
+  await saveCapture(first.app, capture, 'Quick note.md')
+  await first.app.close()
+  // The saved note's empty draft does not let the old text return.
+  const second = await h.launch()
+  const again = await openCapture(second.app, second.page)
+  assert.equal(await noteText(again), '')
+})

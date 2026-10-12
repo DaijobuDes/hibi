@@ -176,12 +176,11 @@ export function CaptureWindow({ Editor, native, close }: AddonWindowProps) {
     void open().then((result) => {
       if (!active || !result) return
       let text = template(settingsRef.current)
-      let legacy = ''
+      const legacy = result.status === 'unreadable' ? '' : readLegacyDraft()
       if (result.status === 'ready' && result.draft.markdown)
         text = result.draft.markdown
       else if (result.status === 'unreadable') setUnreadable(result)
-      else if (result.status === 'none') legacy = readLegacyDraft()
-      if (legacy) text = legacy
+      else if (legacy) text = legacy
       markdown.current = text
       setInitial(text)
       if (legacy) {
@@ -194,6 +193,7 @@ export function CaptureWindow({ Editor, native, close }: AddonWindowProps) {
     }
   }, [native, writeDraft])
   useEffect(() => {
+      // A native draft outranks the previous version's; either way the old one is retired.
     refresh()
     window.addEventListener('focus', refresh)
     return () => window.removeEventListener('focus', refresh)
