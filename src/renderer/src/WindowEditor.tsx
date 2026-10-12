@@ -84,6 +84,7 @@ function Host({
     },
     name,
     'normal',
+    true,
   )
   useSyncExternalStore(documentFormats.subscribe, documentFormats.snapshot)
   const available = useSyncExternalStore(flavors.subscribe, flavors.snapshot)
