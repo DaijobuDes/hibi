@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { once } from 'node:events'
 import {
   mkdir,
   mkdtemp,
@@ -13,7 +14,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { setTimeout } from 'node:timers/promises'
-import { electron } from './electron.mjs'
+import { electron, stopElectronTree } from './electron.mjs'
 import { clickMenu } from './keyboard.mjs'
 
 const captureUrl = /\/addon-window\.html$/
@@ -70,6 +71,100 @@ async function writeNote(capture, ...lines) {
   }
 }
 
+async function until(check) {
+  const deadline = performance.now() + 10000
+  for (;;) {
+    const value = await check()
+    if (value) return value
+    if (performance.now() > deadline)
+      throw new Error(`Condition did not settle: ${check}`)
+    await setTimeout(30)
+  }
+}
+
+/** The full destination path, compared as text so Windows paths need no escaping. */
+const destinationTooltip = (capture) =>
+  capture
+    .locator('.quick-note-meta [data-tooltip]')
+    .getAttribute('data-tooltip')
+
+const readDraft = (profile) =>
+  readFile(join(profile, 'quick-note-draft.json'), 'utf8')
+    .then(JSON.parse)
+    .catch(() => null)
+
+const noteText = async (capture) =>
+  (await capture.locator('.tiptap[contenteditable="true"]').innerText()).trim()
+
+/** A workspace and profile shared by one or more launches, cleaned up together. */
+async function harness(t, { draft } = {}) {
+  const root = await mkdtemp(join(tmpdir(), 'hibi-quick-note-'))
+  const workspace = join(root, 'workspace')
+  const profile = join(root, 'profile')
+  await mkdir(workspace, { recursive: true })
+  await mkdir(profile)
+  await writeFile(
+    join(profile, 'addons.json'),
+    JSON.stringify({ 'quick-note': true }),
+  )
+  if (draft !== undefined)
+    await writeFile(
+      join(profile, 'quick-note-draft.json'),
+      JSON.stringify({ markdown: draft, destination: null }),
+    )
+  const apps = []
+  t.after(async () => {
+    // Playwright drops a killed app's handle, so use the child captured at launch.
+    for (const { app, child } of apps) {
+      if (child.exitCode !== null || child.signalCode !== null) continue
+      await app
+        .evaluate(({ dialog }) => {
+          dialog.showMessageBox = async () => ({ response: 1 })
+        })
+        .catch(() => {})
+      await app.close()
+    }
+    await rm(root, { recursive: true, force: true })
+  })
+  return {
+    root,
+    workspace,
+    profile,
+    async launch() {
+      const app = await electron.launch({
+        args: [resolve('.'), `--user-data-dir=${profile}`],
+      })
+      apps.push({ app, child: app.process() })
+      await trackCaptureHides(app)
+      await app.evaluate(({ dialog }, destination) => {
+        dialog.showOpenDialog = async () => ({
+          canceled: false,
+          filePaths: [destination],
+        })
+      }, workspace)
+      const page = await app.firstWindow()
+      await page.getByRole('textbox', { name: /document editor/i }).waitFor()
+      await page.evaluate(() => window.hibi.openWorkspace())
+      return { app, page }
+    },
+  }
+}
+
+// Hold a named main-process step until `resume(app, name)`.
+const pause = (app, name) =>
+  app.evaluate((_electron, name) => {
+    globalThis.hibiTestPauses ??= {}
+    globalThis.hibiTestResume ??= {}
+    globalThis.hibiTestPauses[name] = new Promise((resolve) => {
+      globalThis.hibiTestResume[name] = resolve
+    })
+  }, name)
+const resume = (app, name) =>
+  app.evaluate((_electron, name) => {
+    delete globalThis.hibiTestPauses[name]
+    globalThis.hibiTestResume[name]()
+  }, name)
+
 async function saveCapture(app, capture, name) {
   const before = await captureHides(app)
   await capture.getByRole('button', { name: 'Save', exact: true }).click()
@@ -77,10 +172,14 @@ async function saveCapture(app, capture, name) {
   await hidden(app, before)
 }
 
+// Windows being destroyed have no URL to read; skip them.
 const appWindows = (app) =>
   app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()
-      .map((window) => window.webContents.getURL())
+      .filter(
+        (window) => !window.isDestroyed() && !window.webContents.isDestroyed(),
+      )
+      .map((window) => window.webContents.getURL() ?? '')
       .filter((url) => !url.startsWith('hibi-analysis:')),
   )
 
@@ -249,10 +348,10 @@ test('quick note captures to a chosen folder without replacing files', {
     .selectOption('')
   await page.getByRole('button', { name: 'Save settings' }).click()
   const pinnedDialog = await openCapture(app, page)
-  await pinnedDialog
-    .locator(`[data-tooltip="${await realpath(workspace)}"]`)
-    .getByText('workspace', { exact: true })
-    .waitFor()
+  const workspacePath = await realpath(workspace)
+  await until(
+    async () => (await destinationTooltip(pinnedDialog)) === workspacePath,
+  )
   await writeNote(pinnedDialog, '# Pinned', 'Pinned to original workspace')
   await app.evaluate(({ dialog }, destination) => {
     dialog.showOpenDialog = async () => ({
@@ -327,7 +426,9 @@ test('quick note captures to a chosen folder without replacing files', {
   )
   await page.getByRole('button', { name: 'Back to app' }).click()
   const oldDialog = await openCapture(app, page)
-  await oldDialog.locator(`[data-tooltip="${originalPath}"]`).waitFor()
+  await until(
+    async () => (await destinationTooltip(oldDialog)) === originalPath,
+  )
   await writeNote(oldDialog, '# Older', 'Still selected')
   await saveCapture(app, oldDialog, 'Older.md')
   assert.equal(
@@ -463,10 +564,6 @@ test('quick note shortcut opens one capture window without raising Hibi', {
       .hide(),
   )
 
-  const noteText = async (capture) =>
-    (
-      await capture.locator('.tiptap[contenteditable="true"]').innerText()
-    ).trim()
   const closeWith = async (capture, key) => {
     const before = await captureHides(app)
     await capture.keyboard.press(key)
@@ -499,10 +596,7 @@ test('quick note shortcut opens one capture window without raising Hibi', {
 
   // Escape and Cmd/Ctrl+W hide the window and keep the unsaved note, also on disk.
   await closeWith(capture, 'Escape')
-  assert.match(
-    await capture.evaluate(() => localStorage.getItem('hibi:quick-note-draft')),
-    /Keep this/,
-  )
+  await until(async () => (await readDraft(profile))?.markdown === 'Keep this')
   await press()
   assert.equal(await noteText(await captureWindow(app)), 'Keep this')
   await closeWith(capture, 'ControlOrMeta+w')
@@ -568,6 +662,11 @@ test('the capture window renders markdown like the main editor', {
     join(profile, 'addons.json'),
     JSON.stringify({ 'quick-note': true }),
   )
+  // The same Markdown as an unsaved note opens in the capture window.
+  await writeFile(
+    join(profile, 'quick-note-draft.json'),
+    JSON.stringify({ markdown: note, destination: null }),
+  )
   const app = await electron.launch({
     args: [resolve('.'), `--user-data-dir=${profile}`],
   })
@@ -589,15 +688,12 @@ test('the capture window renders markdown like the main editor', {
     join(workspace, 'Reading list.md'),
   )
   await page.locator('.tiptap h1').getByText('Reading list').waitFor()
-  // The same Markdown as an unsaved note opens in the capture window.
-  await page.evaluate((markdown) => {
-    localStorage.setItem('hibi:quick-note-draft', JSON.stringify({ markdown }))
-  }, note)
   const capture = await openCapture(app, page)
   const shape = async (editor) => {
     const root = editor.locator('.tiptap[contenteditable="true"]')
-    await root.click()
-    await editor.keyboard.press('ControlOrMeta+End')
+    // The same plain caret in both: the end of the first paragraph, outside bold.
+    await root.locator('p').first().click()
+    await editor.keyboard.press('End')
     return root.evaluate((element) => ({
       headings: element.querySelectorAll('h1').length,
       tasks: element.querySelectorAll('ul[data-type="taskList"] > li').length,
@@ -621,4 +717,205 @@ test('the capture window renders markdown like the main editor', {
     text: main.text,
   })
   assert.deepEqual(await shape(capture), main)
+})
+
+test('a stalled save keeps what was typed meanwhile', {
+  timeout: 45000,
+}, async (t) => {
+  const h = await harness(t)
+  const { app, page } = await h.launch()
+  const capture = await openCapture(app, page)
+  await writeNote(capture, 'alpha')
+  await pause(app, 'quick-note-save')
+  await capture.keyboard.press('ControlOrMeta+Enter')
+  await capture.getByRole('button', { name: 'Saving…' }).waitFor()
+  await capture.keyboard.press('Enter')
+  await capture.keyboard.type('beta')
+  const before = await captureHides(app)
+  await resume(app, 'quick-note-save')
+  await capture.getByRole('status').getByText('Saved Quick note.md.').waitFor()
+  assert.equal(
+    await readFile(join(h.workspace, 'Quick note.md'), 'utf8'),
+    'alpha',
+  )
+  await until(async () => (await noteText(capture)) === 'beta')
+  await until(async () => (await readDraft(h.profile))?.markdown === 'beta')
+  assert.equal(await captureHides(app), before)
+})
+
+test('the unsaved note survives a crash', {
+  timeout: 60000,
+}, async (t) => {
+  const h = await harness(t)
+  const first = await h.launch()
+  const capture = await openCapture(first.app, first.page)
+  await writeNote(capture, 'survive crash')
+  await until(
+    async () => (await readDraft(h.profile))?.markdown === 'survive crash',
+  )
+  const child = first.app.process()
+  const exited = once(child, 'exit')
+  stopElectronTree(child)
+  await exited
+  const second = await h.launch()
+  const again = await openCapture(second.app, second.page)
+  assert.equal(await noteText(again), 'survive crash')
+})
+
+test('each note keeps the destination it was started with', {
+  timeout: 60000,
+}, async (t) => {
+  const h = await harness(t)
+  const other = join(h.root, 'other')
+  await mkdir(other)
+  const { app, page } = await h.launch()
+  let capture = await openCapture(app, page)
+  await writeNote(capture, 'first')
+  await saveCapture(app, capture, 'Quick note.md')
+  assert.equal(
+    await readFile(join(h.workspace, 'Quick note.md'), 'utf8'),
+    'first',
+  )
+  // A fresh note follows the workspace that is current when it is started.
+  await app.evaluate(({ dialog }, destination) => {
+    dialog.showOpenDialog = async () => ({
+      canceled: false,
+      filePaths: [destination],
+    })
+  }, other)
+  await page.evaluate(() => window.hibi.openWorkspace())
+  capture = await openCapture(app, page)
+  await writeNote(capture, 'second')
+  await saveCapture(app, capture, 'Quick note.md')
+  assert.equal(await readFile(join(other, 'Quick note.md'), 'utf8'), 'second')
+  // A started note is not moved by later settings changes.
+  capture = await openCapture(app, page)
+  await writeNote(capture, 'third')
+  await until(async () => (await readDraft(h.profile))?.destination)
+  const originalPath = await realpath(h.workspace)
+  const original = (
+    await page.evaluate(() => window.hibi.getRecentWorkspaces())
+  ).find((item) => item.path === originalPath)
+  await page.evaluate((workspaceId) => {
+    localStorage.setItem('hibi:quick-note', JSON.stringify({ workspaceId }))
+  }, original.id)
+  await saveCapture(app, capture, 'Quick note 2.md')
+  assert.equal(await readFile(join(other, 'Quick note 2.md'), 'utf8'), 'third')
+})
+
+test('escape closes editor popups before the capture window', {
+  timeout: 45000,
+}, async (t) => {
+  const h = await harness(t)
+  const { app, page } = await h.launch()
+  const capture = await openCapture(app, page)
+  await capture.locator('.tiptap[contenteditable="true"]').click()
+  await capture.keyboard.type('/')
+  const menu = capture.locator('.slash-menu [role="listbox"]')
+  await menu.waitFor()
+  const before = await captureHides(app)
+  await capture.keyboard.press('Escape')
+  await menu.waitFor({ state: 'hidden' })
+  assert.equal(await captureHides(app), before)
+  await capture.keyboard.press('Escape')
+  await hidden(app, before)
+})
+
+test('the file name comes from the first markdown heading', {
+  timeout: 45000,
+}, async (t) => {
+  const h = await harness(t, {
+    draft: '```\n# not a heading\n```\n\nintro\n\nMeeting notes\n===\n',
+  })
+  const { app, page } = await h.launch()
+  const capture = await openCapture(app, page)
+  const before = await captureHides(app)
+  await capture.keyboard.press('ControlOrMeta+Enter')
+  await capture
+    .getByRole('status')
+    .getByText('Saved Meeting notes.md.')
+    .waitFor()
+  await hidden(app, before)
+  assert.match(
+    await readFile(join(h.workspace, 'Meeting notes.md'), 'utf8'),
+    /Meeting notes/,
+  )
+})
+
+test('a shortcut press from a stale activation opens nothing', {
+  timeout: 60000,
+}, async (t) => {
+  const h = await harness(t)
+  const { app, page } = await h.launch()
+  await app.evaluate(({ globalShortcut }) => {
+    globalThis.quickNoteShortcuts = new Map()
+    globalShortcut.register = (accelerator, callback) => {
+      globalThis.quickNoteShortcuts.set(accelerator, callback)
+      return true
+    }
+    globalShortcut.unregister = (accelerator) =>
+      globalThis.quickNoteShortcuts.delete(accelerator)
+    globalThis.shortcutErrors = []
+    const error = console.error
+    console.error = (...args) => {
+      globalThis.shortcutErrors.push(args.map(String).join(' '))
+      error(...args)
+    }
+  })
+  const shortcut = 'Control+Alt+Shift+F6'
+  const register = async () => {
+    await page.evaluate((shortcut) => {
+      localStorage.setItem('hibi:quick-note', JSON.stringify({ shortcut }))
+      window.dispatchEvent(new Event('hibi:quick-note-settings'))
+    }, shortcut)
+    await until(() =>
+      app.evaluate(
+        (_electron, accelerator) =>
+          globalThis.quickNoteShortcuts.has(accelerator),
+        shortcut,
+      ),
+    )
+  }
+  const press = () =>
+    app.evaluate(
+      (_electron, accelerator) =>
+        globalThis.quickNoteShortcuts.get(accelerator)(),
+      shortcut,
+    )
+  const captureWindows = async () =>
+    (await appWindows(app)).filter((url) => captureUrl.test(url)).length
+  const toggle = (enabled) =>
+    page.evaluate(
+      (enabled) => window.hibi.setAddonEnabled('quick-note', enabled),
+      enabled,
+    )
+  // Disabled while the native module loads: the press is retired before the handler.
+  await register()
+  await pause(app, 'global-shortcut-loaded')
+  await press()
+  await toggle(false)
+  await resume(app, 'global-shortcut-loaded')
+  for (let check = 0; check < 20; check++) {
+    assert.equal(await captureWindows(), 0)
+    await setTimeout(50)
+  }
+  assert.deepEqual(
+    await app.evaluate(() =>
+      globalThis.shortcutErrors.filter((line) => line.includes('shortcut')),
+    ),
+    [],
+  )
+  // Disabled while the handler runs: its window request is refused.
+  await toggle(true)
+  await register()
+  await pause(app, 'global-shortcut-handler')
+  await press()
+  await toggle(false)
+  await resume(app, 'global-shortcut-handler')
+  await until(() =>
+    app.evaluate(() =>
+      globalThis.shortcutErrors.some((line) => line.includes('was disabled')),
+    ),
+  )
+  assert.equal(await captureWindows(), 0)
 })
