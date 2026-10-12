@@ -2,7 +2,7 @@
 
 # PromptDialogOptions
 
-Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/ui/dialogs.ts#L26)
+Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/ui/dialogs.ts#L35)
 
 <details>
 <summary>Declaration</summary>
@@ -37,7 +37,7 @@ type PromptDialogOptions = MessageDialogOptions & {
 
 ### label
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/ui/dialogs.ts#L27)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/ui/dialogs.ts#L36)
 
 ```typescript
 label: string
@@ -45,7 +45,7 @@ label: string
 
 ### defaultValue
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/ui/dialogs.ts#L28)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/ui/dialogs.ts#L37)
 
 ```typescript
 defaultValue?: string
@@ -53,7 +53,7 @@ defaultValue?: string
 
 ### placeholder
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/ui/dialogs.ts#L29)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/ui/dialogs.ts#L38)
 
 ```typescript
 placeholder?: string
@@ -61,7 +61,7 @@ placeholder?: string
 
 ### cancelLabel
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/ui/dialogs.ts#L30)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/ui/dialogs.ts#L39)
 
 ```typescript
 cancelLabel?: string
@@ -71,7 +71,7 @@ cancelLabel?: string
 
 ### validate
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/ui/dialogs.ts#L32)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/ui/dialogs.ts#L41)
 
 Return an error message, or null when valid. Values are not trimmed.
 

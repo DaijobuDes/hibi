@@ -2,7 +2,7 @@ import { Extension } from '@tiptap/core'
 import { Placeholder } from '@tiptap/extension-placeholder'
 import { Markdown, type MarkdownExtensionOptions } from '@tiptap/markdown'
 import { StarterKit } from '@tiptap/starter-kit'
-import { Marked, type Token } from 'marked'
+import { Marked } from 'marked'
 import { search } from 'prosemirror-search'
 import type { MarkdownFlavor } from '../../addons/api'
 import { BlockExit } from './BlockExit.ts'
@@ -13,12 +13,18 @@ import {
   guardNativeListTokenizer,
   parseEmptyTaskItems,
 } from './list-tokenizer-prefix.ts'
+import {
+  configureMarkdownEntities,
+  entityMarkdown,
+  richTextParser,
+} from './markdown-entities.ts'
 import { MarkdownMarkExit } from './markdown-markers.ts'
 import {
   paragraphEscaper,
   renderTableParagraphs,
 } from './markdown-serialization.ts'
 import { markdownSyntax } from './markdown-syntax.ts'
+import { preserveHtml, rawHtml } from './RawHtml.ts'
 import { installSyntaxPreferences } from './syntax-parser.ts'
 
 export { projectMarkdown } from './markdown-projection.ts'
@@ -32,24 +38,7 @@ export function markdownConfiguration(
     { gfm: false, breaks: false },
     ...flavors.map((flavor) => flavor.markedOptions),
   )
-  const parser = installSyntaxPreferences(new Marked(options))
-  const BaseLexer = parser.Lexer
-  class RichLexer<
-    ParserOutput = string,
-    RendererOutput = string,
-  > extends BaseLexer<ParserOutput, RendererOutput> {
-    inlineTokens(source: string, tokens?: Token[]) {
-      const result = super.inlineTokens(source, tokens)
-      // Custom task tokens hide children from walkTokens; normalize at creation.
-      for (const token of result)
-        if (token.type === 'text')
-          token.text = token.text.replace(/[ \t]*\n[ \t]*/g, ' ')
-      return result
-    }
-  }
-  parser.Lexer = RichLexer
-  parser.lexer = (source, options) =>
-    new RichLexer(options ?? parser.defaults).lex(source)
+  const parser = richTextParser(installSyntaxPreferences(new Marked(options)))
   for (const flavor of flavors)
     for (const extension of flavor.export?.extensions ?? [])
       parser.use(extension)
@@ -69,6 +58,7 @@ export function markdownConfiguration(
     addExtensions() {
       return (
         this.parent?.()
+          .map(entityMarkdown)
           .map((extension) =>
             extension.name === 'paragraph'
               ? extension.extend({
@@ -80,6 +70,7 @@ export function markdownConfiguration(
             taskItems ? parseEmptyTaskItems(extension) : extension,
           )
           .map(guardNativeListTokenizer)
+          .map(preserveHtml)
           .map(guardNativeInputRules) ?? []
       )
     },
@@ -104,6 +95,7 @@ export function markdownConfiguration(
     }),
     ...(history ? [history] : []),
     ...literalMarkdown,
+    ...rawHtml,
   ]
   const addons = flavors
     .flatMap((flavor) => flavor.richExtensions ?? [])
@@ -113,6 +105,7 @@ export function markdownConfiguration(
       taskItems ? parseEmptyTaskItems(extension) : extension,
     )
     .map(guardNativeListTokenizer)
+    .map(preserveHtml)
     .map(guardNativeInputRules)
   return { parser, options, core, addons }
 }
@@ -131,7 +124,12 @@ export function editorExtensions(
       addProseMirrorPlugins: () => [search()],
     }),
     ...core,
-    Markdown.configure({
+    Markdown.extend({
+      onBeforeCreate(event) {
+        this.parent?.(event)
+        configureMarkdownEntities(this.storage.manager)
+      },
+    }).configure({
       // Tiptap types this as the callable singleton, but uses instance methods.
       marked: parser as unknown as NonNullable<
         MarkdownExtensionOptions['marked']

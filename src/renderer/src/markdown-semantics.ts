@@ -13,7 +13,9 @@ import type { MarkdownFlavor } from '../../addons/api'
 import { contextualTokens } from '../../shared/markdown-semantic-tokens.ts'
 import { documentImage } from './DocumentImage.ts'
 import { markdownConfiguration } from './markdown.ts'
+import { richTextToken } from './markdown-entities.ts'
 import { markdownSyntax } from './markdown-syntax.ts'
+import { preserveInlineHtml } from './RawHtml.ts'
 
 export type MarkdownSemantics = Readonly<{
   json: JSONContent
@@ -103,15 +105,12 @@ export function createMarkdownSemantics(
           const value = nested.pop()
           if (!value || typeof value !== 'object') continue
           if (Array.isArray(value)) {
+            preserveInlineHtml(value)
             for (const child of value) nested.push(child)
             continue
           }
           const token = value as Token
-          if (
-            token.type === 'html' &&
-            (typeof window === 'undefined' || !window.DOMParser)
-          )
-            return null
+          richTextToken(token)
           if (token.type === 'taskList' && !schema.nodes.taskList) return null
           // Native TaskList has its own lexical grammar; plain Marked lists
           // would silently become ordinary bullets without that tokenizer.

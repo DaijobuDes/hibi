@@ -12,7 +12,11 @@ import { ORDERED_LIST_MARKER_PATTERN } from '@tiptap/extension-list'
 import type { MarkdownManager } from '@tiptap/markdown'
 import type { Node } from '@tiptap/pm/model'
 import type { Marked } from 'marked'
-import type { MarkdownFlavor } from '../../addons/api'
+import type { MarkdownFlavor, MarkdownParagraphRule } from '../../addons/api'
+import {
+  configureMarkdownEntities,
+  maskParagraphText,
+} from './markdown-entities.ts'
 
 const orderedPrefix = new RegExp(
   `^( {0,3}(?:${ORDERED_LIST_MARKER_PATTERN}))([.)])(?=[^\\S\\n])`,
@@ -23,9 +27,26 @@ export function paragraphEscaper(
   parser: Marked,
   flavors: readonly MarkdownFlavor[],
 ) {
-  const rules = flavors.flatMap((flavor) =>
-    (flavor.paragraphRules ?? []).map((rule) => ({ flavor: flavor.id, rule })),
-  )
+  const rules: { flavor: string; rule: MarkdownParagraphRule }[] = [
+    {
+      flavor: 'core.entities',
+      rule: {
+        characters: '!',
+        escape(source, { literals }) {
+          for (const [sentinel, character] of literals)
+            if (character === '!')
+              source = source.replaceAll(`${sentinel}[`, '\\![')
+          return source
+        },
+      },
+    },
+    ...flavors.flatMap((flavor) =>
+      (flavor.paragraphRules ?? []).map((rule) => ({
+        flavor: flavor.id,
+        rule,
+      })),
+    ),
+  ]
   const characters = [
     ...new Set(rules.flatMap(({ rule }) => [...(rule.characters ?? '')])),
   ]
@@ -39,7 +60,9 @@ export function paragraphEscaper(
   ])
   const needsMasking = (child: JSONContent) =>
     child.type === 'text' &&
-    !child.marks?.some((mark) => verbatim.has(mark.type)) &&
+    !child.marks?.some((mark) =>
+      verbatim.has(typeof mark === 'string' ? mark : mark.type),
+    ) &&
     characters.some((character) => child.text?.includes(character))
   return (
     node: JSONContent,
@@ -70,12 +93,12 @@ export function paragraphEscaper(
       )
       content = content.map((child) =>
         needsMasking(child) && child.text
-          ? {
-              ...child,
-              text: [...child.text]
+          ? maskParagraphText(
+              child,
+              [...child.text]
                 .map((character) => sentinels.get(character) ?? character)
                 .join(''),
-            }
+            )
           : child,
       )
     }
@@ -191,6 +214,7 @@ export function markdownSerializer(
   manager: MarkdownManager,
   blockLocal: boolean,
 ) {
+  configureMarkdownEntities(manager)
   const json = new WeakMap<Node, JSONContent>()
   const blocks = new WeakMap<
     Node,
@@ -259,7 +283,7 @@ export function markdownSerializer(
     })
     const joined = parts.map((block) => block.source).join('\n\n')
     // Match the manager's empty-document normalization, including blank paragraphs.
-    const source = /^(?:\s|&nbsp;)*$/.test(joined) ? '' : joined
+    const source = /^[ \t\r\n]*$/.test(joined) ? '' : joined
     return { source, rendered, blocks: parts }
   }
 }
