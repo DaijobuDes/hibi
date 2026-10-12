@@ -162,7 +162,8 @@ test('autocomplete learns locally, disables learning, excludes documents and cle
         )
         await page.keyboard.insertText(text)
       }
-      await page.keyboard.press('Escape')
+      // An unhandled Escape arms Tab focus navigation.
+      if (await popup.isVisible()) await page.keyboard.press('Escape')
       await waitForAsync(
         page,
         async (text) => (await window.hibi.getDocument()).markdown === text,
@@ -276,17 +277,42 @@ test('autocomplete learns locally, disables learning, excludes documents and cle
     await page.keyboard.press('Tab')
     await popup.waitFor({ state: 'hidden' })
     // Read editor state directly so a delayed document flush cannot hide acceptance.
-    const textAfterTab = await page.evaluate(
-      (mode) =>
-        mode === 'rich'
-          ? document.querySelector('.rich-pane .tiptap').editor.state.doc
-              .textContent
-          : document
-              .querySelector('.cm-content')
-              .cmTile.root.view.state.doc.toString(),
-      mode,
-    )
-    assert.match(textAfterTab, /^bro that was\s*$/)
+    const editorText = () =>
+      page.evaluate(
+        (mode) =>
+          mode === 'rich'
+            ? document.querySelector('.rich-pane .tiptap').editor.state.doc
+                .textContent
+            : document
+                .querySelector('.cm-content')
+                .cmTile.root.view.state.doc.toString(),
+        mode,
+      )
+    assert.equal(await editorText(), 'bro that was \t', `${mode} next-word Tab`)
+    const tabAcceptance = async (enabled) => {
+      await settings()
+      await page.locator('#autocomplete-tab-accepts').setChecked(enabled)
+      await page.getByRole('button', { name: /back to app/i }).click()
+      await page.locator('.settings-screen').waitFor({ state: 'hidden' })
+      await waitForDocumentEditor(app, page, {
+        name: mode === 'rich' ? 'Document editor' : 'Markdown editor',
+      })
+    }
+    await tabAcceptance(false)
+    for (const highlighted of [false, true]) {
+      await reset('bro that was wil')
+      await page.keyboard.press('Control+Space')
+      await waitForChoice()
+      if (highlighted) await page.keyboard.press('ArrowDown')
+      await page.keyboard.press('Tab')
+      await popup.waitFor({ state: 'hidden' })
+      assert.equal(
+        await editorText(),
+        'bro that was wil\t',
+        `${mode} in-word Tab with acceptance off, highlighted=${highlighted}`,
+      )
+    }
+    await tabAcceptance(true)
     await reset('bro that was wil')
     await page.keyboard.press('Control+Space')
     await waitForChoice()

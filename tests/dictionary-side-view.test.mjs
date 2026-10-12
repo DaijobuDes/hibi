@@ -262,6 +262,7 @@ test('side view follows the caret offline, replaces in one undo step, and pack s
   await page.keyboard.press('Backspace')
   await page.keyboard.type('p')
   await menu.getByRole('option', { name: 'happy', exact: true }).waitFor()
+  await page.keyboard.press('ArrowDown')
   await page.keyboard.press('Enter')
   await waitForAsync(page, async () =>
     (await window.hibi.getDocument()).markdown.endsWith(' zq happy'),
@@ -348,6 +349,7 @@ test('side view follows the caret offline, replaces in one undo step, and pack s
       .filter({ hasText: 'English' })
       .first()
       .waitFor()
+    await page.keyboard.press('ArrowDown')
     await page.keyboard.press('Enter')
     await waitForAsync(page, async () =>
       (await window.hibi.getDocument()).markdown.endsWith(' happy'),
