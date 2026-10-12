@@ -51,6 +51,16 @@ test('addon windows host the editor without desktop privileges', {
   await preview.locator('.tiptap h1').getByText('Title').waitFor()
   await preview.locator('.tiptap p').getByText('Body').waitFor()
 
+  // Addons started for the editor cannot take the owner's bridge from the global.
+  await assert.rejects(
+    preview.evaluate(() => window.hibiAddonWindow.invoke('save', {})),
+    /bridge is closed/,
+  )
+  assert.equal(
+    await preview.evaluate(() => window.hibiAddonWindow.seal() ?? null),
+    null,
+  )
+
   // The window's desktop stand-in answers locally or refuses.
   assert.equal(await preview.evaluate(() => window.hibi.getWorkspace()), null)
   await assert.rejects(

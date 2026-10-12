@@ -4,6 +4,7 @@ import type { Addon, AddonManifest, AddonWindowProps } from '../../addons/api'
 import type {
   AddonWindowBridge,
   AddonWindowContext,
+  AddonWindowGlobal,
 } from '../../shared/addon-windows'
 import { errorMessage } from '../../shared/errors'
 import {
@@ -17,7 +18,7 @@ import '../../ui/ui-case'
 
 declare global {
   interface Window {
-    hibiAddonWindow: AddonWindowBridge
+    hibiAddonWindow: AddonWindowGlobal
   }
 }
 
@@ -44,7 +45,7 @@ window.addEventListener('storage', (event) => {
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () =>
   applyActivePalette(palette),
 )
-const bridge = window.hibiAddonWindow
+let bridge: AddonWindowBridge = window.hibiAddonWindow
 const root = createRoot(document.getElementById('root') as HTMLElement)
 const request = async <T,>(pending: Promise<unknown>) => {
   try {
@@ -57,6 +58,10 @@ const request = async <T,>(pending: Promise<unknown>) => {
 let context: AddonWindowContext | undefined
 // The editor host's modules expect window.hibi; give them a privilege-free stand-in.
 const Editor = lazy(async () => {
+  // Other addons start in this renderer next; keep the owner's bridge out of their reach.
+  const owned = window.hibiAddonWindow.seal()
+  if (!owned) throw new Error('This addon window is unavailable.')
+  bridge = owned
   Object.defineProperty(window, 'hibi', {
     value: windowDesktop(bridge),
     configurable: true,
