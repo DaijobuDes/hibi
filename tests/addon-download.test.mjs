@@ -93,6 +93,9 @@ test('addon urls stay https through redirects and downloads remain bounded', asy
     'https://name:secret@example.com/a.zip',
   ])
     assert.throws(() => addonPackageUrl(url))
+  assert.throws(() => addonPackageUrl(undefined), {
+    message: 'Enter an HTTPS URL for an addon ZIP file or Git repository.',
+  })
   let calls = 0
   globalThis.fetch = async (_url, options) => {
     assert.equal(options.redirect, 'manual')
@@ -112,7 +115,9 @@ test('addon urls stay https through redirects and downloads remain bounded', asy
       status: 302,
       headers: { location: 'http://example.com/a.zip' },
     })
-  await assert.rejects(downloadAddon('https://example.com/a.zip'), /HTTPS URL/)
+  await assert.rejects(downloadAddon('https://example.com/a.zip'), {
+    message: 'Use an HTTPS URL without a username or password.',
+  })
   globalThis.fetch = async () =>
     new Response('large', {
       headers: { 'content-length': String(26 * 1024 * 1024) },

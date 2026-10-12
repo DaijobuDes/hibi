@@ -20,7 +20,9 @@ import { Button, PanelMessage } from '../ui'
 import css from './dictionary.css?inline'
 import { detectLangs, type LookupTarget, matchCase, wordAt } from './lookup'
 import manifest from './manifest'
+import { createOfflineProviders } from './offline'
 import { datamuseProvider, wiktionaryProvider } from './online'
+import { PackSettings } from './PackSettings'
 import {
   createRegistry,
   type Entry,
@@ -30,7 +32,7 @@ import {
   type Related,
   type Source,
 } from './providers'
-import { languageNames, readPreferences } from './settings'
+import { languageNames, readPreferences, readRecentPack } from './settings'
 
 function richTarget(
   editor: Editor,
@@ -115,7 +117,7 @@ const notices = {
   noWord: { message: 'Place the cursor in a word or select one word.' },
   unsupported: {
     message:
-      'Lookups support English, Chinese, Cantonese, Japanese, Filipino, and French.',
+      'Lookups support English, Chinese, Cantonese, Japanese, Filipino, French, and German.',
   },
   noPacks: { message: 'Offline packs are not available yet.' },
   changed: { message: 'The document changed. Look up the word again.' },
@@ -289,9 +291,39 @@ export default defineAddon({
   manifest,
   start(context) {
     context.styles.register('dictionary', css)
+    queueMicrotask(() => {
+      const preferences = readPreferences()
+      const recent = readRecentPack()
+      const ids = [
+        ...new Set([
+          preferences.latin,
+          preferences.han,
+          ...(recent ? [recent] : []),
+        ]),
+      ]
+      void context.native
+        .query('preloadPacks', ids)
+        .catch((error) =>
+          console.error('could not preload dictionary packs:', error),
+        )
+    })
     const registry = createRegistry()
     registry.register(wiktionaryProvider(context.host.network.getText))
     registry.register(datamuseProvider(context.host.network.getText))
+    for (const provider of createOfflineProviders(context.native))
+      registry.register(provider)
+    context.commands.register({
+      id: INSTALL_PACK_COMMAND,
+      label: 'Dictionary: install offline pack',
+      keywords: 'dictionary language download offline',
+      run: () => {
+        context.dialogs.open({
+          title: 'Offline language packs',
+          size: 'wide',
+          content: () => <PackSettings />,
+        })
+      },
+    })
     const richEditors = new Set<Editor>()
     const sourceViews = new Set<EditorView>()
     context.editor.registerRich({

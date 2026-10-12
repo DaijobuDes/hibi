@@ -52,7 +52,19 @@ Custom app bindings take precedence over formatting shortcuts. [Vim](../guides/v
 
 Previous and next tab shortcuts wrap at either end of the tab strip and include addon tabs. Some Linux desktops reserve `Ctrl+Alt+Left/Right` for switching workspaces; choose another binding under **Settings → Hotkeys** if those keys do not reach Hibi.
 
-In an editable formatted list, `Tab` indents an item and `Shift+Tab` outdents it. If an item cannot move farther, focus stays in the editor. Outside lists, `Tab` keeps its usual keyboard navigation behavior.
+## Tab and indentation
+
+In an editable formatted list, `Tab` indents an item and `Shift+Tab` outdents it. If an item cannot move farther, focus stays in the editor. In a table, `Tab` and `Shift+Tab` move between cells.
+
+In source view, `Tab` indents and `Shift+Tab` outdents. With no selection, `Tab` inserts indentation at the cursor. With a selection, both keys change every selected line. In a formatted code block, `Tab` and `Shift+Tab` work the same way inside the code.
+
+In other formatted text, `Tab` inserts a tab character after text on the same line. At the start of a line, `Tab` does nothing, because leading spaces or tabs would turn the paragraph into a code block when the file is saved.
+
+Indentation follows the first indented line of the file or code block. If there is none yet, Hibi uses **Settings → Editor → Writing → Indent with**, which defaults to tabs.
+
+When a completion or slash command menu is open, `Tab` accepts the highlighted item instead of indenting. In [Vim](../guides/vim.md) normal mode, `Tab` is not used for indentation.
+
+To move focus out of the editor with the keyboard, press `Escape` and then `Tab` or `Shift+Tab`. There is no time limit: the next `Tab` or `Shift+Tab` leaves the editor, and typing another key or moving focus elsewhere cancels it. Screen readers announce this hint with each editor. If you prefer `Tab` to always move focus, turn off **Settings → Editor → Writing → Tab key indents**. Lists and tables keep their `Tab` behavior when the setting is off.
 
 ## Typing speed
 
