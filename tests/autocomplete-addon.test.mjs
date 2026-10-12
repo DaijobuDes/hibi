@@ -43,6 +43,18 @@ test('autocomplete learns locally, disables learning, excludes documents and cle
     })
   })
   const rich = page.locator('.rich-pane .tiptap[contenteditable="true"]')
+  const focusRich = async () => {
+    await rich.evaluate((element) => element.editor.commands.focus('end'))
+    await page.waitForFunction(() => {
+      const editor = document.querySelector('.rich-pane .tiptap').editor
+      const { empty, head } = editor.state.selection
+      return (
+        editor.view.hasFocus() &&
+        empty &&
+        head === editor.state.doc.content.size - 1
+      )
+    })
+  }
   const settings = async () => {
     await clickMenu(app, 'Settings')
     await page.getByRole('tab', { name: 'Autocomplete', exact: true }).click()
@@ -51,7 +63,7 @@ test('autocomplete learns locally, disables learning, excludes documents and cle
     await page.getByRole('button', { name: /back to app/i }).click()
     await page.locator('.settings-screen').waitFor({ state: 'hidden' })
     await waitForDocumentEditor(app, page)
-    await rich.evaluate((element) => element.editor.commands.focus('end'))
+    await focusRich()
   }
   const stored = () =>
     page.evaluate(() =>
@@ -137,17 +149,8 @@ test('autocomplete learns locally, disables learning, excludes documents and cle
         await rich.evaluate((element, text) => {
           const editor = element.editor
           editor.commands.setContent(text, { contentType: 'markdown' })
-          editor.commands.focus('end')
         }, text)
-        await page.waitForFunction(() => {
-          const editor = document.querySelector('.rich-pane .tiptap').editor
-          const { empty, head } = editor.state.selection
-          return (
-            editor.view.hasFocus() &&
-            empty &&
-            head === editor.state.doc.content.size - 1
-          )
-        })
+        await focusRich()
       } else {
         const source = page.getByRole('textbox', {
           name: 'Markdown editor',
@@ -435,7 +438,7 @@ test('autocomplete learns locally, disables learning, excludes documents and cle
   assert.deepEqual((await disk()).entries['learned-words'].value.entries, [])
   await confirmation.waitFor({ state: 'hidden' })
   const learnWord = async (word) => {
-    await rich.evaluate((element) => element.editor.commands.focus('end'))
+    await focusRich()
     await page.keyboard.type(` ${word} `)
     await waitForAsync(
       page,
