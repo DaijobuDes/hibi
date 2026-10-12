@@ -42,7 +42,13 @@ function requests(item) {
 
 const queryKey = (item, prefix) => JSON.stringify([prefix, item.context])
 function metrics() {
-  return { topOneHits: 0, topKHits: 0, charactersSaved: 0, timings: [] }
+  return {
+    fired: 0,
+    topOneHits: 0,
+    topKHits: 0,
+    charactersSaved: 0,
+    timings: [],
+  }
 }
 function pair() {
   return { baseline: metrics(), personal: metrics() }
@@ -61,6 +67,7 @@ function modes() {
 }
 function record(result, target, prefix, elapsed, metric) {
   metric.timings.push(elapsed)
+  if (result.length) metric.fired++
   if (result[0] === target) {
     metric.topOneHits++
     metric.charactersSaved += Math.max(0, target.length - prefix.length - 1)
@@ -72,6 +79,9 @@ function summary(metric) {
   const samples = timings.length
   return {
     samples,
+    fired: metric.fired,
+    fireRate: samples ? metric.fired / samples : 0,
+    precision: metric.fired ? metric.topOneHits / metric.fired : 0,
     topOneHits: metric.topOneHits,
     topOneRate: samples ? metric.topOneHits / samples : 0,
     topKHits: metric.topKHits,
@@ -106,9 +116,17 @@ function summarizeModes(value) {
 }
 
 /** One pass through training prose, then read-only queries from different prose. */
-export async function evaluateCorpus(corpus, complete) {
-  const training = textItems(corpus.training)
-  const heldOut = textItems(corpus.heldOut)
+export async function evaluateCorpus(
+  corpus,
+  complete,
+  createModel = createPersonalModel,
+) {
+  const training = (corpus.trainingDocuments ?? [corpus.training]).flatMap(
+    textItems,
+  )
+  const heldOut = (corpus.heldOutDocuments ?? [corpus.heldOut]).flatMap(
+    textItems,
+  )
   assert.ok(
     training.length && heldOut.length,
     'both text segments must contain words',
@@ -119,7 +137,7 @@ export async function evaluateCorpus(corpus, complete) {
     'held-out tokens must differ from training tokens',
   )
   let time = 1_000_000
-  const model = createPersonalModel({ now: () => time })
+  const model = createModel({ now: () => time })
   const session = { scope: corpus.scope, languages: corpus.languages }
   const trainingKeys = { prefix: new Set(), nextWord: new Set() }
   for (const item of training) {
@@ -231,6 +249,86 @@ export async function evaluateCorpus(corpus, complete) {
   }
 }
 
+export function repositoryCorpus() {
+  const files = ['docs', 'src']
+    .flatMap((directory) =>
+      readdirSync(new URL(`../${directory}/`, import.meta.url), {
+        recursive: true,
+      })
+        .map((file) => `${directory}/${file.replaceAll('\\', '/')}`)
+        .filter(
+          (file) =>
+            file.endsWith('.md') && !file.includes('/addon-api-reference/'),
+        ),
+    )
+    .sort()
+  const trainingFiles = files.filter((_, i) => i % 3 !== 0)
+  const heldOutFiles = files.filter((_, i) => i % 3 === 0)
+  const prose = (paths) =>
+    paths.map((file) =>
+      readFileSync(new URL(`../${file}`, import.meta.url), 'utf8')
+        .replace(/```[\s\S]*?```/g, '\n')
+        .replace(/`[^`]*`/g, ' X ')
+        .replace(/\]\([^)]*\)/g, ']')
+        .replace(/^[#>|*-]+\s*/gm, ''),
+    )
+  const trainingDocuments = prose(trainingFiles)
+  const heldOutDocuments = prose(heldOutFiles)
+  return {
+    name: 'repository documentation',
+    scope: 'repository',
+    languages: ['en'],
+    source:
+      'Repository Markdown; sorted paths, every third whole file held out; fenced code, inline code and link destinations removed.',
+    training: trainingDocuments.join('\n\n'),
+    heldOut: heldOutDocuments.join('\n\n'),
+    trainingDocuments,
+    heldOutDocuments,
+    trainingFiles,
+    heldOutFiles,
+    dictionary: {
+      en: [
+        ...new Set(
+          trainingDocuments
+            .flatMap(textItems)
+            .map((item) => wordKey(item.word)),
+        ),
+      ],
+    },
+  }
+}
+
+export function assertNextWordQuality(report) {
+  const metric = report.queries.nextWord.personal
+  assert.ok(
+    metric.fired > 0,
+    'next-word replay must produce nonzero predictions',
+  )
+  assert.ok(metric.fireRate <= 0.05, 'next-word fire rate must not exceed 5%')
+  assert.ok(metric.precision >= 0.4, 'next-word precision must reach 40%')
+}
+
+export async function replayRepository(
+  complete = fixtureComplete,
+  createModel = createPersonalModel,
+) {
+  const corpus = repositoryCorpus()
+  assert.equal(
+    new Set([...corpus.trainingFiles, ...corpus.heldOutFiles]).size,
+    corpus.trainingFiles.length + corpus.heldOutFiles.length,
+    'training and held-out files must be disjoint',
+  )
+  const { report } = await evaluateCorpus(corpus, complete, createModel)
+  report.training.files = corpus.trainingFiles
+  report.heldOut.files = corpus.heldOutFiles
+  assert.ok(
+    report.heldOut.tokens >= 10_000,
+    'repository held-out corpus must contain at least 10000 tokens',
+  )
+  assertNextWordQuality(report)
+  return report
+}
+
 export function fixtureComplete(prefix, corpus) {
   return corpus.languages.map((lang) => ({
     lang,
@@ -333,6 +431,7 @@ export async function replay({
   const packs = await dictionary(roots, fixturesOnly)
   const aggregate = modes()
   const corpora = []
+  let repository
   // Warm only throwaway data; evaluated models are independently trained.
   const warm = createPersonalModel({ now: () => 1_000_000 })
   const baseline = rankWords('pre', [
@@ -347,6 +446,7 @@ export async function replay({
   for (let i = 0; i < 200; i++)
     warm.suggest({ scope: null, languages: ['en'], prefix: 'pre', baseline })
   try {
+    repository = await replayRepository(packs.complete)
     for (const file of readdirSync(fixtureDirectory)
       .filter((name) => name.endsWith('.json'))
       .sort()) {
@@ -367,7 +467,12 @@ export async function replay({
             const to = group
               ? aggregate[kind][group][mode]
               : aggregate[kind][mode]
-            for (const key of ['topOneHits', 'topKHits', 'charactersSaved'])
+            for (const key of [
+              'fired',
+              'topOneHits',
+              'topKHits',
+              'charactersSaved',
+            ])
               to[key] += from[key]
             to.timings.push(...from.timings)
           }
@@ -385,6 +490,12 @@ export async function replay({
     definitions: {
       prefix:
         'one query after three Latin-script characters for each eligible held-out word longer than three characters',
+      fireRate:
+        'nonempty suggestion lists divided by eligible queries, separately per mode',
+      precision:
+        'exact-case top-one insertion hits divided by nonempty suggestion lists',
+      repository:
+        'separate file-held-out documentation evaluation; fixture prefix vocabulary is training-only; default production entry cap; no evaluation learning',
       nextWord:
         'one empty-prefix query before each held-out word after whitespace with contiguous preceding word context; dictionary baseline is empty',
       firstTime:
@@ -406,8 +517,11 @@ export async function replay({
       (metric) => summary(metric.personal).latency.p95Ms < 5,
     ),
     corpora,
+    repository,
     limitations: [
-      'Small original synthetic passages, with fixture dictionaries when real local packs are absent; no claim of real-world acceptance or generalization.',
+      'Small original synthetic passages plus a separate repository-documentation check; neither measures real-world acceptance.',
+      'Documentation files can share vocabulary and templates. The split uses sorted paths only; adding or renaming files can change membership. File lists and text hashes identify each run.',
+      'Repository prefix fallback uses training vocabulary, not a full dictionary; installed packs are used when available.',
       'Shared training and held-out vocabulary is deliberate; unseen query contexts and unseen target words are counted separately.',
       'Each target may have both a prefix and a next-word query; compare those modes separately, never sum their save counts as document savings.',
       'Top1/top3 exact insertion matches are proxies, not observed acceptance; no evaluation feedback or correction events are simulated.',

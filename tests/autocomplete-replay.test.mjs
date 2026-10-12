@@ -1,10 +1,41 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  assertNextWordQuality,
   evaluateCorpus,
   fixtureComplete,
   replay,
+  replayRepository,
 } from '../scripts/autocomplete-replay.mjs'
+import { createPersonalModel } from '../src/addons/autocomplete/model.ts'
+
+test('repository replay fails if next-word prediction is removed', async () => {
+  await assert.rejects(
+    replayRepository(fixtureComplete, (options) => {
+      const model = createPersonalModel(options)
+      return {
+        ...model,
+        suggest: (request) => (request.prefix ? model.suggest(request) : []),
+      }
+    }),
+    /must produce nonzero predictions/,
+  )
+})
+
+test('quality gates reject excessive firing and poor precision independently', () => {
+  const report = (fireRate, precision) => ({
+    queries: { nextWord: { personal: { fired: 10, fireRate, precision } } },
+  })
+  assert.throws(
+    () => assertNextWordQuality(report(0.051, 0.5)),
+    /must not exceed 5%/,
+  )
+  assert.throws(
+    () => assertNextWordQuality(report(0.04, 0.39)),
+    /must reach 40%/,
+  )
+  assert.doesNotThrow(() => assertNextWordQuality(report(0.05, 0.4)))
+})
 
 const corpus = {
   scope: 'check',
@@ -89,6 +120,20 @@ test('personal scoring follows real insertion casing and preserves internal capi
 test('replay reports separate modes, sources, novel targets and internally consistent counts', async () => {
   const report = await replay({ fixturesOnly: true })
   assert.equal(report.corpora.length, 3)
+  const repository = report.repository
+  assert.ok(repository.heldOut.tokens >= 10_000)
+  assert.ok(repository.training.tokens > 0)
+  assert.equal(repository.modelFrozen, true)
+  assert.equal(
+    new Set([...repository.training.files, ...repository.heldOut.files]).size,
+    repository.training.files.length + repository.heldOut.files.length,
+  )
+  assertNextWordQuality(repository)
+  for (const kind of ['prefix', 'nextWord']) {
+    const metric = repository.queries[kind].personal
+    assert.equal(metric.fireRate, metric.fired / metric.samples)
+    assert.equal(metric.precision, metric.topOneHits / metric.fired)
+  }
   assert.equal(report.dictionary.installedLanguages.length, 0)
   assert.ok(
     report.dictionary.sources.every(
@@ -115,7 +160,12 @@ test('replay reports separate modes, sources, novel targets and internally consi
           0,
         ),
       )
-      for (const count of ['topOneHits', 'topKHits', 'charactersSaved'])
+      for (const count of [
+        'fired',
+        'topOneHits',
+        'topKHits',
+        'charactersSaved',
+      ])
         assert.equal(
           metric[count],
           report.corpora.reduce(
