@@ -148,7 +148,7 @@ test('keyboard-only completion applies the appearance and default view', {
   assert.ok(palette)
   assert.equal(
     await dialog.locator('.introduction-shortcuts kbd').first().textContent(),
-    process.platform === 'darwin' ? '⌘' : 'Ctrl',
+    process.platform === 'darwin' ? '⌘' : 'ctrl',
   )
 
   await tabTo(page, 'Start writing')
