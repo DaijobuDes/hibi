@@ -6,6 +6,7 @@ export const captureWindow = {
   title: 'Quick note',
   size: { width: 560, height: 440 },
   position: 'cursor-display',
+  titleBar: 'hibi',
   alwaysOnTop: true,
   panel: true,
 } satisfies AddonWindowOptions

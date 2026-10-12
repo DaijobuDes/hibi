@@ -43,7 +43,7 @@ async function openCapture(app, page) {
 
 async function saveCapture(capture, name) {
   const closed = capture.waitForEvent('close')
-  await capture.getByRole('button', { name: 'Save note' }).click()
+  await capture.getByRole('button', { name: 'Save', exact: true }).click()
   await capture.getByRole('status').getByText(`Saved ${name}.`).waitFor()
   await closed
 }
@@ -226,7 +226,7 @@ test('quick note captures to a chosen folder without replacing files', {
     .selectOption('')
   await page.getByRole('button', { name: 'Save settings' }).click()
   const pinnedDialog = await openCapture(app, page)
-  await pinnedDialog.getByText(`Save to ${await realpath(workspace)}`).waitFor()
+  await pinnedDialog.getByText(await realpath(workspace)).waitFor()
   await pinnedDialog.getByRole('textbox', { name: 'Title' }).fill('Pinned')
   await pinnedDialog
     .getByRole('textbox', { name: 'Note' })
@@ -304,7 +304,7 @@ test('quick note captures to a chosen folder without replacing files', {
   )
   await page.getByRole('button', { name: 'Back to app' }).click()
   const oldDialog = await openCapture(app, page)
-  await oldDialog.getByText(`Save to ${originalPath}`).waitFor()
+  await oldDialog.getByText(originalPath).waitFor()
   await oldDialog.getByRole('textbox', { name: 'Title' }).fill('Older')
   await oldDialog.getByRole('textbox', { name: 'Note' }).fill('Still selected')
   await saveCapture(oldDialog, 'Older.md')
