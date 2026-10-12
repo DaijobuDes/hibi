@@ -474,7 +474,7 @@
   "d353a99eb455": [
     "src/addons/diagnostics/Settings.tsx"
   ],
-  "c96cbbddcd15": [
+  "bc75b3093ed9": [
     "src/main/workspace-metadata.ts"
   ],
   "ad83a00f609f": [
@@ -603,6 +603,9 @@
   ],
   "e6257468726a": [
     "src/addons/mcp-server/tools.ts"
+  ],
+  "5e5a82eaa888": [
+    "src/main/workspace-layout.ts"
   ],
   "dd2dda50df8c": [
     "src/main/addon-documentation.ts"
@@ -2560,6 +2563,9 @@
   ],
   "5a2f299940cc": [
     "src/shared/document-journal.ts"
+  ],
+  "648a4f2f5294": [
+    "src/main/index.ts"
   ],
   "b387677a73d8": [
     "src/shared/document-worker-service.ts"
@@ -4955,6 +4961,9 @@
   "bd0d4d522e2d": [
     "src/main/workspace-atomic-update.ts"
   ],
+  "09aae7464226": [
+    "src/main/workspace-layout.ts"
+  ],
   "bee50784d023": [
     "src/renderer/src/document-target-edits.ts",
     "src/shared/document-edits.ts"
@@ -5030,6 +5039,9 @@
   ],
   "ae8d2458110c": [
     "src/main/sideload.ts"
+  ],
+  "b3010da17d9f": [
+    "src/main/workspace-layout.ts"
   ],
   "31430920dff7": [
     "src/addons/_shared/FormatPdf.tsx"
@@ -6123,6 +6135,9 @@
   ],
   "0695b563acde": [
     "src/renderer/src/HibiSettings.tsx"
+  ],
+  "21fc4b4e6645": [
+    "src/main/workspace-layout.ts"
   ],
   "dafe8af01f1c": [
     "src/renderer/src/workspace-menu.ts"

@@ -289,6 +289,14 @@ export type DesktopApi = {
   subscribeWorkspaceChanges: (
     callback: import('./workspace').WorkspaceChangeListener,
   ) => Promise<import('./workspace').WorkspaceChangeSubscription>
+  /** Null when the document is not saved inside the open workspace. */
+  readTableLayout: (
+    tabId: string,
+  ) => Promise<import('./table-layout').TableLayout[] | null>
+  writeTableLayout: (
+    tabId: string,
+    tables: import('./table-layout').TableLayout[],
+  ) => Promise<void>
   readWorkspaceText: (
     owner: string,
     target: import('./foundation-contracts').WorkspaceTarget,
