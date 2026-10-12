@@ -258,14 +258,14 @@ test('pack dialog install, offline definition, profile restart, path rejection a
   const addonRow = page.locator('[data-setting-id="addon-dictionary"]')
   await addonRow.waitFor()
   const metadata = await addonRow.locator('.addon-metadata').innerText()
+  for (const host of ['en.wiktionary.org', 'api.datamuse.com'])
+    assert.ok(metadata.includes(host), `missing declared host: ${host}`)
   for (const host of [
-    'en.wiktionary.org',
-    'api.datamuse.com',
     'en-word.net',
     'www.mdbg.net',
     'cantonese.org',
     'www.edrdg.org',
     'kaikki.org',
   ])
-    assert.ok(metadata.includes(host), `missing declared host: ${host}`)
+    assert.ok(!metadata.includes(host), `unexpected declared host: ${host}`)
 })

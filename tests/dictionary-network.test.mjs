@@ -23,17 +23,12 @@ const { default: manifest } = await import(
   `data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString('base64')}`
 )
 
-test('dictionary declares every lookup and pack source as a canonical origin', () => {
+test('dictionary declares only its online lookup origins', () => {
   const { origins } = parseAddonNetwork(manifest.network)
-  const expected = new Set([
+  assert.deepEqual(origins, [
     'https://en.wiktionary.org',
     'https://api.datamuse.com',
-    ...Object.values(packs).flatMap((pack) =>
-      pack.sources.map((source) => new URL(source.url).origin),
-    ),
   ])
-  assert.deepEqual(new Set(origins), expected)
-  assert.equal(origins.length, 7)
 })
 
 test('dictionary online providers use declared hosts without permission prompts', async (t) => {
@@ -85,5 +80,13 @@ test('dictionary online providers use declared hosts without permission prompts'
     false,
   )
   assert.equal(prompts.length, 1)
+  const packOrigins = new Set(
+    Object.values(packs).flatMap((pack) =>
+      pack.sources.map((source) => new URL(source.url).origin),
+    ),
+  )
+  for (const origin of packOrigins)
+    assert.equal((await getText({ url: origin })).ok, false)
+  assert.equal(prompts.length, 1 + packOrigins.size)
   assert.equal(requests.length, 3)
 })
