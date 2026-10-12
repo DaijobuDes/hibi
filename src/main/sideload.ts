@@ -28,6 +28,7 @@ import type {
 import {
   type InstallCandidate,
   inspectAddonCandidates,
+  validateCandidateSelection,
   validateGraph,
 } from './addon-install-candidates'
 import {
@@ -308,6 +309,10 @@ export async function installPackage(
       source: session.source,
       ...(session.host ? { host: session.host } : {}),
       candidates: session.candidates.map((candidate) => candidate.review),
+      providers: [
+        ...builtins,
+        ...installed.map(({ manifest }) => manifest),
+      ].map(({ id, requires }) => ({ id, ...(requires ? { requires } : {}) })),
     }
   } finally {
     session.active = false
@@ -338,6 +343,9 @@ async function refreshInstallSession(
       candidate.review.reasons = updated?.review.reasons.length
         ? updated.review.reasons
         : ['The addon files changed during installation. Try again.']
+    } else {
+      candidate.review.status = 'installable'
+      candidate.review.reasons = []
     }
   }
   session.abort.signal.throwIfAborted()
@@ -366,29 +374,28 @@ export async function installPackageSelection(
   const selected = keys.map((key) =>
     session.candidates.find((candidate) => candidate.review.key === key),
   )
-  if (
-    selected.some(
-      (candidate) => !candidate || candidate.review.status !== 'installable',
-    )
-  )
+  if (selected.some((candidate) => !candidate))
     throw new Error('Choose only available addons from this source.')
   const candidates = selected as InstallCandidate[]
   session.active = true
   const results = new Map<string, AddonInstallResult>()
   try {
     await refreshInstallSession(session, builtins)
-    const blocked = candidates.find(
-      (candidate) => candidate.review.status !== 'installable',
-    )
-    if (blocked) throw new Error(blocked.review.reasons.join('\n'))
-    const order = validateGraph(
-      candidates.map((candidate) => candidate.data!.manifest),
-      builtins,
-      installed,
-    )
+    const proposed = candidates.map((candidate) => ({
+      ...candidate,
+      review: { ...candidate.review, reasons: [...candidate.review.reasons] },
+    }))
+    const order = validateCandidateSelection(proposed, builtins, installed)
+    for (const candidate of proposed)
+      if (candidate.review.status !== 'installable')
+        results.set(candidate.review.key, {
+          key: candidate.review.key,
+          status: 'failed',
+          error: candidate.review.reasons.join('\n'),
+        })
     for (const addonId of order) {
-      const candidate = candidates.find(
-        (item) => item.data!.manifest.id === addonId,
+      const candidate = proposed.find(
+        (item) => item.data?.manifest.id === addonId,
       )!
       try {
         session.abort.signal.throwIfAborted()
@@ -414,7 +421,7 @@ export async function installPackageSelection(
       })
   } finally {
     session.active = false
-    await disposeInstallSession(session)
+    if (session.abort.signal.aborted) await disposeInstallSession(session)
   }
   return candidates.map((candidate) => results.get(candidate.review.key)!)
 }

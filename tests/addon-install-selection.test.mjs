@@ -341,6 +341,8 @@ test('batch installs providers first, keeps packages disabled, and copies only s
     (await fs.readdir(join(f.profile, 'installed-addons'))).sort(),
     ['consumer', 'provider'],
   )
+  assert.equal((await fs.readdir(f.temporary)).length, 1)
+  await f.api.cancelPackageInstall(f.window, session.id)
   assert.deepEqual(await fs.readdir(f.temporary), [])
   await assert.rejects(f.install(session, keys), /expired/)
 })
@@ -366,34 +368,84 @@ test('downloaded nested candidates use the same chooser and preserve third-party
     session.candidates.map(({ status }) => status),
     ['invalid', 'installable', 'installable'],
   )
-  const result = await f.install(
-    session,
-    session.candidates
-      .filter(({ status }) => status === 'installable')
-      .map(({ key }) => key),
+  const result = await f.install(session)
+  assert.deepEqual(
+    result.map(({ status }) => status),
+    ['failed', 'installed', 'installed'],
   )
-  assert.ok(result.every(({ status }) => status === 'installed'))
+  assert.ok(result[0].error)
   assert.deepEqual(f.order, ['provider', 'consumer'])
   assert.ok(
     f.api.installedAddons().every(({ source }) => source === 'third-party'),
   )
+  await f.api.cancelPackageInstall(f.window, session.id)
   assert.deepEqual(await fs.readdir(f.temporary), [])
 })
 
-test('deselected required providers reject the batch before writes', async (t) => {
+test('deselected providers fail only consumers and the downloaded session can retry', async (t) => {
   const f = await fixture(t)
-  await f.write([
+  const zip = zipFiles([
     ...packageFiles('consumer', 'consumer', {
       requires: { addons: [{ id: 'provider' }] },
     }),
+    ...packageFiles('independent', 'independent'),
     ...packageFiles('provider', 'provider'),
   ])
+  let downloads = 0
+  t.mock.method(globalThis, 'fetch', async () => {
+    downloads++
+    return new Response(zip)
+  })
+  const session = await f.prepare('https://example.com/packages.zip')
+  const key = (id) =>
+    session.candidates.find(({ manifest }) => manifest.id === id).key
+  const result = await f.install(session, [key('consumer'), key('independent')])
+  assert.deepEqual(
+    result.map(({ status }) => status),
+    ['failed', 'installed'],
+  )
+  assert.match(result[0].error, /unavailable addon "provider"/)
+  assert.deepEqual(f.order, ['independent'])
+  const retry = await f.install(session, [key('consumer'), key('provider')])
+  assert.ok(retry.every(({ status }) => status === 'installed'))
+  assert.deepEqual(f.order, ['independent', 'provider', 'consumer'])
+  assert.equal(downloads, 1)
+  await f.api.cancelPackageInstall(f.window, session.id)
+  assert.deepEqual(await fs.readdir(f.temporary), [])
+})
+
+test('deselected replacements reject only new cycles and remain available for retry', async (t) => {
+  const f = await fixture(t)
+  await f.write([
+    ...packageFiles('one', 'one'),
+    ...packageFiles('two', 'two', { requires: { addons: [{ id: 'one' }] } }),
+  ])
+  await f.install(await f.prepare())
+  await f.write([
+    ...packageFiles('one', 'one', {
+      version: '2.0.0',
+      requires: { addons: [{ id: 'two' }] },
+    }),
+    ...packageFiles('two', 'two', { version: '2.0.0' }),
+    ...packageFiles('independent', 'independent'),
+  ])
   const session = await f.prepare()
-  const result = await f.install(session, [session.candidates[0].key])
-  assert.equal(result[0].status, 'failed')
-  assert.match(result[0].error, /requires unknown addon "provider"/)
-  assert.deepEqual(f.order, [])
-  assert.deepEqual(f.api.installedAddons(), [])
+  const key = (id) =>
+    session.candidates.find(({ manifest }) => manifest.id === id).key
+  const result = await f.install(session, [key('one'), key('independent')])
+  assert.deepEqual(
+    result.map(({ status }) => status),
+    ['failed', 'installed'],
+  )
+  assert.match(result[0].error, /cycle/)
+  assert.equal(
+    f.api.installedAddons().find(({ manifest }) => manifest.id === 'one')
+      .manifest.version,
+    '1.0.0',
+  )
+  const retry = await f.install(session, [key('one'), key('two')])
+  assert.ok(retry.every(({ status }) => status === 'installed'))
+  assert.deepEqual(f.order, ['one', 'two', 'independent', 'two', 'one'])
 })
 
 test('a failed provider leaves per-row failures while an independent package commits', async (t) => {
@@ -485,7 +537,10 @@ test('changed metadata is rejected at selection and cancellation during disable 
     }),
   )
   const result = await f.install(stale)
-  assert.ok(result.every(({ status }) => status === 'failed'))
+  assert.deepEqual(
+    result.map(({ status }) => status),
+    ['failed', 'installed'],
+  )
   assert.match(result[0].error, /files changed/)
   const session = await f.prepare()
   f.preferences.set('one', true)
@@ -493,8 +548,13 @@ test('changed metadata is rejected at selection and cancellation during disable 
   const canceled = await f.install(session)
   assert.ok(canceled.every(({ status }) => status === 'failed'))
   assert.equal(f.preferences.get('one'), true)
-  assert.deepEqual(f.api.installedAddons(), [])
-  assert.deepEqual(await fs.readdir(join(f.profile, 'installed-addons')), [])
+  assert.deepEqual(
+    f.api.installedAddons().map(({ manifest }) => manifest.id),
+    ['two'],
+  )
+  assert.deepEqual(await fs.readdir(join(f.profile, 'installed-addons')), [
+    'two',
+  ])
 })
 
 test('cancellation after backup prevents publication and restores the old package', async (t) => {

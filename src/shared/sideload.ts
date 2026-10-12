@@ -27,6 +27,7 @@ export type AddonInstallSession = {
   source: 'local' | 'third-party'
   host?: string
   candidates: AddonInstallCandidate[]
+  providers: Pick<AddonManifest, 'id' | 'requires'>[]
 }
 export type AddonInstallResult = {
   key: string

@@ -12,9 +12,8 @@ export async function reviewAddonInstall(
 ): Promise<void> {
   let operation: Promise<AddonInstallResult[]> | undefined
   let cancellation: Promise<void> | undefined
-  let finished = false
   const cancel = () => {
-    if (finished || cancellation) return
+    if (cancellation) return
     cancellation = window.hibi.cancelAddonInstall(session.id)
     void cancellation.catch(() => {})
   }
@@ -28,9 +27,6 @@ export async function reviewAddonInstall(
           error: error instanceof Error ? error.message : String(error),
         })),
       )
-      .finally(() => {
-        finished = true
-      })
     return operation
   }
   try {
@@ -81,7 +77,48 @@ function AddonInstallChooser({
       ),
   )
   const [busy, setBusy] = useState(false)
+  const [canceled, setCanceled] = useState(false)
   const [results, setResults] = useState<AddonInstallResult[] | null>(null)
+  const completed = new Set(
+    results
+      ?.filter((result) => result.status === 'installed')
+      .map(({ key }) => key),
+  )
+  const providers = new Map(
+    session.providers.map((manifest) => [manifest.id, manifest]),
+  )
+  for (const candidate of session.candidates)
+    if (
+      candidate.manifest &&
+      (completed.has(candidate.key) ||
+        (candidate.status === 'installable' && selected.has(candidate.key)))
+    )
+      providers.set(candidate.manifest.id, candidate.manifest)
+  const missing = new Map(
+    session.candidates.map((candidate) => {
+      const pending = [...(candidate.manifest?.requires?.addons ?? [])]
+      const visited = new Set<string>()
+      const unavailable: string[] = []
+      for (const dependency of pending) {
+        if (dependency.optional || visited.has(dependency.id)) continue
+        visited.add(dependency.id)
+        const provider = providers.get(dependency.id)
+        if (provider) pending.push(...(provider.requires?.addons ?? []))
+        else unavailable.push(dependency.id)
+      }
+      return [candidate.key, unavailable]
+    }),
+  )
+  const remaining = session.candidates.filter(
+    (candidate) =>
+      candidate.status === 'installable' && !completed.has(candidate.key),
+  )
+  const keys = remaining
+    .filter(
+      (candidate) =>
+        selected.has(candidate.key) && !missing.get(candidate.key)?.length,
+    )
+    .map((candidate) => candidate.key)
   useEffect(() => {
     if (results) closeButton.current?.focus()
   }, [results])
@@ -91,11 +128,14 @@ function AddonInstallChooser({
     return () => signal.removeEventListener('abort', cancel)
   }, [signal, cancel])
   async function submit() {
-    if (busy || results || !selected.size || signal.aborted) return
+    if (busy || canceled || !keys.length || signal.aborted) return
     setBusy(true)
-    const next = await install([...selected])
+    const next = await install(keys)
     if (signal.aborted) return
-    setResults(next)
+    setResults((previous) => [
+      ...(previous ?? []).filter((result) => !keys.includes(result.key)),
+      ...next,
+    ])
     setBusy(false)
   }
   return (
@@ -105,6 +145,7 @@ function AddonInstallChooser({
           const manifest = candidate.manifest
           const details = `${id}-${index}-details`
           const result = results?.find((item) => item.key === candidate.key)
+          const unavailable = missing.get(candidate.key) ?? []
           const required = manifest?.requires?.addons?.filter(
             (provider) => !provider.optional,
           )
@@ -113,9 +154,13 @@ function AddonInstallChooser({
               <label className="addon-install-label">
                 <input
                   type="checkbox"
-                  checked={selected.has(candidate.key)}
+                  checked={selected.has(candidate.key) && !unavailable.length}
                   disabled={
-                    busy || !!results || candidate.status !== 'installable'
+                    busy ||
+                    canceled ||
+                    completed.has(candidate.key) ||
+                    candidate.status !== 'installable' ||
+                    !!unavailable.length
                   }
                   aria-describedby={details}
                   onChange={(event) => {
@@ -186,17 +231,20 @@ function AddonInstallChooser({
                       : 'Blocked package'}
                   </p>
                 )}
+                {!!unavailable.length && candidate.status === 'installable' && (
+                  <p>{`Select required providers: ${unavailable.join(', ')}`}</p>
+                )}
                 {candidate.reasons.map((reason) => (
                   <p key={reason}>{reason}</p>
                 ))}
               </div>
               <p aria-live="polite" aria-atomic="true">
-                {result
-                  ? result.status === 'installed'
-                    ? 'Installed — disabled'
-                    : `Failed: ${result.error ?? 'Could not install this addon.'}`
-                  : busy && selected.has(candidate.key)
-                    ? 'Installing…'
+                {busy && keys.includes(candidate.key)
+                  ? 'Installing…'
+                  : result
+                    ? result.status === 'installed'
+                      ? 'Installed — disabled'
+                      : `Failed: ${result.error ?? 'Could not install this addon.'}`
                     : results && candidate.status === 'installable'
                       ? 'Not selected'
                       : null}
@@ -206,16 +254,24 @@ function AddonInstallChooser({
         })}
       </ul>
       <div className="dialog-actions">
-        <Button ref={closeButton} onClick={busy ? cancel : close}>
-          {results ? 'Close' : 'Cancel'}
+        <Button
+          ref={closeButton}
+          onClick={() => {
+            if (busy) {
+              setCanceled(true)
+              cancel()
+            } else close()
+          }}
+        >
+          {busy || !results ? 'Cancel' : 'Close'}
         </Button>
-        {!results && (
+        {!canceled && !!remaining.length && (
           <Button
             className="dialog-primary"
-            disabled={busy || !selected.size}
+            disabled={busy || !keys.length}
             onClick={() => void submit()}
           >
-            {busy ? 'Installing…' : `Install selected (${selected.size})`}
+            {busy ? 'Installing…' : `Install selected (${keys.length})`}
           </Button>
         )}
       </div>

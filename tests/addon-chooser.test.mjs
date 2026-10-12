@@ -256,13 +256,17 @@ test('addon chooser reviews every candidate, supports keyboard selection, and se
     },
   )
   await t.test(
-    'unchecked providers stay unchecked and selection failure appears per row',
+    'unchecked providers disable consumers while independent rows install and the chooser can retry',
     async () => {
       await chooseFolder()
       await checkbox('provider').focus()
       await page.keyboard.press('Space')
-      assert.equal(await checkbox('consumer').isChecked(), true)
+      assert.equal(await checkbox('consumer').isDisabled(), true)
       assert.equal(await checkbox('provider').isChecked(), false)
+      assert.match(
+        await row('consumer').innerText(),
+        /Select required providers: chooser-provider/,
+      )
       await page.keyboard.press('Tab')
       await page.keyboard.press('Tab')
       assert.equal(
@@ -270,11 +274,12 @@ test('addon chooser reviews every candidate, supports keyboard selection, and se
         true,
       )
       await page.keyboard.press('Enter')
-      await row('consumer')
-        .getByText(/Failed:.*requires unknown addon/i)
+      await row('independent')
+        .getByText('Installed — disabled', { exact: true })
         .waitFor()
-      assert.match(await row('independent').innerText(), /Failed:/)
-      assert.match(await row('theme').innerText(), /Failed:/)
+      assert.match(await row('theme').innerText(), /Installed — disabled/)
+      assert.equal(await checkbox('consumer').isDisabled(), true)
+      assert.equal(await checkbox('provider').isEnabled(), true)
       assert.match(await row('provider').innerText(), /Not selected/)
       assert.equal(
         await dialog
@@ -286,11 +291,36 @@ test('addon chooser reviews every candidate, supports keyboard selection, and se
         await row('consumer').locator('[aria-live="polite"]').count(),
         1,
       )
+      await checkbox('provider').check()
+      assert.equal(await checkbox('consumer').isEnabled(), true)
+      await install.focus()
+      await page.keyboard.press('Enter')
+      await row('consumer')
+        .getByText('Installed — disabled', { exact: true })
+        .waitFor()
+      await row('provider')
+        .getByText('Installed — disabled', { exact: true })
+        .waitFor()
+      assert.equal(
+        await dialog
+          .getByRole('button', { name: 'Close', exact: true })
+          .evaluate((el) => el === document.activeElement),
+        true,
+      )
       await dismiss()
       assert.equal(
         (await page.evaluate(() => window.hibi.getInstalledAddons())).length,
-        0,
+        4,
       )
+      await chooseFolder()
+      await checkbox('provider').uncheck()
+      assert.equal(await checkbox('consumer').isEnabled(), true)
+      await page.keyboard.press('Escape')
+      await dialog.waitFor({ state: 'hidden' })
+      await page.evaluate(async () => {
+        for (const id of ['consumer', 'independent', 'provider', 'theme'])
+          await window.hibi.removeAddon(`chooser-${id}`)
+      })
     },
   )
   await t.test(

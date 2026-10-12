@@ -62,6 +62,11 @@ export function validateGraph(
   ).order.filter((id) => selected.has(id))
 }
 
+function block(candidate: InstallCandidate, reason: string) {
+  candidate.review.status = 'blocked'
+  candidate.review.reasons.push(reason)
+}
+
 export async function inspectAddonCandidates(
   inventory: AddonInventory,
   builtins: readonly AddonManifest[],
@@ -127,10 +132,6 @@ export async function inspectAddonCandidates(
     throw new Error(
       'No hibi-addon.json was found in this folder or repository.',
     )
-  const block = (candidate: InstallCandidate, reason: string) => {
-    candidate.review.status = 'blocked'
-    candidate.review.reasons.push(reason)
-  }
   // Conflicts use all prepared roots, before reserved IDs or provider policy.
   for (const candidate of prepared) {
     const duplicates = prepared.filter(
@@ -173,8 +174,17 @@ export async function inspectAddonCandidates(
         source: previous.source ?? 'local',
       }
   }
+  validateCandidateSelection(candidates, builtins, installed)
+  return candidates
+}
+
+export function validateCandidateSelection(
+  candidates: InstallCandidate[],
+  builtins: readonly AddonManifest[],
+  installed: readonly InstalledAddon[],
+): string[] {
   const available = () =>
-    prepared.filter((candidate) => candidate.review.status === 'installable')
+    candidates.filter((candidate) => candidate.review.status === 'installable')
   // A rejected provider cannot make its consumers installable.
   while (true) {
     const eligible = available()
@@ -228,10 +238,9 @@ export async function inspectAddonCandidates(
     }
     if (!changed) break
   }
-  validateGraph(
+  return validateGraph(
     available().map((candidate) => candidate.data!.manifest),
     builtins,
     installed,
   )
-  return candidates
 }

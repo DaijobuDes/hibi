@@ -4681,6 +4681,9 @@
   "d67c7a8d7229": [
     "src/addons/tags/Panel.tsx"
   ],
+  "eaaf1a44a912": [
+    "src/renderer/src/AddonInstallChooser.tsx"
+  ],
   "d00076041fb8": [
     "src/addons/dictionary/CustomWords.tsx"
   ],
