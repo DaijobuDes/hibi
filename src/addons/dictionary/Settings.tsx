@@ -14,50 +14,53 @@ export function Settings() {
   }
   return (
     <>
-      <SettingRow
-        id="dictionary-latin"
-        label="Words in Latin letters"
-        description="Results in this language are shown first. Other supported languages follow when they have an entry."
-      >
-        <Select
+      <div className="settings-group">
+        <SettingRow
           id="dictionary-latin"
-          value={value.latin}
-          onChange={(event) =>
-            change({
-              latin: event.target.value as LanguagePreferences['latin'],
-            })
-          }
+          label="Words in Latin letters"
+          description="Results in this language are shown first. Other supported languages follow when they have an entry."
         >
-          {(['en', 'fr', 'de', 'tl'] as const).map((lang) => (
-            <option key={lang} value={lang}>
-              {languageNames[lang]}
-            </option>
-          ))}
-        </Select>
-      </SettingRow>
-      <SettingRow
-        id="dictionary-han"
-        label="Words in Chinese characters"
-        description="Words written only in Chinese characters are looked up in this language first. Words with kana are always looked up in Japanese."
-      >
-        <Select
+          <Select
+            id="dictionary-latin"
+            value={value.latin}
+            onChange={(event) =>
+              change({
+                latin: event.target.value as LanguagePreferences['latin'],
+              })
+            }
+          >
+            {(['en', 'fr', 'de', 'tl'] as const).map((lang) => (
+              <option key={lang} value={lang}>
+                {languageNames[lang]}
+              </option>
+            ))}
+          </Select>
+        </SettingRow>
+        <SettingRow
           id="dictionary-han"
-          value={value.han}
-          onChange={(event) =>
-            change({ han: event.target.value as LanguagePreferences['han'] })
-          }
+          label="Words in Chinese characters"
+          description="Words written only in Chinese characters are looked up in this language first. Words with kana are always looked up in Japanese."
         >
-          {(['zh', 'yue', 'ja'] as const).map((lang) => (
-            <option key={lang} value={lang}>
-              {languageNames[lang]}
-            </option>
-          ))}
-        </Select>
-      </SettingRow>
-      <p>
+          <Select
+            id="dictionary-han"
+            value={value.han}
+            onChange={(event) =>
+              change({ han: event.target.value as LanguagePreferences['han'] })
+            }
+          >
+            {(['zh', 'yue', 'ja'] as const).map((lang) => (
+              <option key={lang} value={lang}>
+                {languageNames[lang]}
+              </option>
+            ))}
+          </Select>
+        </SettingRow>
+      </div>
+      <p className="setting-description">
         Word suggestions and learning are available in Autocomplete settings.
       </p>
       <CustomWords />
+      <h2>Offline language packs</h2>
       <PackSettings />
     </>
   )

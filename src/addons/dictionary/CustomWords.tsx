@@ -1,5 +1,5 @@
 import { useState, useSyncExternalStore } from 'react'
-import { Button, ControlRow, Select, TextArea, TextInput } from '../ui'
+import { Button, Select, SettingRow, TextArea, TextInput } from '../ui'
 import {
   addCustomWord,
   type CustomWord,
@@ -34,99 +34,109 @@ export function CustomWords() {
       className="dictionary-custom-words"
       aria-labelledby="dictionary-custom-words"
     >
-      <h3 id="dictionary-custom-words">Custom words</h3>
-      <p>
-        Words you add are shown as your word in lookups and come first in
-        suggestions. They stay on this computer and are never sent online.
-      </p>
-      <form
-        onSubmit={(event) => {
-          event.preventDefault()
-          addCustomWord({ word: draft })
-            .then(() => {
-              setDraft('')
-              setMessage('')
-            })
-            .catch((error) => setMessage(failed(error)))
-        }}
-      >
-        <ControlRow>
-          <TextInput
-            aria-label="New custom word"
-            placeholder="Add a word…"
-            maxLength={64}
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
+      <h2 id="dictionary-custom-words">Custom words</h2>
+      <div className="settings-group">
+        <SettingRow
+          id="dictionary-new-word"
+          label="New custom word"
+          description="Words you add are shown as your word in lookups and come first in suggestions. They stay on this computer and are never sent online."
+        >
+          <form
+            className="ui-control-row"
+            onSubmit={(event) => {
+              event.preventDefault()
+              addCustomWord({ word: draft })
+                .then(() => {
+                  setDraft('')
+                  setMessage('')
+                })
+                .catch((error) => setMessage(failed(error)))
+            }}
+          >
+            <TextInput
+              id="dictionary-new-word"
+              placeholder="Add a word…"
+              maxLength={64}
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+            />
+            <Button type="submit" disabled={!draft.trim()}>
+              Add
+            </Button>
+          </form>
+        </SettingRow>
+        {words.length ? (
+          <ul>
+            {words.map((item) => (
+              <li key={item.id} className="setting-row">
+                <span className="dictionary-custom-word" lang={item.lang}>
+                  {item.word}
+                </span>
+                <Select
+                  aria-label={`Language of “${item.word}”`}
+                  value={item.lang ?? ''}
+                  onChange={(event) => {
+                    const lang = event.target.value as Lang | ''
+                    void edit(item, ({ lang: _old, ...rest }) =>
+                      lang ? { ...rest, lang } : rest,
+                    )
+                  }}
+                >
+                  <option value="">Any language</option>
+                  {LANGS.map((lang) => (
+                    <option key={lang} value={lang}>
+                      {languageNames[lang]}
+                    </option>
+                  ))}
+                </Select>
+                <TextInput
+                  aria-label={`Note for “${item.word}”`}
+                  placeholder="Note or definition"
+                  maxLength={2000}
+                  defaultValue={item.note ?? ''}
+                  onBlur={(event) => {
+                    const note = event.target.value.trim()
+                    if (note === (item.note ?? '')) return
+                    void edit(item, ({ note: _old, ...rest }) =>
+                      note ? { ...rest, note } : rest,
+                    )
+                  }}
+                />
+                <Button
+                  variant="ghost"
+                  aria-label={`Remove “${item.word}”`}
+                  onClick={() =>
+                    updateCustomWords((current) =>
+                      current.filter((other) => other.id !== item.id),
+                    )
+                      .then(() => setMessage(''))
+                      .catch((error) => setMessage(failed(error)))
+                  }
+                >
+                  Remove
+                </Button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="setting-row">
+            <p>No custom words yet.</p>
+          </div>
+        )}
+        <SettingRow
+          id="dictionary-words-text"
+          label="Custom words as text"
+          description="One word per line. Add a tab, a language code such as en, and a note to keep them."
+        >
+          <TextArea
+            id="dictionary-words-text"
+            rows={4}
+            value={text}
+            onChange={(event) => setText(event.target.value)}
           />
-          <Button type="submit" disabled={!draft.trim()}>
-            Add
-          </Button>
-        </ControlRow>
-      </form>
-      {words.length ? (
-        <ul>
-          {words.map((item) => (
-            <li key={item.id}>
-              <span className="dictionary-custom-word" lang={item.lang}>
-                {item.word}
-              </span>
-              <Select
-                aria-label={`Language of “${item.word}”`}
-                value={item.lang ?? ''}
-                onChange={(event) => {
-                  const lang = event.target.value as Lang | ''
-                  void edit(item, ({ lang: _old, ...rest }) =>
-                    lang ? { ...rest, lang } : rest,
-                  )
-                }}
-              >
-                <option value="">Any language</option>
-                {LANGS.map((lang) => (
-                  <option key={lang} value={lang}>
-                    {languageNames[lang]}
-                  </option>
-                ))}
-              </Select>
-              <TextInput
-                aria-label={`Note for “${item.word}”`}
-                placeholder="Note or definition"
-                maxLength={2000}
-                defaultValue={item.note ?? ''}
-                onBlur={(event) => {
-                  const note = event.target.value.trim()
-                  if (note === (item.note ?? '')) return
-                  void edit(item, ({ note: _old, ...rest }) =>
-                    note ? { ...rest, note } : rest,
-                  )
-                }}
-              />
-              <Button
-                variant="ghost"
-                aria-label={`Remove “${item.word}”`}
-                onClick={() =>
-                  updateCustomWords((current) =>
-                    current.filter((other) => other.id !== item.id),
-                  )
-                    .then(() => setMessage(''))
-                    .catch((error) => setMessage(failed(error)))
-                }
-              >
-                Remove
-              </Button>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p>No custom words yet.</p>
-      )}
-      <TextArea
-        aria-label="Custom words as text"
-        placeholder="One word per line. Add a tab, a language code such as en, and a note to keep them."
-        rows={4}
-        value={text}
-        onChange={(event) => setText(event.target.value)}
-      />
-      <ControlRow>
+        </SettingRow>
+      </div>
+      <div className="workspace-setting-actions">
         <Button
           onClick={() => {
             const exported = exportCustomWords(words)
@@ -161,8 +171,12 @@ export function CustomWords() {
         >
           Import text
         </Button>
-      </ControlRow>
-      {message && <p role="status">{message}</p>}
+      </div>
+      {message && (
+        <p role="status" className="setting-description">
+          {message}
+        </p>
+      )}
     </section>
   )
 }
