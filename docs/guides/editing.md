@@ -10,7 +10,9 @@ While you type in the source pane, the formatted pane may catch up shortly after
 
 Choose your starting view under **Settings → Editor → Layout → Default view**. Only views supported by the current [format](../editing/formats.md) are available. You can switch from the toolbar or use a [keyboard shortcut](../editing/typing-and-shortcuts.md).
 
-Switching views preserves your source. Normal view stays editable regardless of character count or word count. Hibi keeps untouched Markdown when you edit formatted text, including when addons such as LaTeX are enabled, and rejects an edit if it cannot prove the resulting source is safe. Use Source view for syntax the formatted editor cannot preserve, including some raw HTML and reference definitions.
+Switching views preserves your source. Normal view stays editable regardless of character count or word count. Hibi keeps untouched Markdown when you edit formatted text, including when addons such as LaTeX are enabled, and rejects an edit if it cannot prove the resulting source is safe. Use Source view for syntax the formatted editor cannot preserve, including reference definitions.
+
+Raw HTML appears as a monospace source chip or box in Normal view. Hibi preserves the markup without running it or turning it into live HTML. Click a chip or box to select it, then press Delete or Backspace to remove it as a unit. Use Source view to edit the HTML itself. A chip can include surrounding Markdown formatting to keep the whole fragment intact. When HTML surrounds several Markdown blocks, its opening and closing fragments appear in separate boxes, and you can edit the Markdown between them. Plain `<br>` tags remain line breaks and keep their original spelling when saved. Copying or dragging a chip within the same window preserves it while its copied content is still recognized, including with native copy and paste on Windows. Pasting a chip into another window or after reloading inserts inline code or a fenced code block instead.
 
 When you use an input method, choosing and revising candidates remains one undo step even if you pause between candidates. Each new composition starts a separate undo step in both source and formatted views.
 
@@ -31,6 +33,8 @@ To keep one file open at a time, turn off **Settings → Editor → Documents �
 ## Format text
 
 Select text, then choose a toolbar action. In side-by-side view, formatting actions are available while the source pane is focused. The toolbar offers tools for the current format, with extra buttons in the **More** menu. Within an editable formatted table, additional actions let you add or remove rows and columns.
+
+To resize a table column or row in Normal view, drag the right or bottom border of a cell. Columns and rows never shrink below their content. Double-click a border to return that column or row to its automatic size. Sizes are not part of the Markdown, so resizing never changes the file or adds an undo step. For files in a workspace, Hibi remembers sizes in `.hibi/layout.json`. Files outside a workspace keep their sizes only until you close them. Hibi recognizes each table by its position in the file and its header row, so sizes reset when you move a table or edit its header in Source view or another app. Exports use automatic sizes.
 
 In Normal view and its side-by-side preview, soft line breaks and surrounding spaces or tabs display as a single space, including inside task items. Repeated spaces and tabs elsewhere keep their width.
 

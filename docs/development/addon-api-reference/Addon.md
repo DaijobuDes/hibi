@@ -2,7 +2,7 @@
 
 # Addon
 
-Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L894)
+Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L922)
 
 A renderer addon and its lifecycle hooks. Use defineAddon to check this contract in source addons.
 
@@ -43,7 +43,7 @@ type Addon = {
 
 ### manifest
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L895)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L923)
 
 ```typescript
 manifest: AddonManifest
@@ -53,7 +53,7 @@ Related: [AddonManifest](AddonManifest.md).
 
 ### flavors
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L898)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L926)
 
 Lightweight descriptors remain discoverable while a bundled addon is disabled.
 
@@ -65,7 +65,7 @@ Related: [MarkdownFlavor](MarkdownFlavor.md).
 
 ### Settings
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L901)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L929)
 
 Optional settings content. The host supplies its heading and metadata.
 
@@ -75,7 +75,7 @@ Settings?: ComponentType
 
 ### windows
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L903)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L931)
 
 Window content by local window ID. Hibi loads this module in the window's own renderer and never calls `start` there.
 
@@ -89,7 +89,7 @@ Related: [AddonWindowProps](AddonWindowProps.md).
 
 ### start
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L896)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L924)
 
 ```typescript
 start: (context: AddonContext) => void | Promise<void>
@@ -107,7 +107,7 @@ Related: [AddonContext](AddonContext.md).
 
 ### stop
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L899)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L927)
 
 ```typescript
 stop?: () => void

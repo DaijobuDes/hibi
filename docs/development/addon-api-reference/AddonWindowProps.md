@@ -2,7 +2,7 @@
 
 # AddonWindowProps
 
-Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L604)
+Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L629)
 
 Props for a component in `Addon.windows`. It runs in a separate renderer with only these APIs.
 
@@ -41,7 +41,7 @@ type AddonWindowProps = {
 
 ### input
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L606)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L631)
 
 The JSON input passed to `windows.open`.
 
@@ -53,7 +53,7 @@ input: unknown
 
 ### native.query
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L609)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L634)
 
 ```typescript
 native.query: <T = unknown>(method: string, input?: unknown) => Promise<T>
@@ -70,7 +70,7 @@ native.query: <T = unknown>(method: string, input?: unknown) => Promise<T>
 
 ### native.invoke
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L610)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L635)
 
 ```typescript
 native.invoke: <T = unknown>(method: string, input?: unknown) => Promise<T>
@@ -87,7 +87,7 @@ native.invoke: <T = unknown>(method: string, input?: unknown) => Promise<T>
 
 ### close
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L613)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L638)
 
 Close this window.
 

@@ -2,7 +2,7 @@
 
 # AddonCommand
 
-Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L274)
+Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L276)
 
 <details>
 <summary>Declaration</summary>
@@ -55,7 +55,7 @@ type AddonCommand = {
 
 ### id
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L276)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L278)
 
 Local id; the host prefixes it with the addon id.
 
@@ -65,7 +65,7 @@ id: string
 
 ### label
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L277)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L279)
 
 ```typescript
 label: string
@@ -73,7 +73,7 @@ label: string
 
 ### keywords
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L279)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L281)
 
 Searchable terms in the command palette, without duplicating the label.
 
@@ -83,7 +83,7 @@ keywords?: string
 
 ### workspace
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L281)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L283)
 
 Also show this command below the workspace tree.
 
@@ -93,7 +93,7 @@ workspace?: boolean
 
 ### defaultShortcut
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L283)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L285)
 
 Hibi in-app shortcut syntax; mod maps to Command on macOS and Control elsewhere.
 
@@ -103,7 +103,7 @@ defaultShortcut?: string
 
 ### menu
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L285)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L287)
 
 Show this command in a built-in menu.
 
@@ -115,7 +115,7 @@ Related: [CommandMenuContribution](CommandMenuContribution.md).
 
 ### slash
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L291)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L293)
 
 Optional whole-note action exposed by the slash-commands addon.
 
@@ -129,7 +129,7 @@ Related: [AddonSlashCommand](AddonSlashCommand.md).
 
 ### when
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L287)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L289)
 
 Cheap synchronous check against the context captured when invoked.
 
@@ -151,7 +151,7 @@ Related: [CommandExecutionContext](CommandExecutionContext.md).
 
 ### run
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L292)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L294)
 
 ```typescript
 run: (

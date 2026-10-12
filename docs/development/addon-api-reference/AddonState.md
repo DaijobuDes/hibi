@@ -2,13 +2,19 @@
 
 # AddonState
 
-Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L307)
+Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L309)
 
 <details>
 <summary>Declaration</summary>
 
 ```typescript
-type AddonState = { id: string; enabled: boolean }
+type AddonState = {
+  id: string
+  /** The user's preference, retained while required addons are unavailable. */
+  enabled: boolean
+  /** Missing or disabled required addon IDs. Blocked addons cannot run. */
+  blockedBy?: readonly string[]
+}
 ```
 
 </details>
@@ -19,12 +25,13 @@ type AddonState = { id: string; enabled: boolean }
 
 - [id](#id)
 - [enabled](#enabled)
+- [blockedBy](#blockedby)
 
 ## Properties
 
 ### id
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L307)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L310)
 
 ```typescript
 id: string
@@ -32,8 +39,20 @@ id: string
 
 ### enabled
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L307)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L312)
+
+The user's preference, retained while required addons are unavailable.
 
 ```typescript
 enabled: boolean
+```
+
+### blockedBy
+
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L314)
+
+Missing or disabled required addon IDs. Blocked addons cannot run.
+
+```typescript
+blockedBy?: readonly string[]
 ```

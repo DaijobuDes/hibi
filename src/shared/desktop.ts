@@ -158,6 +158,8 @@ export type DesktopApi = {
       hotkeys: Hotkeys
       workspace: WorkspaceState | null
       externalPending: boolean
+      /** Installed builds may show the first-run introduction unless launched with files; development and tests need --hibi-introduction. */
+      introduction: boolean
     }>
     addons: () => Promise<{
       states: AddonState[]
@@ -217,7 +219,11 @@ export type DesktopApi = {
     appearance: import('./colorschemes').NativeAppearance,
   ) => Promise<void>
   getAddonStates: () => Promise<AddonState[]>
-  setAddonEnabled: (id: string, enabled: boolean) => Promise<AddonState[]>
+  setAddonEnabled: (
+    id: string,
+    enabled: boolean,
+    includeRequired?: boolean,
+  ) => Promise<AddonState[]>
   readAddonStorage: (
     request: import('./addon-storage').AddonStorageReadRequest,
   ) => Promise<import('./addon-storage').AddonStorageReadResult>
@@ -294,6 +300,14 @@ export type DesktopApi = {
   subscribeWorkspaceChanges: (
     callback: import('./workspace').WorkspaceChangeListener,
   ) => Promise<import('./workspace').WorkspaceChangeSubscription>
+  /** Null when the document is not saved inside the open workspace. */
+  readTableLayout: (
+    tabId: string,
+  ) => Promise<import('./table-layout').TableLayout[] | null>
+  writeTableLayout: (
+    tabId: string,
+    tables: import('./table-layout').TableLayout[],
+  ) => Promise<void>
   readWorkspaceText: (
     owner: string,
     target: import('./foundation-contracts').WorkspaceTarget,
