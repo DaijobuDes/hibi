@@ -20,7 +20,7 @@ Turn off **Learn from my writing** to pause learning and personal ranking. Offli
 
 ## Clear learned words
 
-Choose **Clear learned words** in Autocomplete settings, select **This workspace** or **All workspaces**, and confirm. Outside a workspace, the first choice clears the shared history for documents outside workspaces. You can also run **Autocomplete: clear learned words** from the command palette.
+Choose **Clear learned words** in Autocomplete settings, select **This workspace** or **Everything**, and confirm. Outside a workspace, the first choice clears the shared history for documents outside workspaces. You can also run **Autocomplete: clear learned words** from the command palette.
 
 Clearing removes the selected counts from memory and writes the cleared data to disk immediately, including histories for workspaces that are not open. The success notice appears after the disk write completes. Dictionary packs and custom dictionary words are kept. New typing can begin learning again while learning is enabled.
 

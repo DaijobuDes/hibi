@@ -48,7 +48,7 @@ export function Settings() {
       <SettingRow
         id="autocomplete-tab-accepts"
         label="Accept suggestions with Tab"
-        description="When suggestions are showing, Tab inserts the highlighted word. Enter always does. Without suggestions, Tab works as usual."
+        description="Tab accepts a suggestion when enabled. Enter accepts a highlighted word completion and starts a new paragraph for next-word suggestions. Without suggestions, Tab works as usual."
       >
         <Toggle
           id="autocomplete-tab-accepts"
@@ -150,7 +150,7 @@ export function Settings() {
               ? 'This workspace'
               : 'Documents outside workspaces'}
           </option>
-          <option value="all">All workspaces</option>
+          <option value="all">Everything</option>
         </Select>
         <Button
           disabled={!controls || clearing}

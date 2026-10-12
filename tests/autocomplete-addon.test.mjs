@@ -305,7 +305,7 @@ test('autocomplete learns locally, disables learning, excludes documents and cle
     .click()
   await page
     .getByRole('dialog', { name: 'Clear learned words' })
-    .getByRole('button', { name: 'All workspaces', exact: true })
+    .getByRole('button', { name: 'Everything', exact: true })
     .click()
   await confirmation
     .getByRole('button', { name: 'Clear learned words', exact: true })

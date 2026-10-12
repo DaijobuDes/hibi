@@ -153,7 +153,7 @@ export default defineAddon({
                   ? 'This workspace'
                   : 'Documents outside workspaces'}
               </Button>
-              <Button onClick={() => close(true)}>All workspaces</Button>
+              <Button onClick={() => close(true)}>Everything</Button>
             </div>
           ),
         }).result
