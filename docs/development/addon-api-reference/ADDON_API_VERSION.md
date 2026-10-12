@@ -2,7 +2,7 @@
 
 # ADDON_API_VERSION
 
-Constant · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L83)
+Constant · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L84)
 
 Increment when a public contract changes incompatibly.
 

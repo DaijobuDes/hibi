@@ -16,7 +16,9 @@ notice.update({ message: 'documentation exported', description: '', variant: 'su
 // notice.dismiss() closes this notification; context.toasts.dismissAll() closes this addon's notices.
 ```
 
-`show` accepts `message` and optional `description`, `variant` (`info`, `success`, or `error`), and `duration` in milliseconds. A duration of zero disables automatic dismissal and hides the progress line. `update` preserves the remaining time unless given a new duration. Every notification has a close button. Errors use an assertive live region; other notices use polite announcements.
+`show` accepts `message` and optional `description`, `variant` (`info`, `success`, or `error`), `duration` in milliseconds, and `action: { label, run }`. A duration of zero disables automatic dismissal and hides the progress line. `update` preserves the remaining time unless given a new duration. Every notification has a close button. Errors use an assertive live region; other notices use polite announcements.
+
+An `action` makes the whole notification clickable and renders a ghost button with its label. The button is the keyboard target; its accessible name is the message followed by the label. Selecting runs `run` once and then dismisses, even if `run` throws. Notifications never take focus. **Focus notifications** (palette command, unbound by default, rebindable in Settings → Hotkeys) focuses the newest one. Toast buttons use `tabIndex={-1}`, so plain `Tab` never enters the stack; inside it, arrows cycle buttons and `Tab` past either end restores focus; `Escape` dismisses it and focus returns to the element focused before entering the stack. Core targets: update available opens About at `install-update`; addon startup and modal-switch errors open Addons at that addon. Main-process notices pass a target string as the second argument on the notice channel; the preload drops unknown targets.
 
 `getPreferences()` returns a copy. `setPreferences({ position, duration })` updates window defaults. Position names use `center`, such as `top-center`; durations range from 0 to 600,000 ms.
 

@@ -531,6 +531,13 @@ test('scoped text service guards reads, creates and closed-file updates', async 
     ).code,
     'conflict',
   )
+  const layout = join(root, '.hibi/layout.json')
+  const sized = { tables: [{ key: '0:a', columns: [120], rows: null }] }
+  await mkdir(join(root, '.hibi'))
+  await writeFile(
+    layout,
+    JSON.stringify({ version: 1, documents: { 'image.bin': sized } }),
+  )
   const renamed = await renameWorkspaceFile(
     target,
     'image.bin',
@@ -538,6 +545,9 @@ test('scoped text service guards reads, creates and closed-file updates', async 
     binaryRead.value.version,
   )
   assert.equal(renamed.ok, true)
+  assert.deepEqual(JSON.parse(await readFile(layout, 'utf8')).documents, {
+    'renamed.bin': sized,
+  })
   assert.equal(renamed.value.sourceRemoved, true)
   assert.equal(renamed.value.atomicVisibility, false)
   assert.deepEqual(
@@ -566,6 +576,9 @@ test('scoped text service guards reads, creates and closed-file updates', async 
   )
   assert.equal(partial.ok, true)
   assert.equal(partial.value.sourceRemoved, false)
+  assert.deepEqual(JSON.parse(await readFile(layout, 'utf8')).documents, {
+    'renamed.bin': sized,
+  })
   assert.equal(existsSync(join(root, 'renamed.bin')), true)
   assert.equal(existsSync(join(root, 'retained.bin')), true)
   host.guard = () => true

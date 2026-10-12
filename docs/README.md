@@ -4,6 +4,7 @@ Start with [editing](guides/editing.md), or choose a topic below.
 
 ## Write and organize
 
+- [First-run introduction](guides/introduction.md)
 - [Editing, tabs, and saving](guides/editing.md)
 - [Keyboard shortcuts](editing/typing-and-shortcuts.md)
 - [Capture a quick note](guides/quick-note.md)
@@ -18,6 +19,7 @@ Start with [editing](guides/editing.md), or choose a topic below.
 ## Make Hibi yours
 
 - [Settings and addons](guides/settings.md)
+- [Running in the background](features/background.md)
 - [Addon dependencies and toolchains](features/dependencies.md)
 - [Performance diagnostics](features/diagnostics.md)
 - [Local diagnostic reports](features/local-logs.md)

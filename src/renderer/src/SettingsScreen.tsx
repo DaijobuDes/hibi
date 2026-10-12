@@ -50,6 +50,7 @@ import {
   settingsNavigation,
 } from './settings-categories'
 import { settingsCategory, settingsPages } from './settings-pages'
+import { tabIndent } from './tab-indent'
 import { WorkspaceSettings } from './WorkspaceSettings'
 
 class PluginSettingsBoundary extends Component<
@@ -95,6 +96,7 @@ export function SettingsScreen({
   hideTitlebar,
   onHideTitlebar,
   info,
+  onShowIntroduction,
   hotkeys,
   onHotkeys,
   addonStates,
@@ -138,6 +140,7 @@ export function SettingsScreen({
   hideTitlebar: boolean
   onHideTitlebar: (hide: boolean) => void
   info: AppInfo | null
+  onShowIntroduction: () => void
   hotkeys: Hotkeys
   onHotkeys: (hotkeys: Hotkeys) => void
   addonStates: AddonState[]
@@ -176,7 +179,10 @@ export function SettingsScreen({
     settingsPages.snapshot,
   )
   const extraPages = registered.pages.filter((page) =>
-    addonStates.some((state) => state.id === page.owner && state.enabled),
+    addonStates.some(
+      (state) =>
+        state.id === page.owner && state.enabled && !state.blockedBy?.length,
+    ),
   )
   const searchable = [
     ...indexed,
@@ -201,11 +207,18 @@ export function SettingsScreen({
     target?.focus({ preventScroll: true })
   }, [open, sidebarOpen])
   const casing = useSyncExternalStore(uiCase.subscribe, uiCase.snapshot)
+  const indentation = useSyncExternalStore(
+    tabIndent.subscribe,
+    tabIndent.snapshot,
+  )
   const pluginPages = addons.filter(
     (addon) =>
       (!!addon.manifest.fileExtensions?.length || addon.Settings) &&
       addonStates.some(
-        (state) => state.id === addon.manifest.id && state.enabled,
+        (state) =>
+          state.id === addon.manifest.id &&
+          state.enabled &&
+          !state.blockedBy?.length,
       ),
   )
   const items: SidebarItem[] = settingsNavigation(
@@ -376,7 +389,10 @@ export function SettingsScreen({
             hidden={category !== 'hibi'}
           >
             {(discover || (open && (category === 'hibi' || searching))) && (
-              <HibiSettings info={info} />
+              <HibiSettings
+                info={info}
+                onShowIntroduction={onShowIntroduction}
+              />
             )}
           </section>
           <section
@@ -443,6 +459,38 @@ export function SettingsScreen({
                     onShowMarkdownMarkers(event.target.checked)
                   }
                 />
+              </SettingRow>
+              <SettingRow
+                id="tab-indent"
+                label="Tab key indents"
+                description="Turn off to move focus with Tab. Lists and tables keep their Tab behavior."
+              >
+                <Toggle
+                  id="tab-indent"
+                  aria-describedby="tab-indent-description"
+                  checked={indentation.enabled}
+                  onChange={(event) =>
+                    tabIndent.set({ enabled: event.target.checked })
+                  }
+                />
+              </SettingRow>
+              <SettingRow
+                id="indent-unit"
+                label="Indent with"
+                description="Used when a file has no indented lines yet."
+              >
+                <Select
+                  id="indent-unit"
+                  aria-describedby="indent-unit-description"
+                  value={indentation.unit}
+                  onChange={(event) =>
+                    tabIndent.set({ unit: event.target.value })
+                  }
+                >
+                  <option value={'\t'}>Tabs</option>
+                  <option value="  ">2 spaces</option>
+                  <option value="    ">4 spaces</option>
+                </Select>
               </SettingRow>
             </div>
             <AutosaveSettings />

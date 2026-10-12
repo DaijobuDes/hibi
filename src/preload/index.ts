@@ -11,6 +11,7 @@ import {
   type AddonStorageChange,
 } from '../shared/addon-storage'
 import { ANALYSIS_CHANNELS } from '../shared/analysis'
+import { BACKGROUND_CHANNELS } from '../shared/background'
 import { APPEARANCE_CHANNEL } from '../shared/colorschemes'
 import { DEPENDENCY_CHANNELS } from '../shared/dependencies'
 import {
@@ -41,6 +42,7 @@ import { DIAGNOSTIC_CHANNEL } from '../shared/local-diagnostics'
 import { MEDIA_CHANNELS } from '../shared/media'
 import { SELECTED_TEXT_CHANNELS } from '../shared/selected-text'
 import { SIDELOAD_CHANNELS } from '../shared/sideload'
+import { TABLE_LAYOUT_CHANNELS } from '../shared/table-layout'
 import { UI_CASE_CHANNEL } from '../shared/ui-case'
 import { UPDATE_CHANNELS, type UpdateState } from '../shared/updates'
 import {
@@ -178,6 +180,7 @@ if (process.isMainFrame) {
   }
   for (const pending of [startupDocument, startupAddons, startupKnown])
     void pending.catch(() => {})
+  let backgroundSettingsReady = false
   contextBridge.exposeInMainWorld('hibi', {
     registerGlobalShortcut: (id, accelerator, token) =>
       ipcRenderer.invoke(
@@ -196,6 +199,21 @@ if (process.isMainFrame) {
       ipcRenderer.on(GLOBAL_SHORTCUT_CHANNELS.invoked, listener)
       return () =>
         ipcRenderer.removeListener(GLOBAL_SHORTCUT_CHANNELS.invoked, listener)
+    },
+    getBackgroundMode: () => transport.invoke(BACKGROUND_CHANNELS.get),
+    setBackgroundMode: (enabled) =>
+      transport.invoke(BACKGROUND_CHANNELS.set, enabled),
+    onOpenSettings: (callback) => {
+      const listener = () => callback()
+      transport.on(BACKGROUND_CHANNELS.settings, listener)
+      if (!backgroundSettingsReady) {
+        backgroundSettingsReady = true
+        void transport
+          .invoke(BACKGROUND_CHANNELS.settingsReady)
+          .catch(console.error)
+      }
+      return () =>
+        transport.removeListener(BACKGROUND_CHANNELS.settings, listener)
     },
     getUpdateState: () => transport.invoke(UPDATE_CHANNELS.get),
     setUpdateChannel: (channel) =>
@@ -289,8 +307,11 @@ if (process.isMainFrame) {
     previewVersion: (id) => ipcRenderer.invoke(HISTORY_CHANNELS.preview, id),
     restoreVersion: (id) => ipcRenderer.invoke(HISTORY_CHANNELS.restore, id),
     onNotice: (callback) => {
-      const listener = (_event: Electron.IpcRendererEvent, message: string) =>
-        callback(message)
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        message: string,
+        target?: 'updates',
+      ) => callback(message, target === 'updates' ? target : undefined)
       ipcRenderer.on(HISTORY_CHANNELS.notice, listener)
       return () => {
         ipcRenderer.removeListener(HISTORY_CHANNELS.notice, listener)
@@ -302,8 +323,8 @@ if (process.isMainFrame) {
     setAppearance: (appearance) =>
       ipcRenderer.invoke(APPEARANCE_CHANNEL, appearance),
     getAddonStates: () => ipcRenderer.invoke(ADDON_CHANNELS.states),
-    setAddonEnabled: (id, enabled) =>
-      ipcRenderer.invoke(ADDON_CHANNELS.enable, id, enabled),
+    setAddonEnabled: (id, enabled, includeRequired) =>
+      ipcRenderer.invoke(ADDON_CHANNELS.enable, id, enabled, includeRequired),
     readAddonStorage: (request) =>
       transport.invoke(ADDON_STORAGE_CHANNELS.read, request),
     writeAddonStorage: (request) =>
@@ -354,6 +375,10 @@ if (process.isMainFrame) {
     listWorkspaceEntryPage: (owner, request) =>
       ipcRenderer.invoke(WORKSPACE_CHANNELS.listPage, owner, request),
     subscribeWorkspaceChanges,
+    readTableLayout: (tabId) =>
+      ipcRenderer.invoke(TABLE_LAYOUT_CHANNELS.read, tabId),
+    writeTableLayout: (tabId, tables) =>
+      ipcRenderer.invoke(TABLE_LAYOUT_CHANNELS.write, tabId, tables),
     readWorkspaceText: (owner, target, path) =>
       ipcRenderer.invoke(WORKSPACE_CHANNELS.readText, owner, target, path),
     readWorkspaceBinary: (owner, target, path) =>

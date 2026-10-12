@@ -10,12 +10,15 @@ For installed packages, use the [SideloadFactory](SideloadFactory.md) and the [s
 
 - [Addon](Addon.md)
 - [ADDON_API_VERSION](ADDON_API_VERSION.md)
+- [AddonAccessApi](AddonAccessApi.md)
 - [AddonApp](AddonApp.md)
 - [AddonAuthor](AddonAuthor.md)
 - [AddonCapability](AddonCapability.md)
 - [AddonCommand](AddonCommand.md)
 - [AddonCommandDescriptor](AddonCommandDescriptor.md)
 - [AddonContext](AddonContext.md)
+- [AddonExports](AddonExports.md)
+- [AddonExportsApi](AddonExportsApi.md)
 - [AddonManifest](AddonManifest.md)
 - [AddonSlashCommand](AddonSlashCommand.md)
 - [AddonState](AddonState.md)
@@ -188,6 +191,7 @@ For installed packages, use the [SideloadFactory](SideloadFactory.md) and the [s
 
 ## Notifications
 
+- [ToastAction](ToastAction.md)
 - [ToastApi](ToastApi.md)
 - [ToastHandle](ToastHandle.md)
 - [ToastOptions](ToastOptions.md)

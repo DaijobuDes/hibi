@@ -24,6 +24,11 @@ import {
   type ViewInstance,
   type ViewRegistration,
 } from '../../addons/api'
+import {
+  addonDependents,
+  requiredAddonDependencyMap,
+  resolveAddonDependencies,
+} from '../../shared/addon-dependencies'
 import type { AddonHotkeyRegistration } from '../../shared/addon-hotkeys'
 import {
   documentExtension,
@@ -44,6 +49,7 @@ import { performanceDiagnostics } from '../../ui/diagnostics'
 import { menus } from '../../ui/menu-store'
 import { useToastService } from '../../ui/Sonner'
 import { createTooltipScope } from '../../ui/tooltip-store'
+import { createAddonExchange } from './addon-exchange'
 import { createAddonGlobalShortcuts } from './addon-global-shortcuts'
 import { createAddonOverrides } from './addon-overrides'
 import { addonRegistry } from './addon-registry'
@@ -116,6 +122,7 @@ function sameHotkey(left: HotkeyDescriptor, right: HotkeyDescriptor): boolean {
   return (
     left.label === right.label &&
     left.defaultShortcut === right.defaultShortcut &&
+    left.runnableOnly === right.runnableOnly &&
     left.menu?.location === right.menu?.location &&
     left.menu?.group === right.menu?.group &&
     left.menu?.order === right.menu?.order
@@ -148,8 +155,11 @@ type Environment = Omit<
   | 'storage'
   | 'dependencies'
   | 'globalShortcuts'
+  | 'addons'
+  | 'exports'
 > & {
   openDependencySettings: () => void
+  openAddonSettings: (id?: string) => void
   workspace: Pick<
     AddonContext['workspace'],
     'index' | 'snapshot' | 'get' | 'open' | 'openFile'
@@ -204,10 +214,40 @@ export function useAddons(
   const modalSwitch = useRef<{
     requested: string
     previous: string | null
+    enabled: readonly string[]
+    restoring?: boolean
   } | null>(null)
   const [loadFailed, setLoadFailed] = useState(false)
   const [requested, setRequested] = useState<ReadonlySet<string>>(new Set())
-  const relevant = useCallback(
+  const manifests = useMemo(
+    () => catalog.map((addon) => addon.manifest),
+    [catalog],
+  )
+  const dependencies = useMemo(
+    () => requiredAddonDependencyMap(manifests),
+    [manifests],
+  )
+  const resolution = useMemo(
+    () =>
+      resolveAddonDependencies(
+        manifests,
+        states.map((state) => ({
+          ...state,
+          enabled: state.enabled && settled.get(state.id) !== false,
+        })),
+      ),
+    [manifests, states, settled],
+  )
+  const available = useMemo(() => new Set(resolution.order), [resolution])
+  const resolvedStates = useMemo(
+    () =>
+      states.map((state) => {
+        const blockedBy = resolution.blocked.get(state.id) ?? state.blockedBy
+        return { ...state, ...(blockedBy?.length ? { blockedBy } : {}) }
+      }),
+    [states, resolution],
+  )
+  const triggered = useCallback(
     (manifest: AddonManifest) =>
       requested.has(manifest.id) ||
       (manifest.activation === 'command'
@@ -219,12 +259,27 @@ export function useAddons(
             : true),
     [activeView, requested],
   )
+  const relevantIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const manifest of manifests) {
+      if (!states.some((state) => state.id === manifest.id && state.enabled))
+        continue
+      if (!triggered(manifest)) continue
+      ids.add(manifest.id)
+      for (const id of dependencies.get(manifest.id) ?? []) ids.add(id)
+    }
+    return ids
+  }, [triggered, manifests, states, dependencies])
+  const relevant = useCallback(
+    (manifest: AddonManifest) => relevantIds.has(manifest.id),
+    [relevantIds],
+  )
   const required = useMemo(
     () =>
       new Set(
         catalog
           .filter((addon) => {
-            if (!relevant(addon.manifest)) return false
+            if (!triggered(addon.manifest)) return false
             if (
               addon.manifest.startup === 'background' ||
               addon.manifest.activation === 'command'
@@ -239,11 +294,20 @@ export function useAddons(
                 isMarkdownDocument(documentName))
             )
           })
-          .map((addon) => addon.manifest.id),
+          .flatMap((addon) => [
+            addon.manifest.id,
+            ...(states.some(
+              (state) => state.id === addon.manifest.id && state.enabled,
+            )
+              ? (dependencies.get(addon.manifest.id) ?? [])
+              : []),
+          ]),
       ),
-    [catalog, documentName, relevant],
+    [catalog, documentName, triggered, dependencies, states],
   )
-  const enabledStates = states.filter((state) => state.enabled)
+  const enabledStates = states.filter(
+    (state) => state.enabled && available.has(state.id),
+  )
   const ready =
     loaded &&
     !!documentName &&
@@ -266,8 +330,11 @@ export function useAddons(
     )
   const sourceOnly =
     loadFailed ||
-    enabledStates.some(
-      (state) => required.has(state.id) && settled.get(state.id) === false,
+    states.some(
+      (state) =>
+        state.enabled &&
+        required.has(state.id) &&
+        settled.get(state.id) === false,
     )
   const [commands, setCommands] = useState<RegisteredCommand[]>([])
   const status = useRef(
@@ -304,6 +371,7 @@ export function useAddons(
     },
     [hotkeyQueue],
   )
+  const exchange = useRef(createAddonExchange()).current
   const started = useRef(new Set<string>()).current
   const activation = useRef(
     new Map<
@@ -315,19 +383,23 @@ export function useAddons(
       }
     >(),
   ).current
-  const currentActivation = useRef({ states, settled, catalog })
-  currentActivation.current = { states, settled, catalog }
-  const executeCommand = useCallback(
-    async (
-      owner: string,
-      commandId: string,
-      context: CommandExecutionContext = captureCommandContext('api'),
-    ) => {
-      if (
-        !currentActivation.current.states.some(
-          (state) => state.id === owner && state.enabled,
-        )
-      )
+  const currentActivation = useRef({
+    states,
+    settled,
+    catalog,
+    available,
+    dependencies,
+  })
+  currentActivation.current = {
+    states,
+    settled,
+    catalog,
+    available,
+    dependencies,
+  }
+  const activateAddon = useCallback(
+    async (owner: string) => {
+      if (!currentActivation.current.available.has(owner))
         throw new Error('Enable this addon before running its command.')
       if (!started.has(owner)) {
         if (currentActivation.current.settled.get(owner) === false)
@@ -360,17 +432,26 @@ export function useAddons(
           }
           activation.set(owner, pending)
           void promise.catch(() => {})
-          setRequested((current) => new Set([...current, owner]))
+          const requirements =
+            currentActivation.current.dependencies.get(owner) ?? []
+          setRequested(
+            (current) => new Set([...current, owner, ...requirements]),
+          )
         }
         await pending.promise
       }
+    },
+    [activation, started],
+  )
+  const executeCommand = useCallback(
+    async (
+      owner: string,
+      commandId: string,
+      context: CommandExecutionContext = captureCommandContext('api'),
+    ) => {
+      await activateAddon(owner)
       const command = registered.get(`${owner}.${commandId}`)
-      if (
-        !command ||
-        !currentActivation.current.states.some(
-          (state) => state.id === owner && state.enabled,
-        )
-      )
+      if (!command || !currentActivation.current.available.has(owner))
         throw new Error('This command is no longer available.')
       if (
         latest.current.isCommandContextCurrent &&
@@ -379,7 +460,7 @@ export function useAddons(
         throw new Error('The command target is no longer available.')
       await command.run(context)
     },
-    [activation, captureCommandContext, registered, started],
+    [activateAddon, captureCommandContext, registered],
   )
   useEffect(
     () =>
@@ -464,7 +545,15 @@ export function useAddons(
         setStates(states)
         addonRegistry.hydrate(installed)
         for (const message of notices)
-          toastService.api.show({ message, variant: 'error', duration: 0 })
+          toastService.api.show({
+            message,
+            variant: 'error',
+            duration: 0,
+            action: {
+              label: 'Open addon settings',
+              run: () => latest.current.openAddonSettings(),
+            },
+          })
         setLoaded(true)
       })
       .catch((error: unknown) => {
@@ -474,24 +563,31 @@ export function useAddons(
       })
   }, [toastService.api.show])
   useEffect(() => {
+    for (const [id, request] of activation)
+      if (!available.has(id))
+        request.reject(
+          new Error('This addon or one of its required addons is unavailable.'),
+        )
     // File metadata must arrive before choosing which format engines block editing.
     if (!loaded || !documentName) return
     for (const [id, runtime] of running) {
       if (
-        !states.some((state) => state.id === id && state.enabled) ||
+        !available.has(id) ||
         !catalog.includes(runtime.addon) ||
         !relevant(runtime.addon.manifest)
       )
         runtime.stop()
     }
-    for (const addon of catalog) {
-      const id = addon.manifest.id
+    for (const id of resolution.order) {
+      const addon = catalog.find((entry) => entry.manifest.id === id)
       if (
+        !addon ||
         running.has(id) ||
         !relevant(addon.manifest) ||
-        settled.get(id) === false ||
-        (!required.has(id) && !ready) ||
-        !states.some((state) => state.id === id && state.enabled)
+        (!required.has(id) && !requested.has(id) && !ready) ||
+        (dependencies.get(id) ?? []).some(
+          (dependency) => !started.has(dependency),
+        )
       )
         continue
       let disposed = false
@@ -500,6 +596,7 @@ export function useAddons(
         () => !disposed,
         window.hibi,
       )
+      const exchangeScope = exchange.scope(addon.manifest, activateAddon)
       const overrides = createAddonOverrides(id)
       const dialogScope = dialogService.scope()
       const toastScope = toastService.scope()
@@ -678,6 +775,11 @@ export function useAddons(
       const stop = () => {
         if (disposed) return
         disposed = true
+        for (const dependent of addonDependents(
+          currentActivation.current.catalog.map((entry) => entry.manifest),
+          id,
+        ))
+          running.get(dependent)?.stop()
         void completionBrokerModule
           ?.then(({ completionBroker }) =>
             completionBroker.stopOwner(completionOwner),
@@ -690,6 +792,7 @@ export function useAddons(
           })
           .catch((error) => latest.current.error(error))
         storageScope.dispose()
+        exchangeScope.dispose()
         started.delete(id)
         activation
           .get(id)
@@ -742,6 +845,113 @@ export function useAddons(
           latest.current.error(error)
         }
       }
+      const fail = (error: unknown) => {
+        if (disposed) return
+        stop()
+        if (mounted.current)
+          setSettled((current) => new Map(current).set(id, false))
+        const pendingSwitch = modalSwitch.current
+        const failedSwitch =
+          pendingSwitch &&
+          !pendingSwitch.restoring &&
+          (pendingSwitch.requested === id ||
+            dependencies.get(pendingSwitch.requested)?.includes(id))
+            ? pendingSwitch
+            : null
+        if (!failedSwitch) {
+          latest.current.error(error)
+          return
+        }
+        failedSwitch.restoring = true
+        void (async () => {
+          let transaction = failedSwitch
+          try {
+            let restored = currentActivation.current.states
+            for (const enabled of failedSwitch.enabled) {
+              restored = await window.hibi.setAddonEnabled(enabled, false)
+              if (modalSwitch.current !== transaction) return
+            }
+            setStates(restored)
+            if (
+              restored.some(
+                (state) =>
+                  state.id === failedSwitch.requested &&
+                  state.blockedBy?.length,
+              )
+            )
+              setSettled((current) => {
+                const next = new Map(current)
+                next.delete(failedSwitch.requested)
+                return next
+              })
+            if (failedSwitch.previous) {
+              transaction = {
+                requested: failedSwitch.previous,
+                previous: null,
+                enabled: [failedSwitch.previous],
+              }
+              modalSwitch.current = transaction
+              const restored = await window.hibi.setAddonEnabled(
+                failedSwitch.previous,
+                true,
+              )
+              if (modalSwitch.current !== transaction || transaction.restoring)
+                return
+              setStates(restored)
+              toastService.api.show({
+                message: `Unable to switch to ${catalog.find((addon) => addon.manifest.id === failedSwitch.requested)?.manifest.name ?? failedSwitch.requested} because of an error. The previous modal addon was restored.`,
+                description: `Report this problem at ${ADDON_ISSUE_URL}.`,
+                variant: 'error',
+                duration: 0,
+                action: {
+                  label: 'Open addon settings',
+                  run: () =>
+                    latest.current.openAddonSettings(failedSwitch.requested),
+                },
+              })
+            } else {
+              modalSwitch.current = null
+              toastService.api.show({
+                message: `Unable to switch to ${catalog.find((addon) => addon.manifest.id === failedSwitch.requested)?.manifest.name ?? failedSwitch.requested} because of an error. Regular editing mode was restored.`,
+                description: `Report this problem at ${ADDON_ISSUE_URL}.`,
+                variant: 'error',
+                duration: 0,
+                action: {
+                  label: 'Open addon settings',
+                  run: () =>
+                    latest.current.openAddonSettings(failedSwitch.requested),
+                },
+              })
+            }
+          } catch {
+            if (modalSwitch.current !== transaction) return
+            try {
+              const fallback = await window.hibi.setAddonEnabled(
+                failedSwitch.previous ?? failedSwitch.requested,
+                false,
+              )
+              if (modalSwitch.current !== transaction) return
+              setStates(fallback)
+            } catch {
+              // Keep the original activation failure visible if persistence also fails.
+            }
+            if (modalSwitch.current !== transaction) return
+            modalSwitch.current = null
+            toastService.api.show({
+              message:
+                'An error occurred while switching back to a modal addon. Falling back to regular editing mode.',
+              description: `Report this problem at ${ADDON_ISSUE_URL}.`,
+              variant: 'error',
+              duration: 0,
+              action: {
+                label: 'Open addon settings',
+                run: () =>
+                  latest.current.openAddonSettings(failedSwitch.requested),
+              },
+            })
+          }
+        })()
+      }
       try {
         parseSyntaxDescriptors(addon.manifest.syntax)
         if (
@@ -756,6 +966,8 @@ export function useAddons(
         running.set(id, { addon, stop })
         const start = () =>
           addon.start({
+            addons: exchangeScope.addons,
+            exports: exchangeScope.exports,
             storage: storageScope.api,
             documents: {
               listOpen: targetEditScope.listOpen,
@@ -1035,9 +1247,7 @@ export function useAddons(
                 activeNoteMetadataSyntax(
                   documentId,
                   source,
-                  currentActivation.current.states.some(
-                    (state) => state.id === 'tags' && state.enabled,
-                  ),
+                  currentActivation.current.available.has('tags'),
                   [...extensions.values()],
                 ),
               onSyntaxChange: (listener) =>
@@ -1579,9 +1789,7 @@ export function useAddons(
                   : window.hibi.queryWorkspaceReferences({
                       ...request,
                       syntaxSnapshot: captureWorkspaceSyntaxSnapshot(
-                        currentActivation.current.states.some(
-                          (state) => state.id === 'tags' && state.enabled,
-                        ),
+                        currentActivation.current.available.has('tags'),
                         [...extensions.values()],
                       ),
                     }),
@@ -1675,6 +1883,7 @@ export function useAddons(
         void starting
           .then(() => {
             if (!disposed) {
+              exchangeScope.commit()
               started.add(id)
               if (modalSwitch.current?.requested === id)
                 modalSwitch.current = null
@@ -1682,86 +1891,27 @@ export function useAddons(
               activation.get(id)?.resolve()
             }
           })
-          .catch((error: unknown) => {
-            if (disposed) return
-            stop()
-            if (mounted.current)
-              setSettled((current) => new Map(current).set(id, false))
-            const failedSwitch =
-              modalSwitch.current?.requested === id ? modalSwitch.current : null
-            if (!failedSwitch) {
-              latest.current.error(error)
-              return
-            }
-            modalSwitch.current = null
-            void (async () => {
-              try {
-                const disabled = await window.hibi.setAddonEnabled(id, false)
-                setStates(disabled)
-                if (failedSwitch.previous) {
-                  modalSwitch.current = {
-                    requested: failedSwitch.previous,
-                    previous: null,
-                  }
-                  const restored = await window.hibi.setAddonEnabled(
-                    failedSwitch.previous,
-                    true,
-                  )
-                  setStates(restored)
-                  toastService.api.show({
-                    message: `Unable to switch to ${catalog.find((addon) => addon.manifest.id === id)?.manifest.name ?? id} because of an error. The previous modal addon was restored.`,
-                    description: `Report this problem at ${ADDON_ISSUE_URL}.`,
-                    variant: 'error',
-                    duration: 0,
-                  })
-                } else {
-                  toastService.api.show({
-                    message: `Unable to switch to ${catalog.find((addon) => addon.manifest.id === id)?.manifest.name ?? id} because of an error. Regular editing mode was restored.`,
-                    description: `Report this problem at ${ADDON_ISSUE_URL}.`,
-                    variant: 'error',
-                    duration: 0,
-                  })
-                }
-              } catch {
-                modalSwitch.current = null
-                try {
-                  const fallback = await window.hibi.setAddonEnabled(
-                    failedSwitch.previous ?? id,
-                    false,
-                  )
-                  setStates(fallback)
-                } catch {
-                  // Keep the original activation failure visible if persistence also fails.
-                }
-                toastService.api.show({
-                  message:
-                    'An error occurred while switching back to a modal addon. Falling back to regular editing mode.',
-                  description: `Report this problem at ${ADDON_ISSUE_URL}.`,
-                  variant: 'error',
-                  duration: 0,
-                })
-              }
-            })()
-          })
+          .catch(fail)
       } catch (error) {
-        stop()
-        if (mounted.current)
-          setSettled((current) => new Map(current).set(id, false))
-        latest.current.error(error)
+        fail(error)
       }
     }
     setCommands([...registered.values()])
   }, [
     catalog,
     relevant,
+    resolution,
+    available,
+    dependencies,
     requested,
     activation,
     started,
     executeCommand,
+    activateAddon,
+    exchange,
     captureCommandContext,
     loaded,
     documentName,
-    states,
     registered,
     running,
     extensions,
@@ -1776,43 +1926,116 @@ export function useAddons(
     toastService,
     ready,
     required,
-    settled,
   ])
+  async function confirmDependents(id: string, removing = false) {
+    const dependents = addonDependents(manifests, id).filter((dependent) =>
+      states.some((state) => state.id === dependent && state.enabled),
+    )
+    if (!dependents.length) return true
+    const names = dependents.map(
+      (dependent) =>
+        manifests.find((manifest) => manifest.id === dependent)?.name ??
+        dependent,
+    )
+    const name = manifests.find((manifest) => manifest.id === id)?.name ?? id
+    return dialogService.api.confirm({
+      title: removing ? 'Remove addon' : 'Disable addon',
+      description: removing
+        ? `Removing ${name} will also stop ${names.join(', ')}. Their enabled settings will be kept. Document editing stays available.`
+        : `Disabling ${name} will also stop ${names.join(', ')}. Their enabled settings will be kept. Document editing stays available.`,
+      confirmLabel: removing ? 'Remove' : 'Disable',
+    })
+  }
   async function setEnabled(id: string, enabled: boolean) {
     try {
       let previousModal: string | null = null
+      let nextModal: string | null = null
+      let includeRequired = false
+      const name = (id: string) =>
+        manifests.find((manifest) => manifest.id === id)?.name ?? id
       if (enabled) {
-        const requested = catalog.find(
-          (addon) => addon.manifest.id === id,
-        )?.manifest
+        const needed = (dependencies.get(id) ?? []).filter(
+          (dependency) =>
+            !states.some((state) => state.id === dependency && state.enabled),
+        )
+        const missing = needed.filter(
+          (dependency) =>
+            !manifests.some((manifest) => manifest.id === dependency),
+        )
+        if (missing.length)
+          throw new Error(
+            `Requires ${missing.map(name).join(', ')}. Install the required addons first.`,
+          )
+        const closure = new Set([id, ...(dependencies.get(id) ?? [])])
+        nextModal =
+          manifests.find(
+            (manifest) =>
+              closure.has(manifest.id) &&
+              manifest.capabilities?.includes('modalEditing'),
+          )?.id ?? null
         const current = states.find((state) => {
-          if (!state.enabled || state.id === id) return false
+          if (!state.enabled || state.id === nextModal) return false
           return catalog.some(
             (addon) =>
               addon.manifest.id === state.id &&
               addon.manifest.capabilities?.includes('modalEditing'),
           )
         })
-        if (requested?.capabilities?.includes('modalEditing') && current) {
-          const currentAddon = catalog.find(
-            (addon) => addon.manifest.id === current.id,
-          )
+        const switchModal = nextModal && current
+        const stopped = current
+          ? addonDependents(manifests, current.id).filter((dependent) =>
+              states.some((state) => state.id === dependent && state.enabled),
+            )
+          : []
+        if (needed.length || switchModal) {
+          const prompt = {
+            description: [
+              needed.length
+                ? `${name(id)} requires ${needed.map(name).join(', ')}. Enable these addons too?`
+                : null,
+              switchModal
+                ? `${name(current.id)} is active. Enabling ${name(nextModal ?? id)} will disable it. Continue?`
+                : null,
+              switchModal && stopped.length
+                ? `Switching will also stop ${stopped.map(name).join(', ')}.`
+                : null,
+            ],
+          }
           const confirmed = await dialogService.api.confirm({
-            title: 'Switch modal editor',
-            description: `${currentAddon?.manifest.name ?? current.id} is active. Enabling ${requested.name} will disable it. Continue?`,
-            confirmLabel: 'Switch',
+            title: needed.length
+              ? 'Enable required addons'
+              : 'Switch modal editor',
+            description: prompt.description.filter(Boolean).join('\n\n'),
+            confirmLabel: needed.length ? 'Enable all' : 'Switch',
           })
           if (!confirmed) return
+          includeRequired = needed.length > 0
         }
-        if (requested?.capabilities?.includes('modalEditing'))
-          previousModal = current?.id ?? null
+        if (nextModal) previousModal = current?.id ?? null
       }
+      if (!enabled && !(await confirmDependents(id))) return
       const transition = { id }
       setTransitioning((current) => new Set([...current, transition]))
       try {
-        const next = await window.hibi.setAddonEnabled(id, enabled)
-        if (!enabled && modalSwitch.current?.requested === id)
+        const newlyEnabled = [id, ...(dependencies.get(id) ?? [])].filter(
+          (dependency) =>
+            !currentActivation.current.states.some(
+              (state) => state.id === dependency && state.enabled,
+            ),
+        )
+        if (
+          nextModal ||
+          (!enabled &&
+            modalSwitch.current &&
+            (modalSwitch.current.requested === id ||
+              dependencies.get(modalSwitch.current.requested)?.includes(id)))
+        )
           modalSwitch.current = null
+        const next = await window.hibi.setAddonEnabled(
+          id,
+          enabled,
+          includeRequired,
+        )
         if (!enabled)
           setRequested((current) => {
             const next = new Set(current)
@@ -1821,18 +2044,21 @@ export function useAddons(
           })
         setSettled((current) => {
           const next = new Map(current)
-          next.delete(id)
+          if (!started.has(id) || !enabled) next.delete(id)
+          for (const dependency of dependencies.get(id) ?? [])
+            if (next.get(dependency) === false) next.delete(dependency)
+          for (const dependent of addonDependents(manifests, id))
+            if (next.get(dependent) === false) next.delete(dependent)
           return next
         })
-        if (
-          enabled &&
-          catalog.some(
-            (addon) =>
-              addon.manifest.id === id &&
-              addon.manifest.capabilities?.includes('modalEditing'),
-          )
-        )
-          modalSwitch.current = { requested: id, previous: previousModal }
+        if (enabled && nextModal && !started.has(nextModal)) {
+          modalSwitch.current = {
+            requested: id,
+            previous: previousModal,
+            enabled: newlyEnabled,
+          }
+          setRequested((current) => new Set([...current, id]))
+        }
         if (
           enabled &&
           catalog.some(
@@ -1870,6 +2096,7 @@ export function useAddons(
   }
   async function remove(id: string) {
     try {
+      if (!(await confirmDependents(id, true))) return
       await window.hibi.removeAddon(id)
       setRequested((current) => {
         const next = new Set(current)
@@ -1906,11 +2133,7 @@ export function useAddons(
           ),
       })),
       ...catalog
-        .filter((addon) =>
-          states.some(
-            (state) => state.id === addon.manifest.id && state.enabled,
-          ),
-        )
+        .filter((addon) => available.has(addon.manifest.id))
         .flatMap((addon) =>
           (addon.manifest.commands ?? [])
             .filter(
@@ -1934,29 +2157,26 @@ export function useAddons(
   }, [
     commands,
     catalog,
-    states,
+    available,
     registered,
     executeCommand,
     captureCommandContext,
   ])
   useEffect(() => {
     const desired = new Map<string, HotkeyDescriptor>(
-      visibleCommands
-        .filter(
-          (command) =>
-            command.defaultShortcut || command.menu?.location === 'app',
-        )
-        .map((command) => [
-          command.id,
-          {
-            id: command.id,
-            label: command.label,
-            ...(command.defaultShortcut
-              ? { defaultShortcut: command.defaultShortcut }
-              : {}),
-            ...(command.menu?.location === 'app' ? { menu: command.menu } : {}),
-          },
-        ]),
+      visibleCommands.map((command) => [
+        command.id,
+        {
+          id: command.id,
+          label: command.label,
+          runnableOnly:
+            !command.defaultShortcut && command.menu?.location !== 'app',
+          ...(command.defaultShortcut
+            ? { defaultShortcut: command.defaultShortcut }
+            : {}),
+          ...(command.menu?.location === 'app' ? { menu: command.menu } : {}),
+        },
+      ]),
     )
     for (const [id, current] of hotkeyRegistrations) {
       const next = desired.get(id)
@@ -1995,7 +2215,7 @@ export function useAddons(
     allReady,
     sourceOnly,
     app,
-    states,
+    states: resolvedStates,
     commands: visibleCommands,
     captureCommandContext,
     markdownExtensions,

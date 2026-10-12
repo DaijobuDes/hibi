@@ -233,7 +233,8 @@ export function checkForUpdates() {
     for (const window of BrowserWindow.getAllWindows())
       window.webContents.send(
         HISTORY_CHANNELS.notice,
-        'A Hibi update is available. Open Settings → Hibi → Updates.',
+        'A Hibi update is available.',
+        'updates',
       )
   })
 }

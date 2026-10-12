@@ -1,14 +1,49 @@
 import { ArrowUpRight, File, Heart } from 'lucide-react'
-import { type MouseEvent, useState } from 'react'
+import { type MouseEvent, useEffect, useState } from 'react'
 import type { AppInfo } from '../../shared/desktop'
-import { Button, SettingRow } from '../../ui/Controls'
+import { errorMessage } from '../../shared/errors'
+import { Button, SettingRow, Toggle } from '../../ui/Controls'
 import { Modal } from '../../ui/Modal'
 import { RecoveryScreen } from './RecoveryScreen'
 import { UpdateSettings } from './UpdateSettings'
 import './hibi-settings.css'
 
-export function HibiSettings({ info }: { info: AppInfo | null }) {
+export function HibiSettings({
+  info,
+  onShowIntroduction,
+}: {
+  info: AppInfo | null
+  onShowIntroduction: () => void
+}) {
   const [preview, setPreview] = useState(false)
+  const [background, setBackground] = useState<boolean | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  useEffect(() => {
+    let active = true
+    void window.hibi.getBackgroundMode().then(
+      (enabled) => {
+        if (active) setBackground(enabled)
+      },
+      (error) => {
+        if (active) setError(errorMessage(error))
+      },
+    )
+    return () => {
+      active = false
+    }
+  }, [])
+  async function saveBackground(enabled: boolean) {
+    setSaving(true)
+    setError('')
+    try {
+      setBackground(await window.hibi.setBackgroundMode(enabled))
+    } catch (error) {
+      setError(errorMessage(error))
+    } finally {
+      setSaving(false)
+    }
+  }
   function openExternalLink(event: MouseEvent<HTMLAnchorElement>) {
     event.preventDefault()
     void window.hibi.openAddonDocumentationLink(event.currentTarget.href)
@@ -69,6 +104,39 @@ export function HibiSettings({ info }: { info: AppInfo | null }) {
             Join the Discord <ArrowUpRight aria-hidden="true" />
           </a>
         </nav>
+      </div>
+      <h2>General</h2>
+      <div className="settings-group">
+        <SettingRow
+          id="keep-running-in-background"
+          label="Keep Hibi running in the background"
+          description="Closing the window keeps your edits and addons running. Use the menu bar or tray icon to reopen Hibi or quit. Some Linux desktops need indicator support to show the icon. This is off by default."
+        >
+          <Toggle
+            id="keep-running-in-background"
+            aria-describedby="keep-running-in-background-description"
+            checked={background ?? false}
+            disabled={background === null || saving}
+            onChange={(event) => void saveBackground(event.target.checked)}
+          />
+        </SettingRow>
+        {error && <p role="alert">{error}</p>}
+      </div>
+      <h2>Help</h2>
+      <div className="settings-group">
+        <SettingRow
+          id="introduction"
+          label="Introduction"
+          description="Choose an appearance, default view, and addons, and see essential shortcuts."
+        >
+          <Button
+            id="introduction"
+            aria-label="Show introduction"
+            onClick={onShowIntroduction}
+          >
+            Show introduction
+          </Button>
+        </SettingRow>
       </div>
       <UpdateSettings />
       <h2>Diagnostics</h2>

@@ -73,6 +73,9 @@ export type AppInfo = {
 }
 
 export type DesktopApi = {
+  getBackgroundMode: () => Promise<boolean>
+  setBackgroundMode: (enabled: boolean) => Promise<boolean>
+  onOpenSettings: (callback: () => void) => () => void
   getAddonHotkeys: () => Promise<import('./addon-hotkeys').AddonHotkeyBinding[]>
   registerAddonHotkey: (
     registration: import('./addon-hotkeys').AddonHotkeyRegistration,
@@ -149,6 +152,8 @@ export type DesktopApi = {
       hotkeys: Hotkeys
       workspace: WorkspaceState | null
       externalPending: boolean
+      /** Installed builds may show the first-run introduction unless launched with files; development and tests need --hibi-introduction. */
+      introduction: boolean
     }>
     addons: () => Promise<{
       states: AddonState[]
@@ -200,7 +205,10 @@ export type DesktopApi = {
   listVersions: () => Promise<import('./history').DocumentVersion[]>
   previewVersion: (id: string) => Promise<string>
   restoreVersion: (id: string) => Promise<DocumentState | null>
-  onNotice: (callback: (message: string) => void) => () => void
+  /** `updates` notices lead to the update settings. */
+  onNotice: (
+    callback: (message: string, target?: 'updates') => void,
+  ) => () => void
   getLicenses: () => Promise<import('./about').LicenseInfo[]>
   getLicense: (id: string) => Promise<string>
   openSponsor: () => Promise<void>
@@ -208,7 +216,11 @@ export type DesktopApi = {
     appearance: import('./colorschemes').NativeAppearance,
   ) => Promise<void>
   getAddonStates: () => Promise<AddonState[]>
-  setAddonEnabled: (id: string, enabled: boolean) => Promise<AddonState[]>
+  setAddonEnabled: (
+    id: string,
+    enabled: boolean,
+    includeRequired?: boolean,
+  ) => Promise<AddonState[]>
   readAddonStorage: (
     request: import('./addon-storage').AddonStorageReadRequest,
   ) => Promise<import('./addon-storage').AddonStorageReadResult>
@@ -285,6 +297,14 @@ export type DesktopApi = {
   subscribeWorkspaceChanges: (
     callback: import('./workspace').WorkspaceChangeListener,
   ) => Promise<import('./workspace').WorkspaceChangeSubscription>
+  /** Null when the document is not saved inside the open workspace. */
+  readTableLayout: (
+    tabId: string,
+  ) => Promise<import('./table-layout').TableLayout[] | null>
+  writeTableLayout: (
+    tabId: string,
+    tables: import('./table-layout').TableLayout[],
+  ) => Promise<void>
   readWorkspaceText: (
     owner: string,
     target: import('./foundation-contracts').WorkspaceTarget,
