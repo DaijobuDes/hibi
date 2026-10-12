@@ -81,7 +81,7 @@ Repository discovery allows at most 5,000 entries, 64 MiB of uncompressed data, 
 
 Each selected package retains its own limits: 1,000 entries, 25 MiB total, and 5 MiB per file. Its readme and declared compiled entry must be inside its folder. Parent or sibling libraries are not copied automatically.
 
-Discovery excludes hidden directories, `.git`, `node_modules`, and `__MACOSX`, regardless of case. Ignored ZIP entries still count toward archive limits. Links, junctions, special files, unsafe paths, and conflicting archive paths are refused.
+Discovery excludes hidden directories, `.git`, `node_modules`, and `__MACOSX`, regardless of case. Ignored ZIP entries still count toward archive limits. Parent directory aliases are resolved before scanning. The selected folder and its contents cannot be links or junctions. Special files, unsafe paths, and conflicting archive paths are refused.
 
 Structurally valid packages with duplicate IDs are all blocked. A valid package containing another valid package also blocks both roots; publish them in separate folders. An invalid outer manifest remains visible but does not hide a valid prepared package beneath it. Built-in and source addon IDs cannot be replaced. An installed external ID is a reviewed replacement, with its old and new versions and sources shown before installation.
 

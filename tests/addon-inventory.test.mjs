@@ -419,7 +419,7 @@ test('copy copies only chosen subtree with sorted inventory, reproducible hash a
   assert.deepEqual(await readdir(destination), [])
 })
 
-test('local chosen links, ancestor links, junctions, special files and replacement races fail', async (t) => {
+test('local parent aliases work while chosen links and replacement races fail', async (t) => {
   const root = await temporary(t)
   const source = join(root, 'source')
   await mkdir(source)
@@ -427,21 +427,18 @@ test('local chosen links, ancestor links, junctions, special files and replaceme
   const link = join(root, 'alias')
   await symlink(source, link, process.platform === 'win32' ? 'junction' : 'dir')
   await assert.rejects(inventoryAddonDirectory(link), /links|junctions/)
-  await assert.rejects(
-    inventoryAddonDirectory(join(link, 'nested')),
-    /links|junctions/,
+  const throughParent = await inventoryAddonDirectory(join(link, 'nested'))
+  assert.deepEqual(addonCandidatePaths(throughParent), [''])
+  const destination = await mkdtemp(join(root, 'aliased-copy-'))
+  await copyAddonPackage(throughParent, '', destination)
+  assert.equal(
+    (await readFile(join(destination, 'README.md'))).toString(),
+    'fixture',
   )
-  // A chosen spelling cannot hide an ancestor link by normalizing away "..".
-  await assert.rejects(
-    inventoryAddonDirectory(`${link}/../source`),
-    /links|junctions/,
+  assert.deepEqual(
+    addonCandidatePaths(await inventoryAddonDirectory(`${link}/../source`)),
+    ['nested'],
   )
-  if (process.platform === 'win32')
-    for (const chosen of [
-      `${link.replaceAll('\\', '/')}/../source`,
-      `${link}\\..\\source`,
-    ])
-      await assert.rejects(inventoryAddonDirectory(chosen), /links|junctions/)
   const inventory = await inventoryAddonDirectory(source)
   await rename(join(source, 'nested/index.js'), join(source, 'nested/old.js'))
   await writeFile(join(source, 'nested/index.js'), 'replacement')

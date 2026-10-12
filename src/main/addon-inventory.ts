@@ -8,7 +8,7 @@ import {
   realpath,
   writeFile,
 } from 'node:fs/promises'
-import { dirname, extname, isAbsolute, join, parse, sep } from 'node:path'
+import { dirname, extname, join, sep } from 'node:path'
 import { Readable } from 'node:stream'
 import { crc32, createInflateRaw } from 'node:zlib'
 import type { File } from 'unzipper'
@@ -349,33 +349,14 @@ function sameFile(a: Stats, b: Stats): boolean {
   )
 }
 
-/** Check the chosen spelling before canonicalization, including its parent links. */
+/** Resolve parent aliases while refusing a link at the chosen boundary. */
 async function canonicalRoot(root: string): Promise<string> {
-  const absolute = isAbsolute(root) ? root : `${process.cwd()}${sep}${root}`
-  let current = parse(absolute).root
-  const parts = absolute
-    .slice(current.length)
-    .split(process.platform === 'win32' ? /[\\/]/ : sep)
-    .filter(Boolean)
-  for (const [index, part] of parts.entries()) {
-    current = join(current, part)
-    const stat = await lstat(current)
-    if (stat.isSymbolicLink()) {
-      if (
-        process.platform === 'darwin' &&
-        index < parts.length - 1 &&
-        ['/tmp', '/var'].includes(current) &&
-        (await realpath(current)) === `/private${current}`
-      )
-        current = `/private${current}`
-      else
-        throw new Error(
-          'Addon folders cannot contain symbolic links or junctions.',
-        )
-    } else if (!stat.isDirectory())
-      throw new Error('The addon root must be a directory.')
-  }
-  return realpath(current)
+  const stat = await lstat(root)
+  if (stat.isSymbolicLink())
+    throw new Error('Addon folders cannot contain symbolic links or junctions.')
+  if (!stat.isDirectory())
+    throw new Error('The addon root must be a directory.')
+  return realpath(root)
 }
 
 export async function inventoryAddonDirectory(
@@ -577,8 +558,12 @@ export async function copyAddonPackage(
         'The addon exceeds the limit of 5 MiB per file or 25 MiB in total.',
       )
     const target = join(root, path)
-    await mkdir(dirname(target), { recursive: true, mode: 0o700 })
-    await canonicalRoot(dirname(target))
+    let directory = root
+    for (const part of path.split('/').slice(0, -1)) {
+      directory = join(directory, part)
+      await mkdir(directory, { recursive: true, mode: 0o700 })
+      await canonicalRoot(directory)
+    }
     if (
       !(await realpath(dirname(target))).startsWith(root + sep) &&
       dirname(target) !== root
