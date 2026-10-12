@@ -485,6 +485,17 @@ const background = new BackgroundMode({
       mainWindow?.webContents.send(ADDON_HOTKEY_CHANNELS.invoke, command)
   },
 })
+function syncAddonCommands(
+  event: IpcMainInvokeEvent,
+  bindingsChanged: boolean,
+) {
+  const bindings = addonHotkeys.bindings()
+  if (bindingsChanged) {
+    installMenu()
+    event.sender.send(ADDON_HOTKEY_CHANNELS.changed, bindings)
+  } else background.refresh()
+  return bindings
+}
 let addonHotkeysLoading: Promise<void> | null = null
 const loadAddonHotkeys = () => {
   if (!addonHotkeysLoading) {
@@ -1525,22 +1536,24 @@ if (!app.requestSingleInstanceLock()) {
       })
       handle(ADDON_HOTKEY_CHANNELS.register, async (event, value: unknown) => {
         await loadAddonHotkeys()
+        const previousBindings = addonHotkeys.bindings()
         addonHotkeys.register(value as AddonHotkeyRegistration)
-        installMenu()
-        const bindings = addonHotkeys.bindings()
-        event.sender.send(ADDON_HOTKEY_CHANNELS.changed, bindings)
-        return bindings
+        const registration = value as AddonHotkeyRegistration
+        return syncAddonCommands(
+          event,
+          !registration.runnableOnly ||
+            previousBindings.some(({ id }) => id === registration.id),
+        )
       })
       handle(
         ADDON_HOTKEY_CHANNELS.unregister,
         (event, id: unknown, token: unknown) => {
           if (typeof id !== 'string' || typeof token !== 'string') return
+          const hadBinding = addonHotkeys
+            .bindings()
+            .some((binding) => binding.id === id)
           if (!addonHotkeys.unregister(id, token)) return
-          installMenu()
-          event.sender.send(
-            ADDON_HOTKEY_CHANNELS.changed,
-            addonHotkeys.bindings(),
-          )
+          syncAddonCommands(event, hadBinding)
         },
       )
       handle(

@@ -450,6 +450,41 @@ test('tray quick note follows UI registration and invokes the hidden renderer', 
   await page.evaluate(() => window.backgroundTestStopCommands())
   await page.getByRole('button', { name: /^back to app$/i }).click()
   await waitForDocumentEditor(app, page)
+  await t.test(
+    'runnable commands preserve native menu identity and hotkey subscribers',
+    async () => {
+      await app.evaluate(({ Menu }) => {
+        globalThis.backgroundTestOriginalMenu = Menu.getApplicationMenu()
+      })
+      const changes = await page.evaluate(async () => {
+        let changes = 0
+        const stop = window.hibi.onAddonHotkeysChanged(() => changes++)
+        try {
+          await window.hibi.registerAddonHotkey({
+            id: 'test.runnable',
+            label: 'Runnable',
+            token: 'runnable-test',
+            runnableOnly: true,
+          })
+          await window.hibi.unregisterAddonHotkey(
+            'test.runnable',
+            'runnable-test',
+          )
+          return changes
+        } finally {
+          stop()
+        }
+      })
+      assert.equal(changes, 0)
+      assert.equal(
+        await app.evaluate(
+          ({ Menu }) =>
+            Menu.getApplicationMenu() === globalThis.backgroundTestOriginalMenu,
+        ),
+        true,
+      )
+    },
+  )
   await t.test('tray Settings survives a renderer reload', async () => {
     await closeMain(app)
     await waitVisible(app, false)

@@ -125,6 +125,7 @@ export class AddonHotkeys {
         : '',
       this.platform,
     )
+    const previous = this.registrations.get(value.id)
     this.registrations.set(value.id, {
       id: value.id,
       label: value.label,
@@ -133,13 +134,15 @@ export class AddonHotkeys {
       ...(value.runnableOnly ? { runnableOnly: true } : {}),
       ...(value.menu ? { menu: { ...value.menu } } : {}),
     })
-    this.rebuild()
+    if (!value.runnableOnly || (previous && !previous.runnableOnly))
+      this.rebuild()
   }
 
   unregister(id: string, token: string): boolean {
-    if (this.registrations.get(id)?.token !== token) return false
+    const registration = this.registrations.get(id)
+    if (!registration || registration.token !== token) return false
     this.registrations.delete(id)
-    this.rebuild()
+    if (!registration.runnableOnly) this.rebuild()
     return true
   }
 
