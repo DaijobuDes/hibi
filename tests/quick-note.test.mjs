@@ -552,3 +552,73 @@ test('quick note shortcut opens one capture window without raising Hibi', {
   )
   assert.equal((await appWindows(app)).includes('app://hibi/'), false)
 })
+
+test('the capture window renders markdown like the main editor', {
+  timeout: 45000,
+}, async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'hibi-quick-note-parity-'))
+  const workspace = join(root, 'workspace')
+  const profile = join(root, 'profile')
+  await mkdir(workspace, { recursive: true })
+  await mkdir(profile)
+  const note =
+    '# Reading list\n\nFind the essay.\n\n- [ ] look up the link\n- [ ] add it to **Reading list**\n'
+  await writeFile(join(workspace, 'Reading list.md'), note)
+  await writeFile(
+    join(profile, 'addons.json'),
+    JSON.stringify({ 'quick-note': true }),
+  )
+  const app = await electron.launch({
+    args: [resolve('.'), `--user-data-dir=${profile}`],
+  })
+  t.after(async () => {
+    await app.close()
+    await rm(root, { recursive: true, force: true })
+  })
+  await app.evaluate(({ dialog }, destination) => {
+    dialog.showOpenDialog = async () => ({
+      canceled: false,
+      filePaths: [destination],
+    })
+  }, workspace)
+  const page = await app.firstWindow()
+  await page.getByRole('textbox', { name: /document editor/i }).waitFor()
+  await page.evaluate(() => window.hibi.openWorkspace())
+  await app.evaluate(
+    ({ app }, path) => app.emit('open-file', { preventDefault() {} }, path),
+    join(workspace, 'Reading list.md'),
+  )
+  await page.locator('.tiptap h1').getByText('Reading list').waitFor()
+  // The same Markdown as an unsaved note opens in the capture window.
+  await page.evaluate((markdown) => {
+    localStorage.setItem('hibi:quick-note-draft', JSON.stringify({ markdown }))
+  }, note)
+  const capture = await openCapture(app, page)
+  const shape = async (editor) => {
+    const root = editor.locator('.tiptap[contenteditable="true"]')
+    await root.click()
+    await editor.keyboard.press('ControlOrMeta+End')
+    return root.evaluate((element) => ({
+      headings: element.querySelectorAll('h1').length,
+      tasks: element.querySelectorAll('ul[data-type="taskList"] > li').length,
+      checkboxes: element.querySelectorAll('input[type="checkbox"]').length,
+      bold: element.querySelectorAll('strong').length,
+      markers: [...element.querySelectorAll('.markdown-marker')].filter(
+        (marker) => marker.getClientRects().length,
+      ).length,
+      heading: getComputedStyle(element.querySelector('h1')).fontSize,
+      text: getComputedStyle(element.querySelector('p')).lineHeight,
+    }))
+  }
+  const main = await shape(page)
+  assert.deepEqual(main, {
+    headings: 1,
+    tasks: 2,
+    checkboxes: 2,
+    bold: 1,
+    markers: 0,
+    heading: main.heading,
+    text: main.text,
+  })
+  assert.deepEqual(await shape(capture), main)
+})
