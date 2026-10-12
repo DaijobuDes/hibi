@@ -1,13 +1,16 @@
 export type CodeSpan = { from: number; to: number; closed: boolean }
 
 /**
- * Inline code spans in `text` by CommonMark rules, backticks included. A
- * backtick run opens a span that only the next run of equal length closes. A
- * backslash outside code escapes the first backtick of an opening run; inside
- * a span backslashes are literal, so they never stop a closing run. A run
- * with no closer gives a span that is not `closed` and extends to the end of
- * `text`, as while code is still being typed; CommonMark would treat it as
- * literal once the paragraph ends.
+ * Inline code spans in `text`, backticks included: a heuristic that follows
+ * CommonMark's code span rules for backticks only. A backtick run opens a
+ * span that only the next run of equal length closes. A backslash outside
+ * code escapes the first backtick of an opening run; inside a span
+ * backslashes are literal, so they never stop a closing run. A run with no
+ * closer gives a span that is not `closed` and extends to the end of `text`,
+ * as while code is still being typed; CommonMark would treat it as literal
+ * once the paragraph ends, so a later pair is hidden (example 349). Raw HTML
+ * and autolinks are not recognized, so backticks inside them still make
+ * spans (examples 344 and 346).
  */
 export function codeSpans(text: string): readonly CodeSpan[] {
   const runs = [...text.matchAll(/`+/g)].map((match) => {
