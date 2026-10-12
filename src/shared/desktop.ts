@@ -104,6 +104,15 @@ export type DesktopApi = {
     token: string,
   ) => Promise<void>
   unregisterGlobalShortcut: (id: string, token: string) => Promise<void>
+  openAddonWindow: (
+    addonId: string,
+    options: import('./addon-windows').AddonWindowOptions,
+  ) => Promise<void>
+  focusAddonWindow: (addonId: string, id: string) => Promise<void>
+  closeAddonWindow: (addonId: string, id: string) => Promise<void>
+  onAddonWindowClosed: (
+    callback: (addonId: string, id: string) => void,
+  ) => () => void
   onGlobalShortcut: (
     callback: (
       invocation: import('./global-shortcuts').GlobalShortcutInvocation,

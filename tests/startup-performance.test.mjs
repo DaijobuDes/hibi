@@ -193,6 +193,45 @@ test('blank startup leaves disabled runtimes and closed settings unloaded and so
   )
 })
 
+test('enabled mermaid starts with markdown documents but loads its engine on demand', {
+  timeout: 30000,
+}, async (t) => {
+  const profile = await mkdtemp(join(tmpdir(), 'hibi-startup-mermaid-'))
+  await writeFile(
+    join(profile, 'addons.json'),
+    JSON.stringify({ mermaid: true }),
+  )
+  const app = await electron.launch({
+    args: [resolve('.'), `--user-data-dir=${profile}`],
+  })
+  t.after(async () => {
+    await app.close()
+    await rm(profile, { recursive: true, force: true })
+  })
+  const page = await app.firstWindow()
+  await page
+    .getByRole('textbox', { name: 'Document editor', exact: true })
+    .waitFor()
+  await page.evaluate(
+    () => new Promise((resolve) => requestIdleCallback(resolve)),
+  )
+  const chunks = JSON.parse(
+    await readFile('out/renderer/startup-bundle.json', 'utf8'),
+  )
+  const session = await page.context().newCDPSession(page)
+  const files = new Set()
+  session.on('Debugger.scriptParsed', ({ url }) => {
+    if (url.startsWith('app://hibi/')) files.add(new URL(url).pathname.slice(1))
+  })
+  await session.send('Debugger.enable')
+  const loaded = chunks
+    .filter((chunk) => files.has(chunk.file))
+    .flatMap((chunk) => chunk.modules)
+    .join('\n')
+  assert.match(loaded, /src\/addons\/mermaid\/index\.tsx/)
+  assert.doesNotMatch(loaded, /node_modules\/(?:mermaid|@mermaid-js)\//)
+})
+
 test('unrelated enabled formats defer source parsers until first source use', async (t) => {
   const profile = await mkdtemp(join(tmpdir(), 'hibi-startup-formats-'))
   await writeFile(

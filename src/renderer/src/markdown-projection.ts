@@ -1,5 +1,19 @@
 import type { MarkdownExtension, MarkdownProjection } from '../../addons/api'
 
+/** An addon's whole-source transform; `body` first replaces the projected rich body. Null when nothing changes. */
+export function transformMarkdown(
+  markdown: string,
+  adapters: readonly MarkdownExtension[],
+  transform: (source: string) => string | null,
+  options?: { body: string },
+): string | null {
+  const source = options
+    ? projectMarkdown(markdown, adapters).serialize(options.body)
+    : markdown
+  const next = transform(source)
+  return next === null || next === markdown ? null : next
+}
+
 const proofs = new WeakMap<
   MarkdownExtension,
   { prefix: string; suffix: string; valid: boolean }

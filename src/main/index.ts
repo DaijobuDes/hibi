@@ -26,6 +26,7 @@ import {
   type AddonHotkeyRegistration,
 } from '../shared/addon-hotkeys'
 import { ADDON_STORAGE_CHANNELS } from '../shared/addon-storage'
+import { ADDON_WINDOW_CHANNELS } from '../shared/addon-windows'
 import { ANALYSIS_CHANNELS } from '../shared/analysis'
 import { BACKGROUND_CHANNELS, QUICK_NOTE_COMMAND } from '../shared/background'
 import { APPEARANCE_CHANNEL } from '../shared/colorschemes'
@@ -73,6 +74,17 @@ import { WORKSPACE_SETTINGS_CHANNELS } from '../shared/workspace-settings'
 import { AddonHotkeys } from './addon-hotkeys'
 import { createAddonStorage } from './addon-storage'
 import {
+  addonWindowSender,
+  closeAddonWindow,
+  closeAddonWindows,
+  focusAddonWindow,
+  onAddonWindowClosed,
+  openAddonWindow,
+  refreshAddonWindowColors,
+  releaseAddonWindows,
+  sendAddonWindowStates,
+} from './addon-windows'
+import {
   currentAddonOwner,
   enableAddon,
   getAddonActivationGeneration,
@@ -86,10 +98,18 @@ import {
   loadAddons,
   readAddonDocumentation,
   removeAddon,
+  runNativeGlobalShortcut,
   setAddonDeactivationHandler,
+  setAddonStatesHandler,
+  windowAddonName,
 } from './addons'
 import { analysisService } from './analysis'
-import { appearanceColors, loadAppearance, saveAppearance } from './appearance'
+import {
+  appearanceColors,
+  loadAppearance,
+  saveAppearance,
+  titleBarColors,
+} from './appearance'
 import { BackgroundMode } from './background'
 import {
   autosaveDocument,
@@ -444,8 +464,10 @@ setAddonDeactivationHandler(async (id, generation) => {
   hostCredentials.stopOwner(owner)
   selectedText.revokeAddon(id)
   selectedIo.revokeAddon(id)
+  closeAddonWindows(id)
   await addonStorage.clearSession(id)
 })
+setAddonStatesHandler(sendAddonWindowStates)
 addonStorage.subscribe((change) => {
   if (mainWindow && !mainWindow.isDestroyed())
     mainWindow.webContents.send(ADDON_STORAGE_CHANNELS.changed, change)
@@ -545,6 +567,8 @@ app.on('open-file', (event, path) => {
 })
 app.on('before-quit', () => {
   quitting = true
+  // With no main window to confirm, kept-alive addon windows must not block quitting.
+  if (!mainWindow) releaseAddonWindows()
 })
 let devRestartRequested = false
 function cancelDevRestart() {
@@ -565,7 +589,20 @@ app.on('will-quit', () => {
   background.dispose()
 })
 
+const openOwnedAddonWindow = (addonId: string, options: unknown) =>
+  openAddonWindow(addonId, windowAddonName(addonId), options)
+
 function invokeGlobalShortcut(invocation: GlobalShortcutInvocation) {
+  // Native handlers can open their own window, so the main window stays put.
+  void runNativeGlobalShortcut(invocation.id, openOwnedAddonWindow).then(
+    (handled) => {
+      if (!handled) showGlobalShortcut(invocation)
+    },
+    (error: unknown) => console.error('global shortcut failed:', error),
+  )
+}
+
+function showGlobalShortcut(invocation: GlobalShortcutInvocation) {
   const { id, token } = invocation
   const openingWindow = !mainWindow
   if (openingWindow) {
@@ -626,7 +663,13 @@ function runFileOperation<T>(
   event: IpcMainInvokeEvent,
   operation: (window: BrowserWindow) => Promise<T>,
 ) {
-  const window = trustedWindow(event)
+  return lockFileOperation(trustedWindow(event), operation)
+}
+
+function lockFileOperation<T>(
+  window: BrowserWindow,
+  operation: (window: BrowserWindow) => Promise<T>,
+) {
   if (fileOperation)
     throw new Error(
       'Another file operation is in progress. Wait for it to finish, then try again.',
@@ -641,18 +684,10 @@ function runFileOperation<T>(
 async function readAfterFileOperation<T>(
   event: IpcMainInvokeEvent,
   read: (window: BrowserWindow) => Promise<T>,
+  window = trustedWindow(event),
 ) {
-  const window = trustedWindow(event)
   while (fileOperation) await fileOperation.catch(() => undefined)
   return read(window)
-}
-
-function titleBarColors() {
-  return {
-    color: appearanceColors().background,
-    symbolColor: appearanceColors().foreground,
-    height: 36,
-  }
 }
 
 async function serveAsset(request: Request): Promise<Response> {
@@ -878,6 +913,7 @@ function createWindow(): void {
         }
         discardChanges()
         allowClose = true
+        if (quitting || installed) releaseAddonWindows()
         if (!installed) {
           if (quitting) app.quit()
           else window.close()
@@ -916,6 +952,8 @@ function createWindow(): void {
     )
     mainWindow = null
     if (process.platform !== 'darwin' || quitting) globalShortcuts.clear()
+    // Hidden addon windows must not keep Hibi running where closing it quits.
+    if (process.platform !== 'darwin') releaseAddonWindows(true)
   })
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   window.webContents.on('will-frame-navigate', (event) => {
@@ -1364,6 +1402,7 @@ if (!app.requestSingleInstanceLock()) {
         window.setBackgroundColor(appearanceColors().background)
         if (process.platform !== 'darwin')
           window.setTitleBarOverlay(titleBarColors())
+        refreshAddonWindowColors()
         await saved
       })
       handle(ABOUT_CHANNELS.licenses, (event) => {
@@ -1537,6 +1576,54 @@ if (!app.requestSingleInstanceLock()) {
           readAfterFileOperation(event, (window) =>
             invokeAddon(window, id, method, input, true),
           ),
+      )
+      handle(
+        ADDON_WINDOW_CHANNELS.open,
+        (_event, addonId: unknown, options: unknown) =>
+          openAddonWindow(addonId as string, windowAddonName(addonId), options),
+      )
+      handle(ADDON_WINDOW_CHANNELS.focus, (_event, addonId: unknown, id) => {
+        windowAddonName(addonId)
+        focusAddonWindow(addonId as string, id)
+      })
+      handle(ADDON_WINDOW_CHANNELS.close, (_event, addonId: unknown, id) => {
+        if (typeof addonId === 'string') closeAddonWindow(addonId, id)
+      })
+      onAddonWindowClosed((addonId, id) =>
+        mainWindow?.webContents.send(ADDON_WINDOW_CHANNELS.closed, addonId, id),
+      )
+      // Addon windows reach only their owner's native handlers.
+      ipcMain.handle(ADDON_WINDOW_CHANNELS.context, (event) => {
+        const { addonId, id, input, title, titleBar, platform } =
+          addonWindowSender(event)
+        return { addonId, id, input, title, titleBar, platform }
+      })
+      ipcMain.handle(ADDON_WINDOW_CHANNELS.states, (event) => {
+        addonWindowSender(event)
+        return getAddonStates()
+      })
+      ipcMain.handle(ADDON_WINDOW_CHANNELS.closeSelf, (event) => {
+        addonWindowSender(event).window.close()
+      })
+      ipcMain.handle(
+        ADDON_WINDOW_CHANNELS.query,
+        (event, method: unknown, input: unknown) => {
+          const { window, addonId } = addonWindowSender(event)
+          return readAfterFileOperation(
+            event,
+            () => invokeAddon(window, addonId, method, input, true),
+            window,
+          )
+        },
+      )
+      ipcMain.handle(
+        ADDON_WINDOW_CHANNELS.invoke,
+        (event, method: unknown, input: unknown) => {
+          const { window, addonId } = addonWindowSender(event)
+          return lockFileOperation(window, () =>
+            invokeAddon(window, addonId, method, input),
+          )
+        },
       )
       handle(HOTKEY_CHANNELS.get, (event) => {
         trustedWindow(event)
@@ -2148,6 +2235,7 @@ if (!app.requestSingleInstanceLock()) {
         mainWindow?.setBackgroundColor(appearanceColors().background)
         if (process.platform !== 'darwin')
           mainWindow?.setTitleBarOverlay(titleBarColors())
+        refreshAddonWindowColors()
       })
       windowSetupReady = true
       createWindow()

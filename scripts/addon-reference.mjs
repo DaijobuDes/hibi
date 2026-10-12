@@ -19,6 +19,12 @@ export const referenceSources = [
       'TypingContext',
     ],
   ],
+  [
+    'src/shared/addon-windows.ts',
+    'Addon windows',
+    null,
+    ['AddonWindowOptions'],
+  ],
   ['src/addons/sdk.ts', 'Sideloading', 'sideload-sdk'],
   [
     'src/addons/sdk-loader.ts',

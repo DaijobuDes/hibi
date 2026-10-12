@@ -67,6 +67,25 @@ export function editorDocumentUpdates(
   }
 }
 
+/** Rerender app chrome only for shell changes; every edit still reaches `edit` first. */
+export function subscribeDocumentShell(
+  runtime: Pick<DocumentRuntime, 'subscribe'>,
+  shell: { current: DocumentState | null },
+  update: (document: DocumentState) => void,
+  edit: (
+    document: DocumentState,
+    changes: Parameters<Parameters<DocumentRuntime['subscribe']>[0]>[1],
+  ) => void,
+) {
+  return runtime.subscribe((next, changes) => {
+    // Save acknowledgments update the baseline even when dirty stays true.
+    const changed = !changes || !sameDocumentShell(shell.current, next)
+    if (changed) shell.current = next
+    edit(next, changes)
+    if (changed) update(next)
+  })
+}
+
 /** Content versions belong to the editor; shell consumers only need these fields. */
 export function sameDocumentShell(
   previous: DocumentState | null,

@@ -2074,3 +2074,21 @@ summary {
   font: var(--text-sm) var(--font-ui);
   white-space: nowrap;
 }
+/* Addon windows reuse the app shell and title bar styles. */
+.addon-window-content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+.addon-window-titlebar {
+  padding-left: calc(80px + var(--space-2));
+}
+.app:not([data-platform="darwin"]) .addon-window-titlebar {
+  padding-left: var(--space-3);
+}
+.addon-window-error {
+  margin: 0;
+  padding: var(--space-4);
+  color: var(--status-danger);
+}
