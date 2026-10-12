@@ -205,27 +205,29 @@ test('addon windows open once per id and close with their addon', {
   await until(async () => (await appWindows(app)).length === 1)
 })
 
-test('addon windows survive cancelled quits and keep their limits', {
-  timeout: 60000,
-}, async (t) => {
+async function launch(t, addons, env) {
   const root = await mkdtemp(join(tmpdir(), 'hibi-addon-windows-edges-'))
   const profile = join(root, 'profile')
   await mkdir(profile)
   await writeFile(
     join(profile, 'addons.json'),
-    JSON.stringify({ 'quick-note': true }),
+    JSON.stringify(Object.fromEntries(addons.map((id) => [id, true]))),
   )
   const app = await electron.launch({
     args: [resolve('.'), `--user-data-dir=${profile}`],
+    ...(env ? { env: { ...process.env, ...env } } : {}),
   })
   t.after(async () => {
-    // Answer the unsaved-changes prompt with "Don't save" so quitting completes.
-    await app
-      .evaluate(({ dialog }) => {
-        dialog.showMessageBox = async () => ({ response: 1 })
-      })
-      .catch(() => {})
-    await app.close()
+    const child = app.process()
+    if (child.exitCode === null && child.signalCode === null) {
+      // Answer the unsaved-changes prompt with "Don't save" so quitting completes.
+      await app
+        .evaluate(({ dialog }) => {
+          dialog.showMessageBox = async () => ({ response: 1 })
+        })
+        .catch(() => {})
+      await app.close()
+    }
     await rm(root, { recursive: true, force: true })
   })
   const page = await app.firstWindow()
@@ -236,53 +238,50 @@ test('addon windows survive cancelled quits and keep their limits', {
       window.closedAddonWindows.push(`${addonId}/${id}`),
     )
   })
-  const open = (id, options = {}) =>
+  const open = (id, options = {}, addonId = 'quick-note') =>
     page.evaluate(
-      ({ id, options }) =>
-        window.hibi.openAddonWindow('quick-note', { id, ...options }),
-      { id, options },
+      ({ id, options, addonId }) =>
+        window.hibi.openAddonWindow(addonId, { id, ...options }),
+      { id, options, addonId },
     )
   const addonWindows = async () =>
     (await appWindows(app)).filter((url) => url === windowUrl).length
+  // Hold a named main-process step until `resume(name)`.
+  const pause = (name) =>
+    app.evaluate((_electron, name) => {
+      globalThis.hibiTestPauses ??= {}
+      globalThis.hibiTestResume ??= {}
+      globalThis.hibiTestPauses[name] = new Promise((resolve) => {
+        globalThis.hibiTestResume[name] = resolve
+      })
+    }, name)
+  const resume = (name) =>
+    app.evaluate((_electron, name) => {
+      delete globalThis.hibiTestPauses[name]
+      globalThis.hibiTestResume[name]()
+    }, name)
+  return { app, page, open, addonWindows, pause, resume }
+}
 
-  // An inherited property name is not a window.
-  await open('constructor')
+test('addon windows survive cancelled quits and keep their limits', {
+  timeout: 60000,
+}, async (t) => {
+  const { app, page, open, addonWindows, pause, resume } = await launch(t, [
+    'quick-note',
+    'ui-preview',
+  ])
+
+  // An inherited property name is not a window, even for an addon with windows.
+  await open('constructor', {}, 'ui-preview')
   const inherited = await until(() => addonPage(app, 'constructor'))
   await inherited
     .getByRole('alert')
     .getByText('This addon window is unavailable.')
     .waitFor()
-
-  // The main window publishes its palette; windows apply changes live.
-  const published = await page.evaluate(() =>
-    JSON.parse(localStorage.getItem('hibi:active-palette')),
-  )
-  assert.equal(
-    published.colors.background,
-    await page.evaluate(() =>
-      getComputedStyle(document.documentElement)
-        .getPropertyValue('--background')
-        .trim(),
-    ),
-  )
-  await page.evaluate((palette) => {
-    localStorage.setItem(
-      'hibi:active-palette',
-      JSON.stringify({
-        ...palette,
-        colors: { ...palette.colors, background: '#123456' },
-      }),
-    )
-  }, published)
-  await inherited.waitForFunction(
-    () =>
-      getComputedStyle(document.documentElement)
-        .getPropertyValue('--background')
-        .trim() === '#123456',
-  )
   await page.evaluate(() =>
-    window.hibi.closeAddonWindow('quick-note', 'constructor'),
+    window.hibi.closeAddonWindow('ui-preview', 'constructor'),
   )
+  await until(async () => (await addonWindows()) === 0)
 
   // A tall window opened near the top still fits the work area.
   const area = await app.evaluate(
@@ -303,17 +302,32 @@ test('addon windows survive cancelled quits and keep their limits', {
   await page.evaluate(() => window.hibi.closeAddonWindow('quick-note', 'tall'))
 
   // A visible request while a hidden one is pending shows the window.
-  await Promise.all([open('warm', { show: false }), open('warm')])
+  await pause('addon-window-placement')
+  const warm = Promise.all([open('warm', { show: false }), open('warm')])
+  await resume('addon-window-placement')
+  await warm
   await page.evaluate(() => window.hibi.closeAddonWindow('quick-note', 'warm'))
   await page.waitForFunction(() =>
     window.closedAddonWindows.includes('quick-note/warm'),
   )
+  await until(async () => (await addonWindows()) === 0)
+
+  // A loading window counts once toward the eight-window limit.
+  await pause('addon-window-loaded')
+  const loading = Promise.all(
+    [0, 1, 2, 3].map((index) => open(`loading-${index}`)),
+  )
+  await until(async () => (await addonWindows()) === 4)
+  const fifth = open('loading-4')
+  await resume('addon-window-loaded')
+  await Promise.all([loading, fifth])
+  assert.equal(await addonWindows(), 5)
 
   // Concurrent creations count toward the eight-window limit.
   const results = await page.evaluate(() =>
     Promise.allSettled(
-      Array.from({ length: 9 }, (_, index) =>
-        window.hibi.openAddonWindow('quick-note', { id: `many-${index}` }),
+      [5, 6, 7, 8].map((index) =>
+        window.hibi.openAddonWindow('quick-note', { id: `loading-${index}` }),
       ),
     ),
   )
@@ -325,7 +339,7 @@ test('addon windows survive cancelled quits and keep their limits', {
   for (let index = 0; index < 9; index++)
     await page.evaluate(
       (id) => window.hibi.closeAddonWindow('quick-note', id),
-      `many-${index}`,
+      `loading-${index}`,
     )
   await until(async () => (await addonWindows()) === 0)
 
@@ -365,4 +379,132 @@ test('addon windows survive cancelled quits and keep their limits', {
   })
   await page.evaluate(() => window.hibi.setAddonEnabled('quick-note', false))
   await until(async () => (await addonWindows()) === 0)
+
+  // Disabling cancels a creation that is still pending.
+  await page.evaluate(() => window.hibi.setAddonEnabled('quick-note', true))
+  await pause('addon-window-placement')
+  const late = open('late').then(
+    () => null,
+    (error) => error,
+  )
+  await page.evaluate(() => window.hibi.setAddonEnabled('quick-note', false))
+  await resume('addon-window-placement')
+  assert.match(String(await late), /closed before it opened/)
+  assert.equal(await addonWindows(), 0)
+})
+
+test('kept-alive addon windows are released after they idle', {
+  timeout: 45000,
+}, async (t) => {
+  const { app, page, open, addonWindows } = await launch(t, ['quick-note'], {
+    HIBI_TEST_KEEP_ALIVE_MS: '300',
+  })
+  await open('idle', { keepAlive: true })
+  await until(() => addonPage(app, 'idle'))
+  await page.evaluate(() => window.hibi.closeAddonWindow('quick-note', 'idle'))
+  await page.waitForFunction(() =>
+    window.closedAddonWindows.includes('quick-note/idle'),
+  )
+  await until(async () => (await addonWindows()) === 0)
+})
+
+test('addon windows use the published palette and follow the system', {
+  timeout: 45000,
+}, async (t) => {
+  const { app, page, open } = await launch(t, ['quick-note'])
+  const published = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem('hibi:active-palette')),
+  )
+  assert.ok(published.light.background && published.dark.background)
+  // A custom light and dark palette, as an addon colorscheme would publish.
+  await page.evaluate((palette) => {
+    localStorage.setItem(
+      'hibi:active-palette',
+      JSON.stringify({
+        mode: 'system',
+        light: { ...palette.light, background: '#123456' },
+        dark: { ...palette.dark, background: '#654321' },
+      }),
+    )
+  }, published)
+  await open('palette')
+  const view = await until(() => addonPage(app, 'palette'))
+  await view.emulateMedia({ colorScheme: 'light' })
+  const background = () =>
+    view.evaluate(() =>
+      getComputedStyle(document.documentElement)
+        .getPropertyValue('--background')
+        .trim(),
+    )
+  assert.equal(await background(), '#123456')
+  // Live updates from the main window arrive through storage.
+  await page.evaluate((palette) => {
+    localStorage.setItem(
+      'hibi:active-palette',
+      JSON.stringify({
+        mode: 'system',
+        light: { ...palette.light, background: '#abcdef' },
+        dark: { ...palette.dark, background: '#654321' },
+      }),
+    )
+  }, published)
+  await view.waitForFunction(
+    () =>
+      getComputedStyle(document.documentElement)
+        .getPropertyValue('--background')
+        .trim() === '#abcdef',
+  )
+  // With the main window closed, the window still follows the system appearance.
+  await app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()
+      .find((item) => item.webContents.getURL() === 'app://hibi/')
+      .close(),
+  )
+  await until(async () => !(await appWindows(app)).includes('app://hibi/'))
+  // Emulate the system switching to dark; hidden test windows ignore themeSource.
+  await view.emulateMedia({ colorScheme: 'dark' })
+  await view.waitForFunction(
+    () =>
+      getComputedStyle(document.documentElement)
+        .getPropertyValue('--background')
+        .trim() === '#654321',
+  )
+  assert.equal(
+    await view.evaluate(
+      () => getComputedStyle(document.documentElement).colorScheme,
+    ),
+    'dark',
+  )
+})
+
+test('pending hidden addon windows do not keep hibi running', {
+  timeout: 45000,
+  skip:
+    process.platform === 'darwin' &&
+    'macOS keeps Hibi running after its last window closes',
+}, async (t) => {
+  const { app, open, pause, resume } = await launch(t, ['quick-note'])
+  await open('visible')
+  await until(() => addonPage(app, 'visible'))
+  await pause('addon-window-placement')
+  void open('warm', { show: false }).catch(() => {})
+  await app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()
+      .find((item) => item.webContents.getURL() === 'app://hibi/')
+      .close(),
+  )
+  await until(async () => !(await appWindows(app)).includes('app://hibi/'))
+  await resume('addon-window-placement')
+  const exited = new Promise((resolve) => app.process().once('exit', resolve))
+  await app.evaluate(({ BrowserWindow }) => {
+    for (const window of BrowserWindow.getAllWindows())
+      if (window.webContents.getURL().endsWith('addon-window.html'))
+        window.close()
+  })
+  await Promise.race([
+    exited,
+    setTimeout(15000).then(() => {
+      throw new Error('A hidden addon window kept Hibi running.')
+    }),
+  ])
 })
