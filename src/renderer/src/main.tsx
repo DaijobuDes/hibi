@@ -175,7 +175,11 @@ function App() {
     colorschemes.snapshot,
   )
   // Addon windows follow this, including colorschemes registered by addons.
-  useEffect(() => publishActivePalette(themeSnapshot.active), [themeSnapshot])
+  useEffect(() => {
+    const publish = () => publishActivePalette(colorschemes.resolved())
+    publish()
+    return colorschemes.subscribe(publish)
+  }, [])
   const toolbarSnapshot = useSyncExternalStore(
     toolbar.subscribe,
     toolbar.snapshot,
