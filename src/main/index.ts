@@ -489,8 +489,10 @@ const background = new BackgroundMode({
   hasQuickNote: () => !!addonHotkeys.command(QUICK_NOTE_COMMAND),
   quickNote: () => {
     const command = addonHotkeys.command(QUICK_NOTE_COMMAND)
-    if (command)
-      mainWindow?.webContents.send(ADDON_HOTKEY_CHANNELS.invoke, command)
+    if (!command) return
+    // Quick note captures inside the main window, like its global shortcut.
+    showMainWindow()
+    mainWindow?.webContents.send(ADDON_HOTKEY_CHANNELS.invoke, command)
   },
 })
 function syncAddonCommands(
