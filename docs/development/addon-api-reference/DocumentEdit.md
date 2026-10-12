@@ -2,7 +2,7 @@
 
 # DocumentEdit
 
-Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L410)
+Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L412)
 
 <details>
 <summary>Declaration</summary>
@@ -32,7 +32,7 @@ type DocumentEdit = {
 
 ### from
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L411)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L413)
 
 ```typescript
 from: number
@@ -40,7 +40,7 @@ from: number
 
 ### to
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L412)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L414)
 
 ```typescript
 to: number
@@ -48,7 +48,7 @@ to: number
 
 ### insert
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L413)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L415)
 
 ```typescript
 insert: string
@@ -56,7 +56,7 @@ insert: string
 
 ### selection
 
-Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L415)
+Optional · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L417)
 
 Selection offsets within the inserted text; defaults to its end.
 

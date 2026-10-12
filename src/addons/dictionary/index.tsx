@@ -17,9 +17,11 @@ import type {
 } from '../../shared/foundation-contracts'
 import { defineAddon } from '../api'
 import { Button, PanelMessage } from '../ui'
+import { createDictionaryApi, type DictionaryApi } from './api'
 import {
   addCustomWord,
   customWordsProvider,
+  listCustomWords,
   openCustomWords,
 } from './custom-words'
 import css from './dictionary.css?inline'
@@ -40,7 +42,6 @@ import {
 import { SideView } from './SideView'
 import { languageNames, readPreferences, readRecentPack } from './settings'
 import sideCss from './side-view.css?inline'
-import { watchSuggestions } from './suggestions'
 
 function richTarget(
   editor: Editor,
@@ -588,9 +589,14 @@ export default defineAddon({
       keywords: 'dictionary thesaurus sidebar panel definition synonyms',
       run: () => side.open(),
     })
-    const stopSuggestions = watchSuggestions(context)
+    context.exports.provide<DictionaryApi>(
+      createDictionaryApi(
+        context.native,
+        () => detectLangs('word', readPreferences()),
+        listCustomWords,
+      ),
+    )
     stopAddon = () => {
-      stopSuggestions()
       void closeWords.then((close) => close?.())
     }
   },

@@ -180,7 +180,9 @@ await context.editor.registerContextActionProvider((request) => {
 
 Hibi owns the menus and applies accepted edits through its version-checked document edit path as one undo operation. Rich view accepts only exact plain-text ranges that preserve the surrounding Markdown. Invalid ranges and edits from a changed document are rejected. The returned removal functions and addon shutdown cancel pending work and remove visible results.
 
-Completion providers registered with `registerCompletionProvider()` return items with a label, the replacement text, and the editor-local range it replaces. Enter accepts the highlighted item, and so does Tab unless the item sets `acceptOnTab: false`; Tab then reaches the editor's own handling. When no completion list is open, Tab is never taken by completions. Completions are not requested while the slash command menu or the editor actions menu is open, and opening the actions menu closes an open completion list.
+Completion providers registered with `registerCompletionProvider()` return [CompletionItem](../addon-api-reference/CompletionItem.md) values with a label, the replacement text, and the editor-local range it replaces. Enter accepts the highlighted item, and so does Tab unless the item sets `acceptOnTab: false`. In both rich and source views, Tab closes the popup before reaching the editor's own indentation handling when the item cannot accept it. When no completion list is open, Tab is never taken by completions.
+
+Set `captureArrowKeys: false` for passive predictions. When every visible item sets it to false, any arrow key closes the popup and leaves caret movement and selection to the editor. Mixed lists retain arrow navigation when any item keeps the default value of true. Completions are not requested while the slash command menu or the editor actions menu is open, and opening the actions menu closes an open completion list.
 
 ## Add a system-wide shortcut
 

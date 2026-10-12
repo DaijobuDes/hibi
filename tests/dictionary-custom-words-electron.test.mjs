@@ -15,7 +15,7 @@ test('custom words are added, edited, removed, kept across restart, and suggeste
   await writeFile(file, 'The zorp is kilig')
   await writeFile(
     join(profile, 'addons.json'),
-    JSON.stringify({ dictionary: true }),
+    JSON.stringify({ dictionary: true, autocomplete: true }),
   )
   let app
   t.after(async () => {
@@ -107,7 +107,6 @@ test('custom words are added, edited, removed, kept across restart, and suggeste
     state: 'detached',
   })
   await page.screenshot({ path: 'test-results/dictionary-custom-words.png' })
-  await page.locator('#dictionary-suggest').click()
   await closeSettings()
 
   // Suggestions put custom words first and never go online.
@@ -118,6 +117,8 @@ test('custom words are added, edited, removed, kept across restart, and suggeste
     .getByRole('option', { name: /^Hibiland/ })
     .filter({ hasText: 'Your word' })
     .waitFor()
+  await page.keyboard.press('ArrowDown')
+  await menu.getByRole('option', { selected: true }).waitFor()
   await page.keyboard.press('Enter')
   await waitForAsync(page, async () =>
     (await window.hibi.getDocument()).markdown.endsWith(' Hibiland'),

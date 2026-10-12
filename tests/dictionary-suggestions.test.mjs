@@ -1,14 +1,38 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { createPersonalModel } from '../src/addons/autocomplete/model.ts'
 import {
-  dictionaryCompletions,
+  autocompleteCompletions,
   prefixAt,
   rankWords,
-  readTyping,
-} from '../src/addons/dictionary/suggestions.ts'
+} from '../src/addons/autocomplete/suggestions.ts'
 import { CompletionBroker } from '../src/renderer/src/completion-broker.ts'
 
-const settings = { suggest: true, tabAccepts: true, languages: ['en', 'fr'] }
+const settings = {
+  suggest: true,
+  tabAccepts: true,
+  languages: ['en', 'fr'],
+  learning: true,
+  excludedDocuments: [],
+  excludedWorkspaces: [],
+}
+const session = { scope: null, documentId: 'document', personal: true }
+function dictionaryCompletions(complete, preferences, languageName) {
+  const model = createPersonalModel()
+  return autocompleteCompletions(
+    {
+      version: 1,
+      complete: (prefix, langs, limit, signal) =>
+        complete(langs, prefix, signal, limit),
+      suggestionLanguages: () => ['en', 'fr', 'de', 'tl'],
+      customWords: () => [],
+    },
+    preferences,
+    { suggest: model.suggest, epoch: () => 0 },
+    () => session,
+    languageName,
+  )
+}
 const request = (before, after = '') => ({
   view: {
     documentId: 'document',
@@ -22,6 +46,7 @@ const request = (before, after = '') => ({
   selection: { anchor: before.length, head: before.length },
   before,
   after,
+  prose: { before, after },
   trigger: { kind: 'input', character: before.at(-1) },
 })
 const signal = () => new AbortController().signal
@@ -153,26 +178,6 @@ test('suggestions rank match quality, then language order, then length', () => {
   )
 })
 
-test('suggestion languages default to English and keep the order they were turned on', () => {
-  const stored = new Map()
-  globalThis.localStorage = {
-    getItem: (key) => stored.get(key) ?? null,
-    setItem: (key, value) => stored.set(key, value),
-  }
-  try {
-    assert.deepEqual(readTyping().languages, ['en'])
-    stored.set(
-      'hibi:dictionary:typing',
-      JSON.stringify({ languages: ['tl', 'ja', 'en', 'tl', 7] }),
-    )
-    assert.deepEqual(readTyping().languages, ['tl', 'en'])
-    stored.set('hibi:dictionary:typing', JSON.stringify({ languages: [] }))
-    assert.deepEqual(readTyping().languages, ['en'])
-  } finally {
-    delete globalThis.localStorage
-  }
-})
-
 test('suggestions ask every language in one request, keep case, and never go online', async () => {
   const calls = []
   const provider = dictionaryCompletions(
@@ -198,9 +203,10 @@ test('suggestions ask every language in one request, keep case, and never go onl
   assert.deepEqual(calls, [{ langs: ['en', 'fr'], prefix: 'Hap', limit: 24 }])
   assert.ok(items.every((item) => item.acceptOnTab === undefined))
   // One language: no language tags, and Tab can be left to the editor.
+  const englishSettings = { ...settings, languages: ['en'], tabAccepts: false }
   const english = dictionaryCompletions(
     packs({ en: ['happy'], fr: ['hapax'] }),
-    () => ({ ...settings, languages: ['en'], tabAccepts: false }),
+    () => englishSettings,
     (lang) => lang,
   )
   const [only, ...rest] = await english(request('hap'), signal())

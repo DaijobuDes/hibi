@@ -1,8 +1,10 @@
 import type {
   CompletionItem,
   CompletionProvider,
+  CompletionProviderOptions,
   CompletionRequest,
   CompletionUpdate,
+  TypingContext,
 } from '../../shared/completions'
 import type { AddonOwner, Dispose } from '../../shared/foundation-contracts'
 
@@ -22,6 +24,7 @@ type Registration = {
   owner: AddonOwner
   provider: CompletionProvider
   priority: number
+  onAccepted?: CompletionProviderOptions['onAccepted']
 }
 type Job = {
   registration: Registration
@@ -36,14 +39,47 @@ type Session = {
   onUpdate: (update: CompletionUpdate) => void
   jobs: Job[]
   timer: ReturnType<typeof setTimeout>
+  accepted?: boolean
 }
 
 const position = (value: number, length: number) =>
   Number.isSafeInteger(value) && value >= 0 && value <= length
 
-function snapshot(request: CompletionRequest | null): CompletionRequest | null {
+/** Capture safe prose once, only when a consumer reads it. */
+export function lazyCompletionProse(capture: () => CompletionRequest['prose']) {
+  let captured = false
+  let prose: CompletionRequest['prose']
+  return () => {
+    if (!captured) {
+      const value = capture()
+      prose =
+        value === undefined
+          ? undefined
+          : value &&
+              typeof value.before === 'string' &&
+              typeof value.after === 'string'
+            ? Object.freeze({
+                before: value.before.slice(-MAX_CONTEXT),
+                after: value.after.slice(0, MAX_CONTEXT),
+              })
+            : null
+      captured = true
+    }
+    return prose
+  }
+}
+
+function snapshot(
+  request: CompletionRequest | TypingContext | null,
+  typing = false,
+): CompletionRequest | null {
   if (!request) return null
-  const { view, selection, trigger, documentLength, contentVersion } = request
+  const { view, selection, documentLength, contentVersion } = request
+  const trigger = typing
+    ? { kind: 'explicit' as const }
+    : 'trigger' in request
+      ? request.trigger
+      : null
   if (
     !view ||
     !selection ||
@@ -69,7 +105,7 @@ function snapshot(request: CompletionRequest | null): CompletionRequest | null {
       (trigger.kind !== 'input' || typeof trigger.character !== 'string'))
   )
     return null
-  return Object.freeze({
+  const bounded: CompletionRequest = {
     view: Object.freeze({
       documentId: view.documentId,
       documentGeneration: view.documentGeneration,
@@ -90,7 +126,25 @@ function snapshot(request: CompletionRequest | null): CompletionRequest | null {
         ? { kind: 'explicit' as const }
         : { kind: 'input' as const, character: trigger.character.slice(0, 8) },
     ),
-  })
+  }
+  if (!typing && 'prose' in request) {
+    const prose = lazyCompletionProse(() => request.prose)
+    // Data properties keep snapshot semantics; accessors defer editor scans.
+    const descriptor = Object.getOwnPropertyDescriptor(request, 'prose')
+    if (descriptor && 'value' in descriptor) prose()
+    Object.defineProperty(bounded, 'prose', { enumerable: true, get: prose })
+  }
+  return Object.freeze(bounded)
+}
+
+function sameView(a: CompletionRequest, b: CompletionRequest) {
+  return (
+    a.editor === b.editor &&
+    a.view.documentId === b.view.documentId &&
+    a.view.documentGeneration === b.view.documentGeneration &&
+    a.view.viewId === b.view.viewId &&
+    a.view.viewGeneration === b.view.viewGeneration
+  )
 }
 
 function sameContext(a: CompletionRequest, b: CompletionRequest | null) {
@@ -128,7 +182,14 @@ function validItems(items: readonly CompletionItem[], length: number) {
       (item.detail !== undefined &&
         (typeof item.detail !== 'string' || item.detail.length > 512)) ||
       (item.rank !== undefined && !Number.isFinite(item.rank)) ||
-      (item.acceptOnTab !== undefined && typeof item.acceptOnTab !== 'boolean')
+      (item.acceptOnTab !== undefined &&
+        typeof item.acceptOnTab !== 'boolean') ||
+      (item.captureArrowKeys !== undefined &&
+        typeof item.captureArrowKeys !== 'boolean') ||
+      (item.preselect !== undefined && typeof item.preselect !== 'boolean') ||
+      (item.acceptOnEnter !== undefined &&
+        typeof item.acceptOnEnter !== 'boolean' &&
+        item.acceptOnEnter !== 'selected')
     )
       continue
     result.push(
@@ -140,6 +201,11 @@ function validItems(items: readonly CompletionItem[], length: number) {
         to: item.to,
         rank: Math.max(-100, Math.min(100, item.rank ?? 0)),
         ...(item.acceptOnTab === false ? { acceptOnTab: false } : {}),
+        ...(item.captureArrowKeys === false ? { captureArrowKeys: false } : {}),
+        ...(item.preselect === false ? { preselect: false } : {}),
+        ...(item.acceptOnEnter === undefined
+          ? {}
+          : { acceptOnEnter: item.acceptOnEnter }),
       }),
     )
   }
@@ -183,6 +249,130 @@ export class CompletionBroker {
   #active: Session | null = null
   #visible: Session | null = null
   #disposed = false
+  readonly #typing = new Set<(context: TypingContext) => void>()
+  #accepted: {
+    request: CompletionRequest
+    registration: Registration
+    from: number
+    to: number
+    version: number
+    at: number
+  } | null = null
+
+  onTypingContext(listener: (context: TypingContext) => void): Dispose {
+    if (this.#disposed) return () => {}
+    this.#typing.add(listener)
+    return () => {
+      this.#typing.delete(listener)
+    }
+  }
+
+  hasTypingListeners(): boolean {
+    return this.#typing.size > 0
+  }
+
+  emitTypingContext(context: TypingContext, origin = context.kind) {
+    if (this.#disposed || !this.#typing.size) return
+    const request = snapshot(context, true)
+    const { from, to, insertedLength } = context.change
+    if (
+      !request ||
+      !Number.isSafeInteger(from) ||
+      from < 0 ||
+      !Number.isSafeInteger(to) ||
+      to < from ||
+      !Number.isSafeInteger(insertedLength) ||
+      insertedLength < 0
+    )
+      return
+    let accepted = this.#accepted
+    if (
+      accepted &&
+      (!sameView(accepted.request, request) ||
+        this.#registrations.get(accepted.registration.id) !==
+          accepted.registration ||
+        performance.now() - accepted.at > 10000 ||
+        (request.contentVersion !== accepted.version + 1 &&
+          !(
+            origin === 'composition' &&
+            request.contentVersion > accepted.version
+          )))
+    )
+      accepted = null
+    const overlaps =
+      !!accepted &&
+      ((from < accepted.to && to > accepted.from) ||
+        (from === to &&
+          from >= accepted.from &&
+          from < accepted.to &&
+          insertedLength > 0))
+    if (accepted && !overlaps) {
+      const delta = insertedLength - (to - from)
+      if (to <= accepted.from) {
+        accepted.from += delta
+        accepted.to += delta
+      }
+      accepted.version = request.contentVersion
+    }
+    this.#accepted = overlaps ? null : accepted
+    if (context.kind === 'replace' && !overlaps) return
+    const { trigger: _trigger, prose: _prose, ...bounded } = request
+    const event = Object.freeze({
+      ...bounded,
+      ...(context.kind === 'replace' ? { before: '', after: '' } : {}),
+      kind: context.kind,
+      change: Object.freeze({ from, to, insertedLength }),
+    })
+    for (const listener of this.#typing) {
+      try {
+        listener(event)
+      } catch {
+        /* One listener cannot prevent another from observing typing. */
+      }
+    }
+  }
+
+  /** Reserve a current, visible item before dispatch; report only after verified success. */
+  prepareAcceptance(
+    request: CompletionRequest,
+    item: CompletionItem,
+  ): Dispose | null {
+    const session = this.#active ?? this.#visible
+    if (
+      !session ||
+      !sameContext(session.request, request) ||
+      !this.#current(session) ||
+      !this.#items(session).includes(item)
+    )
+      return null
+    const job = session.jobs.find((candidate) => candidate.items.includes(item))
+    if (!job || !this.#registrations.has(job.registration.id)) return null
+    const registration = job.registration
+    const epoch = this.#epoch
+    return () => {
+      if (
+        session.accepted ||
+        this.#disposed ||
+        this.#epoch !== epoch ||
+        this.#registrations.get(registration.id) !== registration
+      )
+        return
+      session.accepted = true
+      this.#accepted = {
+        request: session.request,
+        registration,
+        from: item.from,
+        to: item.from + item.insertText.length,
+        version: session.request.contentVersion + 1,
+        at: performance.now(),
+      }
+      try {
+        registration.onAccepted?.(session.request, item)
+      } catch {
+        /* Feedback must not roll back accepted text. */
+      }
+    }
+  }
 
   hasProviders(): boolean {
     return !this.#disposed && this.#registrations.size > 0
@@ -192,6 +382,7 @@ export class CompletionBroker {
     owner: AddonOwner,
     provider: CompletionProvider,
     priority = 0,
+    options: CompletionProviderOptions = {},
   ): Dispose {
     if (this.#disposed) throw new Error('Completion broker is disposed.')
     if (
@@ -208,6 +399,11 @@ export class CompletionBroker {
       throw new Error('Too many completion providers.')
     if (!Number.isFinite(priority))
       throw new Error('Invalid completion priority.')
+    if (
+      options.onAccepted !== undefined &&
+      typeof options.onAccepted !== 'function'
+    )
+      throw new Error('Invalid completion feedback callback.')
     const id = ++this.#nextId
     this.#registrations.set(id, {
       id,
@@ -216,6 +412,7 @@ export class CompletionBroker {
         activationGeneration: owner.activationGeneration,
       },
       provider,
+      onAccepted: options.onAccepted,
       priority: Math.max(-100, Math.min(100, priority)),
     })
     return () => this.#unregister([id])
@@ -280,6 +477,8 @@ export class CompletionBroker {
     this.#cancel()
     this.#registrations.clear()
     this.#stopped.clear()
+    this.#typing.clear()
+    this.#accepted = null
   }
 
   #unregister(ids: readonly number[]) {

@@ -95,6 +95,14 @@ For installed packages, use the [SideloadFactory](SideloadFactory.md) and the [s
 - [WorkspaceId](WorkspaceId.md)
 - [WorkspaceTarget](WorkspaceTarget.md)
 
+## Completions
+
+- [CompletionItem](CompletionItem.md)
+- [CompletionProvider](CompletionProvider.md)
+- [CompletionProviderOptions](CompletionProviderOptions.md)
+- [CompletionRequest](CompletionRequest.md)
+- [TypingContext](TypingContext.md)
+
 ## Addon windows
 
 - [AddonWindowOptions](AddonWindowOptions.md)

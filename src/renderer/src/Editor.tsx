@@ -2,7 +2,7 @@ import type { Editor, EditorEvents } from '@tiptap/core'
 import { closeHistory } from '@tiptap/pm/history'
 import type { Node as RichNode } from '@tiptap/pm/model'
 import { AllSelection, TextSelection } from '@tiptap/pm/state'
-import { ReplaceStep } from '@tiptap/pm/transform'
+import { Mapping, ReplaceStep } from '@tiptap/pm/transform'
 import { EditorContent, useEditor } from '@tiptap/react'
 import {
   findNext,
@@ -31,10 +31,12 @@ import type {
   RichExtension,
   SourceExtension,
 } from '../../addons/api'
-import type {
-  CompletionItem,
-  CompletionRequest,
-  CompletionUpdate,
+import {
+  type CompletionItem,
+  type CompletionRequest,
+  type CompletionUpdate,
+  safeCompletionContext,
+  type TypingContext,
 } from '../../shared/completions'
 import type { DocumentState } from '../../shared/desktop'
 import { MAX_DOCUMENT_BYTES } from '../../shared/desktop'
@@ -65,7 +67,16 @@ import { Button } from '../../ui/Controls'
 import { DocumentNotice } from '../../ui/DocumentNotice'
 import { performanceDiagnostics } from '../../ui/diagnostics'
 import { addonRegistry } from './addon-registry'
-import { completionBroker, otherPopupOpen } from './completion-broker'
+import {
+  completionBroker,
+  lazyCompletionProse,
+  otherPopupOpen,
+} from './completion-broker'
+import {
+  completionForKey,
+  dismissCompletionForArrow,
+  initialCompletionSelection,
+} from './completion-selection'
 import { documentImage } from './DocumentImage'
 import { documentEdits } from './document-edits'
 import { editorDocument } from './document-formats'
@@ -734,15 +745,24 @@ export function MarkdownEditor({
       request: CompletionRequest
       items: readonly CompletionItem[]
     } | null = null
-    let selected = 0
+    let selected = -1
     let cancel: (() => void) | null = null
     let pending = false
     let frame = 0
     let typed: string | null = null
     let disposed = false
+    let inputKind: TypingContext['kind'] | null = null
+    let inputBefore: CompletionRequest | null = null
+    let composingDocument: RichNode | null = null
+    let composingMapping = new Mapping()
+    let composingFrom = Infinity,
+      composingTo = 0
+    let compositionFrame = 0
+    let sourceEchoBefore: { version: number; before: RichNode } | null = null
     const open = () => menu.matches(':popover-open')
     const hide = () => {
       visible = null
+      selected = -1
       menu.inert = true
       menu.setAttribute('aria-hidden', 'true')
       if (open()) menu.hidePopover()
@@ -764,11 +784,13 @@ export function MarkdownEditor({
     }
     const capture = (
       trigger: CompletionRequest['trigger'],
+      typingContext = false,
+      rangeOnly = false,
     ): CompletionRequest | null => {
       const context = completionContext.current
       if (
         disposed ||
-        !completionBroker.hasProviders() ||
+        (!typingContext && !completionBroker.hasProviders()) ||
         editor.isDestroyed ||
         context.paneMode === 'markdown' ||
         context.disabled ||
@@ -792,7 +814,8 @@ export function MarkdownEditor({
         return null
       const current = documentRuntime.get(context.tabId)
       const source = documentRuntime.session(context.tabId)?.snapshot()
-      const selection = view.state.selection
+      const state = view.state
+      const selection = state.selection
       if (
         !current ||
         !source ||
@@ -800,17 +823,28 @@ export function MarkdownEditor({
         !(selection instanceof TextSelection) ||
         !selection.empty ||
         !selection.$head.parent.isTextblock ||
-        selection.$head.parent.type.spec.code ||
-        selection.$head.marks().some((mark) => mark.type.spec.code)
+        (!rangeOnly &&
+          (selection.$head.parent.type.spec.code ||
+            selection.$head.marks().some((mark) => mark.type.spec.code)))
       )
         return null
-      if (!plainSync.current)
+      if (!rangeOnly)
+        for (let depth = 1; depth <= selection.$head.depth; depth++) {
+          const node = selection.$head.node(depth)
+          if (
+            node.type.spec.code ||
+            /frontmatter|math|html/i.test(node.type.name)
+          )
+            return null
+        }
+      if (!typingContext && !plainSync.current)
         plainSync.current = createPlainSourceSync(
           source,
           view.state.doc,
           serializeCompletionSource(view.state.doc),
         )
       if (
+        !typingContext &&
         plainSync.current?.map(
           source,
           view.state.doc,
@@ -821,11 +855,45 @@ export function MarkdownEditor({
         return null
       const parent = selection.$head.parent
       const offset = selection.$head.parentOffset
+      const prose = lazyCompletionProse(() => {
+        let from = 0,
+          to = parent.content.size,
+          excluded = false
+        const unsafe = (node: RichNode) =>
+          !node.isText ||
+          node.marks.some(
+            (mark) =>
+              mark.type.spec.code || /link|math|html/i.test(mark.type.name),
+          )
+        if (!rangeOnly && parent.content.size <= 16384)
+          parent.forEach((node, start) => {
+            if (!unsafe(node)) return
+            const end = start + node.nodeSize
+            if (start < offset && offset < end) excluded = true
+            if (end <= offset) from = Math.max(from, end)
+            if (start >= offset) to = Math.min(to, start)
+          })
+        return !rangeOnly &&
+          !excluded &&
+          parent.content.size <= 16384 &&
+          !selection.$head
+            .marks()
+            .some(
+              (mark) =>
+                mark.type.spec.code || /link|math|html/i.test(mark.type.name),
+            ) &&
+          !/^\s*\//.test(parent.textBetween(0, offset))
+          ? safeCompletionContext(parent.textBetween(from, to), offset - from)
+          : null
+      })
       return {
         view: target,
+        get prose() {
+          return prose() ?? null
+        },
         contentVersion: current.contentVersion,
         editor: 'rich',
-        documentLength: view.state.doc.content.size,
+        documentLength: state.doc.content.size,
         selection: { anchor: selection.anchor, head: selection.head },
         before: parent.textBetween(Math.max(0, offset - 128), offset),
         after: parent.textBetween(
@@ -901,7 +969,8 @@ export function MarkdownEditor({
     }
     const select = (index: number) => {
       if (!visible?.items.length) return
-      selected = (index + visible.items.length) % visible.items.length
+      selected =
+        index < 0 ? -1 : (index + visible.items.length) % visible.items.length
       for (const [position, option] of [...menu.children].entries()) {
         const active = position === selected
         option.setAttribute('aria-selected', String(active))
@@ -912,7 +981,7 @@ export function MarkdownEditor({
       if (option) {
         view.dom.setAttribute('aria-activedescendant', option.id)
         option.scrollIntoView({ block: 'nearest' })
-      }
+      } else view.dom.removeAttribute('aria-activedescendant')
     }
     const accept = (index: number) => {
       const shown = visible
@@ -926,7 +995,8 @@ export function MarkdownEditor({
         return
       }
       const mapped = range(item, shown.request)
-      if (!mapped) {
+      const report = completionBroker.prepareAcceptance(shown.request, item)
+      if (!mapped || !report) {
         dismiss()
         return
       }
@@ -981,8 +1051,17 @@ export function MarkdownEditor({
         } finally {
           if (markedLink) exactSource.current = null
         }
-        if (!view.state.doc.eq(transaction.doc))
+        const source = documentRuntime
+          .session(completionContext.current.tabId)
+          ?.snapshot()
+        if (
+          !view.state.doc.eq(transaction.doc) ||
+          !flushRich(editor) ||
+          source?.version !== shown.request.contentVersion + 1 ||
+          source.materialize() !== proposed
+        )
           throw new Error('This completion needs Source view.')
+        report()
         richHistoryGroup.current.id = ''
         view.dispatch(closeHistory(view.state.tr))
         view.focus()
@@ -1002,8 +1081,11 @@ export function MarkdownEditor({
         hide()
         return
       }
+      const highlighted = visible?.items[selected]
+      selected = highlighted ? items.indexOf(highlighted) : -1
+      if (selected < 0 && (highlighted || !visible))
+        selected = initialCompletionSelection(items)
       visible = { request: update.request, items }
-      selected = Math.min(selected, items.length - 1)
       menu.replaceChildren(
         ...items.map((item, index) => {
           const option = document.createElement('div')
@@ -1051,6 +1133,28 @@ export function MarkdownEditor({
       return !!cancel
     }
     const onKeyDown = (event: KeyboardEvent) => {
+      if (
+        completionBroker.hasTypingListeners() &&
+        !event.isComposing &&
+        !view.composing &&
+        (!visible ||
+          (event.key === 'Enter' &&
+            !completionForKey(visible.items, selected, 'Enter'))) &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey &&
+        ['Enter', 'Backspace', 'Delete'].includes(event.key)
+      ) {
+        inputKind = event.key === 'Enter' ? 'input' : 'delete'
+        inputBefore = capture({ kind: 'explicit' }, true)
+        const kind = inputKind
+        setTimeout(() => {
+          if (inputKind === kind) {
+            inputKind = null
+            inputBefore = null
+          }
+        }, 0)
+      }
       if (!completionBroker.hasProviders()) return
       if (event.isComposing || view.composing) {
         dismiss()
@@ -1075,22 +1179,35 @@ export function MarkdownEditor({
         event.stopPropagation()
         return
       }
+      if (visible && dismissCompletionForArrow(visible.items, event.key)) {
+        dismiss()
+        return
+      }
       if (visible && !event.ctrlKey && !event.metaKey && !event.altKey) {
         if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-          select(selected + (event.key === 'ArrowDown' ? 1 : -1))
+          select(
+            selected < 0
+              ? event.key === 'ArrowDown'
+                ? 0
+                : visible.items.length - 1
+              : (selected +
+                  (event.key === 'ArrowDown' ? 1 : -1) +
+                  visible.items.length) %
+                  visible.items.length,
+          )
           event.preventDefault()
           event.stopPropagation()
           return
         }
-        if (
-          event.key === 'Enter' ||
-          (event.key === 'Tab' &&
-            visible.items[selected]?.acceptOnTab !== false)
-        ) {
-          accept(selected)
-          event.preventDefault()
-          event.stopPropagation()
-          return
+        if (event.key === 'Enter' || event.key === 'Tab') {
+          const item = completionForKey(visible.items, selected, event.key)
+          if (item) {
+            accept(visible.items.indexOf(item))
+            event.preventDefault()
+            event.stopPropagation()
+            return
+          }
+          dismiss()
         }
       }
       if (
@@ -1106,7 +1223,172 @@ export function MarkdownEditor({
         }, 0)
       } else typed = null
     }
+    const reportTyping = (
+      kind: TypingContext['kind'],
+      before: RichNode,
+      after: RichNode,
+      previous?: CompletionRequest | null,
+      actualChange?: TypingContext['change'],
+    ) => {
+      if (!completionBroker.hasTypingListeners() || view.state.doc !== after)
+        return
+      const request =
+        capture({ kind: 'explicit' }, true, kind === 'replace') ??
+        capture({ kind: 'explicit' }, true, true)
+      if (!request) return
+      let change = actualChange
+      if (!change) {
+        const from = before.content.findDiffStart(after.content)
+        const end = before.content.findDiffEnd(after.content)
+        if (from === null || !end) return
+        const overlap = Math.max(0, from - Math.min(end.a, end.b))
+        change = {
+          from,
+          to: end.a + overlap,
+          insertedLength: end.b + overlap - from,
+        }
+      }
+      completionBroker.emitTypingContext(
+        {
+          ...request,
+          before:
+            kind === 'input' &&
+            request.prose?.before === '' &&
+            previous?.prose &&
+            before.resolve(previous.selection.head).parent !==
+              view.state.selection.$head.parent
+              ? `${previous.prose.before}\n`.slice(-256)
+              : (request.prose?.before ?? ''),
+          after: request.prose?.after ?? '',
+          kind: request.prose ? kind : 'replace',
+          change,
+        },
+        kind,
+      )
+    }
+    const onBeforeInput = (event: InputEvent) => {
+      if (event.isComposing || !completionBroker.hasTypingListeners()) return
+      inputKind = event.inputType.startsWith('delete')
+        ? 'delete'
+        : [
+              'insertText',
+              'insertParagraph',
+              'insertLineBreak',
+              'insertReplacementText',
+            ].includes(event.inputType)
+          ? 'input'
+          : ['insertFromPaste', 'insertFromDrop'].includes(event.inputType)
+            ? 'replace'
+            : null
+      inputBefore = capture({ kind: 'explicit' }, true)
+      const kind = inputKind
+      setTimeout(() => {
+        if (inputKind === kind) inputKind = null
+      }, 0)
+    }
+    const startCompositionSignal = () => {
+      cancelAnimationFrame(compositionFrame)
+      inputKind = null
+      composingMapping = new Mapping()
+      composingFrom = Infinity
+      composingTo = 0
+      composingDocument = completionBroker.hasTypingListeners()
+        ? view.state.doc
+        : null
+    }
+    const endCompositionSignal = () => {
+      compositionFrame = requestAnimationFrame(() => {
+        compositionFrame = 0
+        const before = composingDocument
+        composingDocument = null
+        inputKind = null
+        if (before)
+          reportTyping(
+            'composition',
+            before,
+            view.state.doc,
+            null,
+            Number.isFinite(composingFrom)
+              ? {
+                  from: composingFrom,
+                  to: composingTo,
+                  insertedLength:
+                    view.state.doc.content.size -
+                    before.content.size +
+                    composingTo -
+                    composingFrom,
+                }
+              : undefined,
+          )
+      })
+    }
+    const removeTypingHistory = documentRuntime
+      .session(completionContext.current.tabId)
+      ?.subscribeOperations((prepared) => {
+        if (
+          !completionBroker.hasTypingListeners() ||
+          (prepared.operation.origin !== 'undo' &&
+            prepared.operation.origin !== 'redo')
+        )
+          return
+        const before =
+          sourceEchoBefore?.version === prepared.after.version
+            ? sourceEchoBefore.before
+            : view.state.doc
+        queueMicrotask(() => {
+          if (
+            !disposed &&
+            documentRuntime.session(completionContext.current.tabId)?.snapshot()
+              .version === prepared.after.version
+          )
+            reportTyping(
+              prepared.operation.origin as 'undo' | 'redo',
+              before,
+              view.state.doc,
+            )
+        })
+      })
     const onTransaction = ({ transaction }: EditorEvents['transaction']) => {
+      const echo = transaction.getMeta(richSourceEcho) as
+        | SourceSnapshot
+        | undefined
+      if (echo && transaction.docChanged)
+        sourceEchoBefore = { version: echo.version, before: transaction.before }
+      if (composingDocument && transaction.docChanged && !echo) {
+        for (const map of transaction.mapping.maps) {
+          const inverse = composingMapping.invert()
+          map.forEach((from, to) => {
+            composingFrom = Math.min(composingFrom, inverse.map(from, -1))
+            composingTo = Math.max(composingTo, inverse.map(to, 1))
+          })
+          composingMapping.appendMap(map)
+        }
+      }
+      const kind = inputKind,
+        previous = inputBefore
+      if (transaction.docChanged) {
+        inputKind = null
+        inputBefore = null
+      }
+      if (
+        transaction.docChanged &&
+        kind &&
+        !composingDocument &&
+        !view.composing &&
+        !transaction.getMeta(richSourceEcho)
+      ) {
+        const before = transaction.before,
+          after = view.state.doc
+        const step =
+          transaction.steps.length === 1 ? transaction.steps[0] : null
+        const change =
+          step instanceof ReplaceStep && transaction.doc.eq(after)
+            ? { from: step.from, to: step.to, insertedLength: step.slice.size }
+            : undefined
+        queueMicrotask(() => {
+          if (!disposed) reportTyping(kind, before, after, previous, change)
+        })
+      }
       if (!completionBroker.hasProviders()) return
       if (!transaction.docChanged && !transaction.selectionSet) return
       const character = transaction.docChanged ? typed : null
@@ -1125,6 +1407,9 @@ export function MarkdownEditor({
     }
     const onScroll = () => reposition()
     menu.addEventListener('pointerdown', (event) => event.preventDefault())
+    view.dom.addEventListener('beforeinput', onBeforeInput, true)
+    view.dom.addEventListener('compositionstart', startCompositionSignal, true)
+    view.dom.addEventListener('compositionend', endCompositionSignal)
     view.dom.addEventListener('keydown', onKeyDown, true)
     view.dom.addEventListener('blur', dismiss)
     view.dom.addEventListener('hibi:editor-actions-open', dismiss)
@@ -1135,6 +1420,15 @@ export function MarkdownEditor({
     editor.on('transaction', onTransaction)
     return () => {
       disposed = true
+      cancelAnimationFrame(compositionFrame)
+      removeTypingHistory?.()
+      view.dom.removeEventListener('beforeinput', onBeforeInput, true)
+      view.dom.removeEventListener(
+        'compositionstart',
+        startCompositionSignal,
+        true,
+      )
+      view.dom.removeEventListener('compositionend', endCompositionSignal)
       dismiss()
       editor.off('transaction', onTransaction)
       view.dom.removeEventListener('keydown', onKeyDown, true)

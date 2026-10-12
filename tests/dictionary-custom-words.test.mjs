@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { createPersonalModel } from '../src/addons/autocomplete/model.ts'
+import { autocompleteCompletions } from '../src/addons/autocomplete/suggestions.ts'
 import {
   addCustomWord,
   customWords,
@@ -18,7 +20,6 @@ import {
   wiktionaryProvider,
 } from '../src/addons/dictionary/online.ts'
 import { createRegistry, gather } from '../src/addons/dictionary/providers.ts'
-import { dictionaryCompletions } from '../src/addons/dictionary/suggestions.ts'
 
 const signal = new AbortController().signal
 /** Words without their ids. */
@@ -296,16 +297,32 @@ test('custom words are looked up as the user’s own without going online', asyn
 })
 
 test('custom words come before pack words in suggestions', async () => {
-  const provider = dictionaryCompletions(
-    async () => [{ lang: 'en', words: ['happy', 'happen'] }],
-    () => ({ suggest: true, tabAccepts: true, languages: ['en'] }),
+  const preferences = {
+    suggest: true,
+    tabAccepts: true,
+    learning: true,
+    languages: ['en'],
+    excludedDocuments: [],
+    excludedWorkspaces: [],
+  }
+  const session = { scope: null, documentId: 'document', personal: true }
+  const personal = createPersonalModel()
+  const provider = autocompleteCompletions(
+    {
+      version: 1,
+      complete: async () => [{ lang: 'en', words: ['happy', 'happen'] }],
+      suggestionLanguages: () => ['en', 'tl'],
+      customWords: () => [
+        { word: 'happenstance' },
+        { word: 'hapag', lang: 'tl' },
+        { word: 'Happy' },
+        { word: 'hap' },
+      ],
+    },
+    () => preferences,
+    { suggest: personal.suggest, epoch: () => 0 },
+    () => session,
     (lang) => lang,
-    () => [
-      { word: 'happenstance' },
-      { word: 'hapag', lang: 'tl' },
-      { word: 'Happy' },
-      { word: 'hap' },
-    ],
   )
   const items = await provider(
     {
@@ -321,6 +338,7 @@ test('custom words come before pack words in suggestions', async () => {
       selection: { anchor: 3, head: 3 },
       before: 'hap',
       after: '',
+      prose: { before: 'hap', after: '' },
       trigger: { kind: 'input', character: 'p' },
     },
     signal,
@@ -336,22 +354,38 @@ test('custom words come before pack words in suggestions', async () => {
 })
 
 test('custom word suggestions match NFC prefixes and list each word once', async () => {
-  const provider = dictionaryCompletions(
-    async (_langs, prefix) => [
-      {
-        lang: 'fr',
-        words: ['bonjour', 'écolier'].filter((word) =>
-          word.startsWith(prefix.normalize('NFC')),
-        ),
-      },
-    ],
-    () => ({ suggest: true, tabAccepts: true, languages: ['fr', 'en'] }),
+  const preferences = {
+    suggest: true,
+    tabAccepts: true,
+    learning: true,
+    languages: ['fr', 'en'],
+    excludedDocuments: [],
+    excludedWorkspaces: [],
+  }
+  const session = { scope: null, documentId: 'document', personal: true }
+  const personal = createPersonalModel()
+  const provider = autocompleteCompletions(
+    {
+      version: 1,
+      complete: async (prefix) => [
+        {
+          lang: 'fr',
+          words: ['bonjour', 'écolier'].filter((word) =>
+            word.startsWith(prefix.normalize('NFC')),
+          ),
+        },
+      ],
+      suggestionLanguages: () => ['en', 'fr'],
+      customWords: () => [
+        { word: 'école' },
+        { word: 'bonjour', lang: 'fr' },
+        { word: 'Bonjour', lang: 'en' },
+      ],
+    },
+    () => preferences,
+    { suggest: personal.suggest, epoch: () => 0 },
+    () => session,
     (lang) => lang,
-    () => [
-      { word: 'école' },
-      { word: 'bonjour', lang: 'fr' },
-      { word: 'Bonjour', lang: 'en' },
-    ],
   )
   const ask = (before) =>
     provider(
@@ -368,6 +402,7 @@ test('custom word suggestions match NFC prefixes and list each word once', async
         selection: { anchor: before.length, head: before.length },
         before,
         after: '',
+        prose: { before, after: '' },
         trigger: { kind: 'input', character: before.at(-1) },
       },
       signal,

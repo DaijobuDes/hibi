@@ -119,7 +119,7 @@
     "src/renderer/src/DependencySettings.tsx"
   ],
   "aa2717f75ddd": [
-    "src/addons/dictionary/Settings.tsx"
+    "src/addons/autocomplete/Settings.tsx"
   ],
   "9a911b08feb9": [
     "src/addons/mcp-server/Settings.tsx"
@@ -385,6 +385,12 @@
   ],
   "ea736ccebbff": [
     "src/renderer/src/SettingsScreen.tsx"
+  ],
+  "4db0a7e493a8": [
+    "src/addons/autocomplete/manifest.ts"
+  ],
+  "cf7f9f2535c6": [
+    "src/addons/autocomplete/index.tsx"
   ],
   "d461a493a375": [
     "src/renderer/src/FlavorPicker.tsx"
@@ -908,6 +914,10 @@
   "59cb301bb126": [
     "src/addons/math/PackageSettings.tsx"
   ],
+  "a2658f91312c": [
+    "src/addons/autocomplete/Settings.tsx",
+    "src/addons/autocomplete/index.tsx"
+  ],
   "2e25100afbf0": [
     "src/addons/diagnostics/Settings.tsx"
   ],
@@ -1312,6 +1322,9 @@
     "src/addons/dictionary/custom-words.ts",
     "src/addons/dictionary/index.tsx"
   ],
+  "b8d93c6a0c27": [
+    "src/addons/autocomplete/learning.ts"
+  ],
   "a4c30f907288": [
     "src/addons/quick-note/Settings.tsx"
   ],
@@ -1646,6 +1659,10 @@
   "b4e929d8bcfe": [
     "src/renderer/src/SettingsScreen.tsx"
   ],
+  "00cfbf32279d": [
+    "src/addons/autocomplete/Settings.tsx",
+    "src/addons/autocomplete/index.tsx"
+  ],
   "11a6767d5674": [
     "src/renderer/src/ImportDialog.tsx"
   ],
@@ -1876,6 +1893,9 @@
   "5342e09f2729": [
     "src/renderer/src/FormatEditor.tsx"
   ],
+  "f78b2d9159dd": [
+    "src/addons/autocomplete/Settings.tsx"
+  ],
   "eca198f59235": [
     "src/renderer/src/FlavorPicker.tsx"
   ],
@@ -2026,11 +2046,21 @@
   "a4bac4655d45": [
     "src/renderer/src/UpdateSettings.tsx"
   ],
+  "75304cf77db0": [
+    "src/addons/autocomplete/Settings.tsx",
+    "src/addons/autocomplete/index.tsx"
+  ],
   "f15e2c7d6b56": [
     "src/addons/ui-preview/index.tsx"
   ],
   "b110f99f2c2b": [
     "src/addons/ui-preview/index.tsx"
+  ],
+  "e6e2bbe2aa63": [
+    "src/addons/autocomplete/Settings.tsx"
+  ],
+  "1b601f5327d0": [
+    "src/addons/autocomplete/Settings.tsx"
   ],
   "a17d1c887e54": [
     "src/renderer/src/main.tsx"
@@ -2559,6 +2589,9 @@
   "03fd87186af7": [
     "src/renderer/src/markdown-syntax.ts"
   ],
+  "0c00c8000f4b": [
+    "src/addons/autocomplete/Settings.tsx"
+  ],
   "38d6dd9e30d9": [
     "src/shared/source-owners.ts"
   ],
@@ -2752,6 +2785,9 @@
   ],
   "2296b7344bc6": [
     "src/renderer/src/document-runtime.ts"
+  ],
+  "6bf078824a31": [
+    "src/renderer/src/completion-broker.ts"
   ],
   "00a88c02618e": [
     "src/renderer/src/completion-broker.ts"
@@ -2972,6 +3008,9 @@
   ],
   "a511909161e1": [
     "src/renderer/src/SettingsScreen.tsx"
+  ],
+  "7b4dbd556bfc": [
+    "src/addons/autocomplete/Settings.tsx"
   ],
   "bcccb5388362": [
     "src/renderer/src/CommandPalette.tsx"
@@ -3543,8 +3582,8 @@
   "2cb4007f6fbe": [
     "src/addons/diagnostics/Settings.tsx"
   ],
-  "ceb52199496b": [
-    "src/addons/dictionary/Settings.tsx"
+  "34cf55f332a8": [
+    "src/addons/autocomplete/Settings.tsx"
   ],
   "97472a48bbea": [
     "src/addons/dictionary/PackSettings.tsx",
@@ -4169,6 +4208,9 @@
   "09cfe40287bf": [
     "src/renderer/src/WorkspaceSettings.tsx"
   ],
+  "83de550b6c53": [
+    "src/addons/autocomplete/Settings.tsx"
+  ],
   "c3812fc4acb8": [
     "src/addons/dictionary/CustomWords.tsx",
     "src/renderer/src/AddonSettings.tsx",
@@ -4176,6 +4218,15 @@
   ],
   "65e648140def": [
     "src/renderer/src/addons.ts"
+  ],
+  "4a1934b45c62": [
+    "src/addons/autocomplete/index.tsx"
+  ],
+  "34c90a370d76": [
+    "src/addons/autocomplete/index.tsx"
+  ],
+  "3be24ef29017": [
+    "src/addons/autocomplete/index.tsx"
   ],
   "4953f8970948": [
     "src/renderer/src/FormattingToolbar.tsx"
@@ -4189,6 +4240,9 @@
   ],
   "139c1c54bff5": [
     "src/addons/dictionary/CustomWords.tsx"
+  ],
+  "78487e18eec0": [
+    "src/addons/autocomplete/Settings.tsx"
   ],
   "298b2b23d1af": [
     "src/renderer/src/addons.ts"
@@ -4895,6 +4949,12 @@
   "abc388e9203b": [
     "src/renderer/src/Introduction.tsx"
   ],
+  "769674e608bf": [
+    "src/addons/autocomplete/Settings.tsx"
+  ],
+  "6aacab185a74": [
+    "src/addons/autocomplete/Settings.tsx"
+  ],
   "d3938f7b87bb": [
     "src/main/addon-storage.ts"
   ],
@@ -4908,14 +4968,11 @@
   "c88a0b907419": [
     "src/addons/ui-preview/index.tsx"
   ],
+  "53095d6ae829": [
+    "src/addons/autocomplete/manifest.ts"
+  ],
   "e7aff57d9332": [
-    "src/addons/dictionary/Settings.tsx"
-  ],
-  "0fe00b867d1f": [
-    "src/addons/dictionary/Settings.tsx"
-  ],
-  "c4f77b4a4650": [
-    "src/addons/dictionary/Settings.tsx"
+    "src/addons/autocomplete/Settings.tsx"
   ],
   "02c46c832ed5": [
     "src/renderer/src/HibiSettings.tsx"
@@ -4956,6 +5013,9 @@
   ],
   "49c50576529d": [
     "src/addons/writing-suggestions/index.ts"
+  ],
+  "9b910110596f": [
+    "src/addons/autocomplete/Settings.tsx"
   ],
   "70a91037b87d": [
     "src/renderer/src/SettingsScreen.tsx"
@@ -5842,6 +5902,10 @@
   "f716923c808e": [
     "src/addons/dictionary/custom-words.ts"
   ],
+  "3dd128ad70f4": [
+    "src/addons/autocomplete/Settings.tsx",
+    "src/addons/autocomplete/index.tsx"
+  ],
   "78c4a3ab448e": [
     "src/main/workspace.ts"
   ],
@@ -6285,9 +6349,6 @@
   "fb54cddcd7f2": [
     "src/renderer/src/Introduction.tsx"
   ],
-  "782bde2e8ff7": [
-    "src/addons/dictionary/Settings.tsx"
-  ],
   "39965152019f": [
     "src/addons/markdown/flavor-info.ts"
   ],
@@ -6299,6 +6360,9 @@
   ],
   "653913ac0e67": [
     "src/addons/word-count/manifest.ts"
+  ],
+  "c4853f18f5cc": [
+    "src/addons/dictionary/Settings.tsx"
   ],
   "b46cf2c0bdf2": [
     "src/addons/dictionary/Settings.tsx"

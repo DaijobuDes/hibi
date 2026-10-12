@@ -687,7 +687,27 @@ export function useAddons(
   useEffect(() => {
     void window.hibi.bootstrap
       .addons()
-      .then(({ states, packages: installed, notices }) => {
+      .then(async ({ states, packages: installed, notices }) => {
+        try {
+          if (localStorage.getItem('hibi:dictionary:typing')) {
+            const { migrateDictionaryTyping } = await import(
+              '../../addons/autocomplete/settings'
+            )
+            await migrateDictionaryTyping(async () => {
+              if (
+                states.find((state) => state.id === 'autocomplete')
+                  ?.savedEnabled !== false
+              )
+                states = await window.hibi.setAddonEnabled(
+                  'autocomplete',
+                  true,
+                  true,
+                )
+            })
+          }
+        } catch (error) {
+          latest.current.error(error)
+        }
         setStates(states)
         addonRegistry.hydrate(installed)
         for (const message of notices)
@@ -1533,7 +1553,32 @@ export function useAddons(
                 cleanups.add(cleanup)
                 return cleanup
               },
-              async registerCompletionProvider(provider) {
+              onTypingContext(listener) {
+                if (disposed) return () => {}
+                let stopped = false
+                let remove = () => {}
+                const cleanup = () => {
+                  stopped = true
+                  remove()
+                  cleanups.delete(cleanup)
+                }
+                cleanups.add(cleanup)
+                void loadCompletionBroker()
+                  .then(({ completionBroker }) => {
+                    if (disposed || stopped) return
+                    remove = completionBroker.onTypingContext((event) => {
+                      if (disposed || stopped) return
+                      try {
+                        listener(event)
+                      } catch (error) {
+                        latest.current.error(error)
+                      }
+                    })
+                  })
+                  .catch((error) => latest.current.error(error))
+                return cleanup
+              },
+              async registerCompletionProvider(provider, options) {
                 if (disposed) throw new Error('This addon has stopped.')
                 if (typeof provider !== 'function')
                   throw new Error('Choose a completion provider function.')
@@ -1542,6 +1587,8 @@ export function useAddons(
                 const remove = completionBroker.register(
                   completionOwner,
                   provider,
+                  0,
+                  options,
                 )
                 const cleanup = () => {
                   remove()

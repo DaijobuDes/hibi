@@ -10,7 +10,7 @@ Once installed, place the cursor in a word or select it, then run **Define word*
 
 Lookups use Unicode NFC normalization, which also folds CJK compatibility ideographs; two affected JMdict headwords become reachable only after updating an older Japanese pack.
 
-Installed packs also power the dictionary side view while it follows the cursor, and optional word suggestions as you type in one or more languages. Neither sends anything online. See the [addon guide](../../src/addons/dictionary/README.md#side-view) for both, and for [custom words](../../src/addons/dictionary/README.md#custom-words).
+Installed packs also power the [dictionary side view](../../src/addons/dictionary/README.md#side-view) while it follows the cursor and the separate [Autocomplete addon](../../src/addons/autocomplete/README.md). Autocomplete combines offline vocabulary and [custom words](../../src/addons/dictionary/README.md#custom-words) with word patterns learned on this device. Neither feature sends anything online while you type.
 
 Definitions and readings are more complete than thesaurus data for Chinese and Japanese. Filipino, French, and German use the synonyms and antonyms available in Wiktionary.
 

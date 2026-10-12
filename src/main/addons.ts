@@ -208,6 +208,9 @@ function addonStates(preferences: Record<string, boolean>): AddonState[] {
   const all = manifests()
   const states = all.map(({ id, defaultEnabled }) => ({
     id,
+    ...(Object.hasOwn(preferences, id)
+      ? { savedEnabled: preferences[id] }
+      : {}),
     enabled:
       id === 'markdown' ||
       ((Object.hasOwn(preferences, id) ? preferences[id] : undefined) ??

@@ -2,7 +2,7 @@
 
 # AddonWindowHandle
 
-Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L623)
+Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L625)
 
 Controls a window opened with `context.windows.open`.
 
@@ -32,7 +32,7 @@ type AddonWindowHandle = {
 
 ### focus
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L624)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L626)
 
 ```typescript
 focus: () => Promise<void>
@@ -42,7 +42,7 @@ focus: () => Promise<void>
 
 ### close
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L625)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L627)
 
 ```typescript
 close: () => Promise<void>
@@ -52,7 +52,7 @@ close: () => Promise<void>
 
 ### onClosed
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L627)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L629)
 
 Called once when the window closes, including when the user closes it.
 

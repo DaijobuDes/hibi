@@ -193,6 +193,7 @@ test('main admission blocks transitive consumers without changing enabled prefer
     assert.deepEqual(stateOf(h, id), {
       id,
       enabled: true,
+      savedEnabled: true,
       blockedBy: ['provider'],
     })
     assert.equal(h.getAddonActivationGeneration(id), null)
@@ -229,6 +230,7 @@ test('installed ids matching inherited object properties remain disabled until e
   assert.deepEqual(stateOf(h, 'constructor'), {
     id: 'constructor',
     enabled: false,
+    savedEnabled: false,
   })
   assert.equal(h.getAddonActivationGeneration('constructor'), null)
   await h.enableAddon('constructor', true)
@@ -351,6 +353,7 @@ test('replacement and removal block dependents, retain their preferences, and re
   assert.deepEqual(stateOf(h, 'consumer'), {
     id: 'consumer',
     enabled: true,
+    savedEnabled: true,
     blockedBy: ['provider'],
   })
   await h.enableAddon('provider', true)
@@ -365,6 +368,7 @@ test('replacement and removal block dependents, retain their preferences, and re
   assert.deepEqual(stateOf(h, 'consumer'), {
     id: 'consumer',
     enabled: true,
+    savedEnabled: true,
     blockedBy: ['provider'],
   })
   await assert.rejects(
@@ -385,6 +389,22 @@ test('replacement and removal block dependents, retain their preferences, and re
   assert.equal(stateOf(h, 'provider').enabled, false)
   await h.enableAddon('provider', true)
   assert.equal(stateOf(h, 'consumer').blockedBy, undefined)
+})
+
+test('addon states distinguish manifest defaults from explicit saved activation choices', async (t) => {
+  const h = await host(t, [details('markdown'), details('autocomplete')])
+  await h.loadAddons()
+  assert.equal(stateOf(h, 'autocomplete').enabled, false)
+  assert.equal(stateOf(h, 'autocomplete').savedEnabled, undefined)
+  assert.equal(Object.hasOwn(stateOf(h, 'autocomplete'), 'savedEnabled'), false)
+  await h.enableAddon('autocomplete', false)
+  await h.loadAddons()
+  assert.equal(stateOf(h, 'autocomplete').enabled, false)
+  assert.equal(stateOf(h, 'autocomplete').savedEnabled, false)
+  assert.equal(stateOf(h, 'markdown').savedEnabled, undefined)
+  await h.enableAddon('autocomplete', true)
+  assert.equal(stateOf(h, 'autocomplete').enabled, true)
+  assert.equal(stateOf(h, 'autocomplete').savedEnabled, true)
 })
 
 test('startup loads unordered dependencies and missing consumers while culling only installed cycle participants', async (t) => {

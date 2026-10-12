@@ -17,7 +17,7 @@ test('side view follows the caret offline, replaces in one undo step, and pack s
   await writeFile(file, 'The dog is happy')
   await writeFile(
     join(profile, 'addons.json'),
-    JSON.stringify({ dictionary: true }),
+    JSON.stringify({ dictionary: true, autocomplete: true }),
   )
   const app = await electron.launch({
     args: [resolve('.'), `--user-data-dir=${profile}`],
@@ -215,19 +215,18 @@ test('side view follows the caret offline, replaces in one undo step, and pack s
     packs.en.sources[0].url,
   ])
 
-  // Suggestions are off until enabled in the addon's settings.
+  // Suggestions now belong to Autocomplete; the dictionary retains its side view.
   const toggle = async (id, editor) => {
     await clickMenu(app, 'Settings')
-    await page
-      .getByRole('tab', { name: 'Dictionary and thesaurus', exact: true })
-      .click()
+    await page.getByRole('tab', { name: 'Autocomplete', exact: true }).click()
     await page.locator(`#${id}`).click()
     await page.screenshot({ path: `test-results/${id}.png` })
     await page.getByRole('button', { name: /back to app/i }).click()
     await page.locator('.settings-screen').waitFor({ state: 'hidden' })
     await waitForDocumentEditor(app, page, editor)
   }
-  await toggle('dictionary-suggest')
+  await toggle('autocomplete-suggest')
+  await toggle('autocomplete-suggest')
   const richText = () =>
     rich.evaluate((element) => element.editor.state.doc.textContent)
   const menu = page.getByRole('listbox', { name: 'Completions' })
@@ -253,7 +252,7 @@ test('side view follows the caret offline, replaces in one undo step, and pack s
   await page.keyboard.press('Backspace')
 
   // With Tab acceptance off, Tab works as usual and Enter still accepts.
-  await toggle('dictionary-tab-accepts')
+  await toggle('autocomplete-tab-accepts')
   await rich.evaluate((element) => element.editor.commands.focus('end'))
   await page.keyboard.type(' hap')
   await menu.getByRole('option', { name: 'happy', exact: true }).waitFor()
@@ -263,6 +262,7 @@ test('side view follows the caret offline, replaces in one undo step, and pack s
   await page.keyboard.press('Backspace')
   await page.keyboard.type('p')
   await menu.getByRole('option', { name: 'happy', exact: true }).waitFor()
+  await page.keyboard.press('ArrowDown')
   await page.keyboard.press('Enter')
   await waitForAsync(page, async () =>
     (await window.hibi.getDocument()).markdown.endsWith(' zq happy'),
@@ -295,7 +295,7 @@ test('side view follows the caret offline, replaces in one undo step, and pack s
     const states = await window.hibi.queryAddon('dictionary', 'packs')
     return states.find((state) => state.id === 'de')?.phase === 'installed'
   })
-  await toggle('dictionary-suggest-de')
+  await toggle('autocomplete-language-de')
   await rich.evaluate((element) => element.editor.commands.focus('end'))
   await page.keyboard.type(' sch')
   await menu
@@ -349,6 +349,7 @@ test('side view follows the caret offline, replaces in one undo step, and pack s
       .filter({ hasText: 'English' })
       .first()
       .waitFor()
+    await page.keyboard.press('ArrowDown')
     await page.keyboard.press('Enter')
     await waitForAsync(page, async () =>
       (await window.hibi.getDocument()).markdown.endsWith(' happy'),
@@ -419,7 +420,7 @@ test('side view follows the caret offline, replaces in one undo step, and pack s
       window.sourceView().state.doc.toString().endsWith(' happy hap') &&
       !document.querySelector('.cm-tooltip-autocomplete'),
   )
-  await toggle('dictionary-tab-accepts', { name: 'Markdown editor' })
+  await toggle('autocomplete-tab-accepts', { name: 'Markdown editor' })
   // CodeMirror declines Tab and Enter for its `interactionDelay` (75 ms by
   // default, which SourceEditor keeps) after a list opens. Shifting the page
   // clock around one key press puts it inside or past that delay without waiting.

@@ -1,19 +1,12 @@
 import { useState } from 'react'
-import { Select, SettingRow, Toggle } from '../ui'
+import { Select, SettingRow } from '../ui'
 import { CustomWords } from './CustomWords'
-import { type LanguagePreferences, latinLangs } from './lookup'
+import type { LanguagePreferences } from './lookup'
 import { PackSettings } from './PackSettings'
 import { languageNames, readPreferences, writePreferences } from './settings'
-import { readTyping, type TypingPreferences, writeTyping } from './suggestions'
 
 export function Settings() {
   const [value, setValue] = useState(readPreferences)
-  const [typing, setTyping] = useState(readTyping)
-  const changeTyping = (next: Partial<TypingPreferences>) => {
-    const preferences = { ...typing, ...next }
-    setTyping(preferences)
-    writeTyping(preferences)
-  }
   const change = (next: Partial<LanguagePreferences>) => {
     const preferences = { ...value, ...next }
     setValue(preferences)
@@ -62,68 +55,10 @@ export function Settings() {
             ))}
           </Select>
         </SettingRow>
-        <SettingRow
-          id="dictionary-suggest"
-          label="Suggest words as you type"
-          description="Offers completions for the word you are typing from installed offline packs. Nothing is sent online."
-        >
-          <Toggle
-            id="dictionary-suggest"
-            checked={typing.suggest}
-            onChange={(event) =>
-              changeTyping({ suggest: event.target.checked })
-            }
-          />
-        </SettingRow>
-        <SettingRow
-          id="dictionary-suggest-languages"
-          label="Suggestion languages"
-          description="Suggestions come from the installed packs of every language turned on here, so mixed-language writing works. Words that match what you typed best come first, then languages in the order you turned them on."
-        >
-          <fieldset
-            id="dictionary-suggest-languages"
-            className="dictionary-suggest-languages"
-            aria-label="Suggestion languages"
-            disabled={!typing.suggest}
-          >
-            {latinLangs.map((lang) => {
-              const on = typing.languages.includes(lang)
-              return (
-                <label key={lang} htmlFor={`dictionary-suggest-${lang}`}>
-                  <Toggle
-                    id={`dictionary-suggest-${lang}`}
-                    checked={on}
-                    // At least one language stays on.
-                    disabled={on && typing.languages.length === 1}
-                    onChange={(event) =>
-                      changeTyping({
-                        languages: event.target.checked
-                          ? [...typing.languages, lang]
-                          : typing.languages.filter((item) => item !== lang),
-                      })
-                    }
-                  />
-                  {languageNames[lang]}
-                </label>
-              )
-            })}
-          </fieldset>
-        </SettingRow>
-        <SettingRow
-          id="dictionary-tab-accepts"
-          label="Accept suggestions with Tab"
-          description="When suggestions are showing, Tab inserts the highlighted word. Enter always does. Without suggestions, Tab works as usual."
-        >
-          <Toggle
-            id="dictionary-tab-accepts"
-            checked={typing.suggest && typing.tabAccepts}
-            disabled={!typing.suggest}
-            onChange={(event) =>
-              changeTyping({ tabAccepts: event.target.checked })
-            }
-          />
-        </SettingRow>
       </div>
+      <p className="setting-description">
+        Word suggestions and learning are available in Autocomplete settings.
+      </p>
       <CustomWords />
       <h2>Offline language packs</h2>
       <PackSettings />

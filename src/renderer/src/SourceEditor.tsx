@@ -5,9 +5,13 @@ import {
   type CompletionContext,
   type CompletionResult,
   closeCompletion,
+  completionKeymap,
   completionStatus,
+  currentCompletions,
   pickedCompletion,
   selectedCompletion,
+  selectedCompletionIndex,
+  setSelectedCompletion,
   startCompletion,
 } from '@codemirror/autocomplete'
 import {
@@ -18,6 +22,7 @@ import {
   selectAll,
 } from '@codemirror/commands'
 import {
+  ensureSyntaxTree,
   HighlightStyle,
   indentUnit,
   type Language,
@@ -32,9 +37,11 @@ import {
   setSearchQuery,
 } from '@codemirror/search'
 import {
+  ChangeSet,
   Compartment,
   EditorSelection,
   EditorState,
+  Prec,
   Transaction,
 } from '@codemirror/state'
 import {
@@ -47,9 +54,12 @@ import {
 import { tags } from '@lezer/highlight'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { DocumentFormat, SourceExtension } from '../../addons/api'
-import type {
-  CompletionItem,
-  CompletionRequest,
+import {
+  type CompletionItem,
+  type CompletionRequest,
+  safeCompletionContext,
+  sourceProseAllowed,
+  type TypingContext,
 } from '../../shared/completions'
 import { type DocumentState, MAX_DOCUMENT_BYTES } from '../../shared/desktop'
 import {
@@ -75,7 +85,16 @@ import {
 import { Button } from '../../ui/Controls'
 import { DocumentNotice } from '../../ui/DocumentNotice'
 import { codeHighlighter, codeLanguages } from './code-languages'
-import { completionBroker, otherPopupOpen } from './completion-broker'
+import {
+  completionBroker,
+  lazyCompletionProse,
+  otherPopupOpen,
+} from './completion-broker'
+import {
+  completionForKey,
+  dismissCompletionForArrow,
+  initialCompletionSelection,
+} from './completion-selection'
 import { documentEdits } from './document-edits'
 import { editorDocument } from './document-formats'
 import { documentProjections } from './document-projections'
@@ -575,14 +594,90 @@ export function SourceEditor({
     } | null = null
     let closingCompletion = false
     let escaped = false
+    let compositionSignal: {
+      changes: ChangeSet
+      request: CompletionRequest | null
+    } | null = null
+    let compositionFrame = 0
+    let newlineInput = false
+    const reportTyping = (
+      kind: TypingContext['kind'],
+      changes: ChangeSet,
+      boundaryBefore?: string,
+    ) => {
+      if (!completionBroker.hasTypingListeners()) return
+      const request = captureCompletion({ kind: 'explicit' })
+      if (!request) return
+      let from = Infinity,
+        to = 0,
+        insertedLength = 0
+      changes.iterChangedRanges((fromA, toA) => {
+        from = Math.min(from, fromA)
+        to = Math.max(to, toA)
+      })
+      if (!Number.isFinite(from)) return
+      insertedLength = changes.newLength - changes.length + to - from
+      completionBroker.emitTypingContext(
+        {
+          ...request,
+          before:
+            boundaryBefore === undefined
+              ? (request.prose?.before ?? '')
+              : `${boundaryBefore}\n`.slice(-256),
+          after: request.prose?.after ?? '',
+          kind: request.prose ? kind : 'replace',
+          change: { from, to, insertedLength },
+        },
+        kind,
+      )
+    }
+    const proseAt = (
+      state: EditorState,
+      markdownMode = parserOptions.current.markdownMode,
+    ) => {
+      const pos = state.selection.main.head
+      if (
+        !markdownMode ||
+        pos > 16384 ||
+        !sourceProseAllowed(state.sliceDoc(0, pos))
+      )
+        return null
+      const line = state.doc.lineAt(pos)
+      if (
+        line.length > 16384 ||
+        /^\s*\//.test(line.text) ||
+        /<\/?[a-z!]/i.test(line.text)
+      )
+        return null
+      const tree = ensureSyntaxTree(state, line.to, 2)
+      if (tree?.type.name !== 'Document') return null
+      let from = line.from,
+        to = line.to,
+        excluded = false
+      tree.iterate({
+        from: line.from,
+        to: line.to,
+        enter(node) {
+          if (!/code|frontmatter|html|link|url|math/i.test(node.name)) return
+          if (node.from < pos && pos < node.to) excluded = true
+          if (node.to <= pos) from = Math.max(from, node.to)
+          if (node.from >= pos) to = Math.min(to, node.from)
+        },
+      })
+      return excluded
+        ? null
+        : safeCompletionContext(state.sliceDoc(from, to), pos - from)
+    }
     const captureCompletion = (
       trigger: CompletionRequest['trigger'],
+      allowSelection = false,
     ): CompletionRequest | null => {
       const context = editContext.current
       const active = documentRuntime.get(document.tabId)
       const target = documentRuntime.captureActiveView()
       const owner = documentRuntime.captureDocument(document.tabId)
-      const selected = editor.state.selection
+      const state = editor.state
+      const selected = state.selection
       if (
         view.current !== editor ||
         !editor.hasFocus ||
@@ -601,23 +696,25 @@ export function SourceEditor({
         target.viewId !== viewId ||
         !documentRuntime.isLiveView(target) ||
         selected.ranges.length !== 1 ||
-        !selected.main.empty
+        (!allowSelection && !selected.main.empty)
       )
         return null
       const snapshot = bridge.snapshot()
       if (snapshot.version !== active.contentVersion) return null
       const pos = selected.main.head
+      const markdownMode = parserOptions.current.markdownMode
+      const prose = lazyCompletionProse(() => proseAt(state, markdownMode))
       return {
         view: target,
         contentVersion: snapshot.version,
         editor: 'source',
-        documentLength: editor.state.doc.length,
+        documentLength: state.doc.length,
         selection: { anchor: selected.main.anchor, head: pos },
-        before: editor.state.sliceDoc(Math.max(0, pos - 256), pos),
-        after: editor.state.sliceDoc(
-          pos,
-          Math.min(editor.state.doc.length, pos + 256),
-        ),
+        get prose() {
+          return prose() ?? null
+        },
+        before: state.sliceDoc(Math.max(0, pos - 256), pos),
+        after: state.sliceDoc(pos, Math.min(state.doc.length, pos + 256)),
         trigger,
       }
     }
@@ -686,7 +783,7 @@ export function SourceEditor({
       pending.cancel?.()
       for (const resolve of pending.waiting.splice(0)) resolve(null)
     }
-    const keepTab = new WeakSet<Completion>()
+    const completionItems = new WeakMap<Completion, CompletionItem>()
     const resultFor = (pending: PendingCompletion): CompletionResult => ({
       from: pending.request.selection.head,
       to: pending.request.selection.head,
@@ -722,7 +819,12 @@ export function SourceEditor({
               closeCompletion(view)
               return
             }
-            view.dispatch({
+            const report = completionBroker.prepareAcceptance(
+              pending.request,
+              item,
+            )
+            if (!report) return
+            const transaction = view.state.update({
               changes: {
                 from: item.from,
                 to: item.to,
@@ -735,10 +837,18 @@ export function SourceEditor({
                 Transaction.userEvent.of('input.complete'),
               ],
             })
+            view.dispatch(transaction)
+            if (
+              view.state.doc.eq(transaction.state.doc) &&
+              bridge.snapshot().version ===
+                pending.request.contentVersion + 1 &&
+              session.ownsCurrentSnapshot(bridge.snapshot())
+            )
+              report()
           },
         }
         pending.options.set(item, option)
-        if (item.acceptOnTab === false) keepTab.add(option)
+        completionItems.set(option, item)
         return option
       }),
     })
@@ -883,18 +993,52 @@ export function SourceEditor({
           numbers.current.of([]),
           language.of(markdown()),
           sourceAnnotationExtension,
-          autocompletion({ override: [sourceCompletions] }),
+          autocompletion({
+            override: [sourceCompletions],
+            selectOnOpen: false,
+            defaultKeymap: false,
+          }),
+          EditorState.transactionExtender.of((transaction) => {
+            const options = currentCompletions(transaction.state)
+            if (
+              !options.length ||
+              options === currentCompletions(transaction.startState) ||
+              selectedCompletion(transaction.state)
+            )
+              return null
+            const option = options[0]
+            const first = option && completionItems.get(option)
+            return first && initialCompletionSelection([first]) === 0
+              ? { effects: setSelectedCompletion(0) }
+              : null
+          }),
+          Prec.highest(
+            keymap.of([
+              ...completionKeymap.filter((binding) => binding.key !== 'Enter'),
+              ...(['Enter', 'Tab'] as const).map((key) => ({
+                key,
+                run: (view: EditorView) => {
+                  const options = currentCompletions(view.state)
+                  const selected = selectedCompletionIndex(view.state) ?? -1
+                  const option =
+                    options[selected < 0 && key === 'Tab' ? 0 : selected]
+                  const item = option && completionItems.get(option)
+                  if (
+                    !item ||
+                    !completionForKey([item], selected < 0 ? -1 : 0, key)
+                  ) {
+                    closeCompletion(view)
+                    return false
+                  }
+                  if (selected < 0)
+                    view.dispatch({ effects: setSelectedCompletion(0) })
+                  return acceptCompletion(view)
+                },
+              })),
+            ]),
+          ),
           indentation.current.of(sourceIndentation(tabIndent.snapshot().unit)),
           keymap.of([
-            {
-              key: 'Tab',
-              run: (view) => {
-                const option = selectedCompletion(view.state)
-                return (
-                  !(option && keepTab.has(option)) && acceptCompletion(view)
-                )
-              },
-            },
             // Like Enter, a Tab the open list declines (it just opened, or its
             // item keeps Tab) does what it would without the list.
             {
@@ -1038,6 +1182,43 @@ export function SourceEditor({
             spellcheck: 'false',
           }),
           EditorView.updateListener.of((update) => {
+            const newline = update.docChanged && newlineInput
+            if (update.docChanged) newlineInput = false
+            if (update.docChanged && completionBroker.hasTypingListeners()) {
+              const transaction =
+                update.transactions.length === 1 ? update.transactions[0] : null
+              if (compositionSignal) {
+                compositionSignal.changes = compositionSignal.changes.compose(
+                  update.changes,
+                )
+              } else if (
+                transaction &&
+                !update.view.composing &&
+                !transaction.isUserEvent('input.type.compose')
+              ) {
+                if (
+                  transaction.isUserEvent('input.type') ||
+                  (newline &&
+                    transaction.annotation(Transaction.userEvent) === 'input')
+                )
+                  reportTyping(
+                    'input',
+                    update.changes,
+                    newline ||
+                      update.state.doc.lineAt(update.state.selection.main.head)
+                        .from === update.state.selection.main.head
+                      ? proseAt(update.startState)?.before
+                      : undefined,
+                  )
+                else if (transaction.isUserEvent('delete'))
+                  reportTyping('delete', update.changes)
+                else if (
+                  transaction.isUserEvent('input.paste') ||
+                  transaction.isUserEvent('input.drop')
+                )
+                  reportTyping('replace', update.changes)
+              }
+            }
             if (update.selectionSet || update.docChanged)
               editorViewRegistry.changed(viewId as ViewId, 'source')
             if (
@@ -1111,6 +1292,79 @@ export function SourceEditor({
     })
     view.current = editor
     const detachSession = bridge.attach(editor)
+    const removeTypingHistory = session.subscribeOperations((prepared) => {
+      if (
+        !completionBroker.hasTypingListeners() ||
+        (prepared.operation.origin !== 'undo' &&
+          prepared.operation.origin !== 'redo')
+      )
+        return
+      const changes = editorChangesFromSource(
+        prepared.before,
+        prepared.operation.changes,
+      )
+      const previousLength = prepared.before.normalizedLength
+      reportTyping(
+        prepared.operation.origin,
+        ChangeSet.of(changes, previousLength),
+      )
+    })
+    const onTypingCommand = (event: KeyboardEvent) => {
+      if (
+        completion &&
+        dismissCompletionForArrow(completion.items, event.key)
+      ) {
+        cancelCompletion()
+        closeCompletion(editor)
+        return
+      }
+      if (
+        event.key !== 'Enter' ||
+        event.isComposing ||
+        editor.composing ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.altKey
+      )
+        return
+      newlineInput = true
+      setTimeout(() => {
+        newlineInput = false
+      }, 0)
+    }
+    editor.contentDOM.addEventListener('keydown', onTypingCommand, true)
+    const startCompositionSignal = () => {
+      cancelAnimationFrame(compositionFrame)
+      compositionSignal = completionBroker.hasTypingListeners()
+        ? {
+            changes: editor.state.changes([]),
+            request: captureCompletion({ kind: 'explicit' }, true),
+          }
+        : null
+    }
+    const endCompositionSignal = () => {
+      compositionFrame = requestAnimationFrame(() => {
+        compositionFrame = 0
+        const signal = compositionSignal
+        compositionSignal = null
+        const current = captureCompletion({ kind: 'explicit' })
+        if (
+          !signal?.request ||
+          !current ||
+          signal.request.view.viewGeneration !== current.view.viewGeneration ||
+          signal.request.view.documentGeneration !==
+            current.view.documentGeneration
+        )
+          return
+        reportTyping('composition', signal.changes)
+      })
+    }
+    editor.contentDOM.addEventListener(
+      'compositionstart',
+      startCompositionSignal,
+      true,
+    )
+    editor.contentDOM.addEventListener('compositionend', endCompositionSignal)
     const removeAnnotations = observeSourceAnnotations(editor)
     const unregisterProjection = documentProjections.register(
       'source',
@@ -1431,6 +1685,18 @@ export function SourceEditor({
       .load('13px "Geist Mono"')
       .then(finishFont, finishFont)
     return () => {
+      cancelAnimationFrame(compositionFrame)
+      editor.contentDOM.removeEventListener('keydown', onTypingCommand, true)
+      editor.contentDOM.removeEventListener(
+        'compositionstart',
+        startCompositionSignal,
+        true,
+      )
+      editor.contentDOM.removeEventListener(
+        'compositionend',
+        endCompositionSignal,
+      )
+      removeTypingHistory()
       cancelCompletion()
       clearReferences('unavailable', false)
       sourceFind.current?.dispose()

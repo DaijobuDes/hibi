@@ -8,6 +8,18 @@ export const referenceSources = [
   ['src/addons/api.ts', 'Addon lifecycle', 'addon-api'],
   ['src/shared/foundation-contracts.ts', 'Foundations'],
   [
+    'src/shared/completions.ts',
+    'Completions',
+    null,
+    [
+      'CompletionItem',
+      'CompletionRequest',
+      'CompletionProvider',
+      'CompletionProviderOptions',
+      'TypingContext',
+    ],
+  ],
+  [
     'src/shared/addon-windows.ts',
     'Addon windows',
     null,

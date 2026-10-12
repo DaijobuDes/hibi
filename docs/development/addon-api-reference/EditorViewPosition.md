@@ -2,7 +2,7 @@
 
 # EditorViewPosition
 
-Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L453)
+Type alias · [Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L455)
 
 <details>
 <summary>Declaration</summary>
@@ -26,7 +26,7 @@ type EditorViewPosition = Pick<
 
 ### position
 
-[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L456)
+[Source](https://github.com/schmayterling/hibi/blob/main/src/addons/api.ts#L458)
 
 ```typescript
 position: number

@@ -1,0 +1,316 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import { createPersonalModel } from '../src/addons/autocomplete/model.ts'
+import {
+  autocompleteCompletions,
+  insertionText,
+  precedingWords,
+} from '../src/addons/autocomplete/suggestions.ts'
+import { safeCompletionContext } from '../src/shared/completions.ts'
+
+const request = (before, prose = { before, after: '' }) => ({
+  view: {
+    documentId: 'doc',
+    documentGeneration: 1,
+    viewId: 'view',
+    viewGeneration: 1,
+  },
+  contentVersion: 1,
+  editor: 'source',
+  documentLength: before.length,
+  selection: { anchor: before.length, head: before.length },
+  before,
+  after: '',
+  prose,
+  trigger: { kind: 'input', character: before.at(-1) },
+})
+function fixture() {
+  const model = createPersonalModel()
+  let epoch = 0
+  let session = { scope: 'workspace', documentId: 'doc', personal: true }
+  let settings = {
+    suggest: true,
+    learning: true,
+    tabAccepts: true,
+    languages: ['en'],
+    excludedDocuments: [],
+    excludedWorkspaces: [],
+  }
+  const dictionary = {
+    version: 1,
+    suggestionLanguages: () => ['en', 'tl'],
+    customWords: () => [],
+    complete: async () => [{ lang: 'en', words: ['crack', 'crayon'] }],
+  }
+  const provider = autocompleteCompletions(
+    dictionary,
+    () => settings,
+    { suggest: model.suggest, epoch: () => epoch },
+    () => session,
+    (lang) => lang,
+  )
+  return {
+    model,
+    dictionary,
+    provider,
+    settings: (next) => {
+      settings = { ...settings, ...next }
+    },
+    scope: (scope) => {
+      session = { ...session, scope }
+    },
+    clear: () => {
+      model.clear()
+      epoch++
+    },
+  }
+}
+const signal = () => new AbortController().signal
+test('provider combines baseline, exact personal spelling, custom words and next-word context', async () => {
+  const f = fixture()
+  const words = async (before) =>
+    (await f.provider(request(before), signal())).map((item) => item.insertText)
+  assert.equal((await words('cra'))[0], 'crack')
+  f.dictionary.customWords = () => [{ word: 'craycray', lang: 'en' }]
+  assert.equal((await words('cra'))[0], 'craycray')
+  for (let i = 0; i < 80; i++)
+    f.model.observe({
+      scope: 'workspace',
+      languages: ['en'],
+      context: ['that', 'was'],
+      word: 'craZy',
+      kind: 'typed',
+    })
+  assert.equal((await words('that was cra'))[0], 'craZy')
+  f.dictionary.customWords = () => []
+  f.dictionary.complete = async () =>
+    assert.fail('next-word prediction must use local context')
+  const next = await f.provider(request('bro that was '), signal())
+  assert.equal(next[0].insertText, 'craZy')
+  assert.equal(next[0].from, 'bro that was '.length)
+  assert.equal(next[0].to, next[0].from)
+  assert.equal(next[0].preselect, false)
+  assert.equal(next[0].acceptOnEnter, false)
+  assert.equal(next[0].acceptOnTab, false)
+  assert.equal(next[0].captureArrowKeys, false)
+  f.settings({ tabAccepts: false })
+  const disabledTab = await f.provider(request('bro that was '), signal())
+  assert.equal(disabledTab[0].acceptOnTab, false)
+  assert.equal(disabledTab[0].captureArrowKeys, false)
+  f.settings({ learning: false })
+  assert.deepEqual(await words('bro that was '), [])
+})
+
+test('next-word provider rejects unrelated, one-hit and tied contexts', async () => {
+  const f = fixture()
+  f.dictionary.complete = async () => assert.fail('next-word dictionary lookup')
+  const observe = (word) =>
+    f.model.observe({
+      scope: 'workspace',
+      languages: ['en'],
+      context: ['that', 'was'],
+      word,
+      kind: 'typed',
+    })
+  observe('wild')
+  assert.deepEqual(await f.provider(request('bro that was '), signal()), [])
+  for (let i = 0; i < 5; i++) observe('wild')
+  assert.equal(
+    (await f.provider(request('bro that was '), signal()))[0].insertText,
+    'wild',
+  )
+  for (const before of ['purple zebra ', 'done. ', ' '])
+    assert.deepEqual(await f.provider(request(before), signal()), [])
+  for (let i = 0; i < 6; i++) observe('weird')
+  assert.deepEqual(await f.provider(request('bro that was '), signal()), [])
+})
+
+test('next-word predictions yield to unfinished note links', async () => {
+  const f = fixture()
+  f.dictionary.complete = async () => assert.fail('next-word dictionary lookup')
+  for (let i = 0; i < 6; i++)
+    f.model.observe({
+      scope: 'workspace',
+      languages: ['en'],
+      context: ['that', 'was'],
+      word: 'wild',
+      kind: 'typed',
+    })
+  for (const before of [
+    '[[bro that was ',
+    'see [[bro that was ',
+    '[[closed]] then [[bro that was ',
+    '[[bro `code` that was ',
+  ])
+    assert.deepEqual(
+      await f.provider(
+        request(before, safeCompletionContext(before, before.length)),
+        signal(),
+      ),
+      [],
+      before,
+    )
+  for (const before of [
+    'bro that was ',
+    '[[closed]] bro that was ',
+    '[bro that was ',
+  ])
+    assert.equal(
+      (await f.provider(request(before), signal()))[0]?.insertText,
+      'wild',
+      before,
+    )
+})
+
+test('prefix results require explicit enter selection and retain tab preference', async () => {
+  const f = fixture()
+  for (const tabAccepts of [true, false]) {
+    f.settings({ tabAccepts })
+    const items = await f.provider(request('cra'), signal())
+    assert.ok(items.length)
+    assert.ok(items.every((item) => item.captureArrowKeys === undefined))
+    assert.ok(
+      items.every(
+        (item) => item.preselect === false && item.acceptOnEnter === 'selected',
+      ),
+    )
+    assert.ok(
+      items.every(
+        (item) => item.acceptOnTab === (tabAccepts ? undefined : false),
+      ),
+    )
+  }
+})
+
+test('personal insertion matches prefix case and preserves internal capitals', async () => {
+  const f = fixture()
+  f.dictionary.complete = async () => []
+  const learn = (word, context = []) =>
+    f.model.observe({
+      scope: 'workspace',
+      languages: ['en'],
+      word,
+      context,
+      kind: 'typed',
+    })
+  for (let i = 0; i < 20; i++) learn('Something')
+  assert.equal(
+    (await f.provider(request('say som'), signal()))[0].insertText,
+    'something',
+  )
+  learn('something', ['say'])
+  for (let i = 0; i < 20; i++) learn('Something')
+  assert.equal(
+    (await f.provider(request('say som'), signal()))[0].insertText,
+    'something',
+  )
+  assert.equal(
+    (await f.provider(request('Som'), signal()))[0].insertText,
+    'Something',
+  )
+  for (const word of ['iPhone', 'McDonald']) {
+    learn(word, ['use'])
+    const prefix = word.slice(0, 3).toLowerCase()
+    for (const typed of [prefix, prefix.toUpperCase()])
+      assert.equal(
+        (await f.provider(request(`use ${typed}`), signal()))[0].insertText,
+        word,
+      )
+  }
+  f.dictionary.complete = async () => [{ lang: 'en', words: ['iphone'] }]
+  const items = await f.provider(request('use iph'), signal())
+  assert.equal(items.length, 1)
+  assert.equal(items[0].insertText, 'iPhone')
+  assert.equal(insertionText('Iph', 'iPhone', 'personal'), 'iPhone')
+  assert.equal(insertionText('Iph', 'iPhone', 'baseline'), 'IPhone')
+  assert.equal(insertionText('éco', 'école', 'personal'), 'école')
+  assert.equal(insertionText('Éco', 'école', 'personal'), 'École')
+})
+
+test('unsafe prose and unavailable sessions do not query dictionary or learning', async () => {
+  const f = fixture()
+  f.dictionary.complete = async () =>
+    assert.fail('unsafe context queried vocabulary')
+  assert.deepEqual(await f.provider(request('cra', null), signal()), [])
+  assert.deepEqual(
+    await f.provider({ ...request('cra'), prose: undefined }, signal()),
+    [],
+  )
+  assert.deepEqual(
+    await f.provider(
+      {
+        ...request('cra'),
+        view: { ...request('cra').view, documentId: 'other' },
+      },
+      signal(),
+    ),
+    [],
+  )
+  f.settings({ suggest: false })
+  assert.deepEqual(await f.provider(request('cra'), signal()), [])
+})
+
+test('late offline results are dropped after clear, workspace switch or changed preferences', async () => {
+  for (const change of [
+    (f) => f.clear(),
+    (f) => f.scope('other'),
+    (f) => f.settings({ learning: false }),
+  ]) {
+    const f = fixture()
+    let resolve
+    f.dictionary.complete = () =>
+      new Promise((done) => {
+        resolve = done
+      })
+    const pending = f.provider(request('cra'), signal())
+    change(f)
+    resolve([{ lang: 'en', words: ['crack'] }])
+    assert.deepEqual(await pending, [])
+  }
+})
+
+test('phrase context never extracts fragments from addresses, identifiers or secret-looking tokens', () => {
+  assert.deepEqual(precedingWords('bro that was '), ['that', 'was'])
+  assert.deepEqual(precedingWords('done. next '), ['next'])
+  assert.deepEqual(precedingWords('one\ntwo '), ['two'])
+  for (const text of [
+    'secret@example.test ',
+    'token_abcdef ',
+    'abc123 ',
+    'path/to/file ',
+    'host.name ',
+  ])
+    assert.deepEqual(precedingWords(text), [], text)
+  assert.deepEqual(precedingWords('secret@example.test ordinary '), [
+    'ordinary',
+  ])
+})
+
+test('custom vocabulary normalizes matching keys, deduplicates languages, and preserves editor offsets', async () => {
+  const f = fixture()
+  f.settings({ languages: ['tl', 'en'] })
+  let langs
+  f.dictionary.complete = async (_prefix, selected) => {
+    langs = selected
+    return []
+  }
+  f.dictionary.customWords = () => [
+    { word: 'école', lang: 'en' },
+    { word: 'école', lang: 'tl' },
+    { word: 'écologie' },
+  ]
+  const before = 'write e\u0301co'
+  const items = await f.provider(request(before), signal())
+  assert.deepEqual(langs, ['tl', 'en'])
+  assert.deepEqual(
+    items.map((item) => item.label),
+    ['école', 'écologie'],
+  )
+  assert.ok(items.every((item) => item.from === 6 && item.to === before.length))
+  assert.ok(items.every((item) => item.detail === 'Your word'))
+  f.dictionary.customWords = () => [
+    { word: 'bonjour', lang: 'en' },
+    { word: 'bonjour', lang: 'tl' },
+  ]
+  assert.equal((await f.provider(request('bon'), signal())).length, 1)
+})

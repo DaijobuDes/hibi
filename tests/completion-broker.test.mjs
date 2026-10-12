@@ -1,6 +1,506 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { CompletionBroker } from '../src/renderer/src/completion-broker.ts'
+import { EditorState } from '@codemirror/state'
+import {
+  CompletionBroker,
+  lazyCompletionProse,
+} from '../src/renderer/src/completion-broker.ts'
+import {
+  safeCompletionContext,
+  sourceProseAllowed,
+} from '../src/shared/completions.ts'
+
+test('acceptance uses visible item identity, winning provider, and one receipt per session', async () => {
+  const broker = new CompletionBroker()
+  const accepted = []
+  broker.register(owner('lower'), () => [item('lower', 0, 'same')], 0, {
+    onAccepted: () => accepted.push('lower'),
+  })
+  broker.register(
+    owner('winner'),
+    () => [
+      {
+        ...item('winner', 10, 'same'),
+        onAccepted: () => accepted.push('item'),
+      },
+    ],
+    0,
+    {
+      onAccepted: (input, picked) => accepted.push([input, picked]),
+    },
+  )
+  const captured = request()
+  const { items, request: bounded } = await collect(broker, captured).final
+  const picked = items[0]
+  assert.equal('onAccepted' in picked, false)
+  assert.equal(broker.prepareAcceptance(bounded, { ...picked }), null)
+  assert.equal(
+    broker.prepareAcceptance(request({ contentVersion: 2 }), picked),
+    null,
+  )
+  const first = broker.prepareAcceptance(bounded, picked)
+  const second = broker.prepareAcceptance(bounded, picked)
+  assert.deepEqual(accepted, [])
+  first()
+  first()
+  second()
+  assert.equal(accepted.length, 1)
+  assert.deepEqual(accepted[0], [bounded, picked])
+})
+
+test('reserved acceptance survives menu dismissal but not disposal or a newer request', async () => {
+  for (const action of ['dismiss', 'stop', 'supersede', 'dispose']) {
+    const broker = new CompletionBroker()
+    let calls = 0
+    const registered = owner('provider')
+    broker.register(registered, () => [item('word')], 0, {
+      onAccepted: () => calls++,
+    })
+    const pending = collect(broker)
+    const shown = await pending.final
+    const report = broker.prepareAcceptance(shown.request, shown.items[0])
+    if (action === 'dismiss') pending.cancel()
+    if (action === 'stop') broker.stopOwner(registered)
+    if (action === 'supersede')
+      await collect(broker, request({ contentVersion: 4 })).final
+    if (action === 'dispose') broker.dispose()
+    report()
+    assert.equal(calls, action === 'dismiss' ? 1 : 0, action)
+    assert.equal(broker.prepareAcceptance(shown.request, shown.items[0]), null)
+  }
+})
+
+test('failed edit without receipt has no feedback; throwing feedback cannot affect another edit', async () => {
+  const broker = new CompletionBroker()
+  let calls = 0
+  broker.register(owner('provider'), () => [item('word')], 0, {
+    onAccepted: () => {
+      calls++
+      throw new Error('feedback failure')
+    },
+  })
+  const first = await collect(broker).final
+  assert.ok(broker.prepareAcceptance(first.request, first.items[0]))
+  assert.equal(calls, 0)
+  const second = await collect(broker).final
+  assert.doesNotThrow(broker.prepareAcceptance(second.request, second.items[0]))
+  assert.equal(calls, 1)
+})
+
+test('typing context is bounded, frozen, isolated from listener failures, and removed on disposal', () => {
+  const broker = new CompletionBroker()
+  const events = []
+  broker.onTypingContext(() => {
+    throw new Error('listener failure')
+  })
+  const remove = broker.onTypingContext((event) => events.push(event))
+  const context = {
+    ...request({ before: 'a'.repeat(1000), after: 'b'.repeat(1000) }),
+    kind: 'input',
+    change: { from: 2, to: 2, insertedLength: 1 },
+  }
+  broker.emitTypingContext(context)
+  assert.equal(events.length, 1)
+  assert.equal(events[0].before.length, 256)
+  assert.equal(events[0].after.length, 256)
+  assert.equal('trigger' in events[0], false)
+  assert.ok(Object.isFrozen(events[0]))
+  assert.ok(Object.isFrozen(events[0].change))
+  broker.emitTypingContext({
+    ...context,
+    change: { from: -1, to: 2, insertedLength: 1 },
+  })
+  assert.equal(events.length, 1)
+  remove()
+  broker.emitTypingContext(context)
+  assert.equal(events.length, 1)
+  broker.dispose()
+  assert.equal(broker.hasTypingListeners(), false)
+})
+
+test('paste replacement emits only range data for an immediate overlapping accepted edit', async () => {
+  const broker = new CompletionBroker()
+  const events = []
+  broker.onTypingContext((event) => events.push(event))
+  broker.register(owner('provider'), () => [item('word')])
+  const context = {
+    ...request({ contentVersion: 6, before: 'private pasted text' }),
+    kind: 'replace',
+    change: { from: 0, to: 4, insertedLength: 19 },
+  }
+  broker.emitTypingContext(context)
+  assert.deepEqual(events, [])
+  const shown = await collect(broker).final
+  broker.prepareAcceptance(shown.request, shown.items[0])()
+  broker.emitTypingContext({
+    ...context,
+    contentVersion: 5,
+    change: { from: 5, to: 6, insertedLength: 1 },
+  })
+  assert.deepEqual(events, [])
+  broker.emitTypingContext(context)
+  assert.equal(events.length, 1)
+  assert.equal(events[0].before, '')
+  assert.equal(events[0].after, '')
+  broker.emitTypingContext(context)
+  assert.equal(events.length, 1)
+})
+
+test('space after acceptance keeps range-only feedback for a subsequent unsafe overwrite', async () => {
+  const broker = new CompletionBroker()
+  const events = []
+  broker.onTypingContext((event) => events.push(event))
+  broker.register(owner('provider'), () => [item('word')])
+  const shown = await collect(broker).final
+  broker.prepareAcceptance(shown.request, shown.items[0])()
+  broker.emitTypingContext({
+    ...request({
+      contentVersion: 5,
+      documentLength: 8,
+      selection: { anchor: 5, head: 5 },
+      before: 'word ',
+    }),
+    kind: 'input',
+    change: { from: 4, to: 4, insertedLength: 1 },
+  })
+  broker.emitTypingContext({
+    ...request({
+      contentVersion: 6,
+      documentLength: 23,
+      before: 'private pasted text',
+    }),
+    kind: 'replace',
+    change: { from: 0, to: 4, insertedLength: 19 },
+  })
+  assert.deepEqual(
+    events.map((event) => event.kind),
+    ['input', 'replace'],
+  )
+  assert.equal(events[1].before, '')
+  assert.equal(events[1].after, '')
+})
+
+test('unsafe composition keeps range-only correction through intermediate versions', async () => {
+  for (const origin of ['replace', 'composition']) {
+    const broker = new CompletionBroker()
+    const events = []
+    broker.onTypingContext((event) => events.push(event))
+    broker.register(owner('provider'), () => [item('word')])
+    const shown = await collect(broker).final
+    broker.prepareAcceptance(shown.request, shown.items[0])()
+    broker.emitTypingContext({
+      ...request({ contentVersion: 5, before: 'word ' }),
+      kind: 'input',
+      change: { from: 4, to: 4, insertedLength: 1 },
+    })
+    const context = {
+      ...request({
+        contentVersion: 8,
+        before: 'private composition',
+        prose: null,
+      }),
+      kind: 'replace',
+      change: { from: 0, to: 4, insertedLength: 19 },
+    }
+    broker.emitTypingContext(context, origin)
+    assert.equal(events.length, origin === 'composition' ? 2 : 1, origin)
+    if (origin === 'composition') {
+      assert.equal(events[1].kind, 'replace')
+      assert.equal(events[1].before, '')
+      assert.equal(events[1].after, '')
+      assert.equal('prose' in events[1], false)
+    }
+    broker.emitTypingContext(context, origin)
+    assert.equal(events.length, origin === 'composition' ? 2 : 1)
+  }
+})
+
+test('receipt follows preceding typing and allows replacement inside the accepted range', async () => {
+  const broker = new CompletionBroker()
+  const events = []
+  broker.onTypingContext((event) => events.push(event))
+  broker.register(owner('provider'), () => [
+    { ...item('word'), from: 2, to: 3 },
+  ])
+  const shown = await collect(broker).final
+  broker.prepareAcceptance(shown.request, shown.items[0])()
+  broker.emitTypingContext({
+    ...request({ contentVersion: 5, documentLength: 10, before: 'x' }),
+    kind: 'input',
+    change: { from: 0, to: 0, insertedLength: 1 },
+  })
+  broker.emitTypingContext({
+    ...request({ contentVersion: 6, documentLength: 11, before: 'private' }),
+    kind: 'replace',
+    change: { from: 4, to: 4, insertedLength: 1 },
+  })
+  assert.deepEqual(
+    events.map((event) => event.kind),
+    ['input', 'replace'],
+  )
+  assert.equal(events[1].before, '')
+})
+
+test('range feedback discards changed views, unseen content versions, and stopped owners', async () => {
+  for (const action of ['view', 'version', 'stop']) {
+    const broker = new CompletionBroker()
+    const events = []
+    const registered = owner('provider')
+    broker.onTypingContext((event) => events.push(event))
+    broker.register(registered, () => [item('word')])
+    const shown = await collect(broker).final
+    broker.prepareAcceptance(shown.request, shown.items[0])()
+    const context = {
+      ...request({ contentVersion: 5, before: 'private' }),
+      kind: 'replace',
+      change: { from: 0, to: 4, insertedLength: 7 },
+    }
+    if (action === 'view') context.view = { ...context.view, viewGeneration: 2 }
+    if (action === 'version') context.contentVersion = 6
+    if (action === 'stop') broker.stopOwner(registered)
+    broker.emitTypingContext(context)
+    assert.deepEqual(events, [], action)
+  }
+})
+
+test('no subscribers leave prose getters unread', () => {
+  const broker = new CompletionBroker()
+  let reads = 0
+  const captured = request()
+  Object.defineProperty(captured, 'prose', {
+    enumerable: true,
+    get() {
+      reads++
+      throw new Error('unexpected prose scan')
+    },
+  })
+  broker.request(
+    () => captured,
+    () => captured,
+    () => {},
+  )
+  broker.emitTypingContext(
+    Object.assign(captured, {
+      kind: 'input',
+      change: { from: 2, to: 2, insertedLength: 1 },
+    }),
+  )
+  assert.equal(reads, 0)
+})
+
+test('providers ignoring prose do not scan during publication or acceptance', async () => {
+  const broker = new CompletionBroker()
+  let reads = 0
+  const captured = request()
+  Object.defineProperty(captured, 'prose', {
+    enumerable: true,
+    get() {
+      reads++
+      throw new Error('unexpected prose scan')
+    },
+  })
+  broker.register(owner('legacy'), (input) => {
+    assert.equal(input.before, 'abc')
+    return [item('word')]
+  })
+  const shown = await collect(broker, captured).final
+  assert.equal(shown.items.length, 1)
+  broker.prepareAcceptance(shown.request, shown.items[0])()
+  assert.equal(reads, 0)
+  assert.ok(Object.isFrozen(shown.request))
+})
+
+test('safe prose scan uses captured editor state once across providers', async () => {
+  let state = EditorState.create({
+    doc: 'original words',
+    selection: { anchor: 14 },
+  })
+  const capturedState = state
+  let scans = 0
+  const prose = lazyCompletionProse(() => {
+    scans++
+    return safeCompletionContext(
+      capturedState.doc.toString(),
+      capturedState.selection.main.head,
+    )
+  })
+  const captured = request()
+  Object.defineProperty(captured, 'prose', { enumerable: true, get: prose })
+  const broker = new CompletionBroker()
+  const seen = []
+  for (const id of ['one', 'two'])
+    broker.register(owner(id), (input) => {
+      seen.push(input.prose, input.prose)
+      return []
+    })
+  state = state.update({
+    changes: { from: 0, to: 14, insert: 'changed words' },
+  }).state
+  await collect(broker, captured).final
+  assert.equal(state.doc.toString(), 'changed words')
+  assert.equal(scans, 1)
+  assert.equal(seen[0].before, 'original words')
+  assert.ok(seen.every((value) => value === seen[0]))
+  assert.ok(Object.isFrozen(seen[0]))
+})
+
+test('lazy prose caches excluded and missing context as well', () => {
+  for (const value of [null, undefined]) {
+    let scans = 0
+    const prose = lazyCompletionProse(() => {
+      scans++
+      return value
+    })
+    assert.equal(prose(), value)
+    assert.equal(prose(), value)
+    assert.equal(scans, 1)
+  }
+})
+
+test('typing listeners do not read the unused completion prose property', () => {
+  const broker = new CompletionBroker()
+  const captured = request()
+  Object.defineProperty(captured, 'prose', {
+    enumerable: true,
+    get() {
+      throw new Error('unused prose getter')
+    },
+  })
+  const events = []
+  broker.onTypingContext((event) => events.push(event))
+  broker.emitTypingContext(
+    Object.assign(captured, {
+      kind: 'input',
+      change: { from: 2, to: 2, insertedLength: 1 },
+    }),
+  )
+  assert.equal(events.length, 1)
+  assert.equal(events[0].before, 'abc')
+  assert.equal('prose' in events[0], false)
+})
+
+test('ordinary prose data keeps immutable snapshot semantics', async () => {
+  const broker = new CompletionBroker()
+  broker.register(owner('one'), () => [])
+  const original = { before: 'original', after: 'words' }
+  const shown = await collect(broker, request({ prose: original })).final
+  original.before = 'changed'
+  assert.deepEqual(shown.request.prose, { before: 'original', after: 'words' })
+  assert.ok(Object.isFrozen(shown.request.prose))
+})
+
+test('safe prose is bounded separately from legacy completion context', async () => {
+  const broker = new CompletionBroker()
+  let input
+  broker.register(owner('provider'), (request) => {
+    input = request
+    return []
+  })
+  await collect(
+    broker,
+    request({
+      before: 'legacy [[prefix',
+      prose: { before: 'x'.repeat(600), after: 'y'.repeat(600) },
+    }),
+  ).final
+  assert.equal(input.before, 'legacy [[prefix')
+  assert.equal(input.prose.before.length, 256)
+  assert.equal(input.prose.after.length, 256)
+  assert.ok(Object.isFrozen(input.prose))
+  await collect(broker, request({ prose: null })).final
+  assert.equal(input.prose, null)
+})
+
+test('plain prose clips excluded neighboring spans and keeps punctuation', () => {
+  for (const excluded of [
+    '`hidden`',
+    '$hidden$',
+    '$$hidden$$',
+    '<span>hidden</span>',
+    'https://private.example/value',
+    'qwerty1234567890_secret',
+  ]) {
+    const text = `${excluded} bro, wild! `
+    const safe = safeCompletionContext(text, text.length)
+    assert.deepEqual(safe, { before: ' bro, wild! ', after: '' }, excluded)
+  }
+  for (const text of [
+    '`secret',
+    '$secret',
+    'password: shortsecret',
+    'api_key=privatevalue',
+    'https://private.example/sec',
+  ]) {
+    assert.equal(safeCompletionContext(text, text.length), null, text)
+  }
+  assert.equal(
+    safeCompletionContext('mixed 中文 slang. ', 16)?.before,
+    'mixed 中文 slang. ',
+  )
+})
+
+test('prose clips whole CommonMark code spans and preserves escaped backticks', () => {
+  for (const code of ['``a`b``', '```a``b```', '`a\\`', '``a`$$b``']) {
+    const text = `${code} hap`
+    assert.deepEqual(safeCompletionContext(text, text.length), {
+      before: ' hap',
+      after: '',
+    })
+    assert.equal(safeCompletionContext(text, 2), null)
+    assert.deepEqual(safeCompletionContext(`hap ${code}`, 3), {
+      before: 'hap',
+      after: ' ',
+    })
+  }
+  for (const text of ['hap \\` word', 'hap \\`\\` word']) {
+    assert.deepEqual(safeCompletionContext(text, text.length), {
+      before: text,
+      after: '',
+    })
+  }
+  for (const text of ['``a``` hap', '``a``` more ` hap', '\\\\`a hap']) {
+    assert.equal(safeCompletionContext(text, text.length), null, text)
+  }
+})
+
+test('source math proof ignores delimiters strictly inside CommonMark code', () => {
+  for (const text of ['``a`$$b`` hap', '`a\\` $$ hidden', '\\` $$ hidden']) {
+    assert.equal(sourceProseAllowed(text), text === '``a`$$b`` hap', text)
+  }
+  assert.equal(sourceProseAllowed('``$$ hap'), true)
+  assert.equal(sourceProseAllowed('\\` $$ hidden\n$$\nhap'), true)
+})
+
+test('source proof distinguishes inline triple backticks and valid fence closers', () => {
+  assert.equal(sourceProseAllowed('```code``` and hap'), true)
+  assert.equal(sourceProseAllowed('```code```\nhap'), true)
+  assert.equal(sourceProseAllowed('~~~ ``` x\nhap'), false)
+  assert.equal(sourceProseAllowed('```\ncode\n```not-closed\nhap'), false)
+  assert.equal(sourceProseAllowed('```\ncode\n``` \nhap'), true)
+})
+
+test('source proof excludes frontmatter and code/math fences within bounded work', () => {
+  for (const text of [
+    '---\nsecret: value',
+    '```js\nsecret',
+    '~~~\nsecret',
+    '$$\nsecret\n\ntext',
+    '---\nsecret: value\n---',
+    '---\nvalue: |\n  > ---\n  confidential words',
+  ]) {
+    assert.equal(sourceProseAllowed(text), false, text)
+  }
+  for (const text of [
+    'plain words',
+    '---\nsecret: value\n---\n\nsafe',
+    '```\n$$\n```\nsafe',
+    '$$\nsecret\n$$\nsafe',
+    '$$inline$$\nsafe',
+  ]) {
+    assert.equal(sourceProseAllowed(text), true, text)
+  }
+  assert.equal(sourceProseAllowed('x'.repeat(16385)), false)
+})
 
 const owner = (addonId, activationGeneration = 1) => ({
   addonId,
@@ -53,6 +553,40 @@ const collect = (broker, captured = request(), getCurrent = () => captured) => {
   )
   return { updates, final, cancel }
 }
+
+test('keyboard metadata survives validation and invalid flags are rejected', async () => {
+  const broker = new CompletionBroker()
+  broker.register(owner('flags'), () => [
+    {
+      ...item('next'),
+      preselect: false,
+      acceptOnEnter: false,
+      acceptOnTab: false,
+      captureArrowKeys: false,
+    },
+    { ...item('word'), preselect: false, acceptOnEnter: 'selected' },
+    { ...item('disabled-tab'), acceptOnTab: false },
+    { ...item('invalid-preselect'), preselect: 'false' },
+    { ...item('invalid-enter'), acceptOnEnter: 'always' },
+    { ...item('invalid-arrows'), captureArrowKeys: 'false' },
+    item('generic'),
+  ])
+  const { items } = await collect(broker).final
+  assert.deepEqual(
+    items.map(({ label }) => label),
+    ['next', 'word', 'disabled-tab', 'generic'],
+  )
+  assert.equal(items[0].preselect, false)
+  assert.equal(items[0].acceptOnEnter, false)
+  assert.equal(items[0].acceptOnTab, false)
+  assert.equal(items[0].captureArrowKeys, false)
+  assert.equal(items[1].acceptOnEnter, 'selected')
+  assert.equal(items[2].acceptOnTab, false)
+  assert.equal('captureArrowKeys' in items[3], false)
+  assert.equal('preselect' in items[3], false)
+  assert.equal('acceptOnEnter' in items[3], false)
+  assert.ok(Object.isFrozen(items[0]))
+})
 
 test('no providers skips capture and emits nothing', () => {
   const broker = new CompletionBroker()
