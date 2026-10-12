@@ -184,3 +184,34 @@ export default {
   })
   assert.deepEqual(registered, ['probe'])
 })
+
+test('settings and windows must be components, not elements', {
+  timeout: 30000,
+}, async (t) => {
+  const { addonRegistry, find } = await registry(t)
+  const exportsWith = (fields) =>
+    module(`export default () => ({ start() {}, ${fields} })`)
+  const memo = `{ $$typeof: Symbol.for('react.memo'), type: () => null }`
+  const element = `{ $$typeof: Symbol.for('react.transitional.element'), type: 'div', props: {} }`
+  const tagged = `{ $$typeof: Symbol('component') }`
+  const cases = {
+    'wrapper-probe': `Settings: ${memo}, windows: { main: ${memo} }`,
+    'element-settings-probe': `Settings: ${element}`,
+    'element-window-probe': `windows: { main: ${element} }`,
+    'tagged-settings-probe': `Settings: ${tagged}`,
+  }
+  addonRegistry.hydrate(
+    Object.entries(cases).map(([id, fields]) => ({
+      manifest: manifest(id, { capabilities: [] }),
+      url: exportsWith(fields),
+      themes: [],
+    })),
+  )
+  await find('wrapper-probe').start({})
+  assert.equal(
+    find('wrapper-probe').Settings.$$typeof,
+    Symbol.for('react.memo'),
+  )
+  for (const id of Object.keys(cases).filter((id) => id !== 'wrapper-probe'))
+    await assert.rejects(find(id).start({}), /cannot start/, id)
+})

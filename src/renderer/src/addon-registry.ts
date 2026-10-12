@@ -23,9 +23,17 @@ const flavorInfo = import.meta.glob<readonly MarkdownFlavor[]>(
 )
 const origins = new Map<string, string>()
 type Definition = Omit<Addon, 'manifest'> & { manifest?: AddonManifest }
+// Elements also carry `$$typeof`, so only React's component wrappers qualify.
+const wrappers = new Set(
+  ['react.memo', 'react.forward_ref', 'react.lazy'].map((name) =>
+    Symbol.for(name),
+  ),
+)
 const component = (value: unknown) =>
   typeof value === 'function' ||
-  (typeof value === 'object' && value !== null && '$$typeof' in value)
+  (typeof value === 'object' &&
+    value !== null &&
+    wrappers.has((value as { $$typeof: symbol }).$$typeof))
 /** Accepts a direct `Addon` or a factory; only factories load an SDK, chosen by the canonical manifest. */
 async function normalizeDefinition(
   exported: unknown,
