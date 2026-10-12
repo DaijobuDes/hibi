@@ -512,8 +512,7 @@ const background = new BackgroundMode({
   quickNote: () => {
     const command = addonHotkeys.command(QUICK_NOTE_COMMAND)
     if (!command) return
-    // Quick note captures inside the main window, like its global shortcut.
-    showMainWindow()
+    // Quick note opens its own capture window; the main window stays hidden.
     mainWindow?.webContents.send(ADDON_HOTKEY_CHANNELS.invoke, command)
   },
 })

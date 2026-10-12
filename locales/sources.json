@@ -510,7 +510,7 @@
     "src/addons/dictionary/PackSettings.tsx",
     "src/addons/frontmatter/Properties.tsx",
     "src/addons/mermaid/Block.tsx",
-    "src/addons/quick-note/CaptureDialog.tsx",
+    "src/addons/quick-note/CaptureWindow.tsx",
     "src/addons/typst/Block.tsx",
     "src/main/dependencies.ts",
     "src/main/document.ts",
@@ -780,9 +780,6 @@
   ],
   "b268ba6ef25f": [
     "src/addons/dictionary/packs.ts"
-  ],
-  "995c08ae21a7": [
-    "src/addons/quick-note/index.tsx"
   ],
   "949393a50f00": [
     "src/main/recent-workspaces.ts"
@@ -1212,6 +1209,9 @@
   "9ec4e620e7b9": [
     "src/addons/dictionary/pack-store.ts"
   ],
+  "8f95a0391d5d": [
+    "src/addons/quick-note/native.ts"
+  ],
   "7513fb43c0f9": [
     "src/addons/dictionary/PackSettings.tsx"
   ],
@@ -1333,9 +1333,6 @@
   ],
   "6704c0f053f8": [
     "src/renderer/src/HotkeySettings.tsx"
-  ],
-  "e6b7639dbcef": [
-    "src/addons/quick-note/CaptureDialog.tsx"
   ],
   "f6a61661c1fd": [
     "src/renderer/src/document-worker-client.ts"
@@ -2415,11 +2412,20 @@
   "cc05d3346ee5": [
     "src/main/workspace.ts"
   ],
+  "a0b88bf9965c": [
+    "src/addons/quick-note/CaptureWindow.tsx"
+  ],
   "87c719d7d306": [
     "src/main/history.ts"
   ],
   "c2dd1f633965": [
     "src/main/workspace-actions.ts"
+  ],
+  "4e0319875c9d": [
+    "src/addons/quick-note/CaptureWindow.tsx"
+  ],
+  "a08c88d1a75f": [
+    "src/addons/quick-note/CaptureWindow.tsx"
   ],
   "9ba584a1febb": [
     "src/main/workspace-actions.ts"
@@ -3543,7 +3549,7 @@
     "src/renderer/src/DependencySettings.tsx"
   ],
   "d8da2c49df39": [
-    "src/addons/quick-note/CaptureDialog.tsx"
+    "src/addons/quick-note/CaptureWindow.tsx"
   ],
   "93d42bd40fc0": [
     "src/addons/dictionary/CustomWords.tsx"
@@ -3695,9 +3701,6 @@
   ],
   "c8970b4bfa71": [
     "src/addons/quick-note/native.ts"
-  ],
-  "89be5144b357": [
-    "src/addons/quick-note/index.tsx"
   ],
   "2cbc82c80178": [
     "src/addons/tags/Panel.tsx"
@@ -4075,7 +4078,7 @@
     "src/addons/_shared/format-worker.ts"
   ],
   "b7fc47179f67": [
-    "src/addons/quick-note/index.tsx",
+    "src/addons/quick-note/capture.ts",
     "src/addons/quick-note/manifest.ts"
   ],
   "bccf10da05f5": [
@@ -4437,6 +4440,7 @@
     "src/addons/ui-preview/index.tsx"
   ],
   "1509f561f241": [
+    "src/addons/quick-note/CaptureWindow.tsx",
     "src/main/document.ts",
     "src/main/index.ts"
   ],
@@ -4471,9 +4475,6 @@
   "ac752922d909": [
     "src/renderer/src/AutosaveSettings.tsx"
   ],
-  "6501e1ced8da": [
-    "src/addons/quick-note/CaptureDialog.tsx"
-  ],
   "73c583fedbc0": [
     "src/main/addons.ts"
   ],
@@ -4501,9 +4502,6 @@
   "f3d260a0efb6": [
     "src/renderer/src/VersionHistory.tsx"
   ],
-  "47a1c336e478": [
-    "src/addons/quick-note/index.tsx"
-  ],
   "4c5e2f1569fd": [
     "src/renderer/src/WorkspaceSettings.tsx"
   ],
@@ -4525,11 +4523,14 @@
   "bddb9129d59e": [
     "src/renderer/src/VersionHistory.tsx"
   ],
+  "1eb89644df2d": [
+    "src/addons/quick-note/CaptureWindow.tsx"
+  ],
   "096b73624b09": [
     "src/renderer/src/AutosaveSettings.tsx"
   ],
   "23e39291d613": [
-    "src/addons/quick-note/CaptureDialog.tsx",
+    "src/addons/quick-note/CaptureWindow.tsx",
     "src/addons/ui-preview/index.tsx",
     "src/renderer/src/RecoveryScreen.tsx"
   ],
@@ -5923,9 +5924,6 @@
   "1c59a85f5059": [
     "src/addons/quick-note/native.ts"
   ],
-  "7e8cd2056da7": [
-    "src/addons/quick-note/CaptureDialog.tsx"
-  ],
   "2b065c7c9ce4": [
     "src/renderer/src/Introduction.tsx"
   ],
@@ -6285,14 +6283,14 @@
   "ca4f485a9985": [
     "src/renderer/src/main.tsx"
   ],
-  "e4015ada6400": [
-    "src/addons/quick-note/Settings.tsx"
-  ],
   "681bf81aba87": [
     "src/renderer/src/DependencySettings.tsx"
   ],
   "5e1f3a989ef5": [
     "src/renderer/src/SettingsScreen.tsx"
+  ],
+  "caf95ebac356": [
+    "src/addons/quick-note/Settings.tsx"
   ],
   "bdb464803da1": [
     "src/addons/discord-presence/Settings.tsx"
