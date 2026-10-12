@@ -102,7 +102,8 @@ export function CaptureWindow({ Editor, native, close }: AddonWindowProps) {
   const busy = saving || !!saved
 
   const resolve = useCallback(async (): Promise<Destination> => {
-    const current = settingsRef.current
+    // Read storage directly: a settings change may not have reached the listener yet.
+    const current = readSettings()
     try {
       const target = await native.query<{ id: string; path: string }>(
         'destination',
