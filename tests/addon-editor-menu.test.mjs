@@ -99,6 +99,13 @@ test('editor command shares rich and source action menus with guarded selection'
   )
   const menu = page.getByRole('menu', { name: 'Editor actions' })
   await rich.press('Shift+F10')
+  await menu
+    .getByRole('menuitem', { name: 'Inspect editor selection' })
+    .waitFor()
+  // Focus returning to the editor, as when its window regains focus, keeps the menu.
+  await rich.evaluate((element) =>
+    element.dispatchEvent(new FocusEvent('focus')),
+  )
   await menu.getByRole('menuitem', { name: 'Inspect editor selection' }).click()
   await page.waitForFunction(() => window.editorMenuProbeStarts === 1)
   await replaceRichText(page, rich, 'changed')
