@@ -497,6 +497,46 @@ test('changed metadata is rejected at selection and cancellation during disable 
   assert.deepEqual(await fs.readdir(join(f.profile, 'installed-addons')), [])
 })
 
+test('cancellation after backup prevents publication and restores the old package', async (t) => {
+  const f = await fixture(t)
+  await f.write(packageFiles('one', 'one'))
+  f.choose(join(f.source, 'one'))
+  await f.prepare()
+  f.preferences.set('one', true)
+  await f.write([
+    ...packageFiles('one', 'one', { version: '2.0.0' }),
+    ...packageFiles('two', 'two'),
+  ])
+  f.choose(f.source)
+  const session = await f.prepare()
+  let published = false
+  f.onRename(async (source, destination) => {
+    if (source.includes('.staging-')) published = true
+    await fs.rename(source, destination)
+    if (destination.includes('.backup-'))
+      await f.api.cancelPackageInstall(f.window, session.id)
+  })
+  const result = await f.install(session)
+  assert.equal(published, false)
+  assert.ok(result.every(({ status }) => status === 'failed'))
+  assert.match(result[0].error, /canceled/)
+  assert.equal(f.preferences.get('one'), true)
+  assert.equal(f.api.installedAddons()[0].manifest.version, '1.0.0')
+  assert.equal(
+    JSON.parse(
+      await fs.readFile(
+        join(f.profile, 'installed-addons/one/hibi-addon.json'),
+        'utf8',
+      ),
+    ).version,
+    '1.0.0',
+  )
+  assert.deepEqual(await fs.readdir(join(f.profile, 'installed-addons')), [
+    'one',
+  ])
+  assert.deepEqual(await fs.readdir(f.temporary), [])
+})
+
 test('failed replacement restores old files and enabled preference before continuing batch', async (t) => {
   const f = await fixture(t)
   await f.write(packageFiles('one', 'one'))
