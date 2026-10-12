@@ -1782,6 +1782,7 @@ export function useAddons(
     setCommands([...registered.values()])
   }, [
     catalog,
+    editorOnly,
     relevant,
     requested,
     activation,
