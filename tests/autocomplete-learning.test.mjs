@@ -505,6 +505,47 @@ test('disabled session, missing safe prose and reset discard acceptance receipts
   assert.equal(seen.length, 1)
 })
 
+test('startup and external reload defer saved-model loading until first use', (t) => {
+  const trained = createPersonalModel()
+  trained.observe(observation('remembered'))
+  let saved = trained.snapshot()
+  let reads = 0
+  let changed
+  const idle = idleQueue()
+  const learning = createLearning(
+    {
+      snapshot: () => ({
+        status: 'ready',
+        revision: 0,
+        get value() {
+          reads++
+          return saved
+        },
+      }),
+      subscribe(listener) {
+        changed = listener
+        return () => {}
+      },
+    },
+    idle.schedule,
+  )
+  t.after(() => learning.dispose())
+  assert.equal(reads, 0)
+  learning.observe(observation('pending'))
+  assert.equal(reads, 0)
+  learning.discard()
+  const request = { scope: 'notes', languages, prefix: 'rem' }
+  assert.equal(learning.suggest(request)[0].word, 'remembered')
+  assert.equal(reads, 1)
+  learning.suggest(request)
+  assert.equal(reads, 1)
+  saved = { version: 1, entries: [] }
+  changed()
+  assert.equal(reads, 1)
+  assert.deepEqual(learning.suggest(request), [])
+  assert.equal(reads, 2)
+})
+
 test('idle learning batches once, caps pending words and persists only aggregates', async (t) => {
   const f = await fixture(t)
   for (let i = 0; i < 140; i++)

@@ -2,6 +2,7 @@ import type { AddonStorageHandle } from '../../shared/addon-storage.ts'
 import {
   createPersonalModel,
   type PersonalObservation,
+  type PersonalRequest,
   type PersonalScope,
   type PersonalSnapshot,
 } from './model.ts'
@@ -14,10 +15,16 @@ export function createLearning(
     return () => cancelIdleCallback(id)
   },
 ) {
-  const saved = storage.snapshot()
-  let model = createPersonalModel({
-    snapshot: saved.status === 'ready' ? saved.value : undefined,
-  })
+  let model: ReturnType<typeof createPersonalModel> | undefined
+  const getModel = () => {
+    if (!model) {
+      const saved = storage.snapshot()
+      model = createPersonalModel({
+        snapshot: saved.status === 'ready' ? saved.value : undefined,
+      })
+    }
+    return model
+  }
   let pending: PersonalObservation[] = []
   let cancelIdle: (() => void) | undefined
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -36,11 +43,8 @@ export function createLearning(
     generation++
   }
   const reload = () => {
-    const current = storage.snapshot()
     discard()
-    model = createPersonalModel({
-      snapshot: current.status === 'ready' ? current.value : undefined,
-    })
+    model = undefined
   }
   const unsubscribe = storage.subscribe(() => {
     const current = storage.snapshot()
@@ -60,8 +64,8 @@ export function createLearning(
       .then(async () => {
         if (!clear && (disposed || epoch !== generation)) return
         for (let attempt = 0; attempt < (clear ? 2 : 1); attempt++) {
-          if (clear) model.clear(clear.scope)
-          const value = model.snapshot()
+          if (clear) getModel().clear(clear.scope)
+          const value = getModel().snapshot()
           const current = storage.snapshot()
           ownWrite = {
             value: JSON.stringify(value),
@@ -98,7 +102,7 @@ export function createLearning(
         !(deadline.didTimeout && !consumed)
       )
         break
-      model.observe(pending[consumed] as PersonalObservation)
+      getModel().observe(pending[consumed] as PersonalObservation)
       consumed++
     }
     pending = pending.slice(consumed)
@@ -114,8 +118,7 @@ export function createLearning(
   }
 
   return {
-    suggest: (request: Parameters<typeof model.suggest>[0]) =>
-      model.suggest(request),
+    suggest: (request: PersonalRequest) => getModel().suggest(request),
     epoch: () => generation,
     observe(observation: PersonalObservation) {
       if (disposed || clearing || observation.enabled === false) return
