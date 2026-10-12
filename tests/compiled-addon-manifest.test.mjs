@@ -59,6 +59,15 @@ test('compiled renderer and native entries accept source and javascript modules'
   }
 })
 
+test('compiled manifests retain optional authors without weakening installed validation', () => {
+  assert.equal('authors' in compiled({ authors: undefined }).manifest, false)
+  assert.deepEqual(compiled({ authors: [] }).manifest.authors, [])
+  for (const authors of [undefined, []])
+    assert.throws(() => parseAddonManifest({ ...base, authors }), /authors/)
+  for (const authors of [null, {}, [null], [{}]])
+    assert.throws(() => compiled({ authors }), /authors/)
+})
+
 test('renderer and native entries share package path validation', () => {
   for (const entry of [
     '',

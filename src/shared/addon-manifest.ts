@@ -86,21 +86,22 @@ export function parseAddonManifest(
     !compatibleAddonManifest(data) ||
     !['theme', 'extension'].includes(String(data.kind)) ||
     !string(data.version, 40) ||
-    !Array.isArray(data.authors) ||
-    !data.authors.length ||
-    data.authors.length > 20 ||
-    data.authors.some(
-      (author) =>
-        !author ||
-        !string(author.displayName, 100) ||
-        (author.discordId !== undefined &&
-          (typeof author.discordId !== 'string' ||
-            !/^\d{5,24}$/.test(author.discordId))) ||
-        (author.github !== undefined &&
-          (typeof author.github !== 'string' ||
-            !/^[a-z\d-]{1,39}$/i.test(author.github))) ||
-        (author.role !== undefined && !string(author.role, 100)),
-    )
+    ((trust === 'installed' || data.authors !== undefined) &&
+      (!Array.isArray(data.authors) ||
+        (trust === 'installed' && !data.authors.length) ||
+        data.authors.length > 20 ||
+        data.authors.some(
+          (author) =>
+            !author ||
+            !string(author.displayName, 100) ||
+            (author.discordId !== undefined &&
+              (typeof author.discordId !== 'string' ||
+                !/^\d{5,24}$/.test(author.discordId))) ||
+            (author.github !== undefined &&
+              (typeof author.github !== 'string' ||
+                !/^[a-z\d-]{1,39}$/i.test(author.github))) ||
+            (author.role !== undefined && !string(author.role, 100)),
+        )))
   )
     throw new Error(
       'The addon needs an ID, kind, API version, version, description, and authors in hibi-addon.json.',
@@ -176,7 +177,7 @@ export function parseAddonManifest(
     apiVersion: ADDON_API_VERSION,
     kind: data.kind as 'theme' | 'extension',
     version: data.version,
-    authors: data.authors,
+    ...(Array.isArray(data.authors) ? { authors: data.authors } : {}),
     defaultEnabled: data.defaultEnabled === true,
     ...(data.network === undefined
       ? {}

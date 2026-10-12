@@ -170,10 +170,10 @@ export function addonCatalog(process: 'main' | 'renderer'): Plugin {
       if (id === moduleId || id === detailsId) return `\0${id}`
     },
     watchChange(id) {
-      if (inputs.has(id)) pending = undefined
+      if (inputs.has(slash(id))) pending = undefined
     },
     handleHotUpdate({ file, server }) {
-      if (!inputs.has(file)) return
+      if (!inputs.has(slash(file))) return
       pending = undefined
       for (const id of [moduleId, detailsId]) {
         const module = server.moduleGraph.getModuleById(`\0${id}`)
@@ -185,7 +185,7 @@ export function addonCatalog(process: 'main' | 'renderer'): Plugin {
     async load(id) {
       if (id !== `\0${moduleId}` && id !== `\0${detailsId}`) return
       pending ??= readAddonPackages(undefined, (path) => {
-        inputs.add(path)
+        inputs.add(slash(path))
         this.addWatchFile(path)
       })
       const packages = await pending

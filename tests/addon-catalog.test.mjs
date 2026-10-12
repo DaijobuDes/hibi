@@ -156,7 +156,7 @@ test('catalog rejects mismatched ids, missing entries and paths outside the pack
 test('catalog combines legacy built-ins and local json without executing their entries', async (t) => {
   const { root, folder, manifest } = await fixture(t)
   await rm(join(folder, 'hibi-addon.json'))
-  const { entry: _entry, ...metadata } = manifest
+  const { entry: _entry, authors: _authors, ...metadata } = manifest
   await writeFile(
     join(folder, 'manifest.ts'),
     `export default ${JSON.stringify(metadata)}`,
@@ -189,6 +189,7 @@ test('catalog combines legacy built-ins and local json without executing their e
       ['local', 'local'],
     ],
   )
+  assert.equal('authors' in items[0].manifest, false)
   assert.equal(items[1].native, 'src/useraddons/local/host.ts')
   assert.equal(items[1].analysis, 'src/useraddons/local/analyzer/run.js')
   const duplicate = join(root, 'src/useraddons/sample')
