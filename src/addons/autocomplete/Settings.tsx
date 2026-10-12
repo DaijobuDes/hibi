@@ -67,6 +67,9 @@ export function Settings() {
           <Toggle
             id={`autocomplete-language-${lang}`}
             checked={value.languages.includes(lang)}
+            disabled={
+              value.languages.length === 1 && value.languages.includes(lang)
+            }
             onChange={(event) =>
               change({
                 languages: event.target.checked

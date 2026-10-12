@@ -67,10 +67,12 @@ export function readPreferences(): AutocompletePreferences {
     excludedDocuments: ids(value.excludedDocuments),
     excludedWorkspaces: ids(value.excludedWorkspaces),
   }
+  if (!cached.languages.length) cached.languages = ['en']
   return cached
 }
 
 export function writePreferences(next: AutocompletePreferences) {
+  if (!next.languages.some((lang) => latinLangs.includes(lang))) return
   localStorage.setItem(key, JSON.stringify(next))
   cached = next
   for (const listener of listeners) listener()

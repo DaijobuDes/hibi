@@ -223,6 +223,34 @@ test('migration leaves fresh, disabled, and already migrated activation alone', 
   }
 })
 
+test('empty or unsupported stored suggestion languages fall back to English', async () => {
+  for (const languages of [[], ['ja', 'bad', null]]) {
+    const settings = await preferences({ 'hibi:autocomplete': { languages } })
+    assert.deepEqual(settings.readPreferences().languages, ['en'])
+  }
+})
+
+test('language changes keep at least one supported suggestion language', async () => {
+  const settings = await preferences({
+    'hibi:autocomplete': { languages: ['fr', 'de'] },
+  })
+  let changes = 0
+  const stop = settings.onPreferencesChange(() => changes++)
+  const next = { ...settings.readPreferences(), languages: ['fr'] }
+  settings.writePreferences(next)
+  assert.deepEqual(settings.readPreferences().languages, ['fr'])
+  for (const languages of [[], ['ja']]) {
+    settings.writePreferences({ ...next, languages })
+    assert.equal(settings.readPreferences(), next)
+    assert.deepEqual(
+      JSON.parse(localStorage.getItem('hibi:autocomplete')).languages,
+      ['fr'],
+    )
+  }
+  assert.equal(changes, 1)
+  stop()
+})
+
 test('fresh autocomplete defaults to English without a second language filter', async () => {
   const settings = await preferences({})
   assert.deepEqual(settings.readPreferences().languages, ['en'])
