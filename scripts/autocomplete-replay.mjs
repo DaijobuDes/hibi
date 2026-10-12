@@ -258,34 +258,26 @@ export function repositoryProse(text) {
 }
 
 export function repositoryCorpus() {
-  const files = ['docs', 'src']
-    .flatMap((directory) =>
-      readdirSync(new URL(`../${directory}/`, import.meta.url), {
-        recursive: true,
-      })
-        .map((file) => `${directory}/${file.replaceAll('\\', '/')}`)
-        .filter(
-          (file) =>
-            file.endsWith('.md') && !file.includes('/addon-api-reference/'),
-        ),
-    )
-    .sort()
-  const trainingFiles = files.filter((_, i) => i % 3 !== 0)
-  const heldOutFiles = files.filter((_, i) => i % 3 === 0)
-  const prose = (paths) =>
-    paths.map((file) =>
-      repositoryProse(
-        readFileSync(new URL(`../${file}`, import.meta.url), 'utf8'),
+  const {
+    source,
+    trainingFiles,
+    heldOutFiles,
+    trainingDocuments,
+    heldOutDocuments,
+  } = JSON.parse(
+    readFileSync(
+      new URL(
+        '../tests/fixtures/autocomplete-repository.json',
+        import.meta.url,
       ),
-    )
-  const trainingDocuments = prose(trainingFiles)
-  const heldOutDocuments = prose(heldOutFiles)
+      'utf8',
+    ),
+  )
   return {
     name: 'repository documentation',
     scope: 'repository',
     languages: ['en'],
-    source:
-      'Repository Markdown; sorted paths, every third whole file held out; fenced code, inline code and link destinations removed.',
+    source,
     training: trainingDocuments.join('\n\n'),
     heldOut: heldOutDocuments.join('\n\n'),
     trainingDocuments,
@@ -526,7 +518,7 @@ export async function replay({
     repository,
     limitations: [
       'Small original synthetic passages plus a separate repository-documentation check; neither measures real-world acceptance.',
-      'Documentation files can share vocabulary and templates. The split uses sorted paths only; adding or renaming files can change membership. File lists and text hashes identify each run.',
+      'Frozen documentation files can share vocabulary and templates. Fixture prose and whole-file split are fixed; source paths are provenance only. Text hashes identify the snapshot.',
       'Repository prefix fallback uses training vocabulary, not a full dictionary; installed packs are used when available.',
       'Shared training and held-out vocabulary is deliberate; unseen query contexts and unseen target words are counted separately.',
       'Each target may have both a prefix and a next-word query; compare those modes separately, never sum their save counts as document savings.',

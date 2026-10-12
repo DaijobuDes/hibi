@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import test from 'node:test'
 import {
   assertNextWordQuality,
@@ -6,6 +7,7 @@ import {
   fixtureComplete,
   replay,
   replayRepository,
+  repositoryCorpus,
   repositoryProse,
   textItems,
 } from '../scripts/autocomplete-replay.mjs'
@@ -22,6 +24,34 @@ test('excluded code leaves boundaries without synthetic tokens or joined context
   )
   for (const item of items) assert.deepEqual(item.context, [])
   assert.equal(textItems(repositoryProse('`hidden`')).length, 0)
+})
+
+test('repository corpus keeps frozen prose, file split and training-only vocabulary', () => {
+  const corpus = repositoryCorpus()
+  const hash = (text) => createHash('sha256').update(text).digest('hex')
+  assert.equal(
+    hash(corpus.training),
+    '83298ca2e1dabfb78b9e4d606e4478d80fe5592181098d7e75440ad244ef313e',
+  )
+  assert.equal(
+    hash(corpus.heldOut),
+    'bbe476d220bc543d4f0ba8ceced3402facdeb5026d968b66db05f1325d9a4d60',
+  )
+  assert.equal(corpus.trainingFiles.length, 100)
+  assert.equal(corpus.heldOutFiles.length, 50)
+  assert.equal(corpus.trainingDocuments.length, corpus.trainingFiles.length)
+  assert.equal(corpus.heldOutDocuments.length, corpus.heldOutFiles.length)
+  assert.equal(
+    new Set([...corpus.trainingFiles, ...corpus.heldOutFiles]).size,
+    150,
+  )
+  assert.deepEqual(corpus.dictionary.en, [
+    ...new Set(
+      corpus.trainingDocuments
+        .flatMap(textItems)
+        .map(({ word }) => word.normalize('NFC').toLowerCase()),
+    ),
+  ])
 })
 
 test('repository replay fails if next-word prediction is removed', async () => {
