@@ -879,6 +879,8 @@ test('a shortcut press from a stale activation opens nothing', {
   const register = async () => {
     await page.evaluate((shortcut) => {
       localStorage.setItem('hibi:quick-note', JSON.stringify({ shortcut }))
+      // A change while an earlier registration is in flight must still apply.
+      window.dispatchEvent(new Event('hibi:quick-note-settings'))
       window.dispatchEvent(new Event('hibi:quick-note-settings'))
     }, shortcut)
     await until(() =>
