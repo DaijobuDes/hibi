@@ -82,11 +82,22 @@ export function sourceProseAllowed(prefix: string) {
       continue
     }
     line = line.replace(/^(?: {0,3}> ?)+/, '')
-    const code = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1]
+    const code = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line)
+    const marker = code?.[1] ?? ''
     if (code && !math) {
-      if (!fence) fence = code
-      else if (code[0] === fence[0] && code.length >= fence.length) fence = ''
-      continue
+      if (!fence && (marker[0] === '~' || !code[2]?.includes('`'))) {
+        fence = marker
+        continue
+      }
+      if (
+        fence &&
+        marker[0] === fence[0] &&
+        marker.length >= fence.length &&
+        !code[2]?.trim()
+      ) {
+        fence = ''
+        continue
+      }
     }
     if (fence || (!math && /^(?: {4}|\t)/.test(line))) continue
     if (line.includes('$$')) {

@@ -9,7 +9,6 @@ import {
   listCustomWords,
   mergeCustomWords,
   onCustomWordsChanged,
-  sameCustomWord,
   updateCustomWords,
 } from './custom-words'
 import { LANGS, type Lang } from './providers'
@@ -67,7 +66,7 @@ export function CustomWords() {
       {words.length ? (
         <ul>
           {words.map((item) => (
-            <li key={`${item.word}\u0000${item.lang ?? ''}`}>
+            <li key={item.id}>
               <span className="dictionary-custom-word" lang={item.lang}>
                 {item.word}
               </span>
@@ -106,7 +105,7 @@ export function CustomWords() {
                 aria-label={`Remove “${item.word}”`}
                 onClick={() =>
                   updateCustomWords((current) =>
-                    current.filter((other) => !sameCustomWord(other, item)),
+                    current.filter((other) => other.id !== item.id),
                   )
                     .then(() => setMessage(''))
                     .catch((error) => setMessage(failed(error)))

@@ -22,6 +22,8 @@ import {
 import { createRegistry, gather } from '../src/addons/dictionary/providers.ts'
 
 const signal = new AbortController().signal
+/** Words without their ids. */
+const plain = (list) => list.map(({ id: _id, ...item }) => item)
 
 /** In-memory global storage with the handle's compare-and-set contract. */
 function storage(initial) {
@@ -107,10 +109,10 @@ test('custom words load, save, follow other windows, and clear on stop', async (
   const stopListening = onCustomWordsChanged(() => changes++)
   await assert.rejects(addCustomWord({ word: 'early' }), /Turn on/)
   const close = await openCustomWords(context)
-  assert.deepEqual(listCustomWords(), [{ word: 'kilig', lang: 'tl' }])
+  assert.deepEqual(plain(listCustomWords()), [{ word: 'kilig', lang: 'tl' }])
   await addCustomWord({ word: 'Hibi', note: 'an editor' })
   await assert.rejects(addCustomWord({ word: '  ' }), /Enter a word/)
-  assert.deepEqual(handle.snapshot().value, [
+  assert.deepEqual(plain(handle.snapshot().value), [
     { word: 'kilig', lang: 'tl' },
     { word: 'Hibi', note: 'an editor' },
   ])
@@ -120,35 +122,70 @@ test('custom words load, save, follow other windows, and clear on stop', async (
     addCustomWord({ word: 'kilig', note: 'giddy' }),
     updateCustomWords((current) => current.filter((item) => !item.lang)),
   ])
-  assert.deepEqual(listCustomWords(), [
+  assert.deepEqual(plain(listCustomWords()), [
     { word: 'Hibi', note: 'an editor' },
     { word: 'kilig', note: 'giddy' },
   ])
   await updateCustomWords((current) => current.slice(0, 1))
-  assert.deepEqual(listCustomWords(), [{ word: 'Hibi', note: 'an editor' }])
+  assert.deepEqual(plain(listCustomWords()), [
+    { word: 'Hibi', note: 'an editor' },
+  ])
   handle.external([{ word: 'gigil' }])
-  assert.deepEqual(listCustomWords(), [{ word: 'gigil' }])
+  assert.deepEqual(plain(listCustomWords()), [{ word: 'gigil' }])
   assert.ok(Object.isFrozen(listCustomWords()))
   close()
-  assert.deepEqual(listCustomWords(), [])
+  assert.deepEqual(plain(listCustomWords()), [])
   assert.ok(changes >= 5)
   stopListening()
 })
 
-test('queued field edits apply to the word as it is saved', async () => {
-  const { context } = storage([{ word: 'kilig', note: 'old' }])
+test('queued field edits apply to the word as it is saved, in either order', async () => {
+  const note = (current) => ({ ...current, note: 'new' })
+  const lang = (current) => ({ ...current, lang: 'tl' })
+  for (const edits of [
+    [note, lang],
+    [lang, note],
+  ]) {
+    const { handle, context } = storage([{ word: 'kilig', note: 'old' }])
+    const close = await openCustomWords(context)
+    const [item] = listCustomWords()
+    // Words saved before ids existed get one that is kept from then on.
+    assert.equal(typeof item.id, 'string')
+    await Promise.all(edits.map((change) => editCustomWord(item, change)))
+    assert.deepEqual(handle.snapshot().value, [
+      { id: item.id, word: 'kilig', note: 'new', lang: 'tl' },
+    ])
+    close()
+  }
+})
+
+test('an edit to a word that is gone rejects instead of saving nothing', async () => {
+  const { handle, context } = storage([{ word: 'kilig' }, { word: 'gigil' }])
   const close = await openCustomWords(context)
-  const [item] = listCustomWords()
-  // A note blur, then a language change before the note is saved.
-  await Promise.all([
-    editCustomWord(item, ({ note: _old, ...rest }) => ({
-      ...rest,
-      note: 'new',
-    })),
-    editCustomWord(item, (current) => ({ ...current, lang: 'tl' })),
-  ])
-  assert.deepEqual(listCustomWords(), [
-    { word: 'kilig', note: 'new', lang: 'tl' },
+  const [kilig, gigil] = listCustomWords()
+  const removed = updateCustomWords((current) =>
+    current.filter((other) => other.id !== kilig.id),
+  )
+  await assert.rejects(
+    editCustomWord(kilig, (current) => ({ ...current, note: 'new' })),
+    /removed or changed in another window/,
+  )
+  await removed
+  // Re-adding the same word gives it a new row, not the removed one's id.
+  await addCustomWord({ word: 'gigil', note: 'cute' })
+  await addCustomWord({ word: 'kilig' })
+  const [, again] = listCustomWords()
+  assert.notEqual(again.id, kilig.id)
+  assert.equal(listCustomWords()[0].id, gigil.id)
+  assert.equal(handle.snapshot().value[0].note, 'cute')
+  await assert.rejects(
+    editCustomWord({ word: 'kilig' }, (current) => current),
+    /removed or changed/,
+  )
+  await editCustomWord(again, (current) => ({ ...current, lang: 'tl' }))
+  assert.deepEqual(plain(listCustomWords()), [
+    { word: 'gigil', note: 'cute' },
+    { word: 'kilig', lang: 'tl' },
   ])
   close()
 })
@@ -209,10 +246,10 @@ test('custom words keep a newer revision over a late save reply or notification'
   notify({ status: 'ready', revision: 3, value: newer })
   reply()
   await saving
-  assert.deepEqual(listCustomWords(), newer)
+  assert.deepEqual(plain(listCustomWords()), newer)
   // A notification for an older revision arriving late is ignored too.
   notify({ status: 'ready', revision: 2, value: [{ word: 'kilig' }] })
-  assert.deepEqual(listCustomWords(), newer)
+  assert.deepEqual(plain(listCustomWords()), newer)
   close()
 })
 

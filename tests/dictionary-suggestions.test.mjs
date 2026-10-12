@@ -113,6 +113,10 @@ test('suggestions skip commands, code, links, and urls', () => {
     assert.equal(prefixAt(before, ''), null, before)
   assert.equal(prefixAt('```\ncode\n```\nhap', ''), 'hap')
   assert.equal(prefixAt('`code` and hap', ''), 'hap')
+  // Closed inline code at the start of a line is not a fence opener.
+  assert.equal(prefixAt('```code``` and hap', ''), 'hap')
+  assert.equal(prefixAt('```code```\nhap', ''), 'hap')
+  assert.equal(prefixAt('~~~ ``` x\nhap', ''), null)
   assert.equal(prefixAt('``a`b`` and hap', ''), 'hap')
   assert.equal(prefixAt('use \\` for hap', ''), 'hap')
   assert.equal(prefixAt('``a`b and hap', ''), null)

@@ -341,6 +341,14 @@ test('source math proof ignores delimiters strictly inside CommonMark code', () 
   assert.equal(sourceProseAllowed('\\` $$ hidden\n$$\nhap'), true)
 })
 
+test('source proof distinguishes inline triple backticks and valid fence closers', () => {
+  assert.equal(sourceProseAllowed('```code``` and hap'), true)
+  assert.equal(sourceProseAllowed('```code```\nhap'), true)
+  assert.equal(sourceProseAllowed('~~~ ``` x\nhap'), false)
+  assert.equal(sourceProseAllowed('```\ncode\n```not-closed\nhap'), false)
+  assert.equal(sourceProseAllowed('```\ncode\n``` \nhap'), true)
+})
+
 test('source proof excludes frontmatter and code/math fences within bounded work', () => {
   for (const text of [
     '---\nsecret: value',

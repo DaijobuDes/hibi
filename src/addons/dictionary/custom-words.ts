@@ -7,8 +7,17 @@ import {
   type Lang,
 } from './providers.ts'
 
-/** A word the user added. Without `lang`, it belongs to the word's first lookup language. */
-export type CustomWord = { word: string; lang?: Lang; note?: string }
+/**
+ * A word the user added. Without `lang`, it belongs to the word's first lookup
+ * language. Listed words always have an `id` that stays the same when their
+ * language or note changes.
+ */
+export type CustomWord = {
+  id?: string
+  word: string
+  lang?: Lang
+  note?: string
+}
 
 // `label` and `detail` fields are collected into the UI copy catalog.
 export const yours = {
@@ -27,11 +36,12 @@ export function customWords(value: unknown, limit = MAX_WORDS): CustomWord[] {
   const words: CustomWord[] = []
   for (const item of value) {
     if (!item || typeof item !== 'object') continue
-    const { word, lang, note } = item as Record<string, unknown>
+    const { id, word, lang, note } = item as Record<string, unknown>
     if (typeof word !== 'string') continue
     const text = word.trim().normalize('NFC')
     if (!text || text.length > 64 || /[\p{Cc}]/u.test(text)) continue
     const entry: CustomWord = {
+      ...(typeof id === 'string' && id && id.length <= 128 ? { id } : {}),
       word: text,
       ...(LANGS.includes(lang as Lang) ? { lang: lang as Lang } : {}),
       ...(typeof note === 'string' && note.trim()
@@ -44,6 +54,21 @@ export function customWords(value: unknown, limit = MAX_WORDS): CustomWord[] {
     if (words.length === limit) break
   }
   return words
+}
+
+/**
+ * Gives each word a unique `id`. New words get a random one; words `loaded`
+ * from before ids existed get one from their word and language, so it stays
+ * the same until they are saved.
+ */
+function withIds(list: CustomWord[], loaded = false) {
+  const ids = new Set<string>()
+  return list.map((item) => {
+    let id = item.id && !ids.has(item.id) ? item.id : loaded ? key(item) : ''
+    if (!id || ids.has(id)) id = crypto.randomUUID()
+    ids.add(id)
+    return id === item.id ? item : Object.freeze({ ...item, id })
+  })
 }
 
 let words: readonly CustomWord[] = Object.freeze([])
@@ -91,7 +116,11 @@ function sync() {
     if (snapshot.revision < revision) return
     revision = snapshot.revision
   }
-  publish(snapshot.status === 'ready' ? customWords(snapshot.value) : [])
+  publish(
+    snapshot.status === 'ready'
+      ? withIds(customWords(snapshot.value), true)
+      : [],
+  )
 }
 
 let saving: Promise<unknown> = Promise.resolve()
@@ -107,7 +136,7 @@ export function updateCustomWords(
   const run = saving.then(async () => {
     if (!handle)
       throw new Error('Turn on Dictionary and thesaurus to keep custom words.')
-    const next = customWords(change(words), Infinity)
+    const next = withIds(customWords(change(words), Infinity))
     if (next.length > MAX_WORDS)
       throw new Error(
         'You can keep up to 5,000 custom words. Remove some to add more.',
@@ -124,33 +153,35 @@ export function updateCustomWords(
   return run
 }
 
-/** True when both name the same word in the same language. */
-export const sameCustomWord = (left: CustomWord, right: CustomWord) =>
-  key(left) === key(right)
-
 /**
- * Applies `change` to the saved entry for `original` when its turn comes, so
- * queued edits to different fields of one word all keep.
+ * Applies `change` to the saved entry with `original`'s id when its turn
+ * comes, so queued edits to different fields of one word all keep. Rejects
+ * when the word is no longer listed.
  */
 export function editCustomWord(
   original: CustomWord,
   change: (current: CustomWord) => CustomWord,
 ) {
-  return updateCustomWords((current) =>
-    current.map((item) =>
-      sameCustomWord(item, original) ? change(item) : item,
-    ),
-  )
+  return updateCustomWords((current) => {
+    const { id } = original
+    const index = current.findIndex((item) => id && item.id === id)
+    const item = current[index]
+    if (!id || !item)
+      throw new Error('This word was removed or changed in another window.')
+    return current.with(index, { ...change(item), id })
+  })
 }
 
-/** `incoming` words replace matching ones in place; the rest are added at the end. */
+/** `incoming` words replace matching ones in place, keeping their ids; the rest are added at the end. */
 export function mergeCustomWords(
   current: readonly CustomWord[],
   incoming: readonly CustomWord[],
 ) {
   const merged = new Map(current.map((item) => [key(item), item]))
-  for (const item of customWords(incoming, Infinity))
-    merged.set(key(item), item)
+  for (const { id: _id, ...item } of customWords(incoming, Infinity)) {
+    const id = merged.get(key(item))?.id
+    merged.set(key(item), id ? { ...item, id } : item)
+  }
   return [...merged.values()]
 }
 
