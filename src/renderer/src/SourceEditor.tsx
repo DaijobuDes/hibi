@@ -97,13 +97,14 @@ import {
   type SourceFormatting,
   sourceFormatting,
 } from './source-formatting'
+import { sourceIndentation } from './source-indent'
 import { createSourceSession, sourceEditorText } from './source-session'
 import {
   registerSourceView,
   type SourceReferenceResult,
   type SourceReferenceSyntax,
 } from './source-view'
-import { sourceIndentation, tabIndent } from './tab-indent'
+import { tabIndent } from './tab-indent'
 import { textProjection } from './text-projection'
 
 const highlighting = HighlightStyle.define([
