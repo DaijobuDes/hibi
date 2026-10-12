@@ -117,8 +117,12 @@ export default defineAddon({
       setControls(null)
     }
     const stopPreferences = onPreferencesChange(() => {
+      void learning
+        .persist()
+        .catch((error) =>
+          console.error('Could not save autocomplete words:', error),
+        )
       signals.reset()
-      learning.discard()
       personalize()
     })
     context.editorViews.onDidChangeActive(() => {
