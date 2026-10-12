@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { safeCompletionContext } from '../src/shared/completions.ts'
 import { createPersonalModel } from '../src/addons/autocomplete/model.ts'
 import {
   autocompleteCompletions,
@@ -139,8 +140,16 @@ test('next-word predictions yield to unfinished note links', async () => {
     '[[bro that was ',
     'see [[bro that was ',
     '[[closed]] then [[bro that was ',
+    '[[bro `code` that was ',
   ])
-    assert.deepEqual(await f.provider(request(before), signal()), [], before)
+    assert.deepEqual(
+      await f.provider(
+        request(before, safeCompletionContext(before, before.length)),
+        signal(),
+      ),
+      [],
+      before,
+    )
   for (const before of [
     'bro that was ',
     '[[closed]] bro that was ',
