@@ -5208,6 +5208,9 @@
   "8572af154dbc": [
     "src/main/addons.ts"
   ],
+  "2fb4a91a3476": [
+    "src/renderer/src/addons.ts"
+  ],
   "36568e2b608a": [
     "src/main/addons.ts"
   ],

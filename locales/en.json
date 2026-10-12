@@ -1670,6 +1670,7 @@
   "1f5c15aebf70": "This addon could not start. Turn it off and on in Addons to retry.",
   "ae7bafb247c3": "This addon did not declare that dependency.",
   "8572af154dbc": "This addon does not provide an importer.",
+  "2fb4a91a3476": "This addon does not run in this window.",
   "36568e2b608a": "This addon does not support the requested action.",
   "b287a1312556": "This addon has invalid details or needs a different version of Hibi.",
   "a5631e854921": "This addon has no valid startup function. Contact its author.",
