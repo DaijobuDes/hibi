@@ -149,7 +149,7 @@ export function Settings() {
       <SettingRow
         id="quick-note-default-title"
         label="Default title"
-        description="Used automatically, or offered when Hibi asks for a title. Repeated titles get a number."
+        description="Used when a note has no heading, and as the starting heading when Hibi asks for a title. Repeated titles get a number."
       >
         <TextInput
           id="quick-note-default-title"

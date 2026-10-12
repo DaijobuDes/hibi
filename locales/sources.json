@@ -5651,11 +5651,11 @@
   "ca4f485a9985": [
     "src/renderer/src/main.tsx"
   ],
-  "e4015ada6400": [
-    "src/addons/quick-note/Settings.tsx"
-  ],
   "681bf81aba87": [
     "src/renderer/src/DependencySettings.tsx"
+  ],
+  "caf95ebac356": [
+    "src/addons/quick-note/Settings.tsx"
   ],
   "bdb464803da1": [
     "src/addons/discord-presence/Settings.tsx"
