@@ -98,7 +98,7 @@ test('removing a patch inside its callback keeps the current invocation intact',
   addon.dispose()
 })
 
-test('css overrides apply, update, keep priority, and clean up in a real renderer', async (t) => {
+test('css overrides and package sheets apply, keep their order, and clean up in a real renderer', async (t) => {
   const profile = await mkdtemp(join(tmpdir(), 'hibi-overrides-'))
   const app = await electron.launch({
     args: [resolve('.'), `--user-data-dir=${profile}`],
@@ -153,7 +153,7 @@ test('css overrides apply, update, keep priority, and clean up in a real rendere
     )
     const prioritized = getComputedStyle(element).color
     const sheets = [
-      ...document.head.querySelectorAll('style[data-addon-style]'),
+      ...document.body.querySelectorAll('style[data-addon-style]'),
     ]
     const normalBeforeOverride =
       sheets.findIndex((sheet) => sheet.dataset.addonStyle === 'later.normal') <
@@ -185,4 +185,43 @@ test('css overrides apply, update, keep priority, and clean up in a real rendere
   assert.equal(result.normalBeforeOverride, true)
   assert.equal(result.normalAfterDispose, 'rgb(90, 80, 70)')
   assert.equal(result.priorityRestored, result.baseline)
+
+  const sheetSource = await readFile('src/renderer/src/addon-sheets.ts', 'utf8')
+  const sheetCode = stripTypeScriptTypes(sheetSource).replace(
+    'export function linkAddonSheets',
+    'exports.linkAddonSheets = function linkAddonSheets',
+  )
+  const sheets = await page.evaluate(
+    async ([code, sheetCode]) => {
+      const exports = {}
+      new Function('exports', code)(exports)
+      new Function('exports', sheetCode)(exports)
+      const href = document.querySelector('link[rel="stylesheet"]').href
+      const runtime = exports.createAddonOverrides('runtime')
+      runtime.styles.register('normal', '')
+      const zeta = exports.linkAddonSheets('zeta', [`${href}?z0`, `${href}?z1`])
+      await zeta.ready
+      const alpha = exports.linkAddonSheets('alpha', [`${href}?a0`])
+      await alpha.ready
+      const order = () =>
+        [...document.body.querySelectorAll('[data-addon-style]')]
+          .map((element) => element.dataset.addonStyle)
+          .filter((owner) => /^(alpha|zeta|runtime\.)/.test(owner))
+      const attached = order()
+      const pending = exports.linkAddonSheets('alpha', [`${href}?pending`])
+      alpha.dispose()
+      pending.dispose()
+      await pending.ready
+      const afterAlpha = order()
+      zeta.dispose()
+      runtime.dispose()
+      return { attached, afterAlpha, remaining: order() }
+    },
+    [code, sheetCode],
+  )
+  assert.deepEqual(sheets, {
+    attached: ['alpha', 'zeta', 'zeta', 'runtime.normal'],
+    afterAlpha: ['zeta', 'zeta', 'runtime.normal'],
+    remaining: [],
+  })
 })

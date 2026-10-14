@@ -74,7 +74,10 @@ export async function inspectAddonCandidates(
 ): Promise<InstallCandidate[]> {
   const candidates: InstallCandidate[] = []
   const prepared: InstallCandidate[] = []
-  const values = new Map<InstallCandidate, unknown>()
+  const values = new Map<
+    InstallCandidate,
+    { value: unknown; themeFiles: Map<string, unknown> }
+  >()
   for (const folder of addonCandidatePaths(inventory)) {
     const candidate: InstallCandidate = {
       folder,
@@ -112,15 +115,22 @@ export async function inspectAddonCandidates(
         throw new Error(
           'The addon needs README.md and the entry files listed in hibi-addon.json.',
         )
-      for (const theme of data.themes)
-        if (
-          typeof theme === 'string' &&
-          (await inventory.read(folder ? `${folder}/${theme}` : theme)).length >
-            MAX_ADDON_MANIFEST_BYTES
+      const themeFiles = new Map<string, unknown>()
+      for (const theme of data.themes) {
+        if (typeof theme !== 'string') continue
+        const bytes = await inventory.read(
+          folder ? `${folder}/${theme}` : theme,
         )
+        if (bytes.length > MAX_ADDON_MANIFEST_BYTES)
           throw new Error('Addon theme files must be no larger than 64 KiB.')
+        try {
+          themeFiles.set(theme, JSON.parse(bytes.toString('utf8')))
+        } catch {
+          throw new Error(`The theme file ${theme} is not valid JSON.`)
+        }
+      }
       prepared.push(candidate)
-      values.set(candidate, value)
+      values.set(candidate, { value, themeFiles })
       candidate.review.status = 'installable'
     } catch (error) {
       candidate.review.reasons.push(
@@ -158,9 +168,12 @@ export async function inspectAddonCandidates(
         `Package folders overlap: ${[candidate, ...overlaps].map((item) => item.review.folder).join(', ')}. Ask the publisher to separate these packages.`,
       )
     try {
+      const { value, themeFiles } = values.get(candidate)!
       candidate.data = admitInstalledAddon(
-        values.get(candidate),
+        value,
         builtins.map((manifest) => manifest.id),
+        'install',
+        { themeFiles },
       )
     } catch (error) {
       block(candidate, error instanceof Error ? error.message : String(error))

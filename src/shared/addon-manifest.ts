@@ -46,9 +46,16 @@ export type ParsedAddonManifest = {
   themes: (ColorschemeInput | string)[]
 }
 
+/** `themeFiles` holds parsed JSON by declared path; without it, theme paths stay unresolved. */
 export function parseAddonManifest(
   value: unknown,
-  { trust = 'installed' }: { trust?: 'installed' | 'compiled' } = {},
+  {
+    trust = 'installed',
+    themeFiles,
+  }: {
+    trust?: 'installed' | 'compiled'
+    themeFiles?: ReadonlyMap<string, unknown> | undefined
+  } = {},
 ): ParsedAddonManifest {
   if (!value || typeof value !== 'object')
     throw new Error('The addon details in hibi-addon.json are invalid.')
@@ -236,23 +243,32 @@ export function parseAddonManifest(
   )
     throw new Error('The addon can declare up to 20 color schemes.')
   const themes =
-    (data.themes as unknown[] | undefined)?.map((value) => {
-      if (typeof value === 'string') {
-        if (!validPath(value) || !value.endsWith('.json'))
+    (data.themes as unknown[] | undefined)?.map((entry) => {
+      let value = entry
+      if (typeof entry === 'string') {
+        if (!validPath(entry) || !entry.endsWith('.json'))
           throw new Error(
             'Theme files must be JSON paths inside the addon folder.',
           )
-        return value
+        if (!themeFiles) return entry
+        value = themeFiles.get(entry)
       }
-      if (
-        !value ||
-        typeof value !== 'object' ||
-        !('colors' in value) ||
-        !value.colors ||
-        typeof value.colors !== 'object'
-      )
-        throw new Error('This theme has an invalid color scheme.')
-      return defineColorscheme(value as ColorschemeInput)
+      try {
+        if (
+          !value ||
+          typeof value !== 'object' ||
+          !('colors' in value) ||
+          !value.colors ||
+          typeof value.colors !== 'object'
+        )
+          throw new Error('This theme has an invalid color scheme.')
+        return defineColorscheme(value as ColorschemeInput)
+      } catch (error) {
+        if (typeof entry !== 'string') throw error
+        throw new Error(
+          `The theme file ${entry} has an invalid color scheme. ${(error as Error).message}`,
+        )
+      }
     }) ?? []
   const inlineThemes = themes.filter((theme) => typeof theme !== 'string')
   const themePaths = themes.filter((theme) => typeof theme === 'string')
@@ -308,11 +324,20 @@ export function parseAddonManifest(
     ...(data.styles === undefined ? {} : { styles: data.styles as string[] }),
   }
 }
+/** `load` ignores declarations that packages installed before resource validation never had checked. */
 export function admitInstalledAddon(
   value: unknown,
   compiledIds: readonly string[],
   phase: 'install' | 'load' = 'install',
-): { manifest: AddonManifest; entry: string; themes: ColorschemeInput[] } {
+  {
+    themeFiles,
+  }: { themeFiles?: ReadonlyMap<string, unknown> | undefined } = {},
+): {
+  manifest: AddonManifest
+  entry: string
+  themes: ColorschemeInput[]
+  styles?: string[]
+} {
   if (phase === 'load' && value && typeof value === 'object') {
     const data = value as Record<string, unknown>
     value = {
@@ -324,7 +349,7 @@ export function admitInstalledAddon(
       ...(data.kind === 'extension' ? { themes: undefined } : {}),
     }
   }
-  const parsed = parseAddonManifest(value)
+  const parsed = parseAddonManifest(value, { themeFiles })
   const data = value as Record<string, unknown>
   if (compiledIds.includes(parsed.manifest.id))
     throw new Error(
@@ -336,18 +361,14 @@ export function admitInstalledAddon(
     )
   if (parsed.manifest.capabilities?.includes('modalEditing'))
     throw new Error('The addon lists invalid SDK capabilities.')
-  if (
-    parsed.styles !== undefined ||
-    (parsed.manifest.kind === 'extension' && data.themes !== undefined) ||
-    !parsed.themes.every((theme) => typeof theme !== 'string')
-  )
-    throw new Error(
-      'Declarative styles, extension themes, and theme files are not supported for installed addons yet.',
-    )
+  const themes = parsed.themes.filter((theme) => typeof theme !== 'string')
+  if (themes.length !== parsed.themes.length)
+    throw new Error('The addon theme files could not be read.')
   return {
     manifest: { ...parsed.manifest, defaultEnabled: false },
     entry: parsed.entry,
-    themes: parsed.themes,
+    themes,
+    ...(parsed.styles ? { styles: parsed.styles } : {}),
   }
 }
 
