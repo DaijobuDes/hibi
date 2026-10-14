@@ -2066,7 +2066,7 @@ export function useAddons(
           startupSpan(
             `addon:${id}`,
             async () => {
-              const sheets = addonRegistry.styles(id)
+              const sheets = await addonRegistry.styles(id)
               let linked:
                 | ReturnType<typeof import('./addon-sheets').linkAddonSheets>
                 | undefined
