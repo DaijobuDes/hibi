@@ -362,9 +362,10 @@ ${outputProbeSource}\n${configSource}`
   const devPath = join(root, 'scripts/dev.mjs')
   const devSource = await readFile(devPath, 'utf8')
   for (const marker of [
-    'const env = await electronEnvironment()',
+    'const environment = electronEnvironment()',
     'const site = fork(',
-    '  desktop = spawn(',
+    '  if (!message?.ready || desktop || stopping) return',
+    '    desktop = spawn(',
   ])
     assert.equal(
       devSource.split(marker).length,
@@ -375,21 +376,30 @@ ${outputProbeSource}\n${configSource}`
     devPath,
     devSource
       .replace(
-        'const env = await electronEnvironment()',
-        `function devWatchMark(message) {
+        'const environment = electronEnvironment()',
+        `const devWatchMarks = new Set()
+function devWatchMark(message) {
+  if (devWatchMarks.has(message)) return
+  devWatchMarks.add(message)
   try { console.log('[dev-watch]', message) } catch {}
 }
 devWatchMark('runtime-await-start')
-const env = await electronEnvironment()
-devWatchMark('runtime-await-end')`,
+const environment = electronEnvironment().then((env) => {
+  devWatchMark('runtime-await-end')
+  return env
+})`,
       )
       .replace(
         'const site = fork(',
         "devWatchMark('site-fork')\nconst site = fork(",
       )
       .replace(
-        '  desktop = spawn(',
-        "  devWatchMark('site-ready')\n  devWatchMark('desktop-spawn')\n  desktop = spawn(",
+        '  if (!message?.ready || desktop || stopping) return',
+        "  if (!message?.ready || desktop || stopping) return\n  devWatchMark('site-ready')",
+      )
+      .replace(
+        '    desktop = spawn(',
+        "    devWatchMark('desktop-spawn')\n    desktop = spawn(",
       ),
   )
   const cancelNextClose = join(root, 'cancel-next-close')
