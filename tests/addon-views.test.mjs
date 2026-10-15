@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
+import { installCloseFocusTrace } from './close-focus-observation.mjs'
 import { electron } from './electron.mjs'
 import {
   clickMenu,
@@ -711,14 +712,31 @@ test('scoped views preserve sessions, pin documents, contain lazy failures, and 
       document.activeElement?.getAttribute('role') === 'tab' &&
       document.activeElement.getAttribute('aria-selected') === 'true',
   )
-  await page.keyboard.press('End')
-  await page.getByRole('tab', { name: 'Fixture tab', selected: true }).waitFor()
-  await clickMenu(app, 'Close tab')
-  await addonTab.waitFor({ state: 'detached' })
-  assert.equal(await editor.isVisible(), true)
-  await page.waitForFunction(() =>
-    document.activeElement?.matches('.tiptap, .cm-content'),
-  )
+  const closeFocusTrace = await installCloseFocusTrace(page, t)
+  try {
+    await page.keyboard.press('End')
+    await page
+      .getByRole('tab', { name: 'Fixture tab', selected: true })
+      .waitFor()
+    await clickMenu(app, 'Close tab')
+    await addonTab.waitFor({ state: 'detached' })
+    assert.equal(await editor.isVisible(), true)
+    await page.waitForFunction(() =>
+      document.activeElement?.matches('.tiptap, .cm-content'),
+    )
+  } catch (error) {
+    try {
+      closeFocusTrace.report('failed')
+    } catch {}
+    throw error
+  } finally {
+    try {
+      await closeFocusTrace.stop()
+    } catch {}
+    try {
+      closeFocusTrace.report('passed')
+    } catch {}
+  }
   await page.evaluate(() => {
     const f = window.viewsFixture
     f.handles.tab = f.tab.open({ id: 'queued-close' })

@@ -1,5 +1,5 @@
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
-import { dirname, join, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import type { LicenseInfo } from '../src/shared/about.ts'
 import { themeLicenses } from '../src/shared/theme-licenses.ts'
 
@@ -40,6 +40,10 @@ export async function collectLicenses(root = resolve('.')) {
     if (name.startsWith('@types/') || buildTools.has(name)) return
     let folder: string, pkg: Package
     for (;;) {
+      if (basename(from) === 'node_modules' && dirname(from) !== from) {
+        from = dirname(from)
+        continue
+      }
       folder = join(from, 'node_modules', name)
       try {
         const path = join(folder, 'package.json')

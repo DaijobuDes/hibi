@@ -9,7 +9,7 @@ import {
 } from 'node:fs/promises'
 import { createRequire, stripTypeScriptTypes } from 'node:module'
 import { tmpdir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import test from 'node:test'
 import { setImmediate as nextTurn } from 'node:timers/promises'
 import { parse } from '@babel/parser'
@@ -138,6 +138,7 @@ test('license collection reads each manifest once and starts fresh next time', a
   const collect = new Function(
     'readFile',
     'readdir',
+    'basename',
     'dirname',
     'join',
     'resolve',
@@ -149,6 +150,7 @@ test('license collection reads each manifest once and starts fresh next time', a
       return readFile(path, ...args)
     },
     readdir,
+    basename,
     dirname,
     join,
     resolve,
@@ -158,9 +160,9 @@ test('license collection reads each manifest once and starts fresh next time', a
   t.after(() => rm(root, { recursive: true, force: true }))
   await writeFile(
     join(root, 'package.json'),
-    JSON.stringify({ dependencies: { a: '1', b: '1' } }),
+    JSON.stringify({ dependencies: { a: '1', b: '1', node_modules: '1' } }),
   )
-  for (const name of ['a', 'b', 'shared']) {
+  for (const name of ['a', 'b', 'shared', 'node_modules']) {
     const folder = join(root, 'node_modules', name)
     await mkdir(folder, { recursive: true })
     await writeFile(
@@ -176,7 +178,15 @@ test('license collection reads each manifest once and starts fresh next time', a
   const manifest = join(root, 'node_modules/shared/package.json')
   const notice = join(root, 'node_modules/shared/LICENSE')
   const first = await collect(root)
-  assert.equal(first.length, 3)
+  assert.equal(first.length, 4)
+  assert.equal(
+    reads.has(
+      join(root, 'node_modules', 'node_modules', 'shared', 'package.json'),
+    ),
+    false,
+    'ancestor node_modules does not add another node_modules lookup',
+  )
+  assert.ok(first.some((entry) => entry.name === 'node_modules'))
   assert.equal(
     reads.get(manifest),
     1,

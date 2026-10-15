@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { electron } from './electron.mjs'
 import { clickMenu } from './keyboard.mjs'
+import { waitForAsync } from './poll.mjs'
 
 test('sentence case is default; lowercase covers UI and menus while preserving content and persists', {
   timeout: 30000,
@@ -119,6 +120,22 @@ test('sentence case is default; lowercase covers UI and menus while preserving c
   assert.equal(
     (await page.evaluate(() => window.hibi.getDocument())).markdown,
     'CaseSensitiveValue',
+  )
+  await waitForAsync(
+    app,
+    async ({ app }) => {
+      const { readFile } = process.getBuiltinModule('node:fs/promises')
+      const { join } = process.getBuiltinModule('node:path')
+      try {
+        const file = join(app.getPath('userData'), 'ui-case.json')
+        return JSON.parse(await readFile(file, 'utf8')) === 'lowercase'
+      } catch (error) {
+        if (error.code === 'ENOENT') return false
+        throw error
+      }
+    },
+    undefined,
+    { timeout: 6500 },
   )
   assert.equal(
     JSON.parse(await readFile(join(profile, 'ui-case.json'), 'utf8')),

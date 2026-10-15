@@ -3,7 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { electron } from './electron.mjs'
+import { electron, startupDiagnostics } from './electron.mjs'
 import { pressShortcut } from './keyboard.mjs'
 
 test('sidebar starts hidden, stays open while typing, and navigates the page outline in either editor', {
@@ -22,7 +22,18 @@ test('sidebar starts hidden, stays open while typing, and navigates the page out
   })
   const page = await app.firstWindow()
   page.setDefaultTimeout(6500)
-  await page.getByRole('textbox', { name: /document editor/i }).waitFor()
+  await page
+    .getByRole('textbox', { name: /document editor/i })
+    .waitFor()
+    .catch(async (error) => {
+      try {
+        console.error(
+          'sidebar editor startup:',
+          JSON.stringify(await startupDiagnostics(app, page)),
+        )
+      } catch {}
+      throw error
+    })
   await page.waitForFunction(
     () =>
       document.querySelector('.app')?.getAttribute('data-sidebar') === 'false',
