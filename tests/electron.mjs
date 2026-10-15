@@ -215,7 +215,7 @@ export const electron = {
   },
 }
 
-function startupEntries({ BrowserWindow } = {}) {
+export function startupEntries({ BrowserWindow } = {}) {
   const doc = globalThis.document
   const editor = doc?.querySelector('.editor-page')
   const panel = doc?.querySelector('#document-editor-panel')

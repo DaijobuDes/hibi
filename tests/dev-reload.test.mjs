@@ -16,7 +16,7 @@ import { join, resolve, sep } from 'node:path'
 import test from 'node:test'
 import { setTimeout as delay } from 'node:timers/promises'
 import { chromium } from 'playwright'
-import { showTestWindows } from './electron.mjs'
+import { showTestWindows, startupEntries } from './electron.mjs'
 import { waitForAsync } from './poll.mjs'
 
 test('development watches main, renderer, preload, addons, and documentation generation', {
@@ -638,8 +638,247 @@ dialog.showMessageBox = (...args) => {
   mark('first devtools connected')
   let page = browser.contexts()[0].pages()[0]
   page.setDefaultTimeout(30000)
+  const initialRenderer = (() => {
+    const at = () => Math.round(performance.now() - started)
+    const attachedAt = at(),
+      rows = [],
+      pending = new Map(),
+      listeners = []
+    const counts = {
+      events: 0,
+      dropped: 0,
+      clipped: 0,
+      requests: 0,
+      failed: 0,
+      httpErrors: 0,
+      overflow: 0,
+      consoleErrors: 0,
+      pageErrors: 0,
+      observerErrors: 0,
+    }
+    const reasonCounts = {}
+    let result = 'ready',
+      snapshot = { notRequested: true },
+      failedAt = null
+    let generation = 0,
+      callbackWallMs = 0,
+      snapshotWaitMs = 0
+    const resource = (value) => {
+      try {
+        const path = new URL(value).pathname
+        return byteHead(
+          path.match(/\/(?:src|node_modules|@id|@vite)\/[\w@./:-]*/)?.[0] ??
+            (path === '/' ? '/' : '[other]'),
+          80,
+        )
+      } catch {
+        return '[unknown]'
+      }
+    }
+    const reasons = (value) => {
+      const flags = [
+        /Failed to fetch dynamically imported module|error loading dynamically imported module|Importing a module script failed/i.test(
+          value,
+        ) && 'dynamic-import-fetch',
+        /ERR_OUTDATED_OPTIMIZE_DEP|Outdated Optimize Dep/i.test(value) &&
+          'outdated-dependency',
+        /SyntaxError|Unexpected token|does not provide an export/i.test(
+          value,
+        ) && 'module-syntax',
+        /Unable to load preload script|preload.*(?:failed|error)/i.test(
+          value,
+        ) && 'preload-failure',
+        /window\.hibi|hibi.*(?:undefined|not a function|not defined)|bridge.*(?:closed|failed)/i.test(
+          value,
+        ) && 'bridge-failure',
+        /ERR_ABORTED|ERR_FAILED|ERR_CONNECTION_REFUSED/i.test(value) &&
+          'network-failure',
+      ].filter(Boolean)
+      for (const flag of flags)
+        reasonCounts[flag] = (reasonCounts[flag] ?? 0) + 1
+      return flags
+    }
+    const add = (kind, ...fields) => {
+      const row = JSON.stringify([at(), kind, ...fields])
+      counts.events++
+      if (Buffer.byteLength(row) > 160) counts.clipped++
+      if (rows.length === 64) {
+        rows.splice(16, 1)
+        counts.dropped++
+      }
+      rows.push(byteHead(row, 160))
+    }
+    const on = (event, handler) => {
+      const guarded = (...args) => {
+        const start = performance.now()
+        try {
+          handler(...args)
+        } catch {
+          counts.observerErrors++
+        } finally {
+          callbackWallMs += performance.now() - start
+        }
+      }
+      listeners.push([event, guarded])
+      page.on(event, guarded)
+    }
+    on('request', (request) => {
+      counts.requests++
+      if (
+        !['document', 'script', 'stylesheet'].includes(request.resourceType())
+      )
+        return
+      if (pending.size === 16) {
+        counts.overflow++
+        return
+      }
+      const item = [
+        at(),
+        request.resourceType(),
+        resource(request.url()),
+        generation,
+      ]
+      pending.set(request, item)
+      add('request', ...item)
+    })
+    on('requestfinished', (request) => {
+      const item = pending.get(request)
+      if (item) {
+        pending.delete(request)
+        add('finished', at() - item[0], ...item.slice(1))
+      }
+    })
+    on('requestfailed', (request) => {
+      counts.failed++
+      pending.delete(request)
+      add(
+        'request-failed',
+        request.resourceType(),
+        resource(request.url()),
+        reasons(request.failure()?.errorText),
+      )
+    })
+    on('response', (response) => {
+      if (response.status() >= 400) {
+        counts.httpErrors++
+        add('http-error', response.status(), resource(response.url()))
+      }
+    })
+    on('framenavigated', (frame) => {
+      if (frame === page.mainFrame())
+        add('navigation', ++generation, resource(frame.url()))
+    })
+    for (const event of ['domcontentloaded', 'load', 'close', 'crash'])
+      on(event, () => add(event, generation))
+    on('console', (message) => {
+      if (message.type() !== 'error') return
+      counts.consoleErrors++
+      const location = message.location()
+      add(
+        'console-error',
+        resource(location.url),
+        location.lineNumber,
+        reasons(message.text()),
+      )
+    })
+    on('pageerror', (error) => {
+      counts.pageErrors++
+      const kind = [
+        'Error',
+        'TypeError',
+        'ReferenceError',
+        'SyntaxError',
+        'RangeError',
+      ].includes(error.name)
+        ? error.name
+        : 'other'
+      add(
+        'page-error',
+        kind,
+        reasons(error.message),
+        resource(String(error.stack).match(/https?:\/\/[^\s)]+/)?.[0] ?? ''),
+      )
+    })
+    add('attached', resource(page.url()))
+    return {
+      async failed() {
+        result = 'failed'
+        failedAt = at()
+        let timer
+        try {
+          snapshot = await Promise.race([
+            page
+              .evaluate(startupEntries)
+              .then(({ dom, stages }) => {
+                delete dom?.recovery
+                return { dom, stages }
+              })
+              .catch(() => ({ unavailable: 'evaluation-failed' })),
+            new Promise((resolve) => {
+              timer = setTimeout(
+                () => resolve({ unavailable: '1000ms-cap' }),
+                1000,
+              )
+            }),
+          ])
+        } catch {
+          snapshot = { unavailable: 'probe-failed' }
+        } finally {
+          clearTimeout(timer)
+          snapshotWaitMs = at() - failedAt
+        }
+      },
+      report() {
+        for (const [event, handler] of listeners) page.off(event, handler)
+        const data = {
+          result,
+          attachedAt,
+          failedAt,
+          reportedAt: at(),
+          preattachmentUnknown: true,
+          pendingCap: 16,
+          rowCap: 64,
+          generation,
+          counts,
+          reasonCounts,
+          callbackWallMs: Math.round(callbackWallMs * 1000) / 1000,
+          snapshotWaitMs,
+          snapshotScope: 'first24marks+recent20entries',
+          snapshot,
+          pending: [...pending.values()].map((item) => [
+            at() - item[0],
+            ...item.slice(1),
+          ]),
+          rows,
+        }
+        const prefix = 'initial renderer observation '
+        let text = JSON.stringify(data)
+        while (Buffer.byteLength(prefix + text) > 16384 && rows.length > 16) {
+          rows.splice(16, 1)
+          counts.dropped++
+          text = JSON.stringify(data)
+        }
+        if (Buffer.byteLength(prefix + text) > 16384) {
+          data.snapshot = { unavailable: '16KiB-cap' }
+          text = JSON.stringify(data)
+        }
+        t.diagnostic(prefix + text)
+      },
+    }
+  })()
   phase('initial renderer readiness')
-  await page.locator('[data-status-id="typing-speed.wpm"]').waitFor()
+  try {
+    await page.locator('[data-status-id="typing-speed.wpm"]').waitFor()
+  } catch (error) {
+    try {
+      await initialRenderer.failed()
+    } catch {}
+    throw error
+  } finally {
+    try {
+      initialRenderer.report()
+    } catch {}
+  }
   assert.equal(
     await page.evaluate(
       async () =>
