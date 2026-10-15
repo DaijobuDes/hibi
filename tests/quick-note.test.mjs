@@ -17,6 +17,7 @@ import test from 'node:test'
 import { setTimeout } from 'node:timers/promises'
 import { electron, showTestWindows, stopElectronTree } from './electron.mjs'
 import { clickMenu } from './keyboard.mjs'
+import { waitForAsync } from './poll.mjs'
 
 const captureUrl = /\/addon-window\.html$/
 
@@ -772,6 +773,17 @@ test('the capture window renders markdown like the main editor', {
     // The same plain caret in both: the end of the first paragraph, outside bold.
     await click(root.locator('p').first(), 'The first paragraph')
     await editor.keyboard.press('End')
+    // Native caret movement reaches ProseMirror after the DOM selection.
+    await waitForAsync(editor, () => {
+      const element = document.querySelector('.tiptap[contenteditable="true"]')
+      const paragraph = element.querySelector('p')
+      const { view } = element.editor
+      return (
+        view.state.selection.empty &&
+        view.state.selection.head ===
+          view.posAtDOM(paragraph, paragraph.childNodes.length)
+      )
+    })
     return root.evaluate((element) => ({
       headings: element.querySelectorAll('h1').length,
       tasks: element.querySelectorAll('ul[data-type="taskList"] > li').length,

@@ -1,11 +1,121 @@
 import assert from 'node:assert/strict'
 import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
+import { createRequire, stripTypeScriptTypes } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
+import { setImmediate as nextTurn } from 'node:timers/promises'
+import { parse } from '@babel/parser'
 import { collectLicenses } from '../scripts/licenses.ts'
 import { electron } from './electron.mjs'
 import { clickMenu } from './keyboard.mjs'
+
+const { rollup } = createRequire(import.meta.resolve('vite'))('rollup')
+
+test('fresh license generation overlaps the graph and finishes before output', {
+  timeout: 5000,
+}, async (t) => {
+  const source = await readFile('electron.vite.config.ts', 'utf8')
+  const ast = parse(source, { sourceType: 'module', plugins: ['typescript'] })
+  const property = (object, key) =>
+    object.properties.find((item) => item.key?.name === key)?.value
+  const config = ast.program.body.find(
+    (item) => item.type === 'ExportDefaultDeclaration',
+  ).declaration.arguments[0]
+  const plugin = property(property(config, 'main'), 'plugins').elements.find(
+    (item) =>
+      item.type === 'ObjectExpression' &&
+      property(item, 'name')?.value === 'app-licenses',
+  )
+  const state = ast.program.body.filter(
+    (item) =>
+      item.type === 'VariableDeclaration' &&
+      item.declarations.some((declaration) =>
+        ['licenseBuild', 'drainLicenses'].includes(declaration.id.name),
+      ),
+  )
+  const makePlugin = new Function(
+    'writeLicenses',
+    `${stripTypeScriptTypes(
+      `${state.map((node) => source.slice(node.start, node.end)).join('\n')}
+const plugin = (${source.slice(plugin.start, plugin.end)})`,
+    )}\nreturn plugin`,
+  )
+  const root = await mkdtemp(join(tmpdir(), 'hibi-license-build-'))
+  let gate,
+    operation,
+    bundle,
+    calls = 0,
+    completed = 0
+  t.after(async () => {
+    gate?.resolve()
+    await operation
+    await bundle?.close()
+    await rm(root, { recursive: true, force: true })
+  })
+  const licensing = makePlugin(async () => {
+    const call = ++calls
+    await gate.promise
+    completed = call
+  })
+  for (const round of [1, 2]) {
+    gate = Promise.withResolvers()
+    const graphFinished = Promise.withResolvers()
+    let finished = false
+    operation = rollup({
+      input: 'entry',
+      plugins: [
+        licensing,
+        {
+          name: 'license-build-proof',
+          resolveId(id) {
+            if (id === 'entry') return '\0entry'
+          },
+          load(id) {
+            if (id === '\0entry') return `export default ${round}`
+          },
+          buildEnd() {
+            graphFinished.resolve()
+          },
+          generateBundle() {
+            assert.equal(completed, round)
+          },
+          writeBundle() {
+            assert.equal(completed, round)
+          },
+        },
+      ],
+    })
+      .then(async (result) => {
+        bundle = result
+        await result.write({ file: join(root, 'entry.js'), format: 'esm' })
+      })
+      .then(
+        () => {
+          finished = true
+        },
+        (error) => {
+          finished = true
+          return error
+        },
+      )
+    await graphFinished.promise
+    t.signal.throwIfAborted()
+    await nextTurn()
+    assert.equal(calls, round, 'each build starts fresh license work')
+    assert.equal(completed, round - 1, 'graph finishes while licensing waits')
+    assert.equal(finished, false, 'output remains gated by licensing')
+    gate.resolve()
+    const error = await operation
+    if (error) throw error
+    assert.equal(completed, round)
+    assert.match(
+      await readFile(join(root, 'entry.js'), 'utf8'),
+      new RegExp(`= ${round}`),
+    )
+    await bundle.close()
+  }
+})
 
 test('license catalog retains dependency and palette notices, excluding build tools', async () => {
   const entries = await collectLicenses()

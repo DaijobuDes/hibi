@@ -23,6 +23,64 @@ test('development watches main, renderer, preload, addons, and documentation gen
   timeout: 180000,
 }, async (t) => {
   const started = performance.now()
+  let output = ''
+  const seenEndpoints = []
+  const events = []
+  const counts = {
+    bytes: 0,
+    events: 0,
+    dropped: 0,
+    clipped: 0,
+    saturated: 0,
+    live: 0,
+  }
+  let tail = Buffer.alloc(0)
+  let pendingPhase = 'copy fixture'
+  let phaseAt = 0
+  let lastChildAt = null
+  let childPid = null
+  let childExitCode = null
+  let childSignal = null
+  let cachedDiagnostic = ''
+  let completed = false
+  function byteTail(text, limit) {
+    const bytes = Buffer.from(text)
+    let start = Math.max(0, bytes.length - limit)
+    while ((bytes[start] & 0xc0) === 0x80) start++
+    return bytes.toString('utf8', start)
+  }
+  function byteHead(text, limit) {
+    const bytes = Buffer.from(text)
+    let end = Math.min(bytes.length, limit)
+    while ((bytes[end] & 0xc0) === 0x80) end--
+    return bytes.toString('utf8', 0, end)
+  }
+  function refreshDiagnostic() {
+    const header = byteTail(
+      `cached snapshot (elapsed ms, not abort time): phase=${pendingPhase}; phaseAt=${phaseAt}; snapshotAt=${Math.round(performance.now() - started)}; lastChildAt=${lastChildAt ?? 'none'}; pid=${childPid ?? 'none'}; exit=${childExitCode ?? 'none'}; signal=${childSignal ?? 'none'}; endpoints=${seenEndpoints.length}; tailOmitted=${counts.bytes - tail.length}; counts=${JSON.stringify(counts)}`,
+      1024,
+    )
+    cachedDiagnostic = byteTail(
+      `${header}\n${counts.dropped ? `[events dropped: ${counts.dropped}]\n` : ''}${events.join('\n')}\nchild tail:\n${byteTail(tail.toString('utf8'), 4096)}`,
+      16384,
+    )
+  }
+  function phase(label) {
+    pendingPhase = label
+    phaseAt = Math.round(performance.now() - started)
+    refreshDiagnostic()
+  }
+  phase('copy fixture')
+  t.signal.addEventListener(
+    'abort',
+    () => {
+      if (completed) return
+      try {
+        console.error(cachedDiagnostic)
+      } catch {}
+    },
+    { once: true },
+  )
   const mark = (message) =>
     t.diagnostic(`${message} (${Math.round(performance.now() - started)} ms)`)
   const root = await realpath(await mkdtemp(join(tmpdir(), 'hibi-dev-watch-')))
@@ -42,6 +100,8 @@ test('development watches main, renderer, preload, addons, and documentation gen
       recursive: true,
       filter: (file) => !file.split(sep).includes('useraddons'),
     })
+  mark('fixture source copied')
+  phase('configure fixture')
   await symlink(resolve('node_modules'), join(root, 'node_modules'), 'junction')
   const previewFolder = join(root, 'src/addons/ui-preview')
   const previewManifest = join(previewFolder, 'hibi-addon.json')
@@ -100,10 +160,160 @@ test('development watches main, renderer, preload, addons, and documentation gen
   const preloadBuildPaused = join(root, 'preload-build-paused')
   const releasePreloadBuild = join(root, 'release-preload-build')
   const configPath = join(root, 'electron.vite.config.ts')
-  const config = (await readFile(configPath, 'utf8'))
+  const configSource = await readFile(configPath, 'utf8')
+  for (const marker of [
+    'licenseBuild = Promise.allSettled([writeLicenses()])',
+    'analysisBundles(),',
+    'plugins: [sandboxPreloads()],',
+  ])
+    assert.equal(
+      configSource.split(marker).length,
+      2,
+      `config probe anchor: ${marker}`,
+    )
+  const outputProbeSource = String.raw`function outputProbe(label: string) {
+  let builds = 0, active = false, lines = 0, ticks = 0, calls = 0, running = 0
+  let stage = 'graph', last = 0, cpu = process.cpuUsage(), slow = '', slowMs = 0
+  let timer: ReturnType<typeof setInterval> | undefined
+  let settings = ''
+  const pending = new Map<number, { name: string, at: number, chars: number }>()
+  const clean = (value: unknown, limit: number) =>
+    String(value).replace(/[^\w:./=-]/g, '_').slice(0, limit)
+  function show(message: string) {
+    if (!active || ++lines > 24) return
+    hookTiming('out', label, lines === 24 ? 'clipped' : message)
+  }
+  function report(next = stage) {
+    if (!active) return
+    const now = performance.now(), usage = process.cpuUsage()
+    show(stage + (next === stage ? '' : '=>' + next) + ' w=' + Math.round(now - last) +
+      ' c=' + Math.round((usage.user - cpu.user + usage.system - cpu.system) / 1000) +
+      ' p=' + running + ' u=' + (running - pending.size))
+    last = now
+    cpu = usage
+    stage = next
+    const entry = pending.values().next().value
+    if (entry) show('a=' + Math.round(now - entry.at) + ' n=' + entry.chars + ' ' + entry.name)
+    else if (slow) show('slow ' + slow + ' ms=' + slowMs)
+  }
+  function change(next: string) {
+    if (!active || stage === next) return
+    report(next)
+  }
+  function stop(next: string) {
+    change(next)
+    active = false
+    clearInterval(timer)
+  }
+  return {
+    name: 'dev-watch-output-' + label,
+    configResolved(config: any) {
+      settings = 'target=' + clean(config.build.target, 20) +
+        ' min=' + clean(config.build.minify, 5) + ' map=' + clean(config.build.sourcemap, 5)
+      let wrapped = 0, unwrapped = 0
+      for (const hookName of ['renderChunk', 'generateBundle', 'writeBundle']) {
+        for (const plugin of config.plugins) {
+          if (plugin.name.startsWith('dev-watch-output-')) continue
+          const hook = plugin[hookName]
+          const handler = typeof hook === 'function' ? hook : hook?.handler
+          if (typeof handler !== 'function') continue
+          if (wrapped === 32) { unwrapped++; continue }
+          wrapped++
+          const name = clean(plugin.name.replace(/^vite:/, ''), 12) + '/' + hookName[0]
+          const wrappedHook = function(this: unknown, ...args: any[]) {
+            if (!active) return handler.apply(this, args)
+            if (hookName !== 'renderChunk') change(hookName === 'generateBundle' ? 'generate' : 'writes')
+            const call = ++calls, at = performance.now()
+            const chunk = hookName === 'renderChunk'
+              ? '/' + clean(args[1].name || args[1].fileName, 7) : ''
+            const callName = name + chunk
+            running++
+            if (pending.size < 16) pending.set(call, {
+              name: callName, at, chars: hookName === 'renderChunk' ? args[0].length : 0,
+            })
+            const finish = () => {
+              try {
+                running--
+                pending.delete(call)
+                const elapsed = Math.round(performance.now() - at)
+                if (elapsed > slowMs) { slowMs = elapsed; slow = callName }
+              } catch {}
+            }
+            let result
+            try { result = handler.apply(this, args) }
+            catch (error) { finish(); throw error }
+            if (result instanceof Promise) result.then(finish, finish)
+            else finish()
+            return result
+          }
+          plugin[hookName] = typeof hook === 'function'
+            ? wrappedHook : { ...hook, handler: wrappedHook }
+        }
+      }
+      settings += ' wrap=' + wrapped + ' omitted=' + unwrapped
+    },
+    buildStart() {
+      if (++builds !== 1) return
+      active = true
+      last = performance.now()
+      cpu = process.cpuUsage()
+      show('pid=' + process.pid + ' u=' + cpu.user + ' s=' + cpu.system)
+      show('exec=' + clean(process.execPath, 64))
+      show(settings)
+      report()
+    },
+    buildEnd(error: unknown) {
+      change('buildEnd')
+      if (error) stop('graph-error')
+    },
+    renderStart: { order: 'pre', handler() {
+      change('core')
+      if (!active) return
+      timer = setInterval(() => {
+        report()
+        if (++ticks === 12) clearInterval(timer)
+      }, 4000)
+      timer.unref()
+    } },
+    renderChunk: { order: 'pre', handler() { change('chunks') } },
+    generateBundle: { order: 'post', handler() { change('gap') } },
+    writeBundle() { change('writes') },
+    renderError() { stop('render-error') },
+    closeBundle() { stop('closeBundle') },
+    closeWatcher() { stop('closeWatcher') },
+  }
+}
+`
+  const config = `let timingLines = 0, timingCalls = 0
+function hookTiming(...fields: unknown[]) {
+  if (++timingLines > 96) return
+  try { console.log('[dev-watch]', ...(timingLines === 96 ? ['clipped'] : fields)) } catch {}
+}
+function timedHook(label: string, hook: Function) {
+  return function(this: unknown, ...args: unknown[]) {
+    if (label === 'analysis' && args[0] !== '\\0virtual:hibi-analysis')
+      return hook.apply(this, args)
+    const call = ++timingCalls, start = performance.now()
+    hookTiming(label, call, 'start')
+    return (async () => {
+      try { return await hook.apply(this, args) }
+      finally { hookTiming(label, call, 'end', Math.round(performance.now() - start)) }
+    })()
+  }
+}
+${outputProbeSource}\n${configSource}`
+    .replace(
+      'licenseBuild = Promise.allSettled([writeLicenses()])',
+      "licenseBuild = Promise.allSettled([timedHook('licenses', writeLicenses)()])",
+    )
     .replace(
       'analysisBundles(),',
-      `analysisBundles(),
+      `(() => {
+        const plugin = analysisBundles()
+        plugin.load = timedHook('analysis', plugin.load)
+        return plugin
+      })(),
+      outputProbe('main'),
       {
         name: 'hold-main-rebuild',
         async writeBundle() {
@@ -121,6 +331,7 @@ test('development watches main, renderer, preload, addons, and documentation gen
       'plugins: [sandboxPreloads()],',
       `plugins: [
       sandboxPreloads(),
+      outputProbe('preload'),
       (() => {
         let builds = 0
         return {
@@ -147,6 +358,39 @@ test('development watches main, renderer, preload, addons, and documentation gen
       "server: { host: '127.0.0.1' }",
       `server: { host: '127.0.0.1', fs: { allow: ${JSON.stringify([root, resolve('node_modules')])} } }`,
     ),
+  )
+  const devPath = join(root, 'scripts/dev.mjs')
+  const devSource = await readFile(devPath, 'utf8')
+  for (const marker of [
+    'const env = await electronEnvironment()',
+    'const site = fork(',
+    '  desktop = spawn(',
+  ])
+    assert.equal(
+      devSource.split(marker).length,
+      2,
+      `launcher probe anchor: ${marker}`,
+    )
+  await writeFile(
+    devPath,
+    devSource
+      .replace(
+        'const env = await electronEnvironment()',
+        `function devWatchMark(message) {
+  try { console.log('[dev-watch]', message) } catch {}
+}
+devWatchMark('runtime-await-start')
+const env = await electronEnvironment()
+devWatchMark('runtime-await-end')`,
+      )
+      .replace(
+        'const site = fork(',
+        "devWatchMark('site-fork')\nconst site = fork(",
+      )
+      .replace(
+        '  desktop = spawn(',
+        "  devWatchMark('site-ready')\n  devWatchMark('desktop-spawn')\n  desktop = spawn(",
+      ),
   )
   const cancelNextClose = join(root, 'cancel-next-close')
   const closePromptCanceled = join(root, 'close-prompt-canceled')
@@ -180,8 +424,8 @@ dialog.showMessageBox = (...args) => {
     join(profile, 'addons.json'),
     JSON.stringify({ 'typing-speed': true }),
   )
-  let output = ''
-  const seenEndpoints = []
+  mark('fixture configured')
+  phase('start dev child')
   const pendingLines = { stdout: '', stderr: '' }
   const child = spawn(
     process.execPath,
@@ -202,7 +446,19 @@ dialog.showMessageBox = (...args) => {
       stdio: ['ignore', 'pipe', 'pipe'],
     },
   )
+  childPid = child.pid ?? null
+  lastChildAt = Math.round(performance.now() - started)
+  refreshDiagnostic()
+  child.once('exit', (code, signal) => {
+    childExitCode = code
+    childSignal = signal
+    lastChildAt = Math.round(performance.now() - started)
+    refreshDiagnostic()
+  })
   const collect = (data, stream) => {
+    lastChildAt = Math.round(performance.now() - started)
+    counts.bytes += data.length
+    tail = Buffer.concat([tail, data.subarray(-4096)]).subarray(-4096)
     const chunk = data.toString()
     output = (output + chunk).slice(-256000)
     const lines = (pendingLines[stream] + chunk).split(/\r?\n/)
@@ -211,7 +467,47 @@ dialog.showMessageBox = (...args) => {
       const endpoint = line.match(/DevTools listening on (ws:\/\/\S+)/)?.[1]
       if (endpoint && !seenEndpoints.includes(endpoint))
         seenEndpoints.push(endpoint)
+      if (
+        /\[dev-watch\]|build started|built in|restart|reloading|DevTools listening|modules transformed|rendering chunks|computing gzip size/.test(
+          line,
+        )
+      ) {
+        const knownProbe =
+          /^\[dev-watch\] (?:(?:licenses|analysis) \d+ (?:start|end \d+)|clipped|runtime-await-start|runtime-await-end|site-fork|site-ready|desktop-spawn|out (?:main|preload) [\w:./=> -]{1,128})$/.test(
+            line,
+          )
+        if (
+          knownProbe &&
+          counts.live < 101 &&
+          !completed &&
+          !t.signal.aborted
+        ) {
+          counts.live++
+          mark(byteHead(line, 96))
+        }
+        counts.events++
+        if (line.includes('[dev-watch] clipped')) counts.saturated++
+        if (Buffer.byteLength(line) > 64) counts.clipped++
+        const hook = line.match(
+          /\[dev-watch\] (licenses|analysis) \d+ (start|end)/,
+        )
+        if (hook) {
+          const key = `${hook[1]}-${hook[2]}`
+          counts[key] = (counts[key] ?? 0) + 1
+        }
+        if (events.length === 96) {
+          events.splice(24, 1)
+          counts.dropped++
+        }
+        events.push(
+          byteHead(
+            `${Math.round(performance.now() - started)} ${stream} ${byteHead(line, 64)}`,
+            96,
+          ),
+        )
+      }
     }
+    refreshDiagnostic()
   }
   child.stdout.on('data', (data) => collect(data, 'stdout'))
   child.stderr.on('data', (data) => collect(data, 'stderr'))
@@ -240,6 +536,7 @@ dialog.showMessageBox = (...args) => {
     })
   })
   async function until(predicate, label, timeout = 20000) {
+    phase(label)
     const end = Date.now() + timeout
     while (Date.now() < end) {
       if (await predicate()) return
@@ -254,9 +551,12 @@ dialog.showMessageBox = (...args) => {
     await writeFile(path, original.replace(before, after))
   }
   await until(() => seenEndpoints.length > 0, 'dev app starts', 60000)
+  mark('first devtools endpoint')
+  phase('connect first devtools')
   browser = await chromium.connectOverCDP(seenEndpoints[0])
   let page = browser.contexts()[0].pages()[0]
   page.setDefaultTimeout(30000)
+  phase('initial renderer readiness')
   await page.locator('[data-status-id="typing-speed.wpm"]').waitFor()
   assert.equal(
     await page.evaluate(
@@ -431,6 +731,7 @@ dialog.showMessageBox = (...args) => {
     false,
   )
   async function clearDraft(expected) {
+    phase(`clear draft: ${expected}`)
     if (showTestWindows) {
       await page.bringToFront()
       await page.evaluate(() => window.focus())
@@ -556,12 +857,15 @@ dialog.showMessageBox = (...args) => {
           `draft editor never received focus: ${error.message}\n${JSON.stringify(await inspect())}`,
         )
       })
+    phase('clear draft keystrokes')
     // Send an editor keystroke: fill('') can skip deletion after a dev reload.
     await editor.press('ControlOrMeta+A')
     await editor.press('Backspace')
     const afterInput = await inspect()
+    phase('clear draft flush')
     await page.evaluate(() => window.hibi.flushDocumentChanges())
     const afterFlush = await inspect()
+    phase('confirm cleared draft')
     try {
       await waitForAsync(page, async () => {
         const document = await window.hibi.getDocument()
@@ -615,6 +919,7 @@ dialog.showMessageBox = (...args) => {
       'restarted app opens a page',
     )
     page = browser.contexts()[0].pages()[0]
+    phase('restarted renderer bridge')
     await page.waitForFunction(() => Boolean(window.hibi))
   }
   const initialStarts = seenEndpoints.length
@@ -696,6 +1001,7 @@ dialog.showMessageBox = (...args) => {
   mark('canceled restart keeps running app and dirty draft')
 
   await clearDraft('draft protected from restart')
+  phase('write clean restart importer')
   await replace(
     'src/main/imports.ts',
     "instructions: 'Canceled rebuild importer.',",
@@ -760,24 +1066,29 @@ dialog.showMessageBox = (...args) => {
   )
 
   const noticeId = 'addon:typst:typst-assets'
+  phase('read original notice')
   const originalNotice = await page.evaluate(
     (id) => window.hibi.getLicense(id),
     noticeId,
   )
   const noticeStarts = seenEndpoints.length
   const noticePath = join(root, 'src/addons/typst/hibi-addon.json')
+  phase('read notice manifest')
   const noticeManifest = JSON.parse(await readFile(noticePath, 'utf8'))
   assert.equal(noticeManifest.licenses[0].text, originalNotice)
   noticeManifest.licenses[0].text = `Catalog notice probe.\n${originalNotice}`
+  phase('write notice manifest')
   await writeFile(noticePath, JSON.stringify(noticeManifest, null, 2))
 
   await connectRestartedPage(noticeStarts)
+  phase('read updated notice')
   assert.equal(
     await page.evaluate((id) => window.hibi.getLicense(id), noticeId),
     `Catalog notice probe.\n${originalNotice}`,
   )
   mark('canonical json notice updates lazy catalog details')
 
+  phase('write documentation generator')
   await replace('scripts/addon-reference.mjs', '[Source]', '[Updated source]')
   await until(
     async () =>
@@ -790,4 +1101,7 @@ dialog.showMessageBox = (...args) => {
     'documentation generator reloads',
   )
   mark('documentation generator updated')
+  refreshDiagnostic()
+  completed = true
+  if (!t.signal.aborted) t.diagnostic(cachedDiagnostic)
 })
