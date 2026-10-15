@@ -1006,10 +1006,12 @@ test('a shortcut press from a stale activation opens nothing', {
     )
   }
   const press = () =>
-    app.evaluate(
-      (_electron, accelerator) =>
-        globalThis.quickNoteShortcuts.get(accelerator)(),
-      shortcut,
+    until(() =>
+      app.evaluate((_electron, accelerator) => {
+        const callback = globalThis.quickNoteShortcuts.get(accelerator)
+        callback?.()
+        return !!callback
+      }, shortcut),
     )
   const captureWindows = async () =>
     (await appWindows(app)).filter((url) => captureUrl.test(url)).length
