@@ -1,8 +1,15 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  writeFile,
+} from 'node:fs/promises'
 import { createRequire, stripTypeScriptTypes } from 'node:module'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import test from 'node:test'
 import { setImmediate as nextTurn } from 'node:timers/promises'
 import { parse } from '@babel/parser'
@@ -115,6 +122,89 @@ const plugin = (${source.slice(plugin.start, plugin.end)})`,
     )
     await bundle.close()
   }
+})
+
+test('license collection reads each manifest once and starts fresh next time', async (t) => {
+  const source = await readFile('scripts/licenses.ts', 'utf8')
+  const ast = parse(source, { sourceType: 'module', plugins: ['typescript'] })
+  const declarations = ast.program.body.flatMap((node) => {
+    const value = node.declaration ?? node
+    return value.id?.name === 'collectLicenses' ||
+      value.declarations?.some((item) => item.id.name === 'buildTools')
+      ? [source.slice(value.start, value.end)]
+      : []
+  })
+  const reads = new Map()
+  const collect = new Function(
+    'readFile',
+    'readdir',
+    'dirname',
+    'join',
+    'resolve',
+    'themeLicenses',
+    `${stripTypeScriptTypes(declarations.join('\n'))}\nreturn collectLicenses`,
+  )(
+    async (path, ...args) => {
+      reads.set(path, (reads.get(path) ?? 0) + 1)
+      return readFile(path, ...args)
+    },
+    readdir,
+    dirname,
+    join,
+    resolve,
+    {},
+  )
+  const root = await mkdtemp(join(tmpdir(), 'hibi-license-inputs-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  await writeFile(
+    join(root, 'package.json'),
+    JSON.stringify({ dependencies: { a: '1', b: '1' } }),
+  )
+  for (const name of ['a', 'b', 'shared']) {
+    const folder = join(root, 'node_modules', name)
+    await mkdir(folder, { recursive: true })
+    await writeFile(
+      join(folder, 'package.json'),
+      JSON.stringify({
+        name,
+        version: '1',
+        ...(name === 'shared' ? {} : { dependencies: { shared: '1' } }),
+      }),
+    )
+    await writeFile(join(folder, 'LICENSE'), `notice ${name}`)
+  }
+  const manifest = join(root, 'node_modules/shared/package.json')
+  const notice = join(root, 'node_modules/shared/LICENSE')
+  const first = await collect(root)
+  assert.equal(first.length, 3)
+  assert.equal(
+    reads.get(manifest),
+    1,
+    'shared manifest is read once across dependency links',
+  )
+  assert.ok(
+    [...reads]
+      .filter(([path]) => path.endsWith('/package.json'))
+      .every(([, count]) => count === 1),
+  )
+  await writeFile(notice, 'changed notice without a version change')
+  reads.clear()
+  assert.match(
+    (await collect(root)).find((entry) => entry.name === 'shared').text,
+    /changed notice without a version change/,
+  )
+  assert.equal(
+    reads.get(manifest),
+    1,
+    'next collection reads installed metadata again',
+  )
+  await writeFile(manifest, '{')
+  await assert.rejects(collect(root), SyntaxError)
+  await writeFile(manifest, JSON.stringify({ name: 'shared', version: '2' }))
+  assert.equal(
+    (await collect(root)).find((entry) => entry.name === 'shared').version,
+    '2',
+  )
 })
 
 test('license catalog retains dependency and palette notices, excluding build tools', async () => {

@@ -171,6 +171,76 @@ test('development watches main, renderer, preload, addons, and documentation gen
       2,
       `config probe anchor: ${marker}`,
     )
+  const analysisPath = join(root, 'scripts/analysis-bundles.ts')
+  const analysisSource = await readFile(analysisPath, 'utf8')
+  const analysisEdits = [
+    [
+      'export function analysisBundles(): Plugin {',
+      `export function analysisBundles(report?: (...fields: number[]) => void): Plugin {
+  let calls = 0`,
+    ],
+    [
+      '      const bundles: Record<string, string> = {}',
+      `      const call = ++calls, start = performance.now(), elapsed = [0, 0]
+      function timed<T>(part: number, work: () => Promise<T>) {
+        const at = performance.now()
+        const finish = () => { elapsed[part] += performance.now() - at }
+        let result
+        try { result = work() }
+        catch (error) { finish(); throw error }
+        result.then(finish, finish)
+        return result
+      }
+      try {
+      const bundles: Record<string, string> = {}`,
+    ],
+    [
+      `      const packages = await readAddonPackages(undefined, (file) =>
+        this.addWatchFile(file),
+      )`,
+      `      const packages = await timed(0, () => readAddonPackages(undefined, (file) =>
+        this.addWatchFile(file),
+      ))`,
+    ],
+    [
+      `        const result = await build({
+          entryPoints: [analysis],`,
+      `        const result = await timed(1, () => build({
+          entryPoints: [analysis],`,
+    ],
+    [
+      `          target: 'chrome152',
+        })`,
+      `          target: 'chrome152',
+        }))`,
+    ],
+    [
+      `      return \`export default \${JSON.stringify(bundles)}\``,
+      `      return \`export default \${JSON.stringify(bundles)}\`
+      } finally {
+        if (call <= 7) {
+          const wall = performance.now() - start
+          try {
+            report?.(call, Math.round(wall), Math.round(elapsed[0]),
+              Math.round(elapsed[1]), Math.max(0, Math.round(wall - elapsed[0] - elapsed[1])))
+          } catch {}
+        }
+      }`,
+    ],
+  ]
+  for (const [before] of analysisEdits)
+    assert.equal(
+      analysisSource.split(before).length,
+      2,
+      `analysis probe anchor: ${before}`,
+    )
+  await writeFile(
+    analysisPath,
+    analysisEdits.reduce(
+      (source, [before, after]) => source.replace(before, after),
+      analysisSource,
+    ),
+  )
   const outputProbeSource = String.raw`function outputProbe(label: string) {
   let builds = 0, active = false, lines = 0, ticks = 0, calls = 0, running = 0
   let stage = 'graph', last = 0, cpu = process.cpuUsage(), slow = '', slowMs = 0
@@ -253,7 +323,7 @@ test('development watches main, renderer, preload, addons, and documentation gen
       settings += ' wrap=' + wrapped + ' omitted=' + unwrapped
     },
     buildStart() {
-      if (++builds !== 1) return
+      if (++builds !== (label === 'main' ? 3 : 1)) return
       active = true
       last = performance.now()
       cpu = process.cpuUsage()
@@ -309,7 +379,8 @@ ${outputProbeSource}\n${configSource}`
     .replace(
       'analysisBundles(),',
       `(() => {
-        const plugin = analysisBundles()
+        const plugin = analysisBundles((call, wall, metadata, bundle, other) =>
+          hookTiming('analysis-split', call, 'w=' + wall, 'm=' + metadata, 'b=' + bundle, 'o=' + other))
         plugin.load = timedHook('analysis', plugin.load)
         return plugin
       })(),
@@ -483,7 +554,7 @@ dialog.showMessageBox = (...args) => {
         )
       ) {
         const knownProbe =
-          /^\[dev-watch\] (?:(?:licenses|analysis) \d+ (?:start|end \d+)|clipped|runtime-await-start|runtime-await-end|site-fork|site-ready|desktop-spawn|out (?:main|preload) [\w:./=> -]{1,128})$/.test(
+          /^\[dev-watch\] (?:(?:licenses|analysis) \d+ (?:start|end \d+)|analysis-split [1-7] w=\d+ m=\d+ b=\d+ o=\d+|clipped|runtime-await-start|runtime-await-end|site-fork|site-ready|desktop-spawn|out (?:main|preload) [\w:./=> -]{1,128})$/.test(
             line,
           )
         if (
@@ -564,6 +635,7 @@ dialog.showMessageBox = (...args) => {
   mark('first devtools endpoint')
   phase('connect first devtools')
   browser = await chromium.connectOverCDP(seenEndpoints[0])
+  mark('first devtools connected')
   let page = browser.contexts()[0].pages()[0]
   page.setDefaultTimeout(30000)
   phase('initial renderer readiness')
@@ -577,6 +649,7 @@ dialog.showMessageBox = (...args) => {
     ),
     true,
   )
+  mark('initial renderer bridge ready')
   await page
     .getByRole('textbox', { name: 'Document editor', exact: true })
     .fill('unsaved watch draft')
@@ -585,11 +658,13 @@ dialog.showMessageBox = (...args) => {
     async () =>
       (await window.hibi.getDocument()).markdown === 'unsaved watch draft',
   )
+  mark('initial draft ready')
   await replace(
     'src/renderer/src/Titlebar.tsx',
     'aria-label="Editor view"',
     'aria-label="Updated editor view"',
   )
+  mark('renderer source changed')
   await page.getByRole('navigation', { name: 'Updated editor view' }).waitFor()
   mark('renderer component updated')
   const css = join(root, 'src/renderer/src/styles.css')

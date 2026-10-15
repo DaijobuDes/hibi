@@ -716,6 +716,56 @@ test('scoped views preserve sessions, pin documents, contain lazy failures, and 
   await clickMenu(app, 'Close tab')
   await addonTab.waitFor({ state: 'detached' })
   assert.equal(await editor.isVisible(), true)
+  await page.waitForFunction(() =>
+    document.activeElement?.matches('.tiptap, .cm-content'),
+  )
+  await page.evaluate(() => {
+    const f = window.viewsFixture
+    f.handles.tab = f.tab.open({ id: 'queued-close' })
+  })
+  await tabContent.getByRole('button', { name: 'Count 0' }).click()
+  await page.evaluate(() => {
+    const frame = window.requestAnimationFrame
+    const frames = []
+    window.viewCloseFrames = frames
+    window.requestAnimationFrame = (callback) => {
+      frames.push(callback)
+      return 0
+    }
+    try {
+      window.viewsFixture.handles.tab.close()
+    } finally {
+      window.requestAnimationFrame = frame
+    }
+  })
+  await addonTab.waitFor({ state: 'detached' })
+  assert.equal(await editor.isVisible(), true)
+  const sidebarControl = right.getByRole('button', {
+    name: 'Count 1',
+    exact: true,
+  })
+  await sidebarControl.focus()
+  assert.equal(
+    await sidebarControl.evaluate(
+      (element) => element === document.activeElement,
+    ),
+    true,
+    'sidebar control owns focus before deferred close',
+  )
+  const queued = await page.evaluate(() => {
+    const frames = window.viewCloseFrames
+    delete window.viewCloseFrames
+    for (const callback of frames) callback(performance.now())
+    return frames.length
+  })
+  assert.ok(queued > 0, 'addon tab close queued its deferred focus')
+  assert.equal(
+    await sidebarControl.evaluate(
+      (element) => element === document.activeElement,
+    ),
+    true,
+    'closing an addon tab preserves newly focused sidebar controls',
+  )
   await page.locator(`#document-tab-${first}`).click()
   await page.evaluate(() => {
     window.viewsFixture.handles.tab = window.viewsFixture.tab.open({

@@ -35,13 +35,22 @@ export async function collectLicenses(root = resolve('.')) {
     await readFile(join(root, 'package.json'), 'utf8'),
   )
   const entries = new Map<string, LicenseInfo & { text: string }>()
+  const packageReads = new Map<string, Promise<Package>>()
   async function visit(name: string, from = root): Promise<void> {
     if (name.startsWith('@types/') || buildTools.has(name)) return
     let folder: string, pkg: Package
     for (;;) {
       folder = join(from, 'node_modules', name)
       try {
-        pkg = JSON.parse(await readFile(join(folder, 'package.json'), 'utf8'))
+        const path = join(folder, 'package.json')
+        let pending = packageReads.get(path)
+        if (!pending) {
+          pending = readFile(path, 'utf8').then(
+            (text) => JSON.parse(text) as Package,
+          )
+          packageReads.set(path, pending)
+        }
+        pkg = await pending
         break
       } catch (error) {
         if (

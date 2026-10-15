@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { electron } from './electron.mjs'
+import { install, phase } from './hover-observation.mjs'
 import { clickMenu } from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
 
@@ -37,9 +38,10 @@ test('installed addon hover and context actions work in rich and source views', 
       window.interactionProbe = {
         ready: true,
         activate: async () => {
-          stops.push(await context.editor.registerHoverProvider((request) => ({
-            label: 'Hovered note', detail: request.editor,
-          })))
+          stops.push(await context.editor.registerHoverProvider((request) => (
+            globalThis.__hibiHoverProbe?.record('provider', request.editor, request.position, request.selection.anchor, request.selection.head, request.contentVersion, request.view.viewGeneration, 1),
+            { label: 'Hovered note', detail: request.editor }
+          )))
           stops.push(await context.editor.registerContextActionProvider((request) => {
             const from = Math.min(request.selection.anchor, request.selection.head)
             const to = Math.max(request.selection.anchor, request.selection.head)
@@ -78,6 +80,8 @@ test('installed addon hover and context actions work in rich and source views', 
   const page = await app.firstWindow()
   page.setDefaultTimeout(7000)
   await page.waitForFunction(() => window.interactionProbe?.ready)
+  const finishHoverProbe = await install(page, t, 'editor')
+  t.after(finishHoverProbe)
   await app.evaluate(({ dialog }, path) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] })
   }, file)
@@ -106,16 +110,25 @@ test('installed addon hover and context actions work in rich and source views', 
     async () => (await window.hibi.getDocument()).markdown === 'hello',
   )
 
+  phase(t, 'source-click')
   await page.getByRole('button', { name: 'Source view', exact: true }).click()
   const source = page.getByRole('textbox', {
     name: 'Markdown editor',
     exact: true,
   })
   await source.waitFor()
+  phase(t, 'source-input-start')
   await source.focus()
   await source.press(process.platform === 'darwin' ? 'Meta+a' : 'Control+a')
   await source.hover()
-  await page.getByRole('tooltip', { name: 'Editor hover' }).waitFor()
+  phase(t, 'source-hover-returned')
+  try {
+    await page.getByRole('tooltip', { name: 'Editor hover' }).waitFor()
+  } catch (error) {
+    finishHoverProbe.report()
+    throw error
+  }
+  phase(t, 'source-hover-visible')
   await source.press('Shift+F10')
   await menu.getByRole('menuitem', { name: 'Replace selection' }).waitFor()
   await source.press('Enter')
