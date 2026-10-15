@@ -5,7 +5,6 @@ import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { build } from 'vite'
 import { electron } from './electron.mjs'
-import { install, phase } from './hover-observation.mjs'
 import { checkTooltips } from './tooltips.mjs'
 
 test('shared dialogs validate input, trap focus, queue, and clean up by addon owner', {
@@ -60,12 +59,10 @@ test('shared dialogs validate input, trap focus, queue, and clean up by addon ow
   const page = await next
   page.setDefaultTimeout(5000)
   await page.waitForFunction(() => Boolean(window.dialogTest))
-  const finishHoverProbe = await install(page, t, 'dialogs')
-  t.after(finishHoverProbe)
   const prompt = page.getByRole('button', { name: /open built-in prompt/i })
   const target = page.getByRole('button', { name: /tooltip target/i })
   await t.test('tooltips stay compact and dismiss stale anchors', () =>
-    checkTooltips(page, (label) => phase(t, label), finishHoverProbe.report),
+    checkTooltips(page),
   )
   await prompt.focus()
   await page.keyboard.press('Tab')

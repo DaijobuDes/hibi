@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 
-export async function checkTooltips(page, mark = () => {}, report = () => {}) {
+export async function checkTooltips(page) {
   const target = page.getByRole('button', {
     name: /tooltip target/i,
     includeHidden: true,
@@ -8,17 +8,10 @@ export async function checkTooltips(page, mark = () => {}, report = () => {}) {
   const other = page.getByRole('button', { name: /open built-in prompt/i })
   const tip = page.getByRole('tooltip')
   const hidden = () => tip.waitFor({ state: 'hidden' })
-  let ordinal = 0
   const hover = async () => {
-    mark(`hover:${++ordinal}`)
     await other.hover()
     await target.hover()
-    try {
-      await tip.waitFor()
-    } catch (error) {
-      report()
-      throw error
-    }
+    await tip.waitFor()
   }
 
   // Pointer focus and restored programmatic focus must not reopen dismissed help.
@@ -63,7 +56,6 @@ export async function checkTooltips(page, mark = () => {}, report = () => {}) {
     'move',
     'text',
   ]) {
-    mark(`mutation:${change}`)
     await hover()
     await target.evaluate((node, change) => {
       if (change === 'hidden' || change === 'inert') node[change] = true
@@ -79,7 +71,6 @@ export async function checkTooltips(page, mark = () => {}, report = () => {}) {
       node.inert = false
       node.removeAttribute('style')
       node.dataset.tooltip = 'shared help'
-      window.__hibiHoverProbe?.record('restored')
     })
   }
   await target.hover()

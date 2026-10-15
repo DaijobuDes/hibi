@@ -215,7 +215,7 @@ export const electron = {
   },
 }
 
-export function startupEntries({ BrowserWindow } = {}) {
+function startupEntries({ BrowserWindow } = {}) {
   const doc = globalThis.document
   const editor = doc?.querySelector('.editor-page')
   const panel = doc?.querySelector('#document-editor-panel')
@@ -306,7 +306,11 @@ export async function startupDiagnostics(application, page) {
   }
   const [renderer, main, consoleErrors, pageErrors] = await Promise.all([
     bounded(page.evaluate(startupEntries)),
-    bounded(application.evaluate(startupEntries)),
+    bounded(
+      application
+        ? application.evaluate(startupEntries)
+        : Promise.resolve({ unavailable: true }),
+    ),
     bounded(
       page.consoleMessages().then((messages) =>
         messages

@@ -46,6 +46,23 @@ export default defineConfig({
       analysisBundles(),
     ],
     build: {
+      // Development workers load installed compilers directly.
+      externalizeDeps:
+        process.env.NODE_ENV_ELECTRON_VITE === 'development'
+          ? {
+              include: [
+                '@markdoc/markdoc',
+                '@mdx-js/mdx',
+                'hast-util-to-html',
+                'mdast-util-to-hast',
+                'mdsvex',
+                'react',
+                'react-dom',
+                'remark-gfm',
+                'svelte',
+              ],
+            }
+          : true,
       // Keep old lazy chunks available until the dev watcher restarts Electron.
       emptyOutDir: process.env.NODE_ENV_ELECTRON_VITE !== 'development',
       // unzipper's optional S3 adapter must stay lazy; hibi only opens local buffers.

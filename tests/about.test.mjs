@@ -19,7 +19,7 @@ import { clickMenu } from './keyboard.mjs'
 
 const { rollup } = createRequire(import.meta.resolve('vite'))('rollup')
 
-test('fresh license generation overlaps the graph and finishes before output', {
+test('main builds keep fresh licenses, bundled production workers and dev externals', {
   timeout: 5000,
 }, async (t) => {
   const source = await readFile('electron.vite.config.ts', 'utf8')
@@ -29,6 +29,44 @@ test('fresh license generation overlaps the graph and finishes before output', {
   const config = ast.program.body.find(
     (item) => item.type === 'ExportDefaultDeclaration',
   ).declaration.arguments[0]
+  const policy = property(
+    property(property(config, 'main'), 'build'),
+    'externalizeDeps',
+  )
+  const externalize = new Function(
+    'process',
+    'return (' +
+      (policy ? source.slice(policy.start, policy.end) : 'true') +
+      ')',
+  )
+  const worker = parse(
+    await readFile('src/addons/_shared/format-worker.ts', 'utf8'),
+    { sourceType: 'module', plugins: ['typescript'] },
+  )
+  const { devDependencies } = JSON.parse(await readFile('package.json', 'utf8'))
+  const dependencies = worker.program.body
+    .filter(
+      (node) => node.type === 'ImportDeclaration' && node.importKind !== 'type',
+    )
+    .map((node) => node.source.value.match(/^(@[^/]+\/[^/]+|[^/]+)/)[0])
+    .filter((name) => Object.hasOwn(devDependencies, name))
+  assert.equal(
+    externalize({ env: {} }),
+    true,
+    'unset mode keeps default externals',
+  )
+  assert.equal(
+    externalize({ env: { NODE_ENV_ELECTRON_VITE: 'production' } }),
+    true,
+    'production keeps default externals',
+  )
+  assert.deepEqual(
+    new Set(
+      externalize({ env: { NODE_ENV_ELECTRON_VITE: 'development' } }).include,
+    ),
+    new Set(dependencies),
+    'development externals match worker devDependencies',
+  )
   const plugin = property(property(config, 'main'), 'plugins').elements.find(
     (item) =>
       item.type === 'ObjectExpression' &&

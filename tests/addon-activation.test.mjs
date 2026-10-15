@@ -33,7 +33,7 @@ test('capability SDKs defer irrelevant entries, activate command descriptors, an
       id: 'failed-stage',
       capabilities: [],
       startup: 'background',
-      code: `export default () => ({ start(context) { context.styles.register('probe', 'body { --failed-addon: leaked; }'); context.commands.register({ id: 'ghost', label: 'Failed ghost', run() {} }); context.editor.registerCodeLanguage({ id: 'unsafe', label: 'Unsafe', load() { throw new Error('must not publish'); } }); throw new Error('Expected staged failure'); } });`,
+      code: `export default () => ({ start(context) { window.failedStageStarts = (window.failedStageStarts || 0) + 1; context.styles.register('probe', 'body { --failed-addon: leaked; }'); context.commands.register({ id: 'ghost', label: 'Failed ghost', run() {} }); context.editor.registerCodeLanguage({ id: 'unsafe', label: 'Unsafe', load() { throw new Error('must not publish'); } }); throw new Error('Expected staged failure'); } });`,
     },
     {
       id: 'disabled-background',
@@ -124,7 +124,13 @@ test('capability SDKs defer irrelevant entries, activate command descriptors, an
     ),
     false,
   )
-  await page.getByText('Expected staged failure', { exact: true }).waitFor()
+  await page
+    .getByRole('region', { name: 'Notifications', exact: true })
+    .locator('.toast[data-variant="error"]:not([data-closing="true"])')
+    .getByRole('alert')
+    .getByText('Expected staged failure', { exact: true })
+    .waitFor()
+  assert.equal(await page.evaluate(() => window.failedStageStarts), 1)
   assert.equal(
     await page.evaluate(() =>
       getComputedStyle(document.body).getPropertyValue('--failed-addon').trim(),

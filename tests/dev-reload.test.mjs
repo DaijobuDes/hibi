@@ -16,39 +16,18 @@ import { join, resolve, sep } from 'node:path'
 import test from 'node:test'
 import { setTimeout as delay } from 'node:timers/promises'
 import { chromium } from 'playwright'
-import { showTestWindows, startupEntries } from './electron.mjs'
+import { showTestWindows, startupDiagnostics } from './electron.mjs'
 import { waitForAsync } from './poll.mjs'
 
 test('development watches main, renderer, preload, addons, and documentation generation', {
   timeout: 180000,
 }, async (t) => {
   const started = performance.now()
-  let output = ''
-  const seenEndpoints = []
-  const events = []
-  const counts = {
-    bytes: 0,
-    events: 0,
-    dropped: 0,
-    clipped: 0,
-    saturated: 0,
-    live: 0,
-  }
-  let tail = Buffer.alloc(0)
-  let pendingPhase = 'copy fixture'
-  let phaseAt = 0
-  let lastChildAt = null
-  let childPid = null
-  let childExitCode = null
-  let childSignal = null
-  let cachedDiagnostic = ''
-  let completed = false
-  function byteTail(text, limit) {
-    const bytes = Buffer.from(text)
-    let start = Math.max(0, bytes.length - limit)
-    while ((bytes[start] & 0xc0) === 0x80) start++
-    return bytes.toString('utf8', start)
-  }
+  let output = '',
+    cachedDiagnostic = '',
+    omitted = 0,
+    completed = false
+  const timeline = []
   function byteHead(text, limit) {
     const bytes = Buffer.from(text)
     let end = Math.min(bytes.length, limit)
@@ -56,33 +35,34 @@ test('development watches main, renderer, preload, addons, and documentation gen
     return bytes.toString('utf8', 0, end)
   }
   function refreshDiagnostic() {
-    const header = byteTail(
-      `cached snapshot (elapsed ms, not abort time): phase=${pendingPhase}; phaseAt=${phaseAt}; snapshotAt=${Math.round(performance.now() - started)}; lastChildAt=${lastChildAt ?? 'none'}; pid=${childPid ?? 'none'}; exit=${childExitCode ?? 'none'}; signal=${childSignal ?? 'none'}; endpoints=${seenEndpoints.length}; tailOmitted=${counts.bytes - tail.length}; counts=${JSON.stringify(counts)}`,
-      1024,
-    )
-    cachedDiagnostic = byteTail(
-      `${header}\n${counts.dropped ? `[events dropped: ${counts.dropped}]\n` : ''}${events.join('\n')}\nchild tail:\n${byteTail(tail.toString('utf8'), 4096)}`,
-      16384,
-    )
+    cachedDiagnostic = `cached snapshot (elapsed ms, not abort time): at=${Math.round(performance.now() - started)}; omitted=${omitted}\n${timeline.join('\n')}\nchild tail:\n${byteHead(output.slice(-2048), 2048)}`
   }
   function phase(label) {
-    pendingPhase = label
-    phaseAt = Math.round(performance.now() - started)
+    if (timeline.length === 96) {
+      timeline.splice(24, 1)
+      omitted++
+    }
+    timeline.push(
+      byteHead(`${Math.round(performance.now() - started)} ${label}`, 128),
+    )
     refreshDiagnostic()
+  }
+  const mark = (message) => {
+    phase(message)
+    t.diagnostic(`${message} (${Math.round(performance.now() - started)} ms)`)
   }
   phase('copy fixture')
   t.signal.addEventListener(
     'abort',
     () => {
-      if (completed) return
-      try {
-        console.error(cachedDiagnostic)
-      } catch {}
+      if (!completed) {
+        try {
+          console.error(cachedDiagnostic)
+        } catch {}
+      }
     },
     { once: true },
   )
-  const mark = (message) =>
-    t.diagnostic(`${message} (${Math.round(performance.now() - started)} ms)`)
   const root = await realpath(await mkdtemp(join(tmpdir(), 'hibi-dev-watch-')))
   for (const name of [
     'src',
@@ -100,8 +80,6 @@ test('development watches main, renderer, preload, addons, and documentation gen
       recursive: true,
       filter: (file) => !file.split(sep).includes('useraddons'),
     })
-  mark('fixture source copied')
-  phase('configure fixture')
   await symlink(resolve('node_modules'), join(root, 'node_modules'), 'junction')
   const previewFolder = join(root, 'src/addons/ui-preview')
   const previewManifest = join(previewFolder, 'hibi-addon.json')
@@ -163,6 +141,7 @@ test('development watches main, renderer, preload, addons, and documentation gen
   const configSource = await readFile(configPath, 'utf8')
   for (const marker of [
     'licenseBuild = Promise.allSettled([writeLicenses()])',
+    'const [result] = await licenseBuild',
     'analysisBundles(),',
     'plugins: [sandboxPreloads()],',
   ])
@@ -171,220 +150,21 @@ test('development watches main, renderer, preload, addons, and documentation gen
       2,
       `config probe anchor: ${marker}`,
     )
-  const analysisPath = join(root, 'scripts/analysis-bundles.ts')
-  const analysisSource = await readFile(analysisPath, 'utf8')
-  const analysisEdits = [
-    [
-      'export function analysisBundles(): Plugin {',
-      `export function analysisBundles(report?: (...fields: number[]) => void): Plugin {
-  let calls = 0`,
-    ],
-    [
-      '      const bundles: Record<string, string> = {}',
-      `      const call = ++calls, start = performance.now(), elapsed = [0, 0]
-      function timed<T>(part: number, work: () => Promise<T>) {
-        const at = performance.now()
-        const finish = () => { elapsed[part] += performance.now() - at }
-        let result
-        try { result = work() }
-        catch (error) { finish(); throw error }
-        result.then(finish, finish)
-        return result
-      }
-      try {
-      const bundles: Record<string, string> = {}`,
-    ],
-    [
-      `      const packages = await readAddonPackages(undefined, (file) =>
-        this.addWatchFile(file),
-      )`,
-      `      const packages = await timed(0, () => readAddonPackages(undefined, (file) =>
-        this.addWatchFile(file),
-      ))`,
-    ],
-    [
-      `        const result = await build({
-          entryPoints: [analysis],`,
-      `        const result = await timed(1, () => build({
-          entryPoints: [analysis],`,
-    ],
-    [
-      `          target: 'chrome152',
-        })`,
-      `          target: 'chrome152',
-        }))`,
-    ],
-    [
-      `      return \`export default \${JSON.stringify(bundles)}\``,
-      `      return \`export default \${JSON.stringify(bundles)}\`
-      } finally {
-        if (call <= 7) {
-          const wall = performance.now() - start
-          try {
-            report?.(call, Math.round(wall), Math.round(elapsed[0]),
-              Math.round(elapsed[1]), Math.max(0, Math.round(wall - elapsed[0] - elapsed[1])))
-          } catch {}
-        }
-      }`,
-    ],
-  ]
-  for (const [before] of analysisEdits)
-    assert.equal(
-      analysisSource.split(before).length,
-      2,
-      `analysis probe anchor: ${before}`,
-    )
-  await writeFile(
-    analysisPath,
-    analysisEdits.reduce(
-      (source, [before, after]) => source.replace(before, after),
-      analysisSource,
-    ),
+  const config = (
+    "let watchedBuild = 0, watchedStart = 0, watchedLines = 0\nfunction buildMark(kind: string, build: number, elapsed = 0) {\n  if (++watchedLines > 32) return\n  try { console.log('[dev-watch]', ...(watchedLines === 32 ? ['clipped'] : [kind, build, Math.round(elapsed)])) } catch {}\n}\nfunction watchedLicenses() {\n  const build = ++watchedBuild, start = performance.now()\n  watchedStart = start\n  buildMark('main-start', build)\n  buildMark('licenses-start', build)\n  const work = writeLicenses()\n  const done = () => buildMark('licenses-end', build, performance.now() - start)\n  work.then(done, done)\n  return work\n}\n" +
+    configSource
   )
-  const outputProbeSource = String.raw`function outputProbe(label: string) {
-  let builds = 0, active = false, lines = 0, ticks = 0, calls = 0, running = 0
-  let stage = 'graph', last = 0, cpu = process.cpuUsage(), slow = '', slowMs = 0
-  let timer: ReturnType<typeof setInterval> | undefined
-  let settings = ''
-  const pending = new Map<number, { name: string, at: number, chars: number }>()
-  const clean = (value: unknown, limit: number) =>
-    String(value).replace(/[^\w:./=-]/g, '_').slice(0, limit)
-  function show(message: string) {
-    if (!active || ++lines > 24) return
-    hookTiming('out', label, lines === 24 ? 'clipped' : message)
-  }
-  function report(next = stage) {
-    if (!active) return
-    const now = performance.now(), usage = process.cpuUsage()
-    show(stage + (next === stage ? '' : '=>' + next) + ' w=' + Math.round(now - last) +
-      ' c=' + Math.round((usage.user - cpu.user + usage.system - cpu.system) / 1000) +
-      ' p=' + running + ' u=' + (running - pending.size))
-    last = now
-    cpu = usage
-    stage = next
-    const entry = pending.values().next().value
-    if (entry) show('a=' + Math.round(now - entry.at) + ' n=' + entry.chars + ' ' + entry.name)
-    else if (slow) show('slow ' + slow + ' ms=' + slowMs)
-  }
-  function change(next: string) {
-    if (!active || stage === next) return
-    report(next)
-  }
-  function stop(next: string) {
-    change(next)
-    active = false
-    clearInterval(timer)
-  }
-  return {
-    name: 'dev-watch-output-' + label,
-    configResolved(config: any) {
-      settings = 'target=' + clean(config.build.target, 20) +
-        ' min=' + clean(config.build.minify, 5) + ' map=' + clean(config.build.sourcemap, 5)
-      let wrapped = 0, unwrapped = 0
-      for (const hookName of ['renderChunk', 'generateBundle', 'writeBundle']) {
-        for (const plugin of config.plugins) {
-          if (plugin.name.startsWith('dev-watch-output-')) continue
-          const hook = plugin[hookName]
-          const handler = typeof hook === 'function' ? hook : hook?.handler
-          if (typeof handler !== 'function') continue
-          if (wrapped === 32) { unwrapped++; continue }
-          wrapped++
-          const name = clean(plugin.name.replace(/^vite:/, ''), 12) + '/' + hookName[0]
-          const wrappedHook = function(this: unknown, ...args: any[]) {
-            if (!active) return handler.apply(this, args)
-            if (hookName !== 'renderChunk') change(hookName === 'generateBundle' ? 'generate' : 'writes')
-            const call = ++calls, at = performance.now()
-            const chunk = hookName === 'renderChunk'
-              ? '/' + clean(args[1].name || args[1].fileName, 7) : ''
-            const callName = name + chunk
-            running++
-            if (pending.size < 16) pending.set(call, {
-              name: callName, at, chars: hookName === 'renderChunk' ? args[0].length : 0,
-            })
-            const finish = () => {
-              try {
-                running--
-                pending.delete(call)
-                const elapsed = Math.round(performance.now() - at)
-                if (elapsed > slowMs) { slowMs = elapsed; slow = callName }
-              } catch {}
-            }
-            let result
-            try { result = handler.apply(this, args) }
-            catch (error) { finish(); throw error }
-            if (result instanceof Promise) result.then(finish, finish)
-            else finish()
-            return result
-          }
-          plugin[hookName] = typeof hook === 'function'
-            ? wrappedHook : { ...hook, handler: wrappedHook }
-        }
-      }
-      settings += ' wrap=' + wrapped + ' omitted=' + unwrapped
-    },
-    buildStart() {
-      if (++builds !== (label === 'main' ? 3 : 1)) return
-      active = true
-      last = performance.now()
-      cpu = process.cpuUsage()
-      show('pid=' + process.pid + ' u=' + cpu.user + ' s=' + cpu.system)
-      show('exec=' + clean(process.execPath, 64))
-      show(settings)
-      report()
-    },
-    buildEnd(error: unknown) {
-      change('buildEnd')
-      if (error) stop('graph-error')
-    },
-    renderStart: { order: 'pre', handler() {
-      change('core')
-      if (!active) return
-      timer = setInterval(() => {
-        report()
-        if (++ticks === 12) clearInterval(timer)
-      }, 4000)
-      timer.unref()
-    } },
-    renderChunk: { order: 'pre', handler() { change('chunks') } },
-    generateBundle: { order: 'post', handler() { change('gap') } },
-    writeBundle() { change('writes') },
-    renderError() { stop('render-error') },
-    closeBundle() { stop('closeBundle') },
-    closeWatcher() { stop('closeWatcher') },
-  }
-}
-`
-  const config = `let timingLines = 0, timingCalls = 0
-function hookTiming(...fields: unknown[]) {
-  if (++timingLines > 96) return
-  try { console.log('[dev-watch]', ...(timingLines === 96 ? ['clipped'] : fields)) } catch {}
-}
-function timedHook(label: string, hook: Function) {
-  return function(this: unknown, ...args: unknown[]) {
-    if (label === 'analysis' && args[0] !== '\\0virtual:hibi-analysis')
-      return hook.apply(this, args)
-    const call = ++timingCalls, start = performance.now()
-    hookTiming(label, call, 'start')
-    return (async () => {
-      try { return await hook.apply(this, args) }
-      finally { hookTiming(label, call, 'end', Math.round(performance.now() - start)) }
-    })()
-  }
-}
-${outputProbeSource}\n${configSource}`
     .replace(
       'licenseBuild = Promise.allSettled([writeLicenses()])',
-      "licenseBuild = Promise.allSettled([timedHook('licenses', writeLicenses)()])",
+      'licenseBuild = Promise.allSettled([watchedLicenses()])',
+    )
+    .replace(
+      'const [result] = await licenseBuild',
+      "buildMark('graphEnd', watchedBuild, performance.now() - watchedStart)\n            const [result] = await licenseBuild",
     )
     .replace(
       'analysisBundles(),',
-      `(() => {
-        const plugin = analysisBundles((call, wall, metadata, bundle, other) =>
-          hookTiming('analysis-split', call, 'w=' + wall, 'm=' + metadata, 'b=' + bundle, 'o=' + other))
-        plugin.load = timedHook('analysis', plugin.load)
-        return plugin
-      })(),
-      outputProbe('main'),
+      `analysisBundles(),
       {
         name: 'hold-main-rebuild',
         async writeBundle() {
@@ -402,7 +182,6 @@ ${outputProbeSource}\n${configSource}`
       'plugins: [sandboxPreloads()],',
       `plugins: [
       sandboxPreloads(),
-      outputProbe('preload'),
       (() => {
         let builds = 0
         return {
@@ -429,49 +208,6 @@ ${outputProbeSource}\n${configSource}`
       "server: { host: '127.0.0.1' }",
       `server: { host: '127.0.0.1', fs: { allow: ${JSON.stringify([root, resolve('node_modules')])} } }`,
     ),
-  )
-  const devPath = join(root, 'scripts/dev.mjs')
-  const devSource = await readFile(devPath, 'utf8')
-  for (const marker of [
-    'const environment = electronEnvironment()',
-    'const site = fork(',
-    '  if (!message?.ready || desktop || stopping) return',
-    '    desktop = spawn(',
-  ])
-    assert.equal(
-      devSource.split(marker).length,
-      2,
-      `launcher probe anchor: ${marker}`,
-    )
-  await writeFile(
-    devPath,
-    devSource
-      .replace(
-        'const environment = electronEnvironment()',
-        `const devWatchMarks = new Set()
-function devWatchMark(message) {
-  if (devWatchMarks.has(message)) return
-  devWatchMarks.add(message)
-  try { console.log('[dev-watch]', message) } catch {}
-}
-devWatchMark('runtime-await-start')
-const environment = electronEnvironment().then((env) => {
-  devWatchMark('runtime-await-end')
-  return env
-})`,
-      )
-      .replace(
-        'const site = fork(',
-        "devWatchMark('site-fork')\nconst site = fork(",
-      )
-      .replace(
-        '  if (!message?.ready || desktop || stopping) return',
-        "  if (!message?.ready || desktop || stopping) return\n  devWatchMark('site-ready')",
-      )
-      .replace(
-        '    desktop = spawn(',
-        "    devWatchMark('desktop-spawn')\n    desktop = spawn(",
-      ),
   )
   const cancelNextClose = join(root, 'cancel-next-close')
   const closePromptCanceled = join(root, 'close-prompt-canceled')
@@ -505,8 +241,7 @@ dialog.showMessageBox = (...args) => {
     join(profile, 'addons.json'),
     JSON.stringify({ 'typing-speed': true }),
   )
-  mark('fixture configured')
-  phase('start dev child')
+  const seenEndpoints = []
   const pendingLines = { stdout: '', stderr: '' }
   const child = spawn(
     process.execPath,
@@ -527,19 +262,7 @@ dialog.showMessageBox = (...args) => {
       stdio: ['ignore', 'pipe', 'pipe'],
     },
   )
-  childPid = child.pid ?? null
-  lastChildAt = Math.round(performance.now() - started)
-  refreshDiagnostic()
-  child.once('exit', (code, signal) => {
-    childExitCode = code
-    childSignal = signal
-    lastChildAt = Math.round(performance.now() - started)
-    refreshDiagnostic()
-  })
   const collect = (data, stream) => {
-    lastChildAt = Math.round(performance.now() - started)
-    counts.bytes += data.length
-    tail = Buffer.concat([tail, data.subarray(-4096)]).subarray(-4096)
     const chunk = data.toString()
     output = (output + chunk).slice(-256000)
     const lines = (pendingLines[stream] + chunk).split(/\r?\n/)
@@ -549,46 +272,18 @@ dialog.showMessageBox = (...args) => {
       if (endpoint && !seenEndpoints.includes(endpoint))
         seenEndpoints.push(endpoint)
       if (
-        /\[dev-watch\]|build started|built in|restart|reloading|DevTools listening|modules transformed|rendering chunks|computing gzip size/.test(
+        /^\[dev-watch\] (?:(main-start|licenses-start|licenses-end|graphEnd) \d+ \d+|clipped)$/.test(
           line,
         )
       ) {
-        const knownProbe =
-          /^\[dev-watch\] (?:(?:licenses|analysis) \d+ (?:start|end \d+)|analysis-split [1-7] w=\d+ m=\d+ b=\d+ o=\d+|clipped|runtime-await-start|runtime-await-end|site-fork|site-ready|desktop-spawn|out (?:main|preload) [\w:./=> -]{1,128})$/.test(
-            line,
-          )
-        if (
-          knownProbe &&
-          counts.live < 101 &&
-          !completed &&
-          !t.signal.aborted
-        ) {
-          counts.live++
-          mark(byteHead(line, 96))
+        phase(line)
+        if (!completed && !t.signal.aborted) {
+          try {
+            t.diagnostic(line)
+          } catch {}
         }
-        counts.events++
-        if (line.includes('[dev-watch] clipped')) counts.saturated++
-        if (Buffer.byteLength(line) > 64) counts.clipped++
-        const hook = line.match(
-          /\[dev-watch\] (licenses|analysis) \d+ (start|end)/,
-        )
-        if (hook) {
-          const key = `${hook[1]}-${hook[2]}`
-          counts[key] = (counts[key] ?? 0) + 1
-        }
-        if (events.length === 96) {
-          events.splice(24, 1)
-          counts.dropped++
-        }
-        events.push(
-          byteHead(
-            `${Math.round(performance.now() - started)} ${stream} ${byteHead(line, 64)}`,
-            96,
-          ),
-        )
       }
     }
-    refreshDiagnostic()
   }
   child.stdout.on('data', (data) => collect(data, 'stdout'))
   child.stderr.on('data', (data) => collect(data, 'stderr'))
@@ -632,252 +327,21 @@ dialog.showMessageBox = (...args) => {
     await writeFile(path, original.replace(before, after))
   }
   await until(() => seenEndpoints.length > 0, 'dev app starts', 60000)
-  mark('first devtools endpoint')
   phase('connect first devtools')
   browser = await chromium.connectOverCDP(seenEndpoints[0])
-  mark('first devtools connected')
   let page = browser.contexts()[0].pages()[0]
   page.setDefaultTimeout(30000)
-  const initialRenderer = (() => {
-    const at = () => Math.round(performance.now() - started)
-    const attachedAt = at(),
-      rows = [],
-      pending = new Map(),
-      listeners = []
-    const counts = {
-      events: 0,
-      dropped: 0,
-      clipped: 0,
-      requests: 0,
-      failed: 0,
-      httpErrors: 0,
-      overflow: 0,
-      consoleErrors: 0,
-      pageErrors: 0,
-      observerErrors: 0,
-    }
-    const reasonCounts = {}
-    let result = 'ready',
-      snapshot = { notRequested: true },
-      failedAt = null
-    let generation = 0,
-      callbackWallMs = 0,
-      snapshotWaitMs = 0
-    const resource = (value) => {
-      try {
-        const path = new URL(value).pathname
-        return byteHead(
-          path.match(/\/(?:src|node_modules|@id|@vite)\/[\w@./:-]*/)?.[0] ??
-            (path === '/' ? '/' : '[other]'),
-          80,
-        )
-      } catch {
-        return '[unknown]'
-      }
-    }
-    const reasons = (value) => {
-      const flags = [
-        /Failed to fetch dynamically imported module|error loading dynamically imported module|Importing a module script failed/i.test(
-          value,
-        ) && 'dynamic-import-fetch',
-        /ERR_OUTDATED_OPTIMIZE_DEP|Outdated Optimize Dep/i.test(value) &&
-          'outdated-dependency',
-        /SyntaxError|Unexpected token|does not provide an export/i.test(
-          value,
-        ) && 'module-syntax',
-        /Unable to load preload script|preload.*(?:failed|error)/i.test(
-          value,
-        ) && 'preload-failure',
-        /window\.hibi|hibi.*(?:undefined|not a function|not defined)|bridge.*(?:closed|failed)/i.test(
-          value,
-        ) && 'bridge-failure',
-        /ERR_ABORTED|ERR_FAILED|ERR_CONNECTION_REFUSED/i.test(value) &&
-          'network-failure',
-      ].filter(Boolean)
-      for (const flag of flags)
-        reasonCounts[flag] = (reasonCounts[flag] ?? 0) + 1
-      return flags
-    }
-    const add = (kind, ...fields) => {
-      const row = JSON.stringify([at(), kind, ...fields])
-      counts.events++
-      if (Buffer.byteLength(row) > 160) counts.clipped++
-      if (rows.length === 64) {
-        rows.splice(16, 1)
-        counts.dropped++
-      }
-      rows.push(byteHead(row, 160))
-    }
-    const on = (event, handler) => {
-      const guarded = (...args) => {
-        const start = performance.now()
-        try {
-          handler(...args)
-        } catch {
-          counts.observerErrors++
-        } finally {
-          callbackWallMs += performance.now() - start
-        }
-      }
-      listeners.push([event, guarded])
-      page.on(event, guarded)
-    }
-    on('request', (request) => {
-      counts.requests++
-      if (
-        !['document', 'script', 'stylesheet'].includes(request.resourceType())
-      )
-        return
-      if (pending.size === 16) {
-        counts.overflow++
-        return
-      }
-      const item = [
-        at(),
-        request.resourceType(),
-        resource(request.url()),
-        generation,
-      ]
-      pending.set(request, item)
-      add('request', ...item)
-    })
-    on('requestfinished', (request) => {
-      const item = pending.get(request)
-      if (item) {
-        pending.delete(request)
-        add('finished', at() - item[0], ...item.slice(1))
-      }
-    })
-    on('requestfailed', (request) => {
-      counts.failed++
-      pending.delete(request)
-      add(
-        'request-failed',
-        request.resourceType(),
-        resource(request.url()),
-        reasons(request.failure()?.errorText),
-      )
-    })
-    on('response', (response) => {
-      if (response.status() >= 400) {
-        counts.httpErrors++
-        add('http-error', response.status(), resource(response.url()))
-      }
-    })
-    on('framenavigated', (frame) => {
-      if (frame === page.mainFrame())
-        add('navigation', ++generation, resource(frame.url()))
-    })
-    for (const event of ['domcontentloaded', 'load', 'close', 'crash'])
-      on(event, () => add(event, generation))
-    on('console', (message) => {
-      if (message.type() !== 'error') return
-      counts.consoleErrors++
-      const location = message.location()
-      add(
-        'console-error',
-        resource(location.url),
-        location.lineNumber,
-        reasons(message.text()),
-      )
-    })
-    on('pageerror', (error) => {
-      counts.pageErrors++
-      const kind = [
-        'Error',
-        'TypeError',
-        'ReferenceError',
-        'SyntaxError',
-        'RangeError',
-      ].includes(error.name)
-        ? error.name
-        : 'other'
-      add(
-        'page-error',
-        kind,
-        reasons(error.message),
-        resource(String(error.stack).match(/https?:\/\/[^\s)]+/)?.[0] ?? ''),
-      )
-    })
-    add('attached', resource(page.url()))
-    return {
-      async failed() {
-        result = 'failed'
-        failedAt = at()
-        let timer
-        try {
-          snapshot = await Promise.race([
-            page
-              .evaluate(startupEntries)
-              .then(({ dom, stages }) => {
-                delete dom?.recovery
-                return { dom, stages }
-              })
-              .catch(() => ({ unavailable: 'evaluation-failed' })),
-            new Promise((resolve) => {
-              timer = setTimeout(
-                () => resolve({ unavailable: '1000ms-cap' }),
-                1000,
-              )
-            }),
-          ])
-        } catch {
-          snapshot = { unavailable: 'probe-failed' }
-        } finally {
-          clearTimeout(timer)
-          snapshotWaitMs = at() - failedAt
-        }
-      },
-      report() {
-        for (const [event, handler] of listeners) page.off(event, handler)
-        const data = {
-          result,
-          attachedAt,
-          failedAt,
-          reportedAt: at(),
-          preattachmentUnknown: true,
-          pendingCap: 16,
-          rowCap: 64,
-          generation,
-          counts,
-          reasonCounts,
-          callbackWallMs: Math.round(callbackWallMs * 1000) / 1000,
-          snapshotWaitMs,
-          snapshotScope: 'first24marks+recent20entries',
-          snapshot,
-          pending: [...pending.values()].map((item) => [
-            at() - item[0],
-            ...item.slice(1),
-          ]),
-          rows,
-        }
-        const prefix = 'initial renderer observation '
-        let text = JSON.stringify(data)
-        while (Buffer.byteLength(prefix + text) > 16384 && rows.length > 16) {
-          rows.splice(16, 1)
-          counts.dropped++
-          text = JSON.stringify(data)
-        }
-        if (Buffer.byteLength(prefix + text) > 16384) {
-          data.snapshot = { unavailable: '16KiB-cap' }
-          text = JSON.stringify(data)
-        }
-        t.diagnostic(prefix + text)
-      },
-    }
-  })()
   phase('initial renderer readiness')
   try {
     await page.locator('[data-status-id="typing-speed.wpm"]').waitFor()
   } catch (error) {
     try {
-      await initialRenderer.failed()
+      console.error(
+        'initial renderer startup:',
+        JSON.stringify(await startupDiagnostics(undefined, page)),
+      )
     } catch {}
     throw error
-  } finally {
-    try {
-      initialRenderer.report()
-    } catch {}
   }
   assert.equal(
     await page.evaluate(
@@ -888,7 +352,6 @@ dialog.showMessageBox = (...args) => {
     ),
     true,
   )
-  mark('initial renderer bridge ready')
   await page
     .getByRole('textbox', { name: 'Document editor', exact: true })
     .fill('unsaved watch draft')
@@ -897,13 +360,11 @@ dialog.showMessageBox = (...args) => {
     async () =>
       (await window.hibi.getDocument()).markdown === 'unsaved watch draft',
   )
-  mark('initial draft ready')
   await replace(
     'src/renderer/src/Titlebar.tsx',
     'aria-label="Editor view"',
     'aria-label="Updated editor view"',
   )
-  mark('renderer source changed')
   await page.getByRole('navigation', { name: 'Updated editor view' }).waitFor()
   mark('renderer component updated')
   const css = join(root, 'src/renderer/src/styles.css')
@@ -1181,15 +642,12 @@ dialog.showMessageBox = (...args) => {
           `draft editor never received focus: ${error.message}\n${JSON.stringify(await inspect())}`,
         )
       })
-    phase('clear draft keystrokes')
     // Send an editor keystroke: fill('') can skip deletion after a dev reload.
     await editor.press('ControlOrMeta+A')
     await editor.press('Backspace')
     const afterInput = await inspect()
-    phase('clear draft flush')
     await page.evaluate(() => window.hibi.flushDocumentChanges())
     const afterFlush = await inspect()
-    phase('confirm cleared draft')
     try {
       await waitForAsync(page, async () => {
         const document = await window.hibi.getDocument()
@@ -1243,7 +701,6 @@ dialog.showMessageBox = (...args) => {
       'restarted app opens a page',
     )
     page = browser.contexts()[0].pages()[0]
-    phase('restarted renderer bridge')
     await page.waitForFunction(() => Boolean(window.hibi))
   }
   const initialStarts = seenEndpoints.length
@@ -1325,7 +782,6 @@ dialog.showMessageBox = (...args) => {
   mark('canceled restart keeps running app and dirty draft')
 
   await clearDraft('draft protected from restart')
-  phase('write clean restart importer')
   await replace(
     'src/main/imports.ts',
     "instructions: 'Canceled rebuild importer.',",
@@ -1397,22 +853,18 @@ dialog.showMessageBox = (...args) => {
   )
   const noticeStarts = seenEndpoints.length
   const noticePath = join(root, 'src/addons/typst/hibi-addon.json')
-  phase('read notice manifest')
   const noticeManifest = JSON.parse(await readFile(noticePath, 'utf8'))
   assert.equal(noticeManifest.licenses[0].text, originalNotice)
   noticeManifest.licenses[0].text = `Catalog notice probe.\n${originalNotice}`
-  phase('write notice manifest')
   await writeFile(noticePath, JSON.stringify(noticeManifest, null, 2))
 
   await connectRestartedPage(noticeStarts)
-  phase('read updated notice')
   assert.equal(
     await page.evaluate((id) => window.hibi.getLicense(id), noticeId),
     `Catalog notice probe.\n${originalNotice}`,
   )
   mark('canonical json notice updates lazy catalog details')
 
-  phase('write documentation generator')
   await replace('scripts/addon-reference.mjs', '[Source]', '[Updated source]')
   await until(
     async () =>
@@ -1427,5 +879,4 @@ dialog.showMessageBox = (...args) => {
   mark('documentation generator updated')
   refreshDiagnostic()
   completed = true
-  if (!t.signal.aborted) t.diagnostic(cachedDiagnostic)
 })
