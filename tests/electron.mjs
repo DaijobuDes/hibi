@@ -98,6 +98,23 @@ export const electron = {
       args: [...options.args, '--hibi-test', ...gpuArgs],
     })
     const close = application.close.bind(application)
+    const quitTrace = {
+      notInstalled: true,
+      seen: 0,
+      dropped: 0,
+      clipped: 0,
+      errors: 0,
+      producerErrors: 0,
+      windowLimit: false,
+      writerLimit: false,
+      beforeQuitSeen: false,
+      willQuitSeen: false,
+      quitSeen: false,
+      windowAllClosedSeen: false,
+      detached: false,
+      lastReceivedAt: null,
+      rows: [],
+    }
     let slowStartTimer
     let closing = false
     application.close = async ({ waitForTransport = false } = {}) => {
@@ -124,6 +141,19 @@ export const electron = {
                       closed: stream.closed,
                     },
                 ),
+                quit: {
+                  ...quitTrace,
+                  ageMs:
+                    quitTrace.lastReceivedAt === null
+                      ? null
+                      : Math.round(
+                          performance.now() - quitTrace.lastReceivedAt,
+                        ),
+                  scope: 'first-before-quit',
+                  eventTimeOnly: true,
+                  unavailable: !quitTrace.beforeQuitSeen,
+                  unknown: true,
+                },
               }),
             )
           } catch {}
@@ -153,8 +183,267 @@ export const electron = {
       }
     }
     if (showTestWindows) {
+      // The inspector may already be closed; keep only validated stdout events.
+      let detachQuitTrace
+      try {
+        const child = application.process()
+        const prefix = 'hibi-test-quit '
+        const events = [
+          'armed',
+          'before-quit',
+          'will-quit',
+          'quit',
+          'window-all-closed',
+          'browser-window-created',
+          'window-state',
+          'close',
+          'closed',
+          'window-limit',
+          'writer-limit',
+          'observer-error',
+        ]
+        const windowEvents = [
+          'browser-window-created',
+          'window-state',
+          'close',
+          'closed',
+        ]
+        let partial = '',
+          skipping = false,
+          active = true
+        const bump = (key) => {
+          quitTrace[key] = Math.min(999999, quitTrace[key] + 1)
+        }
+        const onData = (chunk) => {
+          if (!active) return
+          try {
+            if (chunk.length > 4096) {
+              bump('clipped')
+              partial = ''
+              skipping = true
+              return
+            }
+            let text = String(chunk)
+            if (skipping) {
+              const end = text.indexOf('\n')
+              if (end < 0) return
+              text = text.slice(end + 1)
+              skipping = false
+            }
+            const lines = (partial + text).split(/\r?\n/)
+            partial = lines.pop()
+            if (Buffer.byteLength(partial) > 160) {
+              partial = ''
+              skipping = true
+              bump('clipped')
+            }
+            for (const line of lines) {
+              if (!line.startsWith(prefix)) continue
+              if (line.length > 160 || !/^[\x20-\x7e]*$/.test(line)) {
+                bump('clipped')
+                continue
+              }
+              let row
+              try {
+                row = JSON.parse(line.slice(prefix.length))
+              } catch {
+                bump('errors')
+                continue
+              }
+              if (
+                !Array.isArray(row) ||
+                row.length !== 7 ||
+                !events.includes(row[0]) ||
+                !Number.isSafeInteger(row[1]) ||
+                row[1] < 0 ||
+                !Number.isSafeInteger(row[2]) ||
+                row[2] < 0 ||
+                !['app', 'addon', 'analysis', 'other'].includes(row[3]) ||
+                ![true, false, null].includes(row[4]) ||
+                ![true, false, null].includes(row[5]) ||
+                !Number.isInteger(row[6]) ||
+                row[6] < 0 ||
+                row[6] > 999999 ||
+                (windowEvents.includes(row[0])
+                  ? row[2] === 0
+                  : row[2] !== 0 ||
+                    row[3] !== 'other' ||
+                    row[4] !== null ||
+                    row[5] !== null)
+              ) {
+                bump('errors')
+                continue
+              }
+              bump('seen')
+              quitTrace.lastReceivedAt = performance.now()
+              quitTrace.producerErrors = Math.max(
+                quitTrace.producerErrors,
+                row[6],
+              )
+              if (row[0] === 'armed') quitTrace.notInstalled = false
+              if (row[0] === 'before-quit') quitTrace.beforeQuitSeen = true
+              if (row[0] === 'will-quit') quitTrace.willQuitSeen = true
+              if (row[0] === 'quit') quitTrace.quitSeen = true
+              if (row[0] === 'window-all-closed')
+                quitTrace.windowAllClosedSeen = true
+              if (row[0] === 'window-limit') quitTrace.windowLimit = true
+              if (row[0] === 'writer-limit') quitTrace.writerLimit = true
+              if (quitTrace.rows.length === 24) {
+                quitTrace.rows.splice(6, 1)
+                bump('dropped')
+              }
+              quitTrace.rows.push(row)
+            }
+          } catch {
+            bump('errors')
+          }
+        }
+        detachQuitTrace = () => {
+          if (!active) return
+          active = false
+          quitTrace.detached = true
+          partial = ''
+          try {
+            child.stdout?.off('data', onData)
+            child.stdout?.off('close', detachQuitTrace)
+            child.off('exit', detachQuitTrace)
+            child.off('close', detachQuitTrace)
+          } catch {
+            bump('errors')
+          }
+        }
+        child.stdout?.on('data', onData)
+        child.stdout?.once('close', detachQuitTrace)
+        child.once('exit', detachQuitTrace)
+        child.once('close', detachQuitTrace)
+      } catch {
+        detachQuitTrace?.()
+        quitTrace.errors = Math.min(999999, quitTrace.errors + 1)
+      }
       const page = await application.firstWindow()
       await application.evaluate(({ app, BrowserWindow }) => {
+        // Event-time evidence only: no earlier window history or private quit state.
+        try {
+          const prefix = 'hibi-test-quit '
+          const states = new Map()
+          let rows = 0,
+            bytes = 0,
+            errors = 0,
+            halted = false
+          let inQuitScope = false,
+            windowLimit = false
+          const write = (event, state) => {
+            if (halted) return
+            try {
+              const at = Math.round(process.uptime() * 1000)
+              const data = state ?? {
+                id: 0,
+                kind: 'other',
+                visible: null,
+                destroyed: null,
+              }
+              let line =
+                prefix +
+                JSON.stringify([
+                  event,
+                  at,
+                  data.id,
+                  data.kind,
+                  data.visible,
+                  data.destroyed,
+                  errors,
+                ])
+              let size = Buffer.byteLength(line) + 1
+              if (rows === 31 || size > 160 || bytes + size > 3936) {
+                line =
+                  prefix +
+                  JSON.stringify([
+                    'writer-limit',
+                    at,
+                    0,
+                    'other',
+                    null,
+                    null,
+                    errors,
+                  ])
+                size = Buffer.byteLength(line) + 1
+                halted = true
+              }
+              rows++
+              bytes += size
+              console.log(line)
+            } catch {
+              errors = Math.min(999999, errors + 1)
+            }
+          }
+          const limitWindows = () => {
+            if (windowLimit) return
+            windowLimit = true
+            write('window-limit')
+          }
+          const watch = (window, event) => {
+            try {
+              const id = window.id
+              let state = states.get(id)
+              if (!state) {
+                if (states.size === 8) {
+                  limitWindows()
+                  return
+                }
+                state = { id, kind: 'other', visible: null, destroyed: null }
+                states.set(id, state)
+                window.on('close', () => watch(window, 'close'))
+                window.once('closed', () => {
+                  state.visible = false
+                  state.destroyed = true
+                  write('closed', state)
+                })
+              }
+              try {
+                state.destroyed = window.isDestroyed()
+                state.visible = state.destroyed ? false : window.isVisible()
+                if (!state.destroyed) {
+                  const url = window.webContents.getURL()
+                  state.kind =
+                    url === 'app://hibi/'
+                      ? 'app'
+                      : url.startsWith('app://hibi/addon-window.html')
+                        ? 'addon'
+                        : url.startsWith('hibi-analysis:')
+                          ? 'analysis'
+                          : 'other'
+                }
+              } catch {
+                state.visible = null
+                state.destroyed = null
+                errors = Math.min(999999, errors + 1)
+              }
+              write(event, state)
+            } catch {
+              errors = Math.min(999999, errors + 1)
+              write('observer-error')
+            }
+          }
+          app.on('before-quit', () => {
+            inQuitScope = true
+            write('before-quit')
+            try {
+              const windows = BrowserWindow.getAllWindows()
+              for (const window of windows.slice(0, 8))
+                watch(window, 'window-state')
+              if (windows.length > 8) limitWindows()
+            } catch {
+              errors = Math.min(999999, errors + 1)
+              write('observer-error')
+            }
+          })
+          app.on('browser-window-created', (_event, window) => {
+            if (inQuitScope) watch(window, 'browser-window-created')
+          })
+          for (const event of ['will-quit', 'quit', 'window-all-closed'])
+            app.on(event, () => write(event))
+          write('armed')
+        } catch {}
         const show = (window) => {
           if (window.webContents.getURL().startsWith('hibi-analysis:')) return
           window.setFocusable(true)
@@ -228,6 +517,18 @@ function startupEntries({ BrowserWindow } = {}) {
     .getEntries()
     .filter((entry) => entry.name.startsWith('hibi:'))
   const recent = entries.slice(-20)
+  const active = doc?.activeElement
+  const menus = [
+    ...(doc?.querySelectorAll('[role="menu"][aria-label="Editor actions" i]') ??
+      []),
+  ]
+  const histories = [
+    ...(doc?.querySelectorAll(
+      'dialog.app-dialog[aria-label="Version history" i]',
+    ) ?? []),
+  ]
+  const palettes = [...(doc?.querySelectorAll('dialog.command-palette') ?? [])]
+  const text = (value, limit = 80) => String(value ?? '').slice(0, limit)
   return {
     dom: doc && {
       readyState: doc.readyState,
@@ -264,6 +565,74 @@ function startupEntries({ BrowserWindow } = {}) {
       sourceEditable: doc.querySelectorAll(
         '.cm-content[contenteditable="true"]',
       ).length,
+      nativeFocus: Document.prototype.hasFocus.call(doc),
+      activeElement: active && {
+        tag: text(active.tagName),
+        role: text(active.getAttribute('role')),
+        ariaLabel: text(active.getAttribute('aria-label')),
+        class: text(active.getAttribute('class'), 120),
+      },
+      startup: {
+        screens: doc.querySelectorAll('.startup-placeholder').length,
+        dismissButtons: [
+          ...doc.querySelectorAll(
+            '.startup-placeholder .startup-actions button',
+          ),
+        ].filter((button) =>
+          /dismiss this screen/i.test(text(button.textContent)),
+        ).length,
+        documentTabs: doc.querySelectorAll('.document-tabs [role="tab"]')
+          .length,
+      },
+      editorMenus: {
+        count: menus.length,
+        samples: menus.slice(0, 2).map((menu) => {
+          const items = [...menu.querySelectorAll('[role="menuitem"]')]
+          return {
+            open: menu.matches(':popover-open'),
+            itemCount: items.length,
+            itemLabels: items
+              .slice(0, 4)
+              .map((item) =>
+                text(
+                  item.getAttribute('aria-label') ??
+                    item.querySelector('.command-label')?.textContent ??
+                    item.textContent,
+                ),
+              ),
+          }
+        }),
+      },
+      historyDialogs: {
+        count: histories.length,
+        samples: histories.slice(0, 2).map((dialog) => {
+          const navs = dialog.querySelectorAll(
+            'nav[aria-label="Saved versions" i]',
+          )
+          const buttons = [
+            ...dialog.querySelectorAll(
+              'nav[aria-label="Saved versions" i] button',
+            ),
+          ]
+          const last = buttons.at(-1)
+          return {
+            open: dialog.open,
+            closing: dialog.classList.contains('closing'),
+            navCount: navs.length,
+            buttonCount: buttons.length,
+            lastButton: last && {
+              disabled: last.disabled,
+              pressed: last.getAttribute('aria-pressed') === 'true',
+            },
+          }
+        }),
+      },
+      palette: {
+        openCount: palettes.filter((dialog) => dialog.open).length,
+        closingCount: palettes.filter((dialog) =>
+          dialog.classList.contains('closing'),
+        ).length,
+      },
     },
     stages: [
       ...new Set([
@@ -298,6 +667,7 @@ export async function startupDiagnostics(application, page) {
         request.catch(() => ({ unavailable: true })),
         new Promise((resolve) => {
           timer = setTimeout(() => resolve({ unavailable: true }), 1000)
+          timer.unref()
         }),
       ])
     } finally {

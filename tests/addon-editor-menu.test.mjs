@@ -3,7 +3,11 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { electron, waitForDocumentEditor } from './electron.mjs'
+import {
+  electron,
+  startupDiagnostics,
+  waitForDocumentEditor,
+} from './electron.mjs'
 import { clickMenu, replaceRichText } from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
 
@@ -102,6 +106,15 @@ test('editor command shares rich and source action menus with guarded selection'
   await menu
     .getByRole('menuitem', { name: 'Inspect editor selection' })
     .waitFor()
+    .catch(async (error) => {
+      try {
+        console.error(
+          'editor menu startup:',
+          JSON.stringify(await startupDiagnostics(app, page)),
+        )
+      } catch {}
+      throw error
+    })
   // Focus returning to the editor, as when its window regains focus, keeps the menu.
   await rich.evaluate((element) =>
     element.dispatchEvent(new FocusEvent('focus')),

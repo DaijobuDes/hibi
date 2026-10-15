@@ -118,7 +118,37 @@ test('exported footnote links survive site hydration', {
   })
   await app.firstWindow()
   const next = app.waitForEvent('window')
-  await app.evaluate(({ BrowserWindow }, url) => {
+  const target = await app.evaluate(({ app, BrowserWindow }, url) => {
+    const observation = {
+      startedAt: performance.now(),
+      counts: { created: 0, start: 0, finish: 0, fail: 0, gone: 0, console: 0 },
+      events: [],
+      dropped: 0,
+      errors: 0,
+    }
+    globalThis.__hibiFootnoteSite = observation
+    const clip = (value) => String(value ?? '').slice(0, 160)
+    const record = (kind, read = () => []) => {
+      observation.counts[kind]++
+      try {
+        const row = [
+          Math.round(performance.now() - observation.startedAt),
+          kind,
+          observation.counts[kind],
+          ...read(),
+        ]
+        if (observation.events.length === 24) {
+          observation.events.splice(6, 1)
+          observation.dropped++
+        }
+        observation.events.push(row)
+      } catch {
+        observation.errors++
+      }
+    }
+    app.on('browser-window-created', (_event, window) =>
+      record('created', () => [window.id, window.webContents.id]),
+    )
     const viewer = new BrowserWindow({
       show: false,
       width: 1000,
@@ -130,11 +160,160 @@ test('exported footnote links survive site hydration', {
         backgroundThrottling: false,
       },
     })
+    const contents = viewer.webContents
+    contents.on('did-start-loading', () => record('start'))
+    contents.on('did-finish-load', () =>
+      record('finish', () => [clip(contents.getURL())]),
+    )
+    contents.on('did-fail-load', (_event, code, description, url, mainFrame) =>
+      record('fail', () => [code, clip(description), clip(url), mainFrame]),
+    )
+    contents.on('render-process-gone', (_event, details) =>
+      record('gone', () => [clip(details.reason), details.exitCode]),
+    )
+    contents.on('console-message', (details) =>
+      record('console', () => [
+        clip(details.level),
+        clip(details.message),
+        clip(details.sourceId),
+        details.lineNumber,
+      ]),
+    )
     void viewer.loadURL(url)
+    return { windowId: viewer.id, webContentsId: contents.id }
   }, pathToFileURL(file).href)
   const page = await next
   page.setDefaultTimeout(7000)
-  await page.getByRole('button', { name: /^toggle navigation$/i }).waitFor()
+  await page
+    .getByRole('button', { name: /^toggle navigation$/i })
+    .waitFor()
+    .catch(async (error) => {
+      const bounded = async (request) => {
+        let timer
+        try {
+          return await Promise.race([
+            Promise.resolve()
+              .then(request)
+              .catch(() => ({ unavailable: true })),
+            new Promise((resolve) => {
+              timer = setTimeout(() => resolve({ unavailable: true }), 1000)
+            }),
+          ])
+        } finally {
+          clearTimeout(timer)
+        }
+      }
+      try {
+        const [main, selected, dom, consoleMessages, pageErrors] =
+          await Promise.all([
+            bounded(() =>
+              app.evaluate(({ BrowserWindow }, target) => {
+                const describe = (window) => {
+                  try {
+                    const contents = window.webContents
+                    return {
+                      windowId: window.id,
+                      webContentsId: contents.id,
+                      url: contents.getURL().slice(0, 240),
+                      loading: contents.isLoadingMainFrame(),
+                    }
+                  } catch {
+                    return { unavailable: true }
+                  }
+                }
+                const windows = BrowserWindow.getAllWindows()
+                return {
+                  intended: describe(BrowserWindow.fromId(target.windowId)),
+                  windows: windows.slice(0, 8).map(describe),
+                  omittedWindows: Math.max(0, windows.length - 8),
+                  observation: globalThis.__hibiFootnoteSite ?? {
+                    unavailable: true,
+                  },
+                }
+              }, target),
+            ),
+            bounded(async () => {
+              const handle = await app.browserWindow(page)
+              try {
+                return await handle.evaluate((window) => ({
+                  windowId: window.id,
+                  webContentsId: window.webContents.id,
+                  url: window.webContents.getURL().slice(0, 240),
+                }))
+              } finally {
+                await handle.dispose()
+              }
+            }),
+            bounded(() =>
+              page.evaluate(() => {
+                const nav = document.querySelector(
+                  'button[aria-label="Toggle navigation" i]',
+                )
+                return {
+                  url: location.href.slice(0, 240),
+                  readyState: document.readyState,
+                  rootChildren:
+                    document.getElementById('root')?.childElementCount,
+                  siteCount: document.querySelectorAll('.documentation-site')
+                    .length,
+                  navigationCount: document.querySelectorAll(
+                    'button[aria-label="Toggle navigation" i]',
+                  ).length,
+                  navigation: nav && {
+                    hidden: nav.hidden,
+                    display: getComputedStyle(nav).display,
+                    visibility: getComputedStyle(nav).visibility,
+                    rects: nav.getClientRects().length,
+                  },
+                  footnotes: {
+                    references: document.querySelectorAll(
+                      'a[data-footnote-ref]',
+                    ).length,
+                    definitions:
+                      document.querySelectorAll('li#fn-source').length,
+                    labels:
+                      document.querySelectorAll('h2#footnote-label').length,
+                    backlinks: document.querySelectorAll(
+                      'a[data-footnote-backref]',
+                    ).length,
+                  },
+                }
+              }),
+            ),
+            bounded(() =>
+              page.consoleMessages().then((messages) => ({
+                cached: messages.length,
+                tail: messages.slice(-4).map((message) => ({
+                  type: message.type(),
+                  text: message.text().slice(0, 240),
+                })),
+              })),
+            ),
+            bounded(() =>
+              page.pageErrors().then((errors) => ({
+                cached: errors.length,
+                tail: errors.slice(-3).map((error) => ({
+                  message: error.message.slice(0, 240),
+                  stack: error.stack?.slice(0, 240),
+                })),
+              })),
+            ),
+          ])
+        console.error(
+          'footnote site startup:',
+          JSON.stringify({
+            target,
+            expectedUrl: pathToFileURL(file).href.slice(0, 240),
+            main,
+            selected,
+            dom,
+            consoleMessages,
+            pageErrors,
+          }),
+        )
+      } catch {}
+      throw error
+    })
   assert.equal(
     await page.locator('a#fnref-source[data-footnote-ref]').count(),
     1,
