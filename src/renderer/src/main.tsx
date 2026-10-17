@@ -487,6 +487,8 @@ function App() {
   const [resetEditor, setResetEditor] = useState(0)
   const busyRef = useRef(false)
   const [busy, setBusy] = useState(false)
+  // Saving blocks other file operations but leaves the editors writable.
+  const [savingDocument, setSavingDocument] = useState(false)
   function startBusy() {
     busyRef.current = true
     setBusy(true)
@@ -1375,6 +1377,7 @@ function App() {
           ?.closest('.cm-editor')
           ?.querySelector<HTMLElement>('.cm-content')
       startBusy()
+      setSavingDocument(saving)
       setError('')
       try {
         const next = await (command === 'new'
@@ -1403,6 +1406,7 @@ function App() {
       } finally {
         if (source) flushSync(endBusy)
         else endBusy()
+        setSavingDocument(false)
         if (source)
           requestAnimationFrame(() => {
             const active = window.document.activeElement
@@ -2687,7 +2691,11 @@ function App() {
                 )
               }
               mode={paneMode}
-              disabled={busy || !addonHost.ready || addonHost.reloading}
+              disabled={
+                (busy && !savingDocument) ||
+                !addonHost.ready ||
+                addonHost.reloading
+              }
               findOpen={findOpen && active && !settingsOpen}
               onCloseFind={() => setFindOpen(false)}
             />
