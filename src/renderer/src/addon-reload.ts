@@ -144,13 +144,18 @@ export async function reloadAddons(
   )
 }
 
-const frame = () => new Promise(requestAnimationFrame)
+const nextFrame = () => new Promise(requestAnimationFrame)
+
+const moves = /^(?:Arrow|Home$|End$|Page)/
 
 /**
  * Capture the active editor's selection and focus; the returned function puts
  * them back once the editor current then has loaded the document, waiting a
- * few frames for a rebuilt editor. A selection the user moved meanwhile, or
- * an edit, wins over the captured one.
+ * few frames for a rebuilt editor. A selection the user picks meanwhile wins,
+ * also when the editor is rebuilt afterwards. Input inside the live editor
+ * marks a pick; its document positions come from that editor's own selection
+ * once the view owning the surface reports it, whatever order its
+ * notifications arrive in.
  */
 function keepEditorState(activeView: () => ViewTarget | null) {
   const view = activeView()
@@ -166,46 +171,72 @@ function keepEditorState(activeView: () => ViewTarget | null) {
   }
   const active = document.activeElement
   const focused = active instanceof HTMLElement && active.isContentEditable
-  const kind = start.value.editor === 'rich' ? '.ProseMirror' : '.cm-content'
-  let last = start.value
-  let moved = false
-  const unsubscribe = editorViewRegistry.subscribe(() => {
+  const surface = `.editor-panes :is(.rich-pane, .source-pane):not([inert]) ${start.value.editor === 'rich' ? '.ProseMirror' : '.cm-content'}`
+  let pick: { root: Element; anchor?: number; head?: number } | undefined
+  let frame = 0
+  // While the picked surface is on the page, its view's latest selection is the pick; a rebuild after it ends sampling.
+  const sample = () => {
+    if (!pick?.root.isConnected) return
     const current = read()
-    if (!current?.ok) return
-    // A change within one editor instance is the user's; a rebuilt editor starts over.
+    if (!current?.ok || current.value.editor !== start.value.editor) return
+    pick.anchor = current.value.anchor
+    pick.head = current.value.head
+  }
+  const follow = () => {
+    sample()
+    frame = requestAnimationFrame(follow)
+  }
+  const choose = (event: Event) => {
     if (
-      current.value.editorGeneration === last.editorGeneration &&
-      (current.value.anchor !== last.anchor || current.value.head !== last.head)
+      event instanceof KeyboardEvent &&
+      !moves.test(event.key) &&
+      !(event.key === 'a' && (event.metaKey || event.ctrlKey))
     )
-      moved = true
-    last = current.value
-  })
+      return
+    const root =
+      event.target instanceof Element ? event.target.closest(surface) : null
+    if (!root) return
+    pick = { root }
+    cancelAnimationFrame(frame)
+    follow()
+  }
+  const unsubscribe = editorViewRegistry.subscribe(sample)
+  for (const type of ['pointerup', 'keyup'])
+    window.addEventListener(type, choose, true)
   return async () => {
     // Let the restarted configuration render, including an editor it rebuilds.
-    await frame()
-    await frame()
+    await nextFrame()
+    await nextFrame()
     let current = read()
     for (let attempt = 0; !current?.ok && attempt < 120; attempt++) {
-      await frame()
+      await nextFrame()
       current = read()
     }
+    for (const type of ['pointerup', 'keyup'])
+      window.removeEventListener(type, choose, true)
     unsubscribe()
+    cancelAnimationFrame(frame)
+    const target = pick
+      ? pick.anchor === undefined || pick.head === undefined
+        ? undefined
+        : { anchor: pick.anchor, head: pick.head }
+      : start.value
     if (
-      !moved &&
+      target &&
       current?.ok &&
       current.value.editor === start.value.editor &&
-      current.value.contentVersion === start.value.contentVersion
+      current.value.contentVersion === start.value.contentVersion &&
+      (current.value.anchor !== target.anchor ||
+        current.value.head !== target.head)
     )
       editorViewRegistry.setSelection({
         ...current.value,
-        anchor: start.value.anchor,
-        head: start.value.head,
+        anchor: target.anchor,
+        head: target.head,
       })
     if (focused && document.activeElement === document.body)
       document
-        .querySelector<HTMLElement>(
-          `.editor-panes :is(.rich-pane, .source-pane):not([inert]) ${kind}`,
-        )
+        .querySelector<HTMLElement>(surface)
         ?.focus({ preventScroll: true })
   }
 }
