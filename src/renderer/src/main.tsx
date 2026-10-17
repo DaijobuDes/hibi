@@ -487,8 +487,8 @@ function App() {
   const [resetEditor, setResetEditor] = useState(0)
   const busyRef = useRef(false)
   const [busy, setBusy] = useState(false)
-  // Saving blocks other file operations but leaves the editors writable.
-  const [savingDocument, setSavingDocument] = useState(false)
+  // Saving blocks other file operations but leaves the saved tab's editors writable.
+  const [savingTab, setSavingTab] = useState<string | null>(null)
   function startBusy() {
     busyRef.current = true
     setBusy(true)
@@ -1377,7 +1377,7 @@ function App() {
           ?.closest('.cm-editor')
           ?.querySelector<HTMLElement>('.cm-content')
       startBusy()
-      setSavingDocument(saving)
+      setSavingTab(saving ? (currentDocument.current?.tabId ?? null) : null)
       setError('')
       try {
         const next = await (command === 'new'
@@ -1406,7 +1406,7 @@ function App() {
       } finally {
         if (source) flushSync(endBusy)
         else endBusy()
-        setSavingDocument(false)
+        setSavingTab(null)
         if (source)
           requestAnimationFrame(() => {
             const active = window.document.activeElement
@@ -2692,7 +2692,7 @@ function App() {
               }
               mode={paneMode}
               disabled={
-                (busy && !savingDocument) ||
+                (busy && savingTab !== paneDocument.tabId) ||
                 !addonHost.ready ||
                 addonHost.reloading
               }
