@@ -292,9 +292,7 @@ test('cursor appearance, movement, selection hiding, and persistence in both edi
   const source = page.getByRole('textbox', { name: /markdown editor/i })
   phase = 'source clear'
   await waitForDocumentEditor(app, page, { name: 'Markdown editor' })
-  // An empty insertText can leave freshly mounted source text in place.
-  await source.press('ControlOrMeta+a')
-  await source.press('Delete')
+  await replaceSourceText(page, source, '')
   await source.focus()
   await page.waitForFunction(() =>
     document.querySelector('.source-pane .editor-cursor'),
