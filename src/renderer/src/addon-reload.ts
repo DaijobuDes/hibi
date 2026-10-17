@@ -3,7 +3,7 @@ import { addonDependents } from '../../shared/addon-dependencies'
 
 export type AddonReloadResult =
   | { status: 'reloaded' | 'idle' | 'superseded' }
-  | { status: 'refused' | 'failed'; reason: string }
+  | { status: 'refused' | 'failed'; message: string }
 
 /**
  * Stop running addons and their running required consumers, consumers first,
@@ -53,14 +53,14 @@ export async function reloadAddons(
     if (visible)
       return finish({
         status: 'refused',
-        reason: `Leave the ${name(visible)} settings before reloading ${name()}.`,
+        message: `Leave the ${name(visible)} settings before reloading ${name()}.`,
       })
     const owners = await window.hibi.getAddonWindowOwners()
     const windowed = closure.find((id) => owners.includes(id))
     if (windowed)
       return finish({
         status: 'refused',
-        reason: `Close the ${name(windowed)} windows before reloading ${name()}.`,
+        message: `Close the ${name(windowed)} windows before reloading ${name()}.`,
       })
     if (superseded()) return finish({ status: 'superseded' })
   }
@@ -91,7 +91,7 @@ export async function reloadAddons(
     failed.length
       ? {
           status: 'failed',
-          reason: `${failed.map(name).join(', ')} could not restart.`,
+          message: `${failed.map(name).join(', ')} could not restart.`,
         }
       : { status: 'reloaded' },
   )

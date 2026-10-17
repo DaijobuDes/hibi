@@ -1025,6 +1025,9 @@
     "src/renderer/src/DocumentTabs.tsx",
     "src/shared/hotkeys.ts"
   ],
+  "6c73f172ed0b": [
+    "src/renderer/src/addon-reload.ts"
+  ],
   "426be84ac71a": [
     "src/main/workspace-files.ts"
   ],
@@ -3158,6 +3161,9 @@
   ],
   "6af8cc7da9bd": [
     "src/addons/autocomplete/index.tsx"
+  ],
+  "3eaa4332ff51": [
+    "src/renderer/src/addon-reload.ts"
   ],
   "bcccb5388362": [
     "src/renderer/src/CommandPalette.tsx"
@@ -7062,6 +7068,9 @@
   ],
   "229213386c16": [
     "src/renderer/src/main.tsx"
+  ],
+  "4f371b468934": [
+    "src/renderer/src/addon-reload.ts"
   ],
   "f82d8c5475b7": [
     "src/renderer/src/addons.ts"

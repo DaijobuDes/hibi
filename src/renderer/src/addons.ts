@@ -2436,14 +2436,14 @@ export function useAddons(
       latest.current.error(error)
       return {
         status: 'failed',
-        reason: error instanceof Error ? error.message : String(error),
+        message: error instanceof Error ? error.message : String(error),
       }
     }
   }
   // Failed starts already report their own cause.
   const reportReload = useCallback((result: AddonReloadResult) => {
     if (result.status === 'refused')
-      latest.current.error(new Error(result.reason))
+      latest.current.error(new Error(result.message))
   }, [])
   const reloadAddon = useRef(reload)
   reloadAddon.current = reload
