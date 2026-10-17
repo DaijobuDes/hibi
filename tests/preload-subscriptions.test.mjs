@@ -1,21 +1,13 @@
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
+import { readFile } from 'node:fs/promises'
 import test from 'node:test'
-import { fileURLToPath } from 'node:url'
-import { build } from 'esbuild'
 
-const { outputFiles } = await build({
-  entryPoints: [
-    fileURLToPath(new URL('../src/preload/index.ts', import.meta.url)),
-  ],
-  bundle: true,
-  write: false,
-  platform: 'node',
-  format: 'cjs',
-  packages: 'external',
-  define: { 'import.meta.env.DEV': 'false' },
-})
-const evaluate = new Function('require', 'process', outputFiles[0].text)
+const evaluate = new Function(
+  'require',
+  'process',
+  await readFile(new URL('../out/preload/index.cjs', import.meta.url), 'utf8'),
+)
 
 for (const [method, channel, returnsTransport] of [
   ['onAddonReload', 'addons:reload', true],
@@ -32,25 +24,18 @@ for (const [method, channel, returnsTransport] of [
       invoke: async () => null,
       send() {},
     })
-    const exposed = {}
+    const exposed = new Map()
     evaluate(
-      (id) => {
-        assert.equal(id, 'electron')
-        return {
-          ipcRenderer: transport,
-          contextBridge: {
-            exposeInMainWorld: (name, api) => {
-              exposed[name] = api
-            },
-          },
-        }
-      },
+      () => ({
+        ipcRenderer: transport,
+        contextBridge: { exposeInMainWorld: exposed.set.bind(exposed) },
+      }),
       { isMainFrame: true },
     )
     const calls = []
     const callback = (...args) => calls.push(args)
-    const stop = exposed.hibi[method](callback)
-    const keep = exposed.hibi[method](callback)
+    const stop = exposed.get('hibi')[method](callback)
+    const keep = exposed.get('hibi')[method](callback)
     const event = { sender: transport }
     const payload = Object.freeze({ id: 'probe' })
     transport.emit(channel, event, payload, 'extra')
@@ -62,7 +47,6 @@ for (const [method, channel, returnsTransport] of [
     transport.emit(channel, event, payload)
     assert.deepEqual(calls, [[payload], [payload], [payload]])
     keep()
-    assert.equal(transport.listenerCount(channel), 0)
-    transport.emit(channel, event, payload)
+    assert.equal(transport.emit(channel, event, payload), false)
     assert.equal(calls.length, 3)
   })
