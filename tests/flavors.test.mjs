@@ -454,6 +454,10 @@ test('split focus preserves each file flavor', {
     async (id) => (await window.hibi.getDocument()).id !== id,
     beforeRename.id,
   )
+  // The renderer copies the flavor choice when it receives the rename reply.
+  await page.waitForFunction(
+    () => document.querySelector('.app')?.getAttribute('aria-busy') === 'false',
+  )
   assert.deepEqual(
     await page.evaluate(async () =>
       JSON.parse(
