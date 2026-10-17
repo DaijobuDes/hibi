@@ -12,7 +12,10 @@ import {
 import { join } from 'node:path'
 import { app, type BrowserWindow, dialog, shell } from 'electron'
 import type { AddonManifest } from '../addons/api'
-import { validateAddonRequirements } from '../shared/addon-dependencies'
+import {
+  isAddonInDependencyCycle,
+  validateAddonRequirements,
+} from '../shared/addon-dependencies'
 import {
   admitInstalledAddon,
   parseAddonManifest,
@@ -224,26 +227,10 @@ export async function loadInstalledAddons(
   try {
     validateAddonRequirements(all, { allowMissing: true })
   } catch (error) {
-    const graph = new Map(
-      all.map((manifest) => [
-        manifest.id,
-        manifest.requires?.addons.map((dependency) => dependency.id) ?? [],
-      ]),
+    const graph = new Map(all.map((manifest) => [manifest.id, manifest]))
+    const rejected = next.filter((addon) =>
+      isAddonInDependencyCycle(graph, addon.manifest.id),
     )
-    const cyclic = (id: string) => {
-      const visited = new Set<string>()
-      const reachesOwner = (owner: string): boolean => {
-        for (const dependency of graph.get(owner) ?? []) {
-          if (dependency === id) return true
-          if (visited.has(dependency)) continue
-          visited.add(dependency)
-          if (reachesOwner(dependency)) return true
-        }
-        return false
-      }
-      return reachesOwner(id)
-    }
-    const rejected = next.filter((addon) => cyclic(addon.manifest.id))
     if (!rejected.length) throw error
     const reason = `Addons with dependency cycles were not loaded: ${rejected.map((addon) => addon.manifest.id).join(', ')}. ${error instanceof Error ? error.message : String(error)}`
     console.error(reason)
