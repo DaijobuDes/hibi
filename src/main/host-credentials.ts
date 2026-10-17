@@ -10,7 +10,6 @@ import type {
   CredentialResult,
   CredentialStatus,
 } from '../shared/host-credentials'
-import { retryRename } from './atomic-rename.ts'
 
 const MAX_ACTIVE = 4
 const MAX_PER_OWNER = 2
@@ -221,10 +220,8 @@ async function writeEntries(
       await file.close()
     }
     await beforeCommit()
-    const commit = retryRename(() => {
-      commitGuard()
-      return renameFile(temp, path)
-    }, beforeCommit).then(onCommitted)
+    commitGuard()
+    const commit = renameFile(temp, path).then(onCommitted)
     onCommitPending(commit)
     await commit
   } finally {

@@ -18,7 +18,7 @@ async function writer(
       build({
         stdin: {
           contents:
-            "export { writeText } from './src/main/files.ts'; export { createAddonStorage } from './src/main/addon-storage.ts'; export { replaceExistingText } from './src/main/workspace-atomic-update.ts'; export { HostCredentials } from './src/main/host-credentials.ts'",
+            "export { writeText } from './src/main/files.ts'; export { createAddonStorage } from './src/main/addon-storage.ts'; export { replaceExistingText } from './src/main/workspace-atomic-update.ts'; export { writeWorkspaceText, WORKSPACE_MANIFEST } from './src/main/workspace-metadata.ts'",
           resolveDir: resolve('.'),
         },
         bundle: true,
@@ -34,10 +34,6 @@ async function writer(
   const mocks = {
     'node:fs/promises': {
       ...fs,
-      rm: async (...args) => {
-        await fs.rm(...args)
-        state.onCleanup?.()
-      },
       rename: async (source, destination) => {
         state.attempts++
         if (state.attempts <= failures)
@@ -64,9 +60,11 @@ async function writer(
   const root = await fs.mkdtemp(join(tmpdir(), 'hibi-atomic-rename-'))
   t.after(() => fs.rm(root, { recursive: true, force: true }))
   const file =
-    kind !== 'storage'
-      ? join(root, 'note.md')
-      : join(root, 'global', 'example.json')
+    kind === 'metadata'
+      ? join(root, module.exports.WORKSPACE_MANIFEST)
+      : kind !== 'storage'
+        ? join(root, 'note.md')
+        : join(root, 'global', 'example.json')
   await fs.mkdir(dirname(file), { recursive: true })
   const initial =
     kind !== 'storage' ? 'original' : JSON.stringify({ format: 1, entries: {} })
@@ -77,7 +75,6 @@ async function writer(
     () => state.live,
   )
   return {
-    api: module.exports,
     state,
     file,
     initial,
@@ -94,17 +91,23 @@ async function writer(
                 if (!state.live) throw new Error('workspace request expired')
               },
             )
-          : storage.write(
-              {
-                owner: 'example',
-                scope: { kind: 'global' },
-                key: 'value',
-                version: 1,
-                baseRevision: 0,
-                value: 'replacement',
-              },
-              0,
-            ),
+          : kind === 'metadata'
+            ? module.exports.writeWorkspaceText(
+                root,
+                module.exports.WORKSPACE_MANIFEST,
+                'replacement',
+              )
+            : storage.write(
+                {
+                  owner: 'example',
+                  scope: { kind: 'global' },
+                  key: 'value',
+                  version: 1,
+                  baseRevision: 0,
+                  value: 'replacement',
+                },
+                0,
+              ),
     content: async () => {
       const bytes = await fs.readFile(file, 'utf8')
       return kind !== 'storage' ? bytes : JSON.parse(bytes).entries.value.value
@@ -118,7 +121,7 @@ for (const kind of ['document', 'storage', 'workspace']) {
   for (const [code, failures] of [
     ['EPERM', 1],
     ['EACCES', 2],
-    ['EBUSY', 4],
+    ['EBUSY', 5],
   ])
     test(`${kind} atomic write retries transient windows ${code}`, async (t) => {
       const writing = await writer(t, kind, { code, failures })
@@ -126,7 +129,7 @@ for (const kind of ['document', 'storage', 'workspace']) {
       assert.equal(writing.state.attempts, failures + 1)
       assert.deepEqual(
         writing.state.delays,
-        [20, 40, 60, 80].slice(0, failures),
+        [50, 100, 200, 400, 800].slice(0, failures),
       )
       assert.equal(await writing.content(), 'replacement')
       await writing.assertClean()
@@ -135,8 +138,8 @@ for (const kind of ['document', 'storage', 'workspace']) {
   test(`${kind} atomic write preserves the original error after bounded retries`, async (t) => {
     const writing = await writer(t, kind, { failures: Infinity })
     await assert.rejects(writing.write(), (error) => error === writing.original)
-    assert.equal(writing.state.attempts, 5)
-    assert.deepEqual(writing.state.delays, [20, 40, 60, 80])
+    assert.equal(writing.state.attempts, 6)
+    assert.deepEqual(writing.state.delays, [50, 100, 200, 400, 800])
     assert.equal(await fs.readFile(writing.file, 'utf8'), writing.initial)
     await writing.assertClean()
   })
@@ -179,11 +182,33 @@ for (const kind of ['document', 'storage', 'workspace']) {
         reason: 'stale-activation',
       })
     assert.equal(writing.state.attempts, 1)
-    assert.deepEqual(writing.state.delays, [20])
+    assert.deepEqual(writing.state.delays, [50])
     assert.equal(await fs.readFile(writing.file, 'utf8'), writing.initial)
     await writing.assertClean()
   })
 }
+
+for (const failures of [1, 5, Infinity])
+  test(`metadata atomic write keeps the six-attempt retry budget: ${failures}`, async (t) => {
+    const writing = await writer(t, 'metadata', { failures })
+    if (Number.isFinite(failures)) {
+      await writing.write()
+      assert.equal(writing.state.attempts, failures + 1)
+      assert.equal(await writing.content(), 'replacement')
+    } else {
+      await assert.rejects(
+        writing.write(),
+        (error) => error === writing.original,
+      )
+      assert.equal(writing.state.attempts, 6)
+      assert.equal(await fs.readFile(writing.file, 'utf8'), writing.initial)
+    }
+    assert.deepEqual(
+      writing.state.delays,
+      [50, 100, 200, 400, 800].slice(0, failures),
+    )
+    await writing.assertClean()
+  })
 
 test('workspace atomic write rejects a staged pathname swapped during backoff', async (t) => {
   const writing = await writer(t, 'workspace')
@@ -202,67 +227,3 @@ test('workspace atomic write rejects a staged pathname swapped during backoff', 
   assert.equal(await fs.readFile(writing.file, 'utf8'), writing.initial)
   assert.equal(await fs.readFile(saved, 'utf8'), 'replacement')
 })
-
-for (const outcome of ['saved', 'failed', 'revoked', 'unavailable'])
-  test(`credential atomic retry remains ${outcome} across backoff`, async (t) => {
-    const writing = await writer(t, 'document', {
-      failures: outcome === 'failed' ? Infinity : 1,
-    })
-    const directory = join(dirname(writing.file), 'credentials')
-    const owner = { addonId: 'example', activationGeneration: 1 }
-    let available = true
-    const host = new writing.api.HostCredentials({
-      directory,
-      platform: 'win32',
-      storage: {
-        isAsyncEncryptionAvailable: async () => available,
-        encryptStringAsync: async () => Buffer.from('protected-ciphertext'),
-      },
-      currentOwner: () => (writing.state.live ? owner : null),
-      isWindowLive: () => true,
-    })
-    t.after(() => host.dispose())
-    writing.state.onDelay = () => {
-      if (outcome === 'revoked') {
-        writing.state.live = false
-        host.stopOwner(owner)
-      }
-      if (outcome === 'unavailable') available = false
-    }
-    const cleaned = new Promise((resolve) => {
-      writing.state.onCleanup = resolve
-    })
-    const result = await host.store(
-      'example',
-      {},
-      {
-        key: 'token',
-        secret: 'synthetic-secret',
-        mode: 'persistent',
-      },
-    )
-    await cleaned
-    if (outcome === 'saved') {
-      assert.deepEqual(result, { ok: true, value: { mode: 'persistent' } })
-      assert.equal(writing.state.attempts, 2)
-      assert.deepEqual(await fs.readdir(directory), ['example.json'])
-      assert.equal(
-        (await fs.readFile(join(directory, 'example.json'), 'utf8')).includes(
-          'synthetic-secret',
-        ),
-        false,
-      )
-    } else {
-      assert.deepEqual(result, {
-        ok: false,
-        code:
-          outcome === 'revoked'
-            ? 'stale'
-            : outcome === 'unavailable'
-              ? 'locked-or-unavailable'
-              : 'io-error',
-      })
-      assert.equal(writing.state.attempts, outcome === 'failed' ? 5 : 1)
-      assert.deepEqual(await fs.readdir(directory), [])
-    }
-  })

@@ -18,8 +18,8 @@ export async function retryRename<T>(
       )
         throw error
       if (attempt === 0) originalError = error
-      if (attempt === 4) throw originalError
-      await delay(20 * (attempt + 1))
+      if (attempt === 5) throw originalError
+      await delay(50 * 2 ** attempt)
       if (beforeRetry) await beforeRetry()
     }
   }
