@@ -632,3 +632,58 @@ test('overlapping reloads leave an unstarted command consumer to its command', {
   })
   assert.equal((await counts())['retry-c'], 1)
 })
+
+test('reloading an editor extension rebuilds the editor once and keeps its selection and focus', {
+  timeout: 60000,
+}, async (t) => {
+  const profile = await mkdtemp(join(tmpdir(), 'hibi-addon-reload-editor-'))
+  const app = await electron.launch({
+    args: [resolve('.'), `--user-data-dir=${profile}`],
+  })
+  t.after(async () => {
+    await app.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => ({ response: 1 })
+    })
+    await app.close()
+    await rm(profile, { recursive: true, force: true })
+  })
+  const page = await app.firstWindow()
+  await waitForDocumentEditor(app, page)
+  const editor = page.getByRole('textbox', { name: /document editor/i })
+  await editor.click()
+  await page.keyboard.type('Hello world, reload me')
+  for (let index = 0; index < 5; index++)
+    await page.keyboard.press('Shift+ArrowLeft')
+  await page.evaluate(() => {
+    document.querySelector(
+      'style[data-addon-style="markdown.alerts"]',
+    ).dataset.stale = ''
+    window.editorsAdded = new Set()
+    new MutationObserver((records) => {
+      for (const record of records)
+        for (const node of record.addedNodes)
+          if (node instanceof Element)
+            for (const element of [node, ...node.querySelectorAll('*')])
+              if (element.matches('.ProseMirror'))
+                window.editorsAdded.add(element)
+    }).observe(document.body, { childList: true, subtree: true })
+  })
+  await sendReload(app, 'markdown')
+  await page
+    .locator('style[data-addon-style="markdown.alerts"]:not([data-stale])')
+    .waitFor({ state: 'attached' })
+  await page.waitForFunction(
+    () =>
+      getSelection().toString() === 'ad me' &&
+      document.activeElement?.matches('.ProseMirror[contenteditable="true"]'),
+  )
+  assert.ok(
+    (await page.evaluate(() => window.editorsAdded.size)) <= 1,
+    'the editor rebuilds at most once',
+  )
+  assert.match(await editor.innerText(), /Hello world, reload me/)
+  assert.equal(
+    (await page.evaluate(() => window.hibi.getDocument())).dirty,
+    true,
+  )
+})

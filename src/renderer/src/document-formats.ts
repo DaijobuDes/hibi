@@ -9,6 +9,7 @@ import {
 } from '../../shared/document-types'
 import type { RawEdit } from '../../shared/source-operations'
 import { documentRuntime } from './document-runtime'
+import { publishEditorConfiguration } from './registration-batch'
 
 const plainText: DocumentFormat = {
   id: 'core.text',
@@ -27,6 +28,10 @@ const listeners = new Set<() => void>()
 const sourceViews: readonly DocumentView[] = ['markdown']
 const previewViews: readonly DocumentView[] = ['side-by-side', 'markdown']
 let snapshot: readonly DocumentFormat[] = [plainText]
+const applySnapshot = () => {
+  snapshot = [...registry.values()]
+  for (const listener of listeners) listener()
+}
 export const documentFormats = {
   snapshot: () => snapshot,
   subscribe(listener: () => void) {
@@ -68,7 +73,7 @@ export const documentFormats = {
         'declare document extensions in the addon manifest before registering a format.',
       )
     if (
-      snapshot.some((entry) =>
+      [...registry.values()].some((entry) =>
         entry.extensions.some((extension) =>
           format.extensions.includes(extension),
         ),
@@ -77,16 +82,12 @@ export const documentFormats = {
       throw new Error('a document format already handles this extension.')
     const key = `${owner}.${format.id}`
     const entry = { ...format, id: key }
-    const publish = () => {
-      snapshot = [...registry.values()]
-      for (const listener of listeners) listener()
-    }
     registry.set(key, entry)
-    publish()
+    publishEditorConfiguration(applySnapshot)
     return () => {
       if (registry.get(key) === entry) {
         registry.delete(key)
-        publish()
+        publishEditorConfiguration(applySnapshot)
       }
     }
   },

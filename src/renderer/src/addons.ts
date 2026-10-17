@@ -80,7 +80,11 @@ import {
 } from './flavors'
 import { projectMarkdown } from './markdown-projection'
 import { markdownSyntax } from './markdown-syntax'
-import { registrationBatch } from './registration-batch'
+import {
+  holdEditorConfiguration,
+  publishEditorConfiguration,
+  registrationBatch,
+} from './registration-batch'
 import { settingsPages } from './settings-pages'
 import { toolbar } from './toolbar'
 import { viewNotifications } from './view-notifications'
@@ -619,45 +623,60 @@ export function useAddons(
     new Map<string, RichExtension & { addonId: string }>(),
   ).current
   const [richExtensions, setRichExtensions] = useState<RichExtension[]>([])
-  const publishRich = useCallback(() => {
-    setRichExtensions((current) => {
-      const next = [...rich.values()].sort((a, b) => a.id.localeCompare(b.id))
-      return current.length === next.length &&
-        current.every((entry, index) => entry === next[index])
-        ? current
-        : next
-    })
-  }, [rich])
+  const publishRich = useCallback(
+    () =>
+      publishEditorConfiguration(() =>
+        setRichExtensions((current) => {
+          const next = [...rich.values()].sort((a, b) =>
+            a.id.localeCompare(b.id),
+          )
+          return current.length === next.length &&
+            current.every((entry, index) => entry === next[index])
+            ? current
+            : next
+        }),
+      ),
+    [rich],
+  )
   const sources = useRef(
     new Map<string, SourceExtension & { addonId: string }>(),
   ).current
   const [sourceExtensions, setSourceExtensions] = useState<SourceExtension[]>(
     [],
   )
-  const publishSources = useCallback(() => {
-    setSourceExtensions((current) => {
-      const next = [...sources.values()].sort((a, b) =>
-        a.id.localeCompare(b.id),
-      )
-      return current.length === next.length &&
-        current.every((entry, index) => entry === next[index])
-        ? current
-        : next
-    })
-  }, [sources])
-  const publishExtensions = useCallback(() => {
-    setMarkdownExtensions((current) => {
-      const next = [...extensions.values()].sort(
-        (a, b) =>
-          (b.priority ?? 100) - (a.priority ?? 100) || a.id.localeCompare(b.id),
-      )
-      return current.length === next.length &&
-        current.every((entry, index) => entry === next[index])
-        ? current
-        : next
-    })
-    workspaceSyntaxEvents.publish()
-  }, [extensions])
+  const publishSources = useCallback(
+    () =>
+      publishEditorConfiguration(() =>
+        setSourceExtensions((current) => {
+          const next = [...sources.values()].sort((a, b) =>
+            a.id.localeCompare(b.id),
+          )
+          return current.length === next.length &&
+            current.every((entry, index) => entry === next[index])
+            ? current
+            : next
+        }),
+      ),
+    [sources],
+  )
+  const publishExtensions = useCallback(
+    () =>
+      publishEditorConfiguration(() => {
+        setMarkdownExtensions((current) => {
+          const next = [...extensions.values()].sort(
+            (a, b) =>
+              (b.priority ?? 100) - (a.priority ?? 100) ||
+              a.id.localeCompare(b.id),
+          )
+          return current.length === next.length &&
+            current.every((entry, index) => entry === next[index])
+            ? current
+            : next
+        })
+        workspaceSyntaxEvents.publish()
+      }),
+    [extensions],
+  )
   const running = useRef(
     new Map<
       string,
@@ -2157,9 +2176,7 @@ export function useAddons(
                 for (const syntax of addon.manifest.syntax ?? []) {
                   const contribution =
                     syntax.kind === 'flavor'
-                      ? flavors
-                          .snapshot()
-                          .find((flavor) => flavor.id === `${id}.${syntax.id}`)
+                      ? flavors.get(`${id}.${syntax.id}`)
                       : extensions.get(`${id}.${syntax.id}`)
                   if (
                     !contribution ||
@@ -2431,6 +2448,8 @@ export function useAddons(
         return next
       }),
     settingsVisible: (id: string) => !!latest.current.settingsVisible?.(id),
+    hold: holdEditorConfiguration,
+    activeView: () => documentRuntime.captureActiveView(),
     reviewed,
   })
   /** `styles` swaps package stylesheets and themes in place; `code` restarts the addon. */

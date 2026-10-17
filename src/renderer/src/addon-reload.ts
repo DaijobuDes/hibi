@@ -1,5 +1,7 @@
 import type { AddonManifest } from '../../addons/api'
 import { addonDependents } from '../../shared/addon-dependencies'
+import type { ViewTarget } from '../../shared/foundation-contracts'
+import { editorViewRegistry } from './editor-view-api'
 
 export type AddonReloadResult =
   | { status: 'reloaded' | 'idle' | 'superseded' }
@@ -35,6 +37,9 @@ export async function reloadAddons(
     /** Clear committed start failures so the start effect tries these again. */
     retry: (ids: readonly string[]) => void
     settingsVisible: (id: string) => boolean
+    /** Keep editor configuration published as is until the returned release. */
+    hold: () => () => void
+    activeView: () => ViewTarget | null
     reviewed?: boolean
   },
 ): Promise<AddonReloadResult> {
@@ -49,10 +54,15 @@ export async function reloadAddons(
   for (const id of closure) reloads.set(id, token)
   const superseded = () => closure.some((id) => reloads.get(id) !== token)
   let restarting: string[] = []
+  let release: (() => void) | undefined
+  let restoreEditor: (() => void) | undefined
   const finish = (result: AddonReloadResult) => {
     for (const id of closure) if (reloads.get(id) === token) reloads.delete(id)
     for (const id of restarting)
       if (restarts.get(id) === token) restarts.delete(id)
+    // One publication of the restarted configuration, then the editor's selection and focus return.
+    release?.()
+    restoreEditor?.()
     return result
   }
   if (!host.reviewed) {
@@ -93,6 +103,8 @@ export async function reloadAddons(
   ]
   for (const id of restarting) restarts.set(id, token)
   if (!restarting.length) return finish({ status: 'idle' })
+  restoreEditor = keepEditorState(host.activeView())
+  release = host.hold()
   for (const id of ids) running.get(id)?.stop()
   if (retried.length) host.retry(retried)
   const outcomes = await Promise.allSettled(restarting.map(host.whenStarted))
@@ -108,4 +120,58 @@ export async function reloadAddons(
         }
       : { status: 'reloaded' },
   )
+}
+
+/**
+ * Capture the active editor's selection and focus; the returned function puts
+ * them back once that editor is current again. A rebuilt editor is restored
+ * once per instance, so a rebuild after the final publication is covered too.
+ * User input, an edit, or a short deadline ends the watch.
+ */
+function keepEditorState(view: ViewTarget | null) {
+  const before = view ? editorViewRegistry.getSelection(view) : null
+  if (!view || !before?.ok) return () => {}
+  const active = document.activeElement
+  const focused =
+    active instanceof HTMLElement && active.isContentEditable ? active : null
+  const pane = focused?.closest<HTMLElement>('.rich-pane, .source-pane')
+  return () => {
+    const deadline = performance.now() + 5000
+    let restored = -1
+    let frame = 0
+    const stop = () => {
+      cancelAnimationFrame(frame)
+      for (const type of ['keydown', 'pointerdown', 'compositionstart'])
+        window.removeEventListener(type, stop, true)
+    }
+    for (const type of ['keydown', 'pointerdown', 'compositionstart'])
+      window.addEventListener(type, stop, true)
+    const attempt = () => {
+      if (performance.now() > deadline) return stop()
+      frame = requestAnimationFrame(attempt)
+      const current = editorViewRegistry.getSelection(view)
+      if (!current.ok || current.value.editorGeneration === restored) return
+      if (
+        current.value.editor !== before.value.editor ||
+        current.value.contentVersion !== before.value.contentVersion
+      )
+        return stop()
+      const surface = focused?.isConnected
+        ? focused
+        : pane?.querySelector<HTMLElement>('[contenteditable="true"]')
+      if (focused) {
+        // Wait until the editor accepts input again.
+        if (!surface?.isContentEditable || surface.closest('[inert]')) return
+        if (document.activeElement === document.body)
+          surface.focus({ preventScroll: true })
+      }
+      editorViewRegistry.setSelection({
+        ...current.value,
+        anchor: before.value.anchor,
+        head: before.value.head,
+      })
+      restored = current.value.editorGeneration
+    }
+    attempt()
+  }
 }
