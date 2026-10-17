@@ -555,3 +555,39 @@ test('reload retries failed providers across its closure and the consumers they 
   await live('retry-a', 'retry-b', 'retry-x')
   assert.equal((await counts())['retry-x'], before['retry-x'] + 1)
 })
+
+test('overlapping reloads leave an unstarted command consumer to its command', {
+  timeout: 60000,
+}, async (t) => {
+  const { app, page, counts } = await launchRetryFixtures(t)
+  // Overlapping reloads wait only for addons that were running; the command consumer still starts on demand.
+  assert.equal((await counts())['retry-c'], undefined)
+  await page.evaluate(() => {
+    window.hold = 'retry-a'
+  })
+  const before = await counts()
+  await sendReload(app, 'retry-a')
+  await page.waitForFunction(() => !!window.release)
+  await sendReload(app, 'retry-a')
+  await page.waitForFunction(
+    (before) =>
+      window.starts['retry-a'] === before['retry-a'] + 2 &&
+      window.starts['retry-x'] === before['retry-x'] + 1 &&
+      window.live['retry-x'],
+    before,
+  )
+  await page.evaluate(() => window.release())
+  assert.equal((await counts())['retry-c'], undefined)
+  await clickMenu(app, 'Command palette')
+  await page
+    .getByRole('combobox', { name: /search commands/i })
+    .fill('Retry commander probe')
+  await page
+    .getByRole('option', { name: /retry commander probe/i })
+    .first()
+    .click()
+  await page.waitForFunction(() => window.commanderRan === true, null, {
+    timeout: 10000,
+  })
+  assert.equal((await counts())['retry-c'], 1)
+})

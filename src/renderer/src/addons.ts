@@ -561,13 +561,16 @@ export function useAddons(
           throw new Error(
             'This addon could not start. Turn it off and on in Addons to retry.',
           )
-        if (!activation.has(owner)) {
-          const requirements =
-            currentActivation.current.dependencies.get(owner) ?? []
-          setRequested(
-            (current) => new Set([...current, owner, ...requirements]),
-          )
-        }
+        // Request activation even when another caller, such as a reload, is already waiting.
+        const requested = [
+          owner,
+          ...(currentActivation.current.dependencies.get(owner) ?? []),
+        ]
+        setRequested((current) =>
+          requested.every((id) => current.has(id))
+            ? current
+            : new Set([...current, ...requested]),
+        )
         await whenStarted(owner)
       }
     },
@@ -2410,10 +2413,12 @@ export function useAddons(
     }
   }
   const reloads = useRef(new Map<string, object>()).current
+  const restarts = useRef(new Map<string, object>()).current
   const reloadHost = (reviewed = false) => ({
     current: () => currentActivation.current,
     running,
     reloads,
+    restarts,
     whenStarted,
     retry: (ids: readonly string[]) =>
       setSettled((current) => {

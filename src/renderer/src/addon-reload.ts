@@ -28,6 +28,8 @@ export async function reloadAddons(
     running: ReadonlyMap<string, { stop: () => void }>
     /** The newest reload of each addon. */
     reloads: Map<string, object>
+    /** Addons a reload is waiting to see start again. */
+    restarts: Map<string, object>
     whenStarted: (id: string) => Promise<void>
     /** Clear committed start failures so the start effect tries these again. */
     retry: (ids: readonly string[]) => void
@@ -35,7 +37,7 @@ export async function reloadAddons(
     reviewed?: boolean
   },
 ): Promise<AddonReloadResult> {
-  const { running, reloads } = host
+  const { running, reloads, restarts } = host
   const token = {}
   const manifests = host.current().catalog.map((addon) => addon.manifest)
   const name = (id = ids[0] ?? '') =>
@@ -43,12 +45,13 @@ export async function reloadAddons(
   const closure = [
     ...new Set(ids.flatMap((id) => [id, ...addonDependents(manifests, id)])),
   ]
-  // Addons a superseded reload is still restarting stay part of this one.
-  const pending = closure.filter((id) => reloads.has(id))
   for (const id of closure) reloads.set(id, token)
   const superseded = () => closure.some((id) => reloads.get(id) !== token)
+  let restarting: string[] = []
   const finish = (result: AddonReloadResult) => {
     for (const id of closure) if (reloads.get(id) === token) reloads.delete(id)
+    for (const id of restarting)
+      if (restarts.get(id) === token) restarts.delete(id)
     return result
   }
   if (!host.reviewed) {
@@ -79,15 +82,15 @@ export async function reloadAddons(
   const unblocked = closure.filter((id) =>
     dependencies.get(id)?.some((provider) => retried.includes(provider)),
   )
-  const restarting = [
+  restarting = [
     ...new Set([
-      ...closure.filter((id) => running.has(id)),
-      ...pending,
+      ...closure.filter((id) => running.has(id) || restarts.has(id)),
       ...[...retried, ...unblocked].filter(
         (id) => relevantIds.has(id) && !windowBlocked(id),
       ),
     ]),
   ]
+  for (const id of restarting) restarts.set(id, token)
   if (!restarting.length) return finish({ status: 'idle' })
   for (const id of ids) running.get(id)?.stop()
   if (retried.length) host.retry(retried)
