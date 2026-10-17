@@ -32,6 +32,19 @@ export default defineConfig({
     plugins: [
       addonCatalog('main'),
       {
+        name: 'watch-inline-assets',
+        load: {
+          order: 'pre',
+          handler(id) {
+            if (
+              process.env.NODE_ENV_ELECTRON_VITE === 'development' &&
+              /\?inline(?:&|$)/.test(id)
+            )
+              this.addWatchFile(id.replace(/\?.*$/, ''))
+          },
+        },
+      },
+      {
         name: 'app-licenses',
         buildStart() {
           licenseBuild = Promise.allSettled([writeLicenses()])

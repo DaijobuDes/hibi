@@ -227,6 +227,9 @@ test('development watches main, renderer, preload, addons, and documentation gen
       }
     `,
   )
+  const holdMainChanges = join(root, 'hold-main-changes')
+  const mainChangesPaused = join(root, 'main-changes-paused')
+  const releaseMainChanges = join(root, 'release-main-changes')
   const holdMainBuild = join(root, 'hold-main-build')
   const mainBuildPaused = join(root, 'main-build-paused')
   const releaseMainBuild = join(root, 'release-main-build')
@@ -243,6 +246,7 @@ test('development watches main, renderer, preload, addons, and documentation gen
     'licenseBuild = Promise.allSettled([writeLicenses()])',
     'const [result] = await licenseBuild',
     'analysisBundles(),',
+    'watch: {\n          chokidar: {',
     'plugins: [sandboxPreloads()],',
     "addonCatalog('renderer'),",
   ])
@@ -268,6 +272,15 @@ test('development watches main, renderer, preload, addons, and documentation gen
       `analysisBundles(),
       {
         name: 'hold-main-rebuild',
+        async watchChange(id) {
+          const fs = await import('node:fs/promises')
+          try { await fs.access(${JSON.stringify(holdMainChanges)}) } catch { return }
+          await fs.writeFile(${JSON.stringify(mainChangesPaused)}, id.split('?')[0].split(sep).join('/'))
+          while (true) {
+            try { await fs.access(${JSON.stringify(releaseMainChanges)}); return } catch {}
+            await new Promise(done => setTimeout(done, 50))
+          }
+        },
         async writeBundle() {
           const fs = await import('node:fs/promises')
           try { await fs.access(${JSON.stringify(holdMainBuild)}) } catch { return }
@@ -278,6 +291,14 @@ test('development watches main, renderer, preload, addons, and documentation gen
           }
         },
       },`,
+    )
+    .replace(
+      'watch: {\n          chokidar: {',
+      `watch: {
+          onInvalidate(id: string) {
+            console.log('[dev-watch] main-invalidate', JSON.stringify(id.split('?')[0].split(sep).join('/')))
+          },
+          chokidar: {`,
     )
     .replace(
       'plugins: [sandboxPreloads()],',
@@ -396,6 +417,7 @@ dialog.showMessageBox = (...args) => {
   )
   const seenEndpoints = []
   const pendingLines = { stdout: '', stderr: '' }
+  const mainInvalidations = new Set()
   const child = spawn(
     process.execPath,
     [
@@ -421,6 +443,14 @@ dialog.showMessageBox = (...args) => {
     const lines = (pendingLines[stream] + chunk).split(/\r?\n/)
     pendingLines[stream] = lines.pop()
     for (const line of lines) {
+      const invalidated = line.match(
+        /^\[dev-watch\] main-invalidate (.+)$/,
+      )?.[1]
+      if (invalidated) {
+        const id = JSON.parse(invalidated)
+        mainInvalidations.add(id)
+        phase(`main invalidated ${id.slice(root.length + 1)}`)
+      }
       const endpoint = line.match(/DevTools listening on (ws:\/\/\S+)/)?.[1]
       if (endpoint && !seenEndpoints.includes(endpoint))
         seenEndpoints.push(endpoint)
@@ -1317,16 +1347,41 @@ dialog.showMessageBox = (...args) => {
   const updatedReadme = `${originalReadme}\nUpdated addon documentation probe.\n`
   const updatedImage = originalImage.replace("fill='red'", "fill='blue'")
   const initialStarts = seenEndpoints.length
+  mainInvalidations.clear()
   await writeFile(holdMainBuild, '')
-  await Promise.all([
-    replace(
+  await writeFile(holdMainChanges, '')
+  try {
+    await replace(
       'src/main/imports.ts',
       "instructions: '',",
       "instructions: 'Updated folder importer.',",
-    ),
-    writeFile(join(previewFolder, 'README.md'), updatedReadme),
-    writeFile(watchImage, updatedImage),
-  ])
+    )
+    await until(
+      () =>
+        access(mainChangesPaused).then(
+          () => true,
+          () => false,
+        ),
+      'main watchChange pauses before buildStart',
+    )
+    phase(
+      `main watchChange paused: ${(await readFile(mainChangesPaused, 'utf8')).slice(root.length + 1)}`,
+    )
+    await Promise.all([
+      writeFile(join(previewFolder, 'README.md'), updatedReadme),
+      writeFile(watchImage, updatedImage),
+    ])
+    await until(
+      () =>
+        [join(previewFolder, 'README.md'), watchImage].every((file) =>
+          mainInvalidations.has(file.split(sep).join('/')),
+        ),
+      'main watcher observes addon README.md and watch.svg before rebuild',
+    )
+  } finally {
+    await writeFile(releaseMainChanges, '')
+    await rm(holdMainChanges, { force: true })
+  }
   await until(
     () =>
       access(mainBuildPaused).then(
