@@ -1916,6 +1916,7 @@ function App() {
       if (destination.open !== settingsVisible.current) {
         settingsIntent.current++
         settingsVisible.current = destination.open
+        settingsLeaving.current = false
       }
       setSettingsCategory(destination.category)
       setSettingsOpen(destination.open)
