@@ -5827,6 +5827,9 @@
   "39ee7c38435d": [
     "src/addons/dictionary/SideView.tsx"
   ],
+  "a9a4506c02e2": [
+    "src/renderer/src/SettingsScreen.tsx"
+  ],
   "b3010da17d9f": [
     "src/main/workspace-layout.ts"
   ],
@@ -6518,6 +6521,9 @@
   ],
   "8a52ed76ddaf": [
     "src/main/updates.ts"
+  ],
+  "30704b40105a": [
+    "src/renderer/src/SettingsScreen.tsx"
   ],
   "0c78f3e5ef4e": [
     "src/renderer/src/DependencySettings.tsx"

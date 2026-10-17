@@ -297,6 +297,7 @@ export function useAddons(
   } | null>(null)
   const [loadFailed, setLoadFailed] = useState(false)
   const [readOnlyReloads, setReadOnlyReloads] = useState(0)
+  const [updating, setUpdating] = useState<ReadonlySet<string>>(new Set())
   const [requested, setRequested] = useState<ReadonlySet<string>>(new Set())
   const manifests = useMemo(
     () => catalog.map((addon) => addon.manifest),
@@ -2387,11 +2388,21 @@ export function useAddons(
     }
   }
   async function install(url?: string) {
+    let replacing: Promise<unknown> | undefined
     try {
       // Main refuses to replace an addon in place while its settings are on screen.
       const openSettings = catalog
         .map(({ manifest }) => manifest.id)
         .filter((id) => latest.current.settingsVisible?.(id))
+      // The settings of others a replacement could restart stay closed until it finishes.
+      setUpdating(
+        new Set(
+          manifests
+            .filter(({ id }) => addonRegistry.isInstalled(id))
+            .flatMap(({ id }) => [id, ...addonDependents(manifests, id)])
+            .filter((id) => !openSettings.includes(id)),
+        ),
+      )
       const session = await window.hibi.installAddon(url, openSettings)
       try {
         if (session) {
@@ -2412,12 +2423,14 @@ export function useAddons(
             states.some((state) => state.id === id && state.enabled),
           )
         if (replaced.length)
-          void reloadAddons(replaced, reloadHost(true)).catch((error) =>
+          replacing = reloadAddons(replaced, reloadHost(true)).catch((error) =>
             latest.current.error(error),
           )
       }
     } catch (error) {
       latest.current.error(error)
+    } finally {
+      void Promise.resolve(replacing).finally(() => setUpdating(new Set()))
     }
   }
   const reloads = useRef(new Map<string, object>()).current
@@ -2603,6 +2616,8 @@ export function useAddons(
     ready,
     /** An addon the document needs is reloading; editors stay read-only until it settles. */
     reloading: readOnlyReloads > 0,
+    /** Addons an installation may replace; their settings stay closed until it finishes. */
+    updating,
     allReady,
     sourceOnly,
     app,

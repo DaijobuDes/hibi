@@ -3118,6 +3118,7 @@ function App() {
             onBack={leaveSettings}
             onInstallAddon={addonHost.install}
             onRemoveAddon={addonHost.remove}
+            updatingAddons={addonHost.updating}
             selected={settingsCategory}
             onCategory={setSettingsCategory}
             onSetting={openSetting}

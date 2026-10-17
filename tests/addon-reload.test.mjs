@@ -468,10 +468,43 @@ test('a reviewed replacement stays enabled and reloads in place unless its acces
     .getByRole('main', { name: /^settings$/i })
     .waitFor({ state: 'hidden' })
 
+  // Settings opened while the replacement is under way stay closed until it finishes.
+  await app.evaluate(() => {
+    globalThis.hibiTestPauses = {
+      'addon-replacement': new Promise((resolve) => {
+        globalThis.resumeReplacement = resolve
+      }),
+    }
+  })
+  const reviews = await app.evaluate(() => globalThis.packageReviews.length)
   await install(same)
+  // Wait until the user has confirmed and main is replacing the package.
+  for (const deadline = Date.now() + 10000; ; ) {
+    if ((await app.evaluate(() => globalThis.packageReviews.length)) > reviews)
+      break
+    if (Date.now() > deadline)
+      throw new Error('The replacement was not confirmed.')
+    await new Promise((resolve) => setImmediate(resolve))
+  }
+  await clickMenu(app, 'Settings')
+  await page.getByRole('tab', { name: /^reload provider$/i }).click()
+  await page
+    .getByText(/these settings open again when the update finishes/i)
+    .waitFor()
+  assert.equal(await draft.count(), 0)
+  await app.evaluate(() => {
+    delete globalThis.hibiTestPauses
+    globalThis.resumeReplacement()
+  })
   await page.waitForFunction(
     () => window.providerVersion === 2 && window.consumerSaw === 2,
   )
+  await draft.fill('draft after the update')
+  assert.equal(await draft.inputValue(), 'draft after the update')
+  await page.getByRole('button', { name: /^back to app$/i }).click()
+  await page
+    .getByRole('main', { name: /^settings$/i })
+    .waitFor({ state: 'hidden' })
   assert.equal(await enabled(), true)
   assert.equal(await page.evaluate(() => window.providerStarts), 2)
   assert.deepEqual(await page.evaluate(() => window.reloadLog), [

@@ -453,6 +453,7 @@ async function disableAddonForReplacement(
   openSettings: readonly string[] = [],
 ): Promise<() => Promise<void>> {
   if (keep) {
+    await testPause('addon-replacement')
     // Restarting would discard what these show, so refuse before anything is retired or replaced.
     const name = (owner: string) =>
       manifests().find((manifest) => manifest.id === owner)?.name ?? owner
