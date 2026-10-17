@@ -61,7 +61,7 @@ Run **Install addon…** from the command palette and choose a package folder or
 
 All installable packages start selected. Review their folders, versions, sources, permissions, network origins, required providers, and any replacement details. Use `Tab` to move between controls and `Space` to toggle a checkbox, then choose **Install selected**. Required providers must already be installed or remain selected. Unchecking a missing provider makes its consumers unavailable and shows a reason; other selected packages can still install. Selecting the provider again makes those consumers available. Selected providers install before their consumers.
 
-Each selected package installs independently. The review list shows success or failure for each row; one failure does not undo other successful installations. Keep the review open to select remaining packages or retry failed rows without downloading the source again. **Cancel** during installation stops pending work, while completed installations remain. Closing the dialog or pressing `Escape` also cancels pending work. Installed and replaced packages stay disabled until you enable them in **Settings → Addons**. If you already have a source addon with the same ID, use a different ID for this package.
+Each selected package installs independently. The review list shows success or failure for each row; one failure does not undo other successful installations. Keep the review open to select remaining packages or retry failed rows without downloading the source again. **Cancel** during installation stops pending work, while completed installations remain. Closing the dialog or pressing `Escape` also cancels pending work. New packages stay disabled until you enable them in **Settings → Addons**. A replacement keeps its current setting unless it asks for different access, as described in [update a package](#update-a-package). If you already have a source addon with the same ID, use a different ID for this package.
 
 Installed extensions run trusted code with access to documents through the addon APIs. Install packages only from sources you trust. Native handlers, importers, and addon windows must ship with Hibi; installed manifests cannot declare these privileges or replace a built-in addon ID.
 
@@ -107,4 +107,8 @@ Discovery excludes hidden directories, `.git`, `node_modules`, and `__MACOSX`, r
 
 Structurally valid packages with duplicate IDs are all blocked. A valid package containing another valid package also blocks both roots; publish them in separate folders. An invalid outer manifest remains visible but does not hide a valid prepared package beneath it. Built-in and source addon IDs cannot be replaced. An installed external ID is a reviewed replacement, with its old and new versions and sources shown before installation.
 
-To update a package, increase its version and install the replacement. Replacements start disabled so the user can review them before enabling them.
+## Update a package
+
+Increase the version and install the replacement. If its kind, SDK capabilities, network origins, and external tools are unchanged, it keeps its enabled setting. A running addon then restarts with the new files, together with the addons that require it. Open documents and unsaved edits stay as they are. If any of those fields change, the replacement stays disabled until the user reviews and enables it.
+
+A restart runs your code from the beginning. Values in memory, React state, and session storage start fresh, while global and workspace storage remain. Make `stop()` remove everything `start()` created so the new copy finds no leftovers.

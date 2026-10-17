@@ -18,7 +18,11 @@ Packages are limited to 1,000 entries, 25 MiB total, 5 MiB per file, and 64 KiB 
 
 Packages live in private application data. **Open plugins folder** reveals that directory; **Hibi Garden** opens `https://hibi.garden/addons`. Hibi assigns source labels: bundled addons are built-in, folder/developer installs are local, and URL/Git installs are third-party. Packages cannot label themselves built-in.
 
-Disabled extensions are not imported. Replacement packages use a fresh module URL and start disabled; a successful replacement sends the old package to trash. Removal stops contributions before sending the package to trash.
+Disabled extensions are not imported. Replacement packages use a fresh module URL. One with unchanged kind, capabilities, network origins, and external tools keeps its enabled setting: main retires the old activation generation without writing preferences, and the renderer stops the running closure, hydrates the new descriptor, and restarts it through the reload operation. Changed access starts disabled. A successful replacement sends the old package to trash. Removal stops contributions before sending the package to trash.
+
+## Reloading in place
+
+Main sends `ADDON_CHANNELS.reload` with `{ id, scope }` to the main window; `useAddons` handles it and never writes enabled preferences. `code` (`src/renderer/src/addon-reload.ts`) stops the addon and its running required consumers, consumers first, clears committed start failures in that closure and its required providers, then waits for the start effect to restart them provider-first. It refuses, without queueing, while any addon in the closure owns an open, loading, or kept-alive window (`ADDON_WINDOW_CHANNELS.owners`) or has its settings page on screen. A newer reload of an affected addon supersedes an older one; stale starts are discarded by the existing `disposed` and descriptor generation guards. `styles` swaps declared stylesheets (cache-busted per owner revision, loaded inactive, then published in place) and declared themes in one colorscheme publication, without restarting code. Refusals appear as error notices; start failures report their own cause. Only the main window reloads: editor windows and native modules keep their current code, and native or main changes still need an app restart.
 
 ## Extension package
 

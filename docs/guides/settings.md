@@ -78,11 +78,11 @@ Click anywhere on an addon row outside its controls to read its documentation. O
 4. In the review list, uncheck packages you do not want, then choose **Install selected**. Use `Tab` to move between controls and `Space` to toggle a checkbox.
 5. For several packages, review each row's result and close the dialog. Enable successfully installed addons when you are ready to use them.
 
-Required providers install before addons that depend on them. Required providers must already be installed or remain selected. Unchecking a missing provider makes its consumers unavailable with a reason; other selected packages can still install. Keep the review open to select remaining packages or retry failed rows without downloading again. A failed package does not undo successful installations. **Cancel** during installation stops pending work; closing the dialog or pressing `Escape` does the same. Completed installations remain disabled. See [sideloading and sharing](../development/addons/sideloading.md#discovery-and-package-limits) for discovery limits and package layout rules.
+Required providers install before addons that depend on them. Required providers must already be installed or remain selected. Unchecking a missing provider makes its consumers unavailable with a reason; other selected packages can still install. Keep the review open to select remaining packages or retry failed rows without downloading again. A failed package does not undo successful installations. **Cancel** during installation stops pending work; closing the dialog or pressing `Escape` does the same. Completed installations remain disabled, except replacements that keep their setting. See [sideloading and sharing](../development/addons/sideloading.md#discovery-and-package-limits) for discovery limits and package layout rules.
 
 Only install addons you trust. Enabled addons can access your documents and workspace. Git installation requires Git on your computer; private repositories and packages that need a build are unsupported.
 
-**Open addons folder** shows installed packages. Replacing a package starts the new version disabled; removing one moves it to the system trash.
+**Open addons folder** shows installed packages. A replacement that asks for the same access as the installed version keeps its enabled setting and restarts with the new files; your open documents stay as they are. If it asks for different access, such as new network origins, it stays disabled until you enable it. Removing a package moves it to the system trash.
 
 ## Notifications
 
