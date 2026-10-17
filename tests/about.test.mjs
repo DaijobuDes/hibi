@@ -1,11 +1,259 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  writeFile,
+} from 'node:fs/promises'
+import { createRequire, stripTypeScriptTypes } from 'node:module'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import test from 'node:test'
+import { setImmediate as nextTurn } from 'node:timers/promises'
+import { parse } from '@babel/parser'
 import { collectLicenses } from '../scripts/licenses.ts'
 import { electron } from './electron.mjs'
 import { clickMenu } from './keyboard.mjs'
+
+const { rollup } = createRequire(import.meta.resolve('vite'))('rollup')
+
+test('main builds keep fresh licenses, bundled production workers and dev externals', {
+  timeout: 5000,
+}, async (t) => {
+  const source = await readFile('electron.vite.config.ts', 'utf8')
+  const ast = parse(source, { sourceType: 'module', plugins: ['typescript'] })
+  const property = (object, key) =>
+    object.properties.find((item) => item.key?.name === key)?.value
+  const config = ast.program.body.find(
+    (item) => item.type === 'ExportDefaultDeclaration',
+  ).declaration.arguments[0]
+  const policy = property(
+    property(property(config, 'main'), 'build'),
+    'externalizeDeps',
+  )
+  const externalize = new Function(
+    'process',
+    'return (' +
+      (policy ? source.slice(policy.start, policy.end) : 'true') +
+      ')',
+  )
+  const worker = parse(
+    await readFile('src/addons/_shared/format-worker.ts', 'utf8'),
+    { sourceType: 'module', plugins: ['typescript'] },
+  )
+  const { devDependencies } = JSON.parse(await readFile('package.json', 'utf8'))
+  const dependencies = worker.program.body
+    .filter(
+      (node) => node.type === 'ImportDeclaration' && node.importKind !== 'type',
+    )
+    .map((node) => node.source.value.match(/^(@[^/]+\/[^/]+|[^/]+)/)[0])
+    .filter((name) => Object.hasOwn(devDependencies, name))
+  assert.equal(
+    externalize({ env: {} }),
+    true,
+    'unset mode keeps default externals',
+  )
+  assert.equal(
+    externalize({ env: { NODE_ENV_ELECTRON_VITE: 'production' } }),
+    true,
+    'production keeps default externals',
+  )
+  assert.deepEqual(
+    new Set(
+      externalize({ env: { NODE_ENV_ELECTRON_VITE: 'development' } }).include,
+    ),
+    new Set(dependencies),
+    'development externals match worker devDependencies',
+  )
+  const plugin = property(property(config, 'main'), 'plugins').elements.find(
+    (item) =>
+      item.type === 'ObjectExpression' &&
+      property(item, 'name')?.value === 'app-licenses',
+  )
+  const state = ast.program.body.filter(
+    (item) =>
+      item.type === 'VariableDeclaration' &&
+      item.declarations.some((declaration) =>
+        ['licenseBuild', 'drainLicenses'].includes(declaration.id.name),
+      ),
+  )
+  const makePlugin = new Function(
+    'writeLicenses',
+    `${stripTypeScriptTypes(
+      `${state.map((node) => source.slice(node.start, node.end)).join('\n')}
+const plugin = (${source.slice(plugin.start, plugin.end)})`,
+    )}\nreturn plugin`,
+  )
+  const root = await mkdtemp(join(tmpdir(), 'hibi-license-build-'))
+  let gate,
+    operation,
+    bundle,
+    calls = 0,
+    completed = 0
+  t.after(async () => {
+    gate?.resolve()
+    await operation
+    await bundle?.close()
+    await rm(root, { recursive: true, force: true })
+  })
+  const licensing = makePlugin(async () => {
+    const call = ++calls
+    await gate.promise
+    completed = call
+  })
+  for (const round of [1, 2]) {
+    gate = Promise.withResolvers()
+    const graphFinished = Promise.withResolvers()
+    let finished = false
+    operation = rollup({
+      input: 'entry',
+      plugins: [
+        licensing,
+        {
+          name: 'license-build-proof',
+          resolveId(id) {
+            if (id === 'entry') return '\0entry'
+          },
+          load(id) {
+            if (id === '\0entry') return `export default ${round}`
+          },
+          buildEnd() {
+            graphFinished.resolve()
+          },
+          generateBundle() {
+            assert.equal(completed, round)
+          },
+          writeBundle() {
+            assert.equal(completed, round)
+          },
+        },
+      ],
+    })
+      .then(async (result) => {
+        bundle = result
+        await result.write({ file: join(root, 'entry.js'), format: 'esm' })
+      })
+      .then(
+        () => {
+          finished = true
+        },
+        (error) => {
+          finished = true
+          return error
+        },
+      )
+    await graphFinished.promise
+    t.signal.throwIfAborted()
+    await nextTurn()
+    assert.equal(calls, round, 'each build starts fresh license work')
+    assert.equal(completed, round - 1, 'graph finishes while licensing waits')
+    assert.equal(finished, false, 'output remains gated by licensing')
+    gate.resolve()
+    const error = await operation
+    if (error) throw error
+    assert.equal(completed, round)
+    assert.match(
+      await readFile(join(root, 'entry.js'), 'utf8'),
+      new RegExp(`= ${round}`),
+    )
+    await bundle.close()
+  }
+})
+
+test('license collection reads each manifest once and starts fresh next time', async (t) => {
+  const source = await readFile('scripts/licenses.ts', 'utf8')
+  const ast = parse(source, { sourceType: 'module', plugins: ['typescript'] })
+  const declarations = ast.program.body.flatMap((node) => {
+    const value = node.declaration ?? node
+    return value.id?.name === 'collectLicenses' ||
+      value.declarations?.some((item) => item.id.name === 'buildTools')
+      ? [source.slice(value.start, value.end)]
+      : []
+  })
+  const reads = new Map()
+  const collect = new Function(
+    'readFile',
+    'readdir',
+    'basename',
+    'dirname',
+    'join',
+    'resolve',
+    'themeLicenses',
+    `${stripTypeScriptTypes(declarations.join('\n'))}\nreturn collectLicenses`,
+  )(
+    async (path, ...args) => {
+      reads.set(path, (reads.get(path) ?? 0) + 1)
+      return readFile(path, ...args)
+    },
+    readdir,
+    basename,
+    dirname,
+    join,
+    resolve,
+    {},
+  )
+  const root = await mkdtemp(join(tmpdir(), 'hibi-license-inputs-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  await writeFile(
+    join(root, 'package.json'),
+    JSON.stringify({ dependencies: { a: '1', b: '1', node_modules: '1' } }),
+  )
+  for (const name of ['a', 'b', 'shared', 'node_modules']) {
+    const folder = join(root, 'node_modules', name)
+    await mkdir(folder, { recursive: true })
+    await writeFile(
+      join(folder, 'package.json'),
+      JSON.stringify({
+        name,
+        version: '1',
+        ...(name === 'shared' ? {} : { dependencies: { shared: '1' } }),
+      }),
+    )
+    await writeFile(join(folder, 'LICENSE'), `notice ${name}`)
+  }
+  const manifest = join(root, 'node_modules/shared/package.json')
+  const notice = join(root, 'node_modules/shared/LICENSE')
+  const first = await collect(root)
+  assert.equal(first.length, 4)
+  assert.equal(
+    reads.has(
+      join(root, 'node_modules', 'node_modules', 'shared', 'package.json'),
+    ),
+    false,
+    'ancestor node_modules does not add another node_modules lookup',
+  )
+  assert.ok(first.some((entry) => entry.name === 'node_modules'))
+  assert.equal(
+    reads.get(manifest),
+    1,
+    'shared manifest is read once across dependency links',
+  )
+  assert.ok(
+    [...reads]
+      .filter(([path]) => path.endsWith('/package.json'))
+      .every(([, count]) => count === 1),
+  )
+  await writeFile(notice, 'changed notice without a version change')
+  reads.clear()
+  assert.match(
+    (await collect(root)).find((entry) => entry.name === 'shared').text,
+    /changed notice without a version change/,
+  )
+  assert.equal(
+    reads.get(manifest),
+    1,
+    'next collection reads installed metadata again',
+  )
+  await writeFile(manifest, '{')
+  await assert.rejects(collect(root), SyntaxError)
+  await writeFile(manifest, JSON.stringify({ name: 'shared', version: '2' }))
+  assert.equal(
+    (await collect(root)).find((entry) => entry.name === 'shared').version,
+    '2',
+  )
+})
 
 test('license catalog retains dependency and palette notices, excluding build tools', async () => {
   const entries = await collectLicenses()

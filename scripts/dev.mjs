@@ -2,7 +2,10 @@ import { fork, spawn } from 'node:child_process'
 import { resolve } from 'node:path'
 import { electronEnvironment } from './electron-runtime.mjs'
 
-const env = await electronEnvironment()
+const environment = electronEnvironment().catch((error) => {
+  console.error(error)
+  stop(1)
+})
 
 const site = fork(resolve('scripts/build-site.mjs'), ['--watch'], {
   execArgv: ['--watch', '--watch-preserve-output'],
@@ -30,19 +33,26 @@ function stop(code = 0) {
   site.kill()
   process.exitCode = code
 }
-site.on('message', (message) => {
+site.on('message', async (message) => {
   if (!message?.ready || desktop || stopping) return
-  desktop = spawn(
-    process.execPath,
-    [
-      resolve('node_modules/electron-vite/bin/electron-vite.js'),
-      'dev',
-      '--watch',
-      ...process.argv.slice(2),
-    ],
-    { stdio: 'inherit', env },
-  )
-  desktop.on('exit', (code) => stop(code ?? 0))
+  try {
+    const env = await environment
+    if (desktop || stopping) return
+    desktop = spawn(
+      process.execPath,
+      [
+        resolve('node_modules/electron-vite/bin/electron-vite.js'),
+        'dev',
+        '--watch',
+        ...process.argv.slice(2),
+      ],
+      { stdio: 'inherit', env },
+    )
+    desktop.on('exit', (code) => stop(code ?? 0))
+  } catch (error) {
+    console.error(error)
+    stop(1)
+  }
 })
 site.on('exit', (code) => stop(code ?? 0))
 docs.on('exit', (code) => stop(code ?? 0))

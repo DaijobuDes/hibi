@@ -20,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest, ubuntu-latest]
+        os: [macos-latest, windows-latest, ubuntu-latest, macos-15-intel]
         shard: ['0/4', '1/4', '2/4', '3/4']
     runs-on: ${{ matrix.os }}
     env:

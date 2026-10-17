@@ -104,11 +104,14 @@ test('toolbar and top bar stay visible by default, auto-hide shares timing, and 
   await autoHide.check()
   await hideTopBar.check()
   await page.getByRole('button', { name: /^back to app$/i }).click()
-  await page.locator('.toolbar-slot').evaluate(async (element) => {
-    await Promise.all(
-      element
-        .getAnimations({ subtree: true })
-        .map((animation) => animation.finished),
+  await page.waitForFunction(() => {
+    const bar = document.querySelector('.editor-toolbar')
+    const style = getComputedStyle(bar)
+    return (
+      document.querySelector('.toolbar-slot').getBoundingClientRect().height ===
+      bar.getBoundingClientRect().height +
+        Number.parseFloat(style.marginTop) +
+        Number.parseFloat(style.marginBottom)
     )
   })
   const expanded = await page

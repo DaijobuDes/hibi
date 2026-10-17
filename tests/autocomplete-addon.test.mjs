@@ -539,6 +539,22 @@ test('autocomplete learns locally, disables learning, excludes documents and cle
     .getByRole('button', { name: 'Clear learned words', exact: true })
     .click()
   await confirmation.waitFor({ state: 'hidden' })
+  await waitForAsync(
+    page,
+    async (workspaceId) => {
+      const data = await window.hibi.readAddonStorage({
+        owner: 'autocomplete',
+        scope: { kind: 'global' },
+        key: 'learned-words',
+        version: 1,
+      })
+      return (
+        data.status === 'ready' &&
+        data.value.entries.every((row) => row.scope !== workspaceId)
+      )
+    },
+    workspaceId,
+  )
   const remaining = (await disk()).entries['learned-words'].value.entries
   assert.ok(remaining.some((row) => row.word === 'outsideword'))
   assert.ok(remaining.every((row) => row.scope !== workspaceId))

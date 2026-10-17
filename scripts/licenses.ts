@@ -1,5 +1,5 @@
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
-import { dirname, join, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import type { LicenseInfo } from '../src/shared/about.ts'
 import { themeLicenses } from '../src/shared/theme-licenses.ts'
 
@@ -35,13 +35,26 @@ export async function collectLicenses(root = resolve('.')) {
     await readFile(join(root, 'package.json'), 'utf8'),
   )
   const entries = new Map<string, LicenseInfo & { text: string }>()
+  const packageReads = new Map<string, Promise<Package>>()
   async function visit(name: string, from = root): Promise<void> {
     if (name.startsWith('@types/') || buildTools.has(name)) return
     let folder: string, pkg: Package
     for (;;) {
+      if (basename(from) === 'node_modules' && dirname(from) !== from) {
+        from = dirname(from)
+        continue
+      }
       folder = join(from, 'node_modules', name)
       try {
-        pkg = JSON.parse(await readFile(join(folder, 'package.json'), 'utf8'))
+        const path = join(folder, 'package.json')
+        let pending = packageReads.get(path)
+        if (!pending) {
+          pending = readFile(path, 'utf8').then(
+            (text) => JSON.parse(text) as Package,
+          )
+          packageReads.set(path, pending)
+        }
+        pkg = await pending
         break
       } catch (error) {
         if (

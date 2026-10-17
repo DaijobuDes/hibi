@@ -16,15 +16,53 @@ import { join, resolve, sep } from 'node:path'
 import test from 'node:test'
 import { setTimeout as delay } from 'node:timers/promises'
 import { chromium } from 'playwright'
-import { showTestWindows } from './electron.mjs'
+import { showTestWindows, startupDiagnostics } from './electron.mjs'
 import { waitForAsync } from './poll.mjs'
 
 test('development watches main, renderer, preload, addons, and documentation generation', {
   timeout: 180000,
 }, async (t) => {
   const started = performance.now()
-  const mark = (message) =>
+  let output = '',
+    cachedDiagnostic = '',
+    omitted = 0,
+    completed = false
+  const timeline = []
+  function byteHead(text, limit) {
+    const bytes = Buffer.from(text)
+    let end = Math.min(bytes.length, limit)
+    while ((bytes[end] & 0xc0) === 0x80) end--
+    return bytes.toString('utf8', 0, end)
+  }
+  function refreshDiagnostic() {
+    cachedDiagnostic = `cached snapshot (elapsed ms, not abort time): at=${Math.round(performance.now() - started)}; omitted=${omitted}\n${timeline.join('\n')}\nchild tail:\n${byteHead(output.slice(-2048), 2048)}`
+  }
+  function phase(label) {
+    if (timeline.length === 96) {
+      timeline.splice(24, 1)
+      omitted++
+    }
+    timeline.push(
+      byteHead(`${Math.round(performance.now() - started)} ${label}`, 128),
+    )
+    refreshDiagnostic()
+  }
+  const mark = (message) => {
+    phase(message)
     t.diagnostic(`${message} (${Math.round(performance.now() - started)} ms)`)
+  }
+  phase('copy fixture')
+  t.signal.addEventListener(
+    'abort',
+    () => {
+      if (!completed) {
+        try {
+          console.error(cachedDiagnostic)
+        } catch {}
+      }
+    },
+    { once: true },
+  )
   const root = await realpath(await mkdtemp(join(tmpdir(), 'hibi-dev-watch-')))
   for (const name of [
     'src',
@@ -100,7 +138,30 @@ test('development watches main, renderer, preload, addons, and documentation gen
   const preloadBuildPaused = join(root, 'preload-build-paused')
   const releasePreloadBuild = join(root, 'release-preload-build')
   const configPath = join(root, 'electron.vite.config.ts')
-  const config = (await readFile(configPath, 'utf8'))
+  const configSource = await readFile(configPath, 'utf8')
+  for (const marker of [
+    'licenseBuild = Promise.allSettled([writeLicenses()])',
+    'const [result] = await licenseBuild',
+    'analysisBundles(),',
+    'plugins: [sandboxPreloads()],',
+  ])
+    assert.equal(
+      configSource.split(marker).length,
+      2,
+      `config probe anchor: ${marker}`,
+    )
+  const config = (
+    "let watchedBuild = 0, watchedStart = 0, watchedLines = 0\nfunction buildMark(kind: string, build: number, elapsed = 0) {\n  if (++watchedLines > 32) return\n  try { console.log('[dev-watch]', ...(watchedLines === 32 ? ['clipped'] : [kind, build, Math.round(elapsed)])) } catch {}\n}\nfunction watchedLicenses() {\n  const build = ++watchedBuild, start = performance.now()\n  watchedStart = start\n  buildMark('main-start', build)\n  buildMark('licenses-start', build)\n  const work = writeLicenses()\n  const done = () => buildMark('licenses-end', build, performance.now() - start)\n  work.then(done, done)\n  return work\n}\n" +
+    configSource
+  )
+    .replace(
+      'licenseBuild = Promise.allSettled([writeLicenses()])',
+      'licenseBuild = Promise.allSettled([watchedLicenses()])',
+    )
+    .replace(
+      'const [result] = await licenseBuild',
+      "buildMark('graphEnd', watchedBuild, performance.now() - watchedStart)\n            const [result] = await licenseBuild",
+    )
     .replace(
       'analysisBundles(),',
       `analysisBundles(),
@@ -180,7 +241,6 @@ dialog.showMessageBox = (...args) => {
     join(profile, 'addons.json'),
     JSON.stringify({ 'typing-speed': true }),
   )
-  let output = ''
   const seenEndpoints = []
   const pendingLines = { stdout: '', stderr: '' }
   const child = spawn(
@@ -211,6 +271,18 @@ dialog.showMessageBox = (...args) => {
       const endpoint = line.match(/DevTools listening on (ws:\/\/\S+)/)?.[1]
       if (endpoint && !seenEndpoints.includes(endpoint))
         seenEndpoints.push(endpoint)
+      if (
+        /^\[dev-watch\] (?:(main-start|licenses-start|licenses-end|graphEnd) \d+ \d+|clipped)$/.test(
+          line,
+        )
+      ) {
+        phase(line)
+        if (!completed && !t.signal.aborted) {
+          try {
+            t.diagnostic(line)
+          } catch {}
+        }
+      }
     }
   }
   child.stdout.on('data', (data) => collect(data, 'stdout'))
@@ -240,6 +312,7 @@ dialog.showMessageBox = (...args) => {
     })
   })
   async function until(predicate, label, timeout = 20000) {
+    phase(label)
     const end = Date.now() + timeout
     while (Date.now() < end) {
       if (await predicate()) return
@@ -254,10 +327,22 @@ dialog.showMessageBox = (...args) => {
     await writeFile(path, original.replace(before, after))
   }
   await until(() => seenEndpoints.length > 0, 'dev app starts', 60000)
+  phase('connect first devtools')
   browser = await chromium.connectOverCDP(seenEndpoints[0])
   let page = browser.contexts()[0].pages()[0]
   page.setDefaultTimeout(30000)
-  await page.locator('[data-status-id="typing-speed.wpm"]').waitFor()
+  phase('initial renderer readiness')
+  try {
+    await page.locator('[data-status-id="typing-speed.wpm"]').waitFor()
+  } catch (error) {
+    try {
+      console.error(
+        'initial renderer startup:',
+        JSON.stringify(await startupDiagnostics(undefined, page)),
+      )
+    } catch {}
+    throw error
+  }
   assert.equal(
     await page.evaluate(
       async () =>
@@ -431,6 +516,7 @@ dialog.showMessageBox = (...args) => {
     false,
   )
   async function clearDraft(expected) {
+    phase(`clear draft: ${expected}`)
     if (showTestWindows) {
       await page.bringToFront()
       await page.evaluate(() => window.focus())
@@ -760,6 +846,7 @@ dialog.showMessageBox = (...args) => {
   )
 
   const noticeId = 'addon:typst:typst-assets'
+  phase('read original notice')
   const originalNotice = await page.evaluate(
     (id) => window.hibi.getLicense(id),
     noticeId,
@@ -790,4 +877,6 @@ dialog.showMessageBox = (...args) => {
     'documentation generator reloads',
   )
   mark('documentation generator updated')
+  refreshDiagnostic()
+  completed = true
 })
