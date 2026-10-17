@@ -11,8 +11,8 @@ import {
   defineColorscheme,
   themePreferences,
 } from '../src/shared/colorschemes.ts'
-import { electron } from './electron.mjs'
-import { clickMenu } from './keyboard.mjs'
+import { electron, waitForDocumentEditor } from './electron.mjs'
+import { clickMenu, replaceRichText } from './keyboard.mjs'
 import { uiName } from './ui.mjs'
 
 function contrast(a, b) {
@@ -134,7 +134,8 @@ test('app palettes update all surfaces, preserve editing, and persist native app
   let page = await app.firstWindow()
   page.setDefaultTimeout(5000)
   const editor = page.getByRole('textbox', { name: /document editor/i })
-  await editor.fill('keep this note')
+  await waitForDocumentEditor(app, page)
+  await replaceRichText(page, editor, 'keep this note')
   await page.evaluate(() => {
     window.originalEditor = document.querySelector('.tiptap')
   })

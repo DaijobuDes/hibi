@@ -3,7 +3,13 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { crashAndReload, electron, stopElectronTree } from './electron.mjs'
+import {
+  crashAndReload,
+  electron,
+  stopElectronTree,
+  waitForDocumentEditor,
+} from './electron.mjs'
+import { replaceRichText } from './keyboard.mjs'
 
 test('journal barriers preserve immediate saves, retries, renderer recovery, and native close', {
   timeout: 45000,
@@ -21,7 +27,7 @@ test('journal barriers preserve immediate saves, retries, renderer recovery, and
   page.setDefaultTimeout(7000)
   const editor = () =>
     page.getByRole('textbox', { name: 'Document editor', exact: true })
-  await editor().waitFor()
+  await waitForDocumentEditor(app, page)
   await app.evaluate(({ dialog, ipcMain }, file) => {
     dialog.showSaveDialog = async () => ({ canceled: false, filePath: file })
     dialog.showMessageBox = async () => ({ response: 0 })
@@ -37,12 +43,12 @@ test('journal barriers preserve immediate saves, retries, renderer recovery, and
       return result
     })
   }, file)
-  await editor().fill('first edit 😀')
+  await replaceRichText(page, editor(), 'first edit 😀')
   const saved = await page.evaluate(() => window.hibi.saveDocument(true))
   assert.equal(saved.markdown, 'first edit 😀')
   assert.equal(saved.contentVersion, 1)
   assert.equal(await readFile(file, 'utf8'), saved.markdown)
-  await editor().fill('recover this unsaved change')
+  await replaceRichText(page, editor(), 'recover this unsaved change')
   await page.evaluate(() => window.hibi.flushDocumentChanges())
   await crashAndReload(app)
   // Playwright keeps crashed targets marked as crashed after Electron reloads them.

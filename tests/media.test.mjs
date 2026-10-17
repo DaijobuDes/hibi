@@ -11,8 +11,12 @@ import {
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { electron } from './electron.mjs'
-import { pressShortcut, replaceSourceText } from './keyboard.mjs'
+import { electron, waitForDocumentEditor } from './electron.mjs'
+import {
+  pressShortcut,
+  replaceRichText,
+  replaceSourceText,
+} from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
 import { uiName } from './ui.mjs'
 
@@ -49,7 +53,7 @@ test('file picker and drops attach media safely, stream videos, and move/open wo
   page.setDefaultTimeout(6000)
   const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
   const rich = page.getByRole('textbox', { name: /document editor/i })
-  await rich.waitFor()
+  await waitForDocumentEditor(app, page)
   await app.evaluate(
     ({ dialog }, { gif, workspace }) => {
       dialog.showOpenDialog = async () => ({
@@ -74,7 +78,7 @@ test('file picker and drops attach media safely, stream videos, and move/open wo
       .first()
       .click()
   }
-  await rich.fill('hello')
+  await replaceRichText(page, rich, 'hello')
   await choose('image')
   await rich.locator('img').waitFor()
   await waitForAsync(page, async () =>

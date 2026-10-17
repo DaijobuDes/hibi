@@ -3,8 +3,8 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { electron } from './electron.mjs'
-import { clickMenu, pressShortcut } from './keyboard.mjs'
+import { electron, waitForDocumentEditor } from './electron.mjs'
+import { clickMenu, pressShortcut, replaceRichText } from './keyboard.mjs'
 
 test('default view persists separately from temporary switches and respects format support', {
   timeout: 30000,
@@ -37,7 +37,8 @@ test('default view persists separately from temporary switches and respects form
   }
   let page = await launch()
   const rich = page.getByRole('textbox', { name: /document editor/i })
-  await rich.fill('Keep this draft')
+  await waitForDocumentEditor(app, page)
+  await replaceRichText(page, rich, 'Keep this draft')
   const draft = (await page.evaluate(() => window.hibi.getDocument())).markdown
   await clickMenu(app, 'Settings')
   await page.getByRole('tab', { name: 'Editor', exact: true }).click()

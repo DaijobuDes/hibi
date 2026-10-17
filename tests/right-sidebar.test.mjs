@@ -3,8 +3,8 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { electron } from './electron.mjs'
-import { clickMenu } from './keyboard.mjs'
+import { electron, waitForDocumentEditor } from './electron.mjs'
+import { clickMenu, replaceSourceText } from './keyboard.mjs'
 
 test('right sidebar starts empty, remembers its view and width, and collapses independently', {
   timeout: 45000,
@@ -94,7 +94,8 @@ test('right sidebar starts empty, remembers its view and width, and collapses in
   await right.getByText(/add headings to this note/i).waitFor()
   await page.getByRole('button', { name: /^source view$/i }).click()
   const source = page.getByRole('textbox', { name: /markdown editor/i })
-  await source.fill('# first\n\nbody\n\n## second\n\nend')
+  await waitForDocumentEditor(app, page, { name: 'Markdown editor' })
+  await replaceSourceText(page, source, '# first\n\nbody\n\n## second\n\nend')
   await right.getByRole('treeitem', { name: 'second', exact: true }).click()
   await page.waitForFunction(() =>
     document.activeElement?.classList.contains('cm-content'),

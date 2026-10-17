@@ -3,8 +3,8 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { electron } from './electron.mjs'
-import { clickMenu, pressShortcut } from './keyboard.mjs'
+import { electron, waitForDocumentEditor } from './electron.mjs'
+import { clickMenu, pressShortcut, replaceRichText } from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
 import { uiName } from './ui.mjs'
 
@@ -30,8 +30,8 @@ test('command palette, full-height settings, and local geist fonts', {
   const errors = []
   page.on('pageerror', (error) => errors.push(error.message))
   const rich = page.getByRole('textbox', { name: /document editor/i })
-  await rich.waitFor()
-  await rich.fill('keep this draft')
+  await waitForDocumentEditor(app, page)
+  await replaceRichText(page, rich, 'keep this draft')
   await pressShortcut(
     app,
     process.platform === 'darwin' ? 'Meta+k' : 'Control+k',

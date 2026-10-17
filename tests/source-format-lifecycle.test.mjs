@@ -3,8 +3,13 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { electron, startupDiagnostics, stopElectronTree } from './electron.mjs'
-import { clickMenu, pressShortcut } from './keyboard.mjs'
+import {
+  electron,
+  startupDiagnostics,
+  stopElectronTree,
+  waitForDocumentEditor,
+} from './electron.mjs'
+import { clickMenu, pressShortcut, replaceRichText } from './keyboard.mjs'
 
 async function closeProbe(app, watchdog, fired, name, preserveFailure = false) {
   clearTimeout(watchdog)
@@ -100,7 +105,8 @@ test('lazy rich startup applies view attributes after mounting and accepts nativ
           'true',
       )
       mark('spellcheckReady')
-      await editor.fill(`ready ${attempt}`)
+      await waitForDocumentEditor(app, page)
+      await replaceRichText(page, editor, `ready ${attempt}`)
       mark('filled')
       assert.equal(
         (await page.evaluate(() => window.hibi.getDocument())).markdown,

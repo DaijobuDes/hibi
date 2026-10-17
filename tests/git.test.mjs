@@ -13,8 +13,8 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { promisify } from 'node:util'
-import { electron } from './electron.mjs'
-import { clickMenu, pressShortcut } from './keyboard.mjs'
+import { electron, waitForDocumentEditor } from './electron.mjs'
+import { clickMenu, pressShortcut, replaceRichText } from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
 
 const execute = promisify(execFile)
@@ -293,9 +293,12 @@ test('git addon stages, commits, switches, pulls and pushes only to a disposable
     page.evaluate(() => window.hibi.queryAddon('git', 'stage', 'note.md')),
     /This addon does not support the requested action\./,
   )
-  await page
-    .getByRole('textbox', { name: /document editor/i })
-    .fill('unsaved edits')
+  await waitForDocumentEditor(app, page)
+  await replaceRichText(
+    page,
+    page.getByRole('textbox', { name: /document editor/i }),
+    'unsaved edits',
+  )
   const note = page.getByRole('treeitem', { name: /^note\.md$/i, exact: true })
   await note.locator('.sidebar-dirty').waitFor()
   assert.equal(await note.locator('.sidebar-decoration').count(), 0)

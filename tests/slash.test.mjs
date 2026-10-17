@@ -5,8 +5,8 @@ import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { filterCommands } from '../src/addons/slash-commands/commands.ts'
 import { markdownSyntax } from '../src/renderer/src/markdown-syntax.ts'
-import { electron } from './electron.mjs'
-import { clickMenu, replaceSourceText } from './keyboard.mjs'
+import { electron, waitForDocumentEditor } from './electron.mjs'
+import { clickMenu, replaceRichText, replaceSourceText } from './keyboard.mjs'
 
 test('slash search matches labels, descriptions, and extension keywords without case sensitivity', () => {
   assert.deepEqual(
@@ -91,18 +91,18 @@ test('slash commands work in both editors, preserve undo, and coexist with vim',
   const read = () =>
     page.evaluate(async () => (await window.hibi.getDocument()).markdown)
   const undo = process.platform === 'darwin' ? 'Meta+z' : 'Control+z'
-  await rich.waitFor()
-  await rich.fill('/h2')
+  await waitForDocumentEditor(app, page)
+  await replaceRichText(page, rich, '/h2')
   await menu.waitFor()
   await rich.press('Enter')
   assert.equal(await rich.locator('h2').count(), 1)
   await rich.press(undo)
   assert.equal(await read(), '/h2')
-  await rich.fill('/h6')
+  await replaceRichText(page, rich, '/h6')
   await menu.waitFor()
   await rich.press('Enter')
   assert.equal(await rich.locator('h6').count(), 1)
-  await rich.fill('/')
+  await replaceRichText(page, rich, '/')
   await menu.waitFor()
   await page.waitForFunction(
     () =>
@@ -114,18 +114,18 @@ test('slash commands work in both editors, preserve undo, and coexist with vim',
     .getByRole('option', { name: /^text plain paragraph$/i, exact: true })
     .click()
   assert.equal(await read(), '')
-  await rich.fill('/')
+  await replaceRichText(page, rich, '/')
   await menu.waitFor()
   await rich.press('ArrowDown')
   await rich.press('Enter')
   assert.equal(await rich.locator('h1').count(), 1)
-  await rich.fill('/quote')
+  await replaceRichText(page, rich, '/quote')
   await menu.waitFor()
   await menu
     .getByRole('option', { name: /^Quotes Indented quotation$/ })
     .click()
   assert.equal(await rich.locator('blockquote').count(), 1)
-  await rich.fill('/')
+  await replaceRichText(page, rich, '/')
   await menu.waitFor()
   const beforeDismiss = await read()
   await rich.press('Escape')
@@ -166,7 +166,7 @@ test('slash commands work in both editors, preserve undo, and coexist with vim',
   await rich.evaluate((element) =>
     element.editor.commands.setContent('<p></p>'),
   )
-  await rich.fill('/alerts')
+  await replaceRichText(page, rich, '/alerts')
   await menu.waitFor()
   await rich.press('Enter')
   assert.equal(await rich.locator('.github-alert').count(), 1)
