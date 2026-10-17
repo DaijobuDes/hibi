@@ -37,7 +37,7 @@ export async function reviewAddonInstall(
       size: 'wide',
       closeOnOutsideClick: false,
       description:
-        'Review each addon before installing. Installed addons stay disabled until you enable them.',
+        'Review each addon before installing. New addons stay disabled until you enable them. A replacement keeps its current setting unless its access changes.',
       content: ({ close, signal }) => (
         <AddonInstallChooser
           session={session}
@@ -231,7 +231,7 @@ function AddonInstallChooser({
                 )}
                 {candidate.replaces && (
                   <p>
-                    {`Replaces v${candidate.replaces.version} (${candidate.replaces.source}) with v${manifest?.version} (${session.source}).`}
+                    {`Replaces v${candidate.replaces.version} (${candidate.replaces.source}) with v${manifest?.version} (${session.source}). ${candidate.replaces.keepsSetting ? 'Its access is unchanged, so it keeps its current setting.' : 'Its access changed, so it stays disabled until you enable it.'}`}
                   </p>
                 )}
                 {candidate.status !== 'installable' && (
@@ -253,7 +253,9 @@ function AddonInstallChooser({
                   ? 'Installing…'
                   : result
                     ? result.status === 'installed'
-                      ? 'Installed — disabled'
+                      ? candidate.replaces?.keepsSetting
+                        ? 'Installed — setting kept'
+                        : 'Installed — disabled'
                       : `Failed: ${result.error ?? 'Could not install this addon.'}`
                     : results && candidate.status === 'installable'
                       ? 'Not selected'

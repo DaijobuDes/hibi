@@ -25,6 +25,17 @@ export type InstallCandidate = {
   data?: ReturnType<typeof admitInstalledAddon>
 }
 
+const access = (manifest: AddonManifest) =>
+  JSON.stringify([
+    manifest.kind ?? 'extension',
+    manifest.capabilities ?? null,
+    manifest.network?.origins ?? [],
+    manifest.dependencies ?? [],
+  ])
+/** A replacement that asks for the same access keeps the user's enabled setting. */
+export const sameAddonAccess = (previous: AddonManifest, next: AddonManifest) =>
+  access(previous) === access(next)
+
 export function installationGraph(
   proposed: readonly AddonManifest[],
   builtins: readonly AddonManifest[],
@@ -185,6 +196,10 @@ export async function inspectAddonCandidates(
       candidate.review.replaces = {
         version: previous.manifest.version,
         source: previous.source ?? 'local',
+        ...(candidate.data &&
+        sameAddonAccess(previous.manifest, candidate.data.manifest)
+          ? { keepsSetting: true as const }
+          : {}),
       }
   }
   validateCandidateSelection(candidates, builtins, installed)

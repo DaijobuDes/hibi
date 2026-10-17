@@ -22,7 +22,12 @@ export type AddonInstallCandidate = {
   manifest?: AddonManifest
   status: 'installable' | 'invalid' | 'blocked'
   reasons: string[]
-  replaces?: { version: string; source: 'local' | 'third-party' }
+  replaces?: {
+    version: string
+    source: 'local' | 'third-party'
+    /** Unchanged access: the replacement keeps its enabled setting and reloads in place. */
+    keepsSetting?: true
+  }
 }
 export type AddonInstallSession = {
   id: string

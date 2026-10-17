@@ -441,7 +441,17 @@ async function deactivateUnavailable(before: readonly AddonState[]) {
 
 async function disableAddonForReplacement(
   id: string,
+  keep = false,
 ): Promise<() => Promise<void>> {
+  if (keep) {
+    // The setting stays; work admitted for the old files retires and the renderer reloads the addon.
+    const generation = getAddonActivationGeneration(id)
+    if (generation !== null) {
+      generations.set(id, generation + 1)
+      await onAddonDeactivated(id, generation)
+    }
+    return async () => {}
+  }
   const previous = Object.hasOwn(enabled, id) ? enabled[id] : undefined
   await savePreferences({ ...enabled, [id]: false })
   return async () => {
