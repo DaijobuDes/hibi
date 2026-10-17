@@ -14,7 +14,7 @@ import { waitForAsync } from './poll.mjs'
 const packagePath = resolve('examples/foundation-proof-addon')
 const shortcut = 'CommandOrControl+Alt+Shift+F11'
 
-async function eventually(read, predicate, message) {
+async function eventually(read, predicate, message, diagnose) {
   let last
   for (let attempt = 0; attempt < 160; attempt++) {
     try {
@@ -25,7 +25,9 @@ async function eventually(read, predicate, message) {
     }
     await delay(50)
   }
-  throw new Error(`${message}: ${JSON.stringify(last)}`)
+  // Read right after the last poll, so it describes the same stalled state.
+  const detail = diagnose ? ` ${JSON.stringify(await diagnose())}` : ''
+  throw new Error(`${message}: ${JSON.stringify(last)}${detail}`)
 }
 
 async function boundedDiagnostic(read) {
@@ -42,6 +44,41 @@ async function boundedDiagnostic(read) {
   } finally {
     clearTimeout(timer)
   }
+}
+
+// What the renderer saw while a proof run stalled: toasts, errors and main's copy.
+async function proofRunDiagnostic(page, target) {
+  const [renderer, consoleErrors, pageErrors] = await Promise.all([
+    boundedDiagnostic(() =>
+      page.evaluate(async (target) => {
+        const toasts = [...(window.proofToasts ?? [])].slice(-5)
+        return {
+          toasts,
+          stored: await window.hibi.readAddonStorage({
+            owner: 'foundation-proof',
+            scope: { kind: 'workspace', target },
+            key: 'preferences',
+            version: 1,
+          }),
+          addon: (await window.hibi.getAddonStates()).find(
+            ({ id }) => id === 'foundation-proof',
+          ),
+        }
+      }, target),
+    ),
+    boundedDiagnostic(async () =>
+      (await page.consoleMessages())
+        .filter((message) => message.type() === 'error')
+        .slice(-5)
+        .map((message) => message.text().slice(0, 300)),
+    ),
+    boundedDiagnostic(async () =>
+      (await page.pageErrors())
+        .slice(-3)
+        .map((error) => error.message.slice(0, 300)),
+    ),
+  ])
+  return { renderer, consoleErrors, pageErrors }
 }
 
 async function storageValue(path, key) {
@@ -722,11 +759,23 @@ test('proof addon installs and composes captured edits, queries, providers, and 
   )
 
   await createChange('change-before-second.md')
+  // Error toasts dismiss themselves; keep what a stalled run reports.
+  await page.evaluate(() => {
+    const seen = new Set()
+    window.proofToasts = seen
+    new MutationObserver(() => {
+      for (const toast of document.querySelectorAll('.toast-copy'))
+        seen.add(
+          `${toast.getAttribute('role')}: ${toast.textContent?.slice(0, 200)}`,
+        )
+    }).observe(document.body, { childList: true, subtree: true })
+  })
   await clickMenu(app, 'Capture foundation proof')
   const secondRun = await eventually(
     () => storageValue(workspaceFile, 'preferences'),
     (value) => value?.value?.lastRun?.run === 2,
     'second proof run did not finish',
+    () => proofRunDiagnostic(page, workspaceTarget),
   )
   assert.equal(secondRun.value.lastRun.note, 'conflict')
   assert.ok(secondRun.value.lastRun.events > firstRun.value.lastRun.events)
