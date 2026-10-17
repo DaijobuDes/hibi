@@ -170,14 +170,16 @@ test('editor command shares rich and source action menus with guarded selection'
       (element) => element.scrollHeight > element.clientHeight,
     ),
   )
+  // The menu's own listener runs after the document's capture-phase handler.
+  await menu.evaluate((element) => {
+    window.editorMenuScrolled = new Promise((resolve) =>
+      element.addEventListener('scroll', resolve, { once: true }),
+    )
+  })
   await rich.press('ArrowUp')
-  await page.waitForFunction(
-    () =>
-      document.querySelector('[role="menu"][aria-label="Editor actions"]')
-        ?.scrollTop > 0,
-  )
-  assert.equal(await lastAction.getAttribute('aria-current'), 'true')
+  await page.evaluate(() => window.editorMenuScrolled)
   assert.equal(await menu.isVisible(), true)
+  assert.equal(await lastAction.getAttribute('aria-current'), 'true')
   // Scrolling the document still moves the menu's anchor and closes it.
   await page.evaluate(() => document.dispatchEvent(new Event('scroll')))
   await menu.waitFor({ state: 'hidden' })
