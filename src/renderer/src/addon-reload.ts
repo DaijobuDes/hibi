@@ -37,8 +37,9 @@ export async function reloadAddons(
     /** Clear committed start failures so the start effect tries these again. */
     retry: (ids: readonly string[]) => void
     settingsVisible: (id: string) => boolean
-    /** Keep editor configuration published as is until the returned release. */
-    hold: () => () => void
+    affectsEditor: (ids: readonly string[]) => boolean
+    /** Keep editors read-only until the returned function runs. */
+    readOnly: () => () => void
     activeView: () => ViewTarget | null
     reviewed?: boolean
   },
@@ -54,15 +55,12 @@ export async function reloadAddons(
   for (const id of closure) reloads.set(id, token)
   const superseded = () => closure.some((id) => reloads.get(id) !== token)
   let restarting: string[] = []
-  let release: (() => void) | undefined
-  let restoreEditor: (() => void) | undefined
+  let editable: (() => void) | undefined
   const finish = (result: AddonReloadResult) => {
     for (const id of closure) if (reloads.get(id) === token) reloads.delete(id)
     for (const id of restarting)
       if (restarts.get(id) === token) restarts.delete(id)
-    // One publication of the restarted configuration, then the editor's selection and focus return.
-    release?.()
-    restoreEditor?.()
+    editable?.()
     return result
   }
   if (!host.reviewed) {
@@ -103,8 +101,12 @@ export async function reloadAddons(
   ]
   for (const id of restarting) restarts.set(id, token)
   if (!restarting.length) return finish({ status: 'idle' })
-  restoreEditor = keepEditorState(host.activeView())
-  release = host.hold()
+  if (host.affectsEditor(closure)) {
+    // Editing pauses until the restarted addons settle; then selection and focus return.
+    const restore = keepEditorState(host.activeView)
+    const end = host.readOnly()
+    editable = () => void restore().finally(end)
+  }
   for (const id of ids) running.get(id)?.stop()
   if (retried.length) host.retry(retried)
   const outcomes = await Promise.allSettled(restarting.map(host.whenStarted))
@@ -122,56 +124,68 @@ export async function reloadAddons(
   )
 }
 
+const frame = () => new Promise(requestAnimationFrame)
+
 /**
  * Capture the active editor's selection and focus; the returned function puts
- * them back once that editor is current again. A rebuilt editor is restored
- * once per instance, so a rebuild after the final publication is covered too.
- * User input, an edit, or a short deadline ends the watch.
+ * them back once the editor current then has loaded the document, waiting a
+ * few frames for a rebuilt editor. A selection the user moved meanwhile, or
+ * an edit, wins over the captured one.
  */
-function keepEditorState(view: ViewTarget | null) {
-  const before = view ? editorViewRegistry.getSelection(view) : null
-  if (!view || !before?.ok) return () => {}
+function keepEditorState(activeView: () => ViewTarget | null) {
+  const view = activeView()
+  const start = view ? editorViewRegistry.getSelection(view) : null
+  if (!view || !start?.ok) return async () => {}
+  // A remounted editor registers a new view generation for the same document.
+  const read = () => {
+    const current = activeView()
+    return current?.documentId === view.documentId &&
+      current.documentGeneration === view.documentGeneration
+      ? editorViewRegistry.getSelection(current)
+      : null
+  }
   const active = document.activeElement
-  const focused =
-    active instanceof HTMLElement && active.isContentEditable ? active : null
-  const pane = focused?.closest<HTMLElement>('.rich-pane, .source-pane')
-  return () => {
-    const deadline = performance.now() + 5000
-    let restored = -1
-    let frame = 0
-    const stop = () => {
-      cancelAnimationFrame(frame)
-      for (const type of ['keydown', 'pointerdown', 'compositionstart'])
-        window.removeEventListener(type, stop, true)
+  const focused = active instanceof HTMLElement && active.isContentEditable
+  const kind = start.value.editor === 'rich' ? '.ProseMirror' : '.cm-content'
+  let last = start.value
+  let moved = false
+  const unsubscribe = editorViewRegistry.subscribe(() => {
+    const current = read()
+    if (!current?.ok) return
+    // A change within one editor instance is the user's; a rebuilt editor starts over.
+    if (
+      current.value.editorGeneration === last.editorGeneration &&
+      (current.value.anchor !== last.anchor || current.value.head !== last.head)
+    )
+      moved = true
+    last = current.value
+  })
+  return async () => {
+    // Let the restarted configuration render, including an editor it rebuilds.
+    await frame()
+    await frame()
+    let current = read()
+    for (let attempt = 0; !current?.ok && attempt < 120; attempt++) {
+      await frame()
+      current = read()
     }
-    for (const type of ['keydown', 'pointerdown', 'compositionstart'])
-      window.addEventListener(type, stop, true)
-    const attempt = () => {
-      if (performance.now() > deadline) return stop()
-      frame = requestAnimationFrame(attempt)
-      const current = editorViewRegistry.getSelection(view)
-      if (!current.ok || current.value.editorGeneration === restored) return
-      if (
-        current.value.editor !== before.value.editor ||
-        current.value.contentVersion !== before.value.contentVersion
-      )
-        return stop()
-      const surface = focused?.isConnected
-        ? focused
-        : pane?.querySelector<HTMLElement>('[contenteditable="true"]')
-      if (focused) {
-        // Wait until the editor accepts input again.
-        if (!surface?.isContentEditable || surface.closest('[inert]')) return
-        if (document.activeElement === document.body)
-          surface.focus({ preventScroll: true })
-      }
+    unsubscribe()
+    if (
+      !moved &&
+      current?.ok &&
+      current.value.editor === start.value.editor &&
+      current.value.contentVersion === start.value.contentVersion
+    )
       editorViewRegistry.setSelection({
         ...current.value,
-        anchor: before.value.anchor,
-        head: before.value.head,
+        anchor: start.value.anchor,
+        head: start.value.head,
       })
-      restored = current.value.editorGeneration
-    }
-    attempt()
+    if (focused && document.activeElement === document.body)
+      document
+        .querySelector<HTMLElement>(
+          `.editor-panes :is(.rich-pane, .source-pane):not([inert]) ${kind}`,
+        )
+        ?.focus({ preventScroll: true })
   }
 }

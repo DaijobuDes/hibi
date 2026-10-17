@@ -2631,7 +2631,7 @@ function App() {
         }
         data-startup={!splitTabs && showWelcome}
         inert={!addonHost.ready}
-        aria-busy={!addonHost.ready}
+        aria-busy={!addonHost.ready || addonHost.reloading}
         onPointerDown={(event) => {
           if ((event.target as Element).closest('[aria-label="Close split"]'))
             return
@@ -2711,7 +2711,7 @@ function App() {
                 )
               }
               mode={paneMode}
-              disabled={busy || !addonHost.ready}
+              disabled={busy || !addonHost.ready || addonHost.reloading}
               findOpen={findOpen && active && !settingsOpen}
               onCloseFind={() => setFindOpen(false)}
             />

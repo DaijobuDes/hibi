@@ -4,7 +4,6 @@ import type {
   MarkdownSyntaxFeature,
 } from '../../shared/markdown-syntax'
 import { workspaceSyntaxEvents } from '../../shared/workspace-syntax-events.ts'
-import { publishEditorConfiguration } from './registration-batch.ts'
 
 const core: MarkdownSyntaxFeature[] = [
   ...Array.from(
@@ -232,9 +231,6 @@ let snapshot: readonly Entry[] = [],
   disabledFeatures: readonly Entry[] = [],
   version = 0
 function publish() {
-  publishEditorConfiguration(applySnapshot)
-}
-function applySnapshot() {
   snapshot = [...registry.values()].map((feature) => ({
     ...feature,
     enabled: !disabled.has(feature.id),

@@ -80,11 +80,7 @@ import {
 } from './flavors'
 import { projectMarkdown } from './markdown-projection'
 import { markdownSyntax } from './markdown-syntax'
-import {
-  holdEditorConfiguration,
-  publishEditorConfiguration,
-  registrationBatch,
-} from './registration-batch'
+import { registrationBatch } from './registration-batch'
 import { settingsPages } from './settings-pages'
 import { toolbar } from './toolbar'
 import { viewNotifications } from './view-notifications'
@@ -300,6 +296,7 @@ export function useAddons(
     restoring?: boolean
   } | null>(null)
   const [loadFailed, setLoadFailed] = useState(false)
+  const [readOnlyReloads, setReadOnlyReloads] = useState(0)
   const [requested, setRequested] = useState<ReadonlySet<string>>(new Set())
   const manifests = useMemo(
     () => catalog.map((addon) => addon.manifest),
@@ -510,6 +507,7 @@ export function useAddons(
     dependencies,
     windowBlocked,
     relevantIds,
+    required,
   })
   currentActivation.current = {
     states,
@@ -519,6 +517,7 @@ export function useAddons(
     dependencies,
     windowBlocked,
     relevantIds,
+    required,
   }
   /** Settles when the owner next finishes starting, fails, or stops. */
   const whenStarted = useCallback(
@@ -623,60 +622,45 @@ export function useAddons(
     new Map<string, RichExtension & { addonId: string }>(),
   ).current
   const [richExtensions, setRichExtensions] = useState<RichExtension[]>([])
-  const publishRich = useCallback(
-    () =>
-      publishEditorConfiguration(() =>
-        setRichExtensions((current) => {
-          const next = [...rich.values()].sort((a, b) =>
-            a.id.localeCompare(b.id),
-          )
-          return current.length === next.length &&
-            current.every((entry, index) => entry === next[index])
-            ? current
-            : next
-        }),
-      ),
-    [rich],
-  )
+  const publishRich = useCallback(() => {
+    setRichExtensions((current) => {
+      const next = [...rich.values()].sort((a, b) => a.id.localeCompare(b.id))
+      return current.length === next.length &&
+        current.every((entry, index) => entry === next[index])
+        ? current
+        : next
+    })
+  }, [rich])
   const sources = useRef(
     new Map<string, SourceExtension & { addonId: string }>(),
   ).current
   const [sourceExtensions, setSourceExtensions] = useState<SourceExtension[]>(
     [],
   )
-  const publishSources = useCallback(
-    () =>
-      publishEditorConfiguration(() =>
-        setSourceExtensions((current) => {
-          const next = [...sources.values()].sort((a, b) =>
-            a.id.localeCompare(b.id),
-          )
-          return current.length === next.length &&
-            current.every((entry, index) => entry === next[index])
-            ? current
-            : next
-        }),
-      ),
-    [sources],
-  )
-  const publishExtensions = useCallback(
-    () =>
-      publishEditorConfiguration(() => {
-        setMarkdownExtensions((current) => {
-          const next = [...extensions.values()].sort(
-            (a, b) =>
-              (b.priority ?? 100) - (a.priority ?? 100) ||
-              a.id.localeCompare(b.id),
-          )
-          return current.length === next.length &&
-            current.every((entry, index) => entry === next[index])
-            ? current
-            : next
-        })
-        workspaceSyntaxEvents.publish()
-      }),
-    [extensions],
-  )
+  const publishSources = useCallback(() => {
+    setSourceExtensions((current) => {
+      const next = [...sources.values()].sort((a, b) =>
+        a.id.localeCompare(b.id),
+      )
+      return current.length === next.length &&
+        current.every((entry, index) => entry === next[index])
+        ? current
+        : next
+    })
+  }, [sources])
+  const publishExtensions = useCallback(() => {
+    setMarkdownExtensions((current) => {
+      const next = [...extensions.values()].sort(
+        (a, b) =>
+          (b.priority ?? 100) - (a.priority ?? 100) || a.id.localeCompare(b.id),
+      )
+      return current.length === next.length &&
+        current.every((entry, index) => entry === next[index])
+        ? current
+        : next
+    })
+    workspaceSyntaxEvents.publish()
+  }, [extensions])
   const running = useRef(
     new Map<
       string,
@@ -2177,7 +2161,9 @@ export function useAddons(
                 for (const syntax of addon.manifest.syntax ?? []) {
                   const contribution =
                     syntax.kind === 'flavor'
-                      ? flavors.get(`${id}.${syntax.id}`)
+                      ? flavors
+                          .snapshot()
+                          .find((flavor) => flavor.id === `${id}.${syntax.id}`)
                       : extensions.get(`${id}.${syntax.id}`)
                   if (
                     !contribution ||
@@ -2449,7 +2435,13 @@ export function useAddons(
         return next
       }),
     settingsVisible: (id: string) => !!latest.current.settingsVisible?.(id),
-    hold: holdEditorConfiguration,
+    // Addons the document needs shape its editor; reloading one pauses editing.
+    affectsEditor: (ids: readonly string[]) =>
+      ids.some((id) => currentActivation.current.required.has(id)),
+    readOnly: () => {
+      setReadOnlyReloads((count) => count + 1)
+      return () => setReadOnlyReloads((count) => count - 1)
+    },
     activeView: () => documentRuntime.captureActiveView(),
     reviewed,
   })
@@ -2609,6 +2601,8 @@ export function useAddons(
   return {
     catalog,
     ready,
+    /** An addon the document needs is reloading; editors stay read-only until it settles. */
+    reloading: readOnlyReloads > 0,
     allReady,
     sourceOnly,
     app,

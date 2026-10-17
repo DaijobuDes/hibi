@@ -651,7 +651,7 @@ test('overlapping reloads leave an unstarted command consumer to its command', {
   assert.equal((await counts())['retry-c'], 1)
 })
 
-test('reloading an editor extension rebuilds the editor once and keeps its selection and focus', {
+test('reloading an editor extension restores the selection and focus once it settles', {
   timeout: 60000,
 }, async (t) => {
   const profile = await mkdtemp(join(tmpdir(), 'hibi-addon-reload-editor-'))
@@ -676,15 +676,6 @@ test('reloading an editor extension rebuilds the editor once and keeps its selec
     document.querySelector(
       'style[data-addon-style="markdown.alerts"]',
     ).dataset.stale = ''
-    window.editorsAdded = new Set()
-    new MutationObserver((records) => {
-      for (const record of records)
-        for (const node of record.addedNodes)
-          if (node instanceof Element)
-            for (const element of [node, ...node.querySelectorAll('*')])
-              if (element.matches('.ProseMirror'))
-                window.editorsAdded.add(element)
-    }).observe(document.body, { childList: true, subtree: true })
   })
   await sendReload(app, 'markdown')
   await page
@@ -695,13 +686,93 @@ test('reloading an editor extension rebuilds the editor once and keeps its selec
       getSelection().toString() === 'ad me' &&
       document.activeElement?.matches('.ProseMirror[contenteditable="true"]'),
   )
-  assert.ok(
-    (await page.evaluate(() => window.editorsAdded.size)) <= 1,
-    'the editor rebuilds at most once',
-  )
   assert.match(await editor.innerText(), /Hello world, reload me/)
   assert.equal(
     (await page.evaluate(() => window.hibi.getDocument())).dirty,
     true,
+  )
+})
+
+test('editing stays read-only while an editor extension reloads and keeps a selection moved meanwhile', {
+  timeout: 60000,
+}, async (t) => {
+  const temp = await mkdtemp(join(tmpdir(), 'hibi-addon-reload-readonly-'))
+  const profile = join(temp, 'profile')
+  await writeInstalled(
+    profile,
+    manifest('slow-consumer', 'Slow consumer', {
+      startup: 'background',
+      requires: { addons: [{ id: 'frontmatter' }] },
+    }),
+    {
+      'index.js': `export default () => ({
+        async start() {
+          window.consumerStarts = (window.consumerStarts || 0) + 1;
+          if (window.holdConsumer) {
+            window.holdConsumer = false;
+            await new Promise((resolve) => { window.releaseConsumer = resolve; });
+          }
+        },
+      });`,
+    },
+    'd',
+  )
+  await writeFile(
+    join(profile, 'addons.json'),
+    JSON.stringify({ 'slow-consumer': true }),
+  )
+  const app = await electron.launch({
+    args: [resolve('.'), `--user-data-dir=${profile}`],
+  })
+  t.after(async () => {
+    await app.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => ({ response: 1 })
+    })
+    await app.close()
+    await rm(temp, { recursive: true, force: true })
+  })
+  const page = await app.firstWindow()
+  await waitForDocumentEditor(app, page)
+  await page.waitForFunction(() => window.consumerStarts === 1)
+  const editor = page.getByRole('textbox', { name: /document editor/i })
+  await editor.click()
+  await page.keyboard.type('Hello world, reload me')
+  for (let index = 0; index < 5; index++)
+    await page.keyboard.press('Shift+ArrowLeft')
+  const markdown = () =>
+    page.evaluate(async () => (await window.hibi.getDocument()).markdown)
+  await page.waitForFunction(async () =>
+    /reload me/.test((await window.hibi.getDocument()).markdown),
+  )
+  const before = await markdown()
+  await page.evaluate(() => {
+    window.holdConsumer = true
+  })
+  await sendReload(app, 'frontmatter')
+  await page.waitForFunction(() => !!window.releaseConsumer)
+  await page.waitForFunction(
+    () =>
+      document
+        .querySelector('[role="textbox"][aria-label="Document editor"]')
+        ?.getAttribute('aria-readonly') === 'true',
+  )
+  // The user moves the selection with the mouse; typing changes nothing while the reload runs.
+  await editor.getByText(/Hello world/).dblclick({ position: { x: 5, y: 5 } })
+  await page.waitForFunction(() => getSelection().toString() === 'Hello')
+  await page.keyboard.type('xyz')
+  assert.equal(await markdown(), before)
+  await page.evaluate(() => window.releaseConsumer())
+  await page.waitForFunction(
+    () =>
+      document
+        .querySelector('[role="textbox"][aria-label="Document editor"]')
+        ?.getAttribute('aria-readonly') === 'false',
+  )
+  assert.equal(await page.evaluate(() => getSelection().toString()), 'Hello')
+  assert.equal(await markdown(), before)
+  await page.keyboard.press('End')
+  await page.keyboard.type('!')
+  await page.waitForFunction(async () =>
+    (await window.hibi.getDocument()).markdown.includes('reload me!'),
   )
 })

@@ -5,7 +5,6 @@ import { workspaceSyntaxEvents } from '../../shared/workspace-syntax-events.ts'
 import literalStyles from '../../ui/markdown-literal.css?raw'
 import syntaxStyles from '../../ui/syntax.css?raw'
 import { codeHtml, codeLanguages, escapeCode } from './code-languages'
-import { publishEditorConfiguration } from './registration-batch'
 import { installSyntaxPreferences } from './syntax-parser'
 
 export async function renderMarkdownAsync(source: string, documentId?: string) {
@@ -31,17 +30,14 @@ const registry = new Map<string, RegisteredFlavor>()
 const listeners = new Set<() => void>()
 let snapshot: RegisteredFlavor[] = []
 let version = 0
-const applySnapshot = () => {
+const publish = () => {
   snapshot = [...registry.values()].sort((a, b) => a.id.localeCompare(b.id))
   version++
   for (const listener of listeners) listener()
   workspaceSyntaxEvents.publish()
 }
-const publish = () => publishEditorConfiguration(applySnapshot)
 export const flavors = {
   snapshot: () => snapshot,
-  /** The registered flavor, even while publication is held. */
-  get: (id: string) => registry.get(id),
   version: () => version,
   subscribe(listener: () => void) {
     listeners.add(listener)

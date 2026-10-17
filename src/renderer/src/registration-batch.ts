@@ -51,28 +51,3 @@ export function registrationBatch(staged: boolean) {
     },
   }
 }
-
-let holds = 0
-const held = new Set<() => void>()
-/** Publish editor configuration now, or once when every open hold has been released. */
-export function publishEditorConfiguration(publish: () => void) {
-  if (holds) held.add(publish)
-  else publish()
-}
-/**
- * Keep published editor configuration, such as syntax, flavors, and formats,
- * unchanged until the returned release runs, so an addon reload rebuilds
- * editors once instead of on every removal and registration.
- */
-export function holdEditorConfiguration() {
-  holds++
-  let open = true
-  return () => {
-    if (!open) return
-    open = false
-    if (--holds) return
-    const queued = [...held]
-    held.clear()
-    for (const publish of queued) publish()
-  }
-}
