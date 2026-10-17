@@ -228,16 +228,21 @@ test('compiled styles and declared themes use the same owned activation path', a
   await writeFile(resolve(folder, 'index.ts'), 'export default { start() {} }')
   await writeFile(resolve(folder, 'style.css'), '.probe { color: red }')
   const { addonRegistry, find } = await registry(t)
-  const styles = await addonRegistry.styles(id)
+  const { styles, themes } = await addonRegistry.resources(id)
   assert.equal(styles.length, 1)
   assert.ok(
     styles[0].endsWith('/src/useraddons/definition-resources-probe/style.css'),
   )
+  assert.deepEqual(
+    themes.map((scheme) => scheme.id),
+    ['night'],
+  )
+  // The host registers declared themes; the descriptor only starts code.
   const registered = []
   await find(id).start({
     colorschemes: { register: (scheme) => registered.push(scheme.id) },
   })
-  assert.deepEqual(registered, ['night'])
+  assert.deepEqual(registered, [])
 })
 
 test('declared themes precede runtime registration and duplicate IDs fail without replacing colors', async (t) => {
@@ -291,8 +296,10 @@ test('declared themes precede runtime registration and duplicate IDs fail withou
     },
   }
   const addon = find(id)
-  // useAddons owns cleanup after descriptor failure; exercise the same removers.
+  // useAddons registers declared themes before start and owns cleanup after failure.
   for (let attempt = 0; attempt < 2; attempt++) {
+    for (const theme of (await addonRegistry.resources(id)).themes)
+      context.colorschemes.register(theme)
     await assert.rejects(
       addon.start(context),
       /duplicate colorscheme: collision-probe.night/,
