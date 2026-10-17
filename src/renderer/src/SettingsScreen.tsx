@@ -79,6 +79,16 @@ class PluginSettingsBoundary extends Component<
   }
 }
 
+function AddonUpdating() {
+  return (
+    <DocumentNotice
+      title="Updating addon"
+      message="These settings open again when the update finishes."
+      busy
+    />
+  )
+}
+
 export function SettingsScreen({
   statusBar,
   onStatusBar,
@@ -105,6 +115,7 @@ export function SettingsScreen({
   onAddonEnabled,
   onInstallAddon,
   onRemoveAddon,
+  updatingAddons,
   resize,
   cursorSettings,
   onCursorSettings,
@@ -149,6 +160,8 @@ export function SettingsScreen({
   onAddonEnabled: (id: string, enabled: boolean) => Promise<void>
   onInstallAddon: (url?: string) => Promise<void>
   onRemoveAddon: (id: string) => Promise<void>
+  /** Addons being updated; their settings stay closed so a restart cannot discard edits. */
+  updatingAddons: ReadonlySet<string>
   resize: NonNullable<SidebarProps['resize']>
   cursorSettings: CursorSettings
   onCursorSettings: (settings: CursorSettings) => void
@@ -786,7 +799,7 @@ export function SettingsScreen({
               onChanged={onWorkspaceChanged}
             />
           </section>
-          {extraPages.map(({ id, label, Content }) => (
+          {extraPages.map(({ id, label, Content, owner }) => (
             <section
               key={id}
               id={`settings-${id}`}
@@ -796,14 +809,20 @@ export function SettingsScreen({
               hidden={category !== id}
             >
               <h1>{label}</h1>
-              {(discover || (open && (searching || category === id))) && (
-                <PluginSettingsBoundary key={id}>
-                  <Suspense
-                    fallback={<DocumentNotice title="Loading settings…" busy />}
-                  >
-                    <Content />
-                  </Suspense>
-                </PluginSettingsBoundary>
+              {updatingAddons.has(owner) ? (
+                <AddonUpdating />
+              ) : (
+                (discover || (open && (searching || category === id))) && (
+                  <PluginSettingsBoundary key={id}>
+                    <Suspense
+                      fallback={
+                        <DocumentNotice title="Loading settings…" busy />
+                      }
+                    >
+                      <Content />
+                    </Suspense>
+                  </PluginSettingsBoundary>
+                )
               )}
             </section>
           ))}
@@ -880,7 +899,10 @@ export function SettingsScreen({
                   </div>
                 </>
               )}
-              {Settings &&
+              {Settings && updatingAddons.has(manifest.id) ? (
+                <AddonUpdating />
+              ) : (
+                Settings &&
                 (discover ||
                   (open &&
                     (searching || category === `plugin-${manifest.id}`))) && (
@@ -893,7 +915,8 @@ export function SettingsScreen({
                       <Settings />
                     </Suspense>
                   </PluginSettingsBoundary>
-                )}
+                )
+              )}
             </section>
           ))}
         </div>

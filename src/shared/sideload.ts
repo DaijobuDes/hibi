@@ -22,7 +22,12 @@ export type AddonInstallCandidate = {
   manifest?: AddonManifest
   status: 'installable' | 'invalid' | 'blocked'
   reasons: string[]
-  replaces?: { version: string; source: 'local' | 'third-party' }
+  replaces?: {
+    version: string
+    source: 'local' | 'third-party'
+    /** Unchanged access: the replacement keeps its enabled setting and reloads in place. */
+    keepsSetting?: true
+  }
 }
 export type AddonInstallSession = {
   id: string
@@ -44,6 +49,7 @@ export const SIDELOAD_CHANNELS = {
   folder: 'addons:folder',
   garden: 'addons:garden',
   remove: 'addons:remove',
+  resources: 'addons:resources',
   documentation: 'addons:documentation',
   link: 'addons:documentation-link',
 } as const

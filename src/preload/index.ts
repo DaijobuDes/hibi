@@ -208,6 +208,16 @@ if (process.isMainFrame) {
       return () =>
         ipcRenderer.removeListener(ADDON_WINDOW_CHANNELS.closed, listener)
     },
+    getAddonWindowOwners: () =>
+      ipcRenderer.invoke(ADDON_WINDOW_CHANNELS.owners),
+    onAddonReload: (callback) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        request: { id: string; scope: 'code' | 'styles' },
+      ) => callback(request)
+      ipcRenderer.on(ADDON_CHANNELS.reload, listener)
+      return () => ipcRenderer.removeListener(ADDON_CHANNELS.reload, listener)
+    },
     onGlobalShortcut: (callback) => {
       const listener = (
         _event: Electron.IpcRendererEvent,
@@ -316,9 +326,12 @@ if (process.isMainFrame) {
     openDroppedFile: (file) =>
       ipcRenderer.invoke(MEDIA_CHANNELS.open, webUtils.getPathForFile(file)),
     getInstalledAddons: () => ipcRenderer.invoke(SIDELOAD_CHANNELS.list),
-    installAddon: (url) => ipcRenderer.invoke(SIDELOAD_CHANNELS.install, url),
-    installAddonSelection: (id, keys) =>
-      ipcRenderer.invoke(SIDELOAD_CHANNELS.selection, id, keys),
+    getInstalledAddonResources: (id) =>
+      ipcRenderer.invoke(SIDELOAD_CHANNELS.resources, id),
+    installAddon: (url, openSettings) =>
+      ipcRenderer.invoke(SIDELOAD_CHANNELS.install, url, openSettings),
+    installAddonSelection: (id, keys, openSettings) =>
+      ipcRenderer.invoke(SIDELOAD_CHANNELS.selection, id, keys, openSettings),
     cancelAddonInstall: (id) =>
       ipcRenderer.invoke(SIDELOAD_CHANNELS.cancel, id),
     openAddonsFolder: () => ipcRenderer.invoke(SIDELOAD_CHANNELS.folder),

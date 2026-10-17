@@ -867,6 +867,10 @@ function App() {
       openDependencySettings: () => openSetting('dependencies'),
       openAddonSettings: (id) =>
         openSetting('addons', id ? `addon-${id}` : undefined),
+      settingsVisible: (id) =>
+        settingsOpen &&
+        (settingsCategory === `plugin-${id}` ||
+          settingsCategory.startsWith(`addon-${id}.`)),
       openSidebar: selectSidebarView,
       closeSidebar: (side) => {
         if (side === 'right') {
@@ -2627,7 +2631,7 @@ function App() {
         }
         data-startup={!splitTabs && showWelcome}
         inert={!addonHost.ready}
-        aria-busy={!addonHost.ready}
+        aria-busy={!addonHost.ready || addonHost.reloading}
         onPointerDown={(event) => {
           if ((event.target as Element).closest('[aria-label="Close split"]'))
             return
@@ -2707,7 +2711,7 @@ function App() {
                 )
               }
               mode={paneMode}
-              disabled={busy || !addonHost.ready}
+              disabled={busy || !addonHost.ready || addonHost.reloading}
               findOpen={findOpen && active && !settingsOpen}
               onCloseFind={() => setFindOpen(false)}
             />
@@ -3114,6 +3118,7 @@ function App() {
             onBack={leaveSettings}
             onInstallAddon={addonHost.install}
             onRemoveAddon={addonHost.remove}
+            updatingAddons={addonHost.updating}
             selected={settingsCategory}
             onCategory={setSettingsCategory}
             onSetting={openSetting}

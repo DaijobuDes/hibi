@@ -113,6 +113,12 @@ export type DesktopApi = {
   onAddonWindowClosed: (
     callback: (addonId: string, id: string) => void,
   ) => () => void
+  /** Addons whose windows are open, loading, or kept alive while hidden. */
+  getAddonWindowOwners: () => Promise<string[]>
+  /** `styles` swaps package stylesheets and themes; `code` restarts the addon and its required consumers. */
+  onAddonReload: (
+    callback: (request: { id: string; scope: 'code' | 'styles' }) => void,
+  ) => () => void
   onGlobalShortcut: (
     callback: (
       invocation: import('./global-shortcuts').GlobalShortcutInvocation,
@@ -207,12 +213,19 @@ export type DesktopApi = {
     workspace?: WorkspaceState | null
   } | null>
   getInstalledAddons: () => Promise<import('./sideload').InstalledAddon[]>
+  /** Declared stylesheets and themes read again from an installed addon's files. */
+  getInstalledAddonResources: (
+    id: string,
+  ) => Promise<Pick<import('./sideload').InstalledAddon, 'styles' | 'themes'>>
+  /** `openSettings` lists addons whose settings are on screen; a replacement of one is refused. */
   installAddon: (
     url?: string,
+    openSettings?: readonly string[],
   ) => Promise<import('./sideload').AddonInstallSession | null>
   installAddonSelection: (
     sessionId: string,
     candidateKeys: string[],
+    openSettings?: readonly string[],
   ) => Promise<import('./sideload').AddonInstallResult[]>
   cancelAddonInstall: (sessionId: string) => Promise<void>
   openAddonsFolder: () => Promise<void>
