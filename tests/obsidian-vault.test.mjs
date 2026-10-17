@@ -201,4 +201,86 @@ test('Obsidian vault opens in place with wiki links, SVG embeds and backup promp
   })
   await warning.getByRole('button', { name: 'Review addons' }).click()
   await settingsStayOpen()
+
+  // Settings reopened through forward history also count as opened meanwhile.
+  const notes = join(folder, 'notes')
+  await mkdir(notes)
+  await app.evaluate(({ dialog }, notes) => {
+    dialog.showOpenDialog = async () => ({
+      canceled: false,
+      filePaths: [notes],
+    })
+  }, notes)
+  const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
+  await pressShortcut(app, `${mod}+[`)
+  await page.locator('.app[data-screen="editor"]').waitFor()
+  await holdReply('workspace:open')
+  await pressShortcut(app, `${mod}+Shift+o`)
+  await page.locator('.app[aria-busy="true"]').waitFor()
+  await pressShortcut(app, `${mod}+]`)
+  await settingsStayOpen()
+})
+
+test('a startup vault keeps Settings opened from its backup prompt', {
+  timeout: 30000,
+}, async (t) => {
+  const folder = await mkdtemp(join(tmpdir(), 'hibi-obsidian-startup-'))
+  const vault = join(folder, 'vault')
+  const profile = join(folder, 'profile')
+  await mkdir(join(vault, '.obsidian'), { recursive: true })
+  await mkdir(profile)
+  await writeFile(
+    join(vault, '.obsidian', 'community-plugins.json'),
+    '["dataview"]',
+  )
+  const app = await electron.launch({
+    args: [resolve('.'), `--user-data-dir=${profile}`],
+  })
+  t.after(async () => {
+    await app.evaluate(() => globalThis.releaseReply?.())
+    await app.close()
+    await rm(folder, { recursive: true, force: true })
+  })
+  const page = await app.firstWindow()
+  page.setDefaultTimeout(7000)
+  await page.getByRole('textbox', { name: 'Document editor' }).waitFor()
+  // The external-document queue opens the startup folder, publishing the vault
+  // before it replies.
+  await writeFile(
+    join(profile, 'workspace-settings.json'),
+    JSON.stringify({
+      enabled: false,
+      path: null,
+      startup: 'folder',
+      startupFolder: vault,
+    }),
+  )
+  await app.evaluate(({ ipcMain, BrowserWindow }) => {
+    const read = ipcMain._invokeHandlers.get('document:external')
+    ipcMain._invokeHandlers.set('document:external', async (...args) => {
+      ipcMain._invokeHandlers.set('document:external', read)
+      const released = new Promise((resolve) => {
+        globalThis.releaseReply = resolve
+      })
+      const result = await read(...args)
+      await released
+      return result
+    })
+    BrowserWindow.getAllWindows()[0].webContents.send(
+      'document:external-pending',
+    )
+  })
+  await page
+    .getByRole('dialog', { name: 'Back up this Obsidian vault' })
+    .getByRole('button', { name: 'Review addons' })
+    .click()
+  await page.getByRole('main', { name: 'Settings' }).waitFor()
+  await app.evaluate(() => globalThis.releaseReply())
+  await page.waitForFunction(
+    () => document.querySelector('.app')?.getAttribute('aria-busy') === 'false',
+  )
+  assert.equal(
+    await page.locator('.app').getAttribute('data-screen'),
+    'settings',
+  )
 })
