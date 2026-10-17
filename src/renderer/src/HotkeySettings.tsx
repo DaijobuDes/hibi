@@ -107,7 +107,9 @@ export function HotkeySettings({
       <div className="settings-group hotkey-list">
         {actions
           .filter(({ label, category }) =>
-            `${category} ${label}`.includes(query.toLowerCase().trim()),
+            `${category} ${label}`
+              .toLowerCase()
+              .includes(query.toLowerCase().trim()),
           )
           .map(({ id, label, category }) => (
             <HotkeyRow
