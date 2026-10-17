@@ -14,6 +14,7 @@ import { electron, waitForDocumentEditor } from './electron.mjs'
 import { clickMenu, pressShortcut, replaceSourceText } from './keyboard.mjs'
 import { NATIVE_COMPILER_READY_TIMEOUT, waitForAsync } from './poll.mjs'
 import { renameDocument } from './rename.mjs'
+import { recordToasts } from './toasts.mjs'
 import { uiName } from './ui.mjs'
 
 test('typst documents and markdown blocks preview locally, export, and preserve source', {
@@ -61,6 +62,7 @@ test('typst documents and markdown blocks preview locally, export, and preserve 
     const fork = utilityProcess.fork
     utilityProcess.fork = (...args) => {
       const child = fork(...args)
+      if (!String(args[0]).endsWith('typst-worker.js')) return child
       const started = performance.now()
       child.on('message', (message) => {
         if (phases.length === 20) phases.shift()
@@ -212,15 +214,7 @@ test('typst documents and markdown blocks preview locally, export, and preserve 
   await app.evaluate(({ dialog }, path) => {
     dialog.showSaveDialog = async () => ({ canceled: false, filePath: path })
   }, pdf)
-  // Error toasts dismiss themselves before the export wait ends; keep them.
-  await page.evaluate(() => {
-    const seen = new Set()
-    window.typstToasts = seen
-    new MutationObserver(() => {
-      for (const toast of document.querySelectorAll('.toast-copy'))
-        seen.add(`${toast.getAttribute('role')}: ${toast.textContent}`)
-    }).observe(document.body, { childList: true, subtree: true })
-  })
+  const stopToasts = await recordToasts(page)
   await app.evaluate(() => {
     globalThis.typstPhases.length = 0
   })
@@ -234,13 +228,14 @@ test('typst documents and markdown blocks preview locally, export, and preserve 
         console.error(
           'typst pdf export:',
           JSON.stringify({
-            toasts: await page.evaluate(() => [...window.typstToasts]),
+            toasts: await stopToasts(),
             phases: await app.evaluate(() => globalThis.typstPhases),
           }),
         )
       } catch {}
       throw error
     })
+  await stopToasts()
   assert.equal((await readFile(pdf)).subarray(0, 5).toString(), '%PDF-')
   await choose('insert typst block')
   const formatDialog = page.getByRole('dialog', {
