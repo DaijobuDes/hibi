@@ -175,6 +175,15 @@ test('rebind, conflict, clear, reset, native menus, and relaunch persistence', {
     name: /^rebind command palette$/i,
     exact: true,
   })
+  // The filter ignores letter case in command names.
+  const filter = page.getByLabel('Filter hotkeys', { exact: true })
+  await filter.fill('Command Palette')
+  await binding.waitFor()
+  assert.equal(
+    await page.getByRole('button', { name: /^rebind new document$/i }).count(),
+    0,
+  )
+  await filter.fill('')
   // Keys pressed as soon as a recorder shows recording must reach it.
   await page.evaluate(() => {
     window.recordingFocus = []
