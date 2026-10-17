@@ -298,6 +298,7 @@ export function useAddons(
   const [loadFailed, setLoadFailed] = useState(false)
   const [readOnlyReloads, setReadOnlyReloads] = useState(0)
   const [updating, setUpdating] = useState<ReadonlySet<string>>(new Set())
+  const installing = useRef(false)
   const [requested, setRequested] = useState<ReadonlySet<string>>(new Set())
   const manifests = useMemo(
     () => catalog.map((addon) => addon.manifest),
@@ -2388,21 +2389,30 @@ export function useAddons(
     }
   }
   async function install(url?: string) {
-    let replacing: Promise<unknown> | undefined
-    try {
-      // Main refuses to replace an addon in place while its settings are on screen.
-      const openSettings = catalog
-        .map(({ manifest }) => manifest.id)
-        .filter((id) => latest.current.settingsVisible?.(id))
-      // The settings of others a replacement could restart stay closed until it finishes.
-      setUpdating(
-        new Set(
-          manifests
-            .filter(({ id }) => addonRegistry.isInstalled(id))
-            .flatMap(({ id }) => [id, ...addonDependents(manifests, id)])
-            .filter((id) => !openSettings.includes(id)),
+    // A second request would only be rejected by main; it must not touch the running one's reservation.
+    if (installing.current) {
+      latest.current.error(
+        new Error(
+          'Another addon installation is still running. Try again when it finishes.',
         ),
       )
+      return
+    }
+    installing.current = true
+    let replacing: Promise<unknown> | undefined
+    // Main refuses to replace an addon in place while its settings are on screen.
+    const openSettings = catalog
+      .map(({ manifest }) => manifest.id)
+      .filter((id) => latest.current.settingsVisible?.(id))
+    // The settings of others a replacement could restart stay closed until it and its reload finish.
+    const reservation: ReadonlySet<string> = new Set(
+      manifests
+        .filter(({ id }) => addonRegistry.isInstalled(id))
+        .flatMap(({ id }) => [id, ...addonDependents(manifests, id)])
+        .filter((id) => !openSettings.includes(id)),
+    )
+    setUpdating(reservation)
+    try {
       const session = await window.hibi.installAddon(url, openSettings)
       try {
         if (session) {
@@ -2430,7 +2440,12 @@ export function useAddons(
     } catch (error) {
       latest.current.error(error)
     } finally {
-      void Promise.resolve(replacing).finally(() => setUpdating(new Set()))
+      installing.current = false
+      void Promise.resolve(replacing).finally(() =>
+        setUpdating((current) =>
+          current === reservation ? new Set() : current,
+        ),
+      )
     }
   }
   const reloads = useRef(new Map<string, object>()).current

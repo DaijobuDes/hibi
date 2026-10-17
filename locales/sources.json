@@ -344,6 +344,9 @@
   "a4d759d9e47f": [
     "src/renderer/src/main.tsx"
   ],
+  "f1077726d560": [
+    "src/renderer/src/addons.ts"
+  ],
   "8c733faf0a0a": [
     "src/main/dependencies.ts"
   ],

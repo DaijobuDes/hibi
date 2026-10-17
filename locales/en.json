@@ -110,6 +110,7 @@
   "2cc9fa9f35da": "Analysis took too long.",
   "29c31ba1ff9a": "Analysis was cancelled.",
   "a4d759d9e47f": "Another action is still running. Try again in a moment.",
+  "f1077726d560": "Another addon installation is still running. Try again when it finishes.",
   "8c733faf0a0a": "Another dependency is installing. Wait for it to finish.",
   "46e7dbbc93e5": "Another file operation is in progress. Wait for it to finish, then try again.",
   "b3f05ba1d906": "Antonyms",

@@ -488,10 +488,25 @@ test('a reviewed replacement stays enabled and reloads in place unless its acces
   }
   await clickMenu(app, 'Settings')
   await page.getByRole('tab', { name: /^reload provider$/i }).click()
-  await page
-    .getByText(/these settings open again when the update finishes/i)
-    .waitFor()
+  const updating = page.getByText(
+    /these settings open again when the update finishes/i,
+  )
+  await updating.waitFor()
   assert.equal(await draft.count(), 0)
+  // A second installation is refused without releasing the first one's settings.
+  await install(same)
+  await page.waitForFunction(() =>
+    /another (addon installation|file operation) is (still running|in progress)/i.test(
+      document.body.innerText,
+    ),
+  )
+  await updating.waitFor()
+  assert.match(
+    await page.evaluate(() => document.body.innerText),
+    /another addon installation is still running/i,
+  )
+  assert.equal(await draft.count(), 0)
+  assert.equal(await page.evaluate(() => window.providerVersion), 1)
   await app.evaluate(() => {
     delete globalThis.hibiTestPauses
     globalThis.resumeReplacement()
