@@ -43,7 +43,7 @@ test('bundled MCP server serves a real HTTP client and preserves workspace edits
   const root = await mkdtemp(join(tmpdir(), 'hibi-mcp-'))
   const workspace = join(root, 'workspace')
   const profile = join(root, 'profile')
-  const saved = '# Active\n\nSaved text.\n'
+  const saved = 'Saved text.'
   const closed = 'alpha beta gamma\nrepeat repeat\n'
   const files = {
     'active.md': saved,
@@ -97,12 +97,14 @@ test('bundled MCP server serves a real HTTP client and preserves workspace edits
     },
     { port, token, allowEdits: false },
   )
+  await page.getByRole('button', { name: /toggle workspace sidebar/i }).click()
   await page.evaluate(() => window.hibi.openWorkspace())
-  await page.evaluate(() => window.hibi.openWorkspaceFile('active.md'))
+  await page.getByRole('treeitem', { name: 'active.md', exact: true }).click()
+  await page.locator('.tiptap').getByText(saved, { exact: true }).waitFor()
   await waitForDocumentEditor(app, page)
   await clickMenu(app, 'Settings')
   await page.getByRole('tab', { name: /^addon manager$/i }).click()
-  await page.locator('#addon-mcp-server').check()
+  await page.locator('#addon-mcp-server').click()
   await waitForAsync(page, async () =>
     (await window.hibi.getAddonStates()).some(
       (addon) => addon.id === 'mcp-server' && addon.enabled,
@@ -120,7 +122,10 @@ test('bundled MCP server serves a real HTTP client and preserves workspace edits
     url,
   )
 
-  const request = (message, { method = 'POST', headers = {} } = {}) => {
+  const request = (
+    message,
+    { method = 'POST', headers = {}, endpoint = url } = {},
+  ) => {
     const allHeaders = new Headers({
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
@@ -131,7 +136,7 @@ test('bundled MCP server serves a real HTTP client and preserves workspace edits
       if (value === null) allHeaders.delete(key)
       else allHeaders.set(key, value)
     }
-    return fetch(url, {
+    return fetch(endpoint, {
       method,
       headers: allHeaders,
       body:
@@ -172,7 +177,6 @@ test('bundled MCP server serves a real HTTP client and preserves workspace edits
       for (const [headers, status] of [
         [{ Authorization: null }, 401],
         [{ Authorization: 'Bearer wrong-token' }, 401],
-        [{ Host: `foreign.example:${port}` }, 403],
         [{ Origin: 'https://foreign.example' }, 403],
         [{ 'Content-Type': 'text/plain' }, 415],
         [{ 'MCP-Protocol-Version': 'unsupported' }, 400],
@@ -181,6 +185,12 @@ test('bundled MCP server serves a real HTTP client and preserves workspace edits
         assert.equal(response.status, status, JSON.stringify(headers))
         assert.equal(await response.text(), '')
       }
+      // Fetch derives Host from the URL, ignoring a caller's Host header.
+      const badHost = await request(ping, {
+        endpoint: `http://localhost.:${port}/mcp`,
+      })
+      assert.equal(badHost.status, 403)
+      assert.equal(await badHost.text(), '')
       const get = await request(undefined, { method: 'GET' })
       assert.equal(get.status, 405)
       assert.equal(get.headers.get('allow'), 'POST')
@@ -486,7 +496,8 @@ test('bundled MCP server serves a real HTTP client and preserves workspace edits
           destination: 'notes/moved.md',
         }),
       )
-      assert.equal(moved.path, 'notes/moved.md')
+      assert.equal(moved.path, 'move.md')
+      assert.equal(moved.destinationPath, 'notes/moved.md')
       await assert.rejects(onDisk('move.md'), { code: 'ENOENT' })
       assert.equal(await onDisk('notes/moved.md'), files['move.md'])
       jsonOf(await tool('trash_document', { path: 'trash.md' }))
