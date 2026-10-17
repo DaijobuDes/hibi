@@ -229,7 +229,9 @@ try {
 const listeners = new Set<() => void>()
 let snapshot: readonly Entry[] = [],
   disabledFeatures: readonly Entry[] = [],
-  version = 0
+  version = 0,
+  schema: readonly unknown[] = [],
+  schemaVersion = 0
 function publish() {
   snapshot = [...registry.values()].map((feature) => ({
     ...feature,
@@ -237,6 +239,19 @@ function publish() {
   }))
   disabledFeatures = snapshot.filter((feature) => !feature.enabled)
   version++
+  // Preview-only document syntax cannot change what Markdown editors parse.
+  const next = [...registry.values()].flatMap((feature) =>
+    feature.scope === 'document' && !feature.extensions?.length
+      ? []
+      : [feature, disabled.has(feature.id)],
+  )
+  if (
+    next.length !== schema.length ||
+    next.some((value, index) => value !== schema[index])
+  ) {
+    schema = next
+    schemaVersion++
+  }
   for (const listener of listeners) listener()
   workspaceSyntaxEvents.publish()
 }
@@ -256,6 +271,7 @@ export const markdownSyntax = {
   snapshot: () => snapshot,
   isCore: (id: string) => coreIds.has(id),
   version: () => version,
+  schemaVersion: () => schemaVersion,
   enabled: (id: string) => !disabled.has(id),
   extensionEnabled(name: string) {
     const owners = snapshot.filter((feature) =>
