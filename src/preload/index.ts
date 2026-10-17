@@ -90,7 +90,9 @@ if (process.isMainFrame) {
     const listener = (_event: Electron.IpcRendererEvent, payload: T) =>
       callback(payload)
     ipcRenderer.on(channel, listener)
-    return () => ipcRenderer.removeListener(channel, listener)
+    return () => {
+      ipcRenderer.removeListener(channel, listener)
+    }
   }
   transport.on(DOCUMENT_CHANNELS.flush, (_event, token: string) => {
     void journal.flush().then(
@@ -249,10 +251,7 @@ if (process.isMainFrame) {
     checkForUpdates: () => transport.invoke(UPDATE_CHANNELS.check),
     downloadUpdate: () => transport.invoke(UPDATE_CHANNELS.download),
     installUpdate: () => ipcRenderer.invoke(UPDATE_CHANNELS.install),
-    onUpdateChanged: (callback) => {
-      const dispose = subscribe(UPDATE_CHANNELS.changed, callback)
-      return () => void dispose()
-    },
+    onUpdateChanged: (callback) => subscribe(UPDATE_CHANNELS.changed, callback),
     getDependencies: (owner) =>
       transport.invoke(DEPENDENCY_CHANNELS.list, owner),
     checkDependency: (target) =>
@@ -494,10 +493,8 @@ if (process.isMainFrame) {
         ipcRenderer.removeListener(WORKSPACE_CHANNELS.changed, listener)
       }
     },
-    onWorkspaceListChanged: (callback) => {
-      const dispose = subscribe(WORKSPACE_CHANNELS.listChanged, callback)
-      return () => void dispose()
-    },
+    onWorkspaceListChanged: (callback) =>
+      subscribe(WORKSPACE_CHANNELS.listChanged, callback),
     getAppInfo: () => ipcRenderer.invoke(APP_INFO_CHANNEL),
     setUiCase: (value) => ipcRenderer.invoke(UI_CASE_CHANNEL, value),
     getDocument: () => ipcRenderer.invoke(DOCUMENT_CHANNELS.get),
@@ -559,9 +556,6 @@ if (process.isMainFrame) {
     saveHotkeys: (hotkeys) => ipcRenderer.invoke(HOTKEY_CHANNELS.save, hotkeys),
     setHotkeyRecording: (recording) =>
       ipcRenderer.invoke(HOTKEY_CHANNELS.record, recording),
-    onCommand: (callback) => {
-      const dispose = subscribe(HOTKEY_CHANNELS.command, callback)
-      return () => void dispose()
-    },
+    onCommand: (callback) => subscribe(HOTKEY_CHANNELS.command, callback),
   } satisfies DesktopApi)
 }
