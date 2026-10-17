@@ -339,6 +339,23 @@ test('replacement and removal block dependents, retain their preferences, and re
     '1.0.0',
   )
   h.state.failRename = false
+  const providerGeneration = h.getAddonActivationGeneration('provider')
+  await h.installAddon(h.window)
+  // Unchanged access keeps the setting and retires only the replaced activation.
+  assert.equal(stateOf(h, 'provider').enabled, true)
+  assert.equal(stateOf(h, 'consumer').blockedBy, undefined)
+  assert.equal(
+    h.isAddonActivationCurrent('provider', providerGeneration),
+    false,
+  )
+  assert.equal(h.isAddonActivationCurrent('consumer', generation), true)
+  h.state.source = await fixture(
+    source,
+    details('provider', {
+      version: '3.0.0',
+      network: { origins: ['https://example.com'] },
+    }),
+  )
   await h.installAddon(h.window)
   assert.equal(stateOf(h, 'provider').enabled, false)
   assert.deepEqual(stateOf(h, 'consumer'), {
