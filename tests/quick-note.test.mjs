@@ -767,6 +767,26 @@ test('the capture window renders markdown like the main editor', {
     join(workspace, 'Reading list.md'),
   )
   await page.locator('.tiptap h1').getByText('Reading list').waitFor()
+  // Hosted macOS sometimes measures block markers; record what moves the caret.
+  await page.evaluate(() => {
+    const { editor } = document.querySelector('.tiptap')
+    const started = performance.now()
+    const log = []
+    window.parityLog = log
+    const record = (event) =>
+      log.push([
+        Math.round(performance.now() - started),
+        event,
+        editor.state.selection.head,
+        editor.isFocused,
+        document.hasFocus(),
+      ])
+    for (const event of ['selectionUpdate', 'focus', 'blur'])
+      editor.on(event, () => record(event))
+    for (const event of ['focus', 'blur'])
+      window.addEventListener(event, () => record(`window ${event}`))
+    window.parityEditor = editor
+  })
   const capture = await openCapture(app, page)
   const shape = async (editor) => {
     const root = editor.locator('.tiptap[contenteditable="true"]')
@@ -797,6 +817,27 @@ test('the capture window renders markdown like the main editor', {
     }))
   }
   const main = await shape(page)
+  if (main.markers)
+    console.error(
+      'quick note parity:',
+      JSON.stringify(
+        await page.evaluate(() => {
+          const element = document.querySelector(
+            '.tiptap[contenteditable="true"]',
+          )
+          const { selection } = element.editor.state
+          return {
+            sameEditor: element.editor === window.parityEditor,
+            head: selection.head,
+            block: selection.$head.parent.textContent,
+            markers: [...element.querySelectorAll('.markdown-marker')].map(
+              (marker) => marker.dataset.marker,
+            ),
+            log: window.parityLog.slice(-20),
+          }
+        }),
+      ),
+    )
   assert.deepEqual(main, {
     headings: 1,
     tasks: 2,
