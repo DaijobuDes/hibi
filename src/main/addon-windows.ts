@@ -343,6 +343,15 @@ export function closeAddonWindows(addonId: string): void {
   teardown((item) => item.addonId === addonId)
 }
 
+/** Addons whose windows are open, loading, or kept alive while hidden. */
+export function addonWindowOwners(): string[] {
+  return [
+    ...new Set(
+      [...entries.values(), ...opening.values()].map(({ addonId }) => addonId),
+    ),
+  ]
+}
+
 /** Call once quitting is confirmed, or with `hidden` when only hidden windows would keep Hibi running. */
 export function releaseAddonWindows(hidden = false): void {
   teardown((item) => !hidden || item.hidden)

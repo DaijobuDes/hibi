@@ -1030,6 +1030,8 @@ export const ADDON_CHANNELS = {
   enable: 'addons:enable',
   invoke: 'addons:invoke',
   query: 'addons:query',
+  /** Main asks the main window to reload one addon in place. */
+  reload: 'addons:reload',
 } as const
 
 export type {

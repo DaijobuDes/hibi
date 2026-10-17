@@ -2860,6 +2860,9 @@
   "f99d5978e568": [
     "src/renderer/src/AddonInstallChooser.tsx"
   ],
+  "3d68b12ef64d": [
+    "src/renderer/src/AddonInstallChooser.tsx"
+  ],
   "9f8bf0382e82": [
     "src/addons/dictionary/PackSettings.tsx"
   ],
@@ -4487,7 +4490,7 @@
   "90826115501d": [
     "src/addons/dictionary/SideView.tsx"
   ],
-  "ee8045711045": [
+  "394ae52b5e70": [
     "src/renderer/src/AddonInstallChooser.tsx"
   ],
   "cff651bb978f": [
@@ -4594,7 +4597,7 @@
   "8612007e996d": [
     "src/addons/review/index.tsx"
   ],
-  "2f89d8cec142": [
+  "740355addffc": [
     "src/renderer/src/AddonInstallChooser.tsx"
   ],
   "af6cace30a4a": [
@@ -7054,7 +7057,7 @@
   "507e6dce93ec": [
     "src/renderer/src/main.tsx"
   ],
-  "52d8502dcf31": [
+  "a83d13909ec8": [
     "src/main/sideload.ts"
   ],
   "229213386c16": [

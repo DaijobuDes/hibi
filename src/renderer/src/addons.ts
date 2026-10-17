@@ -117,6 +117,9 @@ function loadInteractionBroker() {
   return interactionBrokerModule
 }
 
+export type AddonReloadResult =
+  | { status: 'reloaded' | 'idle' | 'superseded' }
+  | { status: 'refused' | 'failed'; reason: string }
 export type RegisteredCommand = Omit<AddonCommand, 'run'> & {
   addonId: string
   canRun: (context: CommandExecutionContext) => boolean
@@ -191,6 +194,8 @@ type Environment = Omit<
     source: CommandExecutionContext['source'],
   ) => CommandExecutionContext
   isCommandContextCurrent?: (context: CommandExecutionContext) => boolean
+  /** Whether this addon's settings are on screen, where a reload would discard unsaved edits. */
+  settingsVisible?: (id: string) => boolean
 }
 
 /** A toggled addon, and failed addons it requires or that require it, may start again. */
@@ -509,6 +514,40 @@ export function useAddons(
     dependencies,
     windowBlocked,
   }
+  /** Settles when the owner next finishes starting, fails, or stops. */
+  const whenStarted = useCallback(
+    (owner: string) => {
+      let pending = activation.get(owner)
+      if (!pending) {
+        let resolve!: () => void, reject!: (error: unknown) => void
+        const promise = new Promise<void>((yes, no) => {
+          resolve = yes
+          reject = no
+        })
+        const timer = setTimeout(() => {
+          activation.delete(owner)
+          reject(new Error('The addon did not finish starting. Try again.'))
+        }, 20000)
+        pending = {
+          promise,
+          resolve: () => {
+            clearTimeout(timer)
+            activation.delete(owner)
+            resolve()
+          },
+          reject: (error) => {
+            clearTimeout(timer)
+            activation.delete(owner)
+            reject(error)
+          },
+        }
+        activation.set(owner, pending)
+        void promise.catch(() => {})
+      }
+      return pending.promise
+    },
+    [activation],
+  )
   const activateAddon = useCallback(
     async (owner: string) => {
       if (!currentActivation.current.available.has(owner))
@@ -520,42 +559,17 @@ export function useAddons(
           throw new Error(
             'This addon could not start. Turn it off and on in Addons to retry.',
           )
-        let pending = activation.get(owner)
-        if (!pending) {
-          let resolve!: () => void, reject!: (error: unknown) => void
-          const promise = new Promise<void>((yes, no) => {
-            resolve = yes
-            reject = no
-          })
-          const timer = setTimeout(() => {
-            activation.delete(owner)
-            reject(new Error('The addon did not finish starting. Try again.'))
-          }, 20000)
-          pending = {
-            promise,
-            resolve: () => {
-              clearTimeout(timer)
-              activation.delete(owner)
-              resolve()
-            },
-            reject: (error) => {
-              clearTimeout(timer)
-              activation.delete(owner)
-              reject(error)
-            },
-          }
-          activation.set(owner, pending)
-          void promise.catch(() => {})
+        if (!activation.has(owner)) {
           const requirements =
             currentActivation.current.dependencies.get(owner) ?? []
           setRequested(
             (current) => new Set([...current, owner, ...requirements]),
           )
         }
-        await pending.promise
+        await whenStarted(owner)
       }
     },
-    [activation, started],
+    [activation, started, whenStarted],
   )
   const executeCommand = useCallback(
     async (
@@ -640,7 +654,15 @@ export function useAddons(
     workspaceSyntaxEvents.publish()
   }, [extensions])
   const running = useRef(
-    new Map<string, { addon: Addon; stop: () => void }>(),
+    new Map<
+      string,
+      {
+        addon: Addon
+        stop: () => void
+        /** Swap package stylesheets and themes without restarting code; false when superseded. */
+        restyle: () => Promise<boolean>
+      }
+    >(),
   ).current
   const mounted = useRef(false)
   useEffect(() => {
@@ -941,6 +963,63 @@ export function useAddons(
           cleanups.delete(remove)
         }
       }
+      const registerScheme: AddonContext['colorschemes']['register'] = (
+        scheme,
+      ) => {
+        if (disposed) return () => {}
+        if (!/^[a-z][a-z0-9-]*$/.test(scheme.id))
+          throw new Error('This addon supplied an invalid color scheme name.')
+        const remove = colorschemes.register({
+          ...scheme,
+          id: `${id}.${scheme.id}`,
+        })
+        const cleanup = () => {
+          remove()
+          cleanups.delete(cleanup)
+        }
+        cleanups.add(cleanup)
+        return cleanup
+      }
+      // Declared package resources; an in-place update swaps them without restarting code.
+      let linked: import('./addon-sheets').AddonSheets | undefined
+      let declaredSchemes: (() => void)[] = []
+      let published = false
+      let restyles = 0
+      const restyle = async () => {
+        const revision = ++restyles
+        const [{ styles, themes }, { linkAddonSheets, reviseAddonSheets }] =
+          await Promise.all([
+            addonRegistry.resources(id),
+            import('./addon-sheets'),
+          ])
+        if (disposed || revision !== restyles) return false
+        reviseAddonSheets(id)
+        const next = styles.length ? linkAddonSheets(id, styles) : undefined
+        try {
+          await next?.ready
+        } catch (error) {
+          next?.dispose()
+          throw error
+        }
+        if (disposed || revision !== restyles) {
+          next?.dispose()
+          return false
+        }
+        colorschemes.batch(() => {
+          for (const remove of declaredSchemes) remove()
+          declaredSchemes = themes.map(registerScheme)
+        })
+        if (linked) {
+          cleanups.delete(linked.dispose)
+          linked.dispose()
+        }
+        linked = next
+        if (next) {
+          cleanups.add(next.dispose)
+          if (published) next.publish()
+        }
+        return true
+      }
       const stop = () => {
         if (disposed) return
         disposed = true
@@ -1132,7 +1211,7 @@ export function useAddons(
           throw new Error(
             `The ${id} addon needs an update before it can run in this version of Hibi.`,
           )
-        running.set(id, { addon, stop })
+        running.set(id, { addon, stop, restyle })
         const start = () =>
           addon.start({
             addons: exchangeScope.addons,
@@ -1237,23 +1316,7 @@ export function useAddons(
             },
             menus: menuScope.api,
             colorschemes: {
-              register(scheme) {
-                if (disposed) return () => {}
-                if (!/^[a-z][a-z0-9-]*$/.test(scheme.id))
-                  throw new Error(
-                    'This addon supplied an invalid color scheme name.',
-                  )
-                const remove = colorschemes.register({
-                  ...scheme,
-                  id: `${id}.${scheme.id}`,
-                })
-                const cleanup = () => {
-                  remove()
-                  cleanups.delete(cleanup)
-                }
-                cleanups.add(cleanup)
-                return cleanup
-              },
+              register: registerScheme,
               list: () => colorschemes.snapshot().schemes,
               getPreferences: () => ({
                 ...colorschemes.snapshot().preferences,
@@ -2068,18 +2131,19 @@ export function useAddons(
           startupSpan(
             `addon:${id}`,
             async () => {
-              const sheets = await addonRegistry.styles(id)
-              let linked:
-                | ReturnType<typeof import('./addon-sheets').linkAddonSheets>
-                | undefined
-              if (sheets?.length) {
+              const { styles, themes } = await addonRegistry.resources(id)
+              if (styles.length) {
                 const { linkAddonSheets } = await import('./addon-sheets')
                 if (!disposed) {
-                  linked = linkAddonSheets(id, sheets)
+                  linked = linkAddonSheets(id, styles)
                   cleanups.add(linked.dispose)
                 }
               }
-              if (!disposed) await Promise.all([linked?.ready, start()])
+              if (!disposed) {
+                // Declared themes are available before the addon's own `start`.
+                declaredSchemes = themes.map(registerScheme)
+                await Promise.all([linked?.ready, start()])
+              }
               if (disposed) startDetail.status = 'cancelled'
               else {
                 batch.commit()
@@ -2102,6 +2166,7 @@ export function useAddons(
                     )
                 }
                 linked?.publish()
+                published = true
               }
             },
             startDetail,
@@ -2325,12 +2390,139 @@ export function useAddons(
           window.hibi.getInstalledAddons(),
         ])
         setStates(states)
-        addonRegistry.hydrate(packages)
+        // A replacement that kept its enabled setting restarts with its new files.
+        const replaced = addonRegistry
+          .hydrate(packages)
+          .filter((id) =>
+            states.some((state) => state.id === id && state.enabled),
+          )
+        if (replaced.length)
+          void reloadAddons(replaced, true).then(reportReload, (error) =>
+            latest.current.error(error),
+          )
       }
     } catch (error) {
       latest.current.error(error)
     }
   }
+  const reloads = useRef(new Map<string, object>()).current
+  /**
+   * Stop running addons and their running required consumers, consumers
+   * first, then wait for the start effect to restart them provider-first.
+   * Enabled settings are never written. A newer reload of any affected addon
+   * supersedes this one; its discarded starts clean up through `stop`.
+   * `reviewed` skips the window and settings checks for a replacement the
+   * user confirmed, whose previous files are no longer served.
+   */
+  async function reloadAddons(
+    ids: readonly string[],
+    reviewed = false,
+  ): Promise<AddonReloadResult> {
+    const token = {}
+    const manifests = currentActivation.current.catalog.map(
+      (addon) => addon.manifest,
+    )
+    const name = (id = ids[0] ?? '') =>
+      manifests.find((manifest) => manifest.id === id)?.name ?? id
+    const closure = [
+      ...new Set(ids.flatMap((id) => [id, ...addonDependents(manifests, id)])),
+    ]
+    // Addons a superseded reload is still restarting stay part of this one.
+    const pending = closure.filter((id) => reloads.has(id))
+    for (const id of closure) reloads.set(id, token)
+    const superseded = () => closure.some((id) => reloads.get(id) !== token)
+    const finish = (result: AddonReloadResult) => {
+      for (const id of closure)
+        if (reloads.get(id) === token) reloads.delete(id)
+      return result
+    }
+    if (!reviewed) {
+      const visible = closure.find((id) => latest.current.settingsVisible?.(id))
+      if (visible)
+        return finish({
+          status: 'refused',
+          reason: `Leave the ${name(visible)} settings before reloading ${name()}.`,
+        })
+      const owners = await window.hibi.getAddonWindowOwners()
+      const windowed = closure.find((id) => owners.includes(id))
+      if (windowed)
+        return finish({
+          status: 'refused',
+          reason: `Close the ${name(windowed)} windows before reloading ${name()}.`,
+        })
+      if (superseded()) return finish({ status: 'superseded' })
+    }
+    // A reload is an explicit retry: failed addons in the closure and their required providers start again.
+    const { settled, dependencies } = currentActivation.current
+    const retried = [
+      ...new Set([
+        ...ids.flatMap((id) => dependencies.get(id) ?? []),
+        ...closure,
+      ]),
+    ].filter((id) => settled.get(id) === false)
+    const restarting = [
+      ...new Set([
+        ...closure.filter((id) => running.has(id)),
+        ...pending,
+        ...retried,
+      ]),
+    ]
+    if (!restarting.length) return finish({ status: 'idle' })
+    for (const id of ids) running.get(id)?.stop()
+    if (retried.length)
+      setSettled((current) => {
+        const next = new Map(current)
+        for (const id of retried) if (next.get(id) === false) next.delete(id)
+        return next
+      })
+    const outcomes = await Promise.allSettled(restarting.map(whenStarted))
+    if (superseded()) return finish({ status: 'superseded' })
+    const failed = restarting.filter(
+      (_, index) => outcomes[index]?.status === 'rejected',
+    )
+    return finish(
+      failed.length
+        ? {
+            status: 'failed',
+            reason: `${failed.map(name).join(', ')} could not restart.`,
+          }
+        : { status: 'reloaded' },
+    )
+  }
+  /** `styles` swaps package stylesheets and themes in place; `code` restarts the addon. */
+  async function reload(
+    id: string,
+    scope: 'code' | 'styles',
+  ): Promise<AddonReloadResult> {
+    if (scope === 'code') return reloadAddons([id])
+    const runtime = running.get(id)
+    if (!runtime) return { status: 'idle' }
+    try {
+      return { status: (await runtime.restyle()) ? 'reloaded' : 'superseded' }
+    } catch (error) {
+      latest.current.error(error)
+      return {
+        status: 'failed',
+        reason: error instanceof Error ? error.message : String(error),
+      }
+    }
+  }
+  // Failed starts already report their own cause.
+  const reportReload = useCallback((result: AddonReloadResult) => {
+    if (result.status === 'refused')
+      latest.current.error(new Error(result.reason))
+  }, [])
+  const reloadAddon = useRef(reload)
+  reloadAddon.current = reload
+  useEffect(
+    () =>
+      window.hibi.onAddonReload(({ id, scope }) => {
+        void reloadAddon
+          .current(id, scope)
+          .then(reportReload, (error) => latest.current.error(error))
+      }),
+    [reportReload],
+  )
   async function remove(id: string) {
     try {
       if (!(await confirmDependents(id, true))) return

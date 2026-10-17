@@ -1,0 +1,449 @@
+import assert from 'node:assert/strict'
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
+import test from 'node:test'
+import {
+  electron,
+  waitForAppState,
+  waitForDocumentEditor,
+} from './electron.mjs'
+import { clickMenu } from './keyboard.mjs'
+
+const scheme = {
+  id: 'dusk',
+  name: 'Reload dusk',
+  appearance: 'dark',
+  author: 'Test',
+  license: { name: 'MIT', text: 'Permission notice' },
+  colors: {
+    background: '#101820',
+    surface: '#202830',
+    ink: '#eeeeee',
+    muted: '#aaaaaa',
+    accent: '#88cccc',
+    border: '#333333',
+  },
+}
+const manifest = (id, name, fields = {}) => ({
+  id,
+  name,
+  description: 'Addon reload fixture',
+  kind: 'extension',
+  apiVersion: 2,
+  version: '1.0.0',
+  authors: [{ displayName: 'Test' }],
+  entry: 'index.js',
+  capabilities: [],
+  ...fields,
+})
+const providerSource = (version) => `export default () => ({
+  async start(context) {
+    const generation = (window.providerStarts = (window.providerStarts || 0) + 1);
+    window.providerVersion = ${version};
+    (window.reloadLog ||= []).push('start:provider');
+    if (localStorage.getItem('reload-provider-fail')) throw new Error('Provider start failed');
+    context.exports.provide({ version: 1, generation });
+    window.useDusk = () => context.colorschemes.setPreferences({ mode: 'dark', dark: 'reload-provider.dusk' });
+    if (window.holdProvider) {
+      window.holdProvider = false;
+      await new Promise((resolve) => { window.releaseProvider = resolve; });
+    }
+    context.styles.register('generation', ':root { --provider-generation: ' + generation + '; }');
+  },
+  stop() {
+    window.reloadLog.push('stop:provider');
+    if (localStorage.getItem('reload-provider-throw')) throw new Error('Provider stop failed');
+  },
+  Settings: () => null,
+});`
+const consumerSource = `export default () => ({
+  async start(context) {
+    window.consumerStarts = (window.consumerStarts || 0) + 1;
+    window.reloadLog.push('start:consumer');
+    window.consumerSaw = (await context.addons.ready('reload-provider')).generation;
+  },
+  stop() { window.reloadLog.push('stop:consumer'); },
+});`
+
+async function writePackage(folder, data, files) {
+  await mkdir(folder, { recursive: true })
+  for (const [path, content] of Object.entries({
+    'hibi-addon.json': JSON.stringify(data),
+    'README.md': `# ${data.name}`,
+    ...files,
+  }))
+    await writeFile(join(folder, path), content)
+  return Object.keys(files)
+}
+async function writeInstalled(profile, data, files, hash) {
+  const folder = join(profile, 'installed-addons', data.id)
+  const written = await writePackage(folder, data, files)
+  await writeFile(
+    join(folder, '.hibi-install.json'),
+    JSON.stringify({
+      hash: hash.repeat(64),
+      files: ['hibi-addon.json', 'README.md', ...written],
+      source: 'local',
+      resources: true,
+    }),
+  )
+  return folder
+}
+
+test('reload restarts an addon and its consumers in place, refuses open windows and settings, and swaps package styles', {
+  timeout: 90000,
+}, async (t) => {
+  const temp = await mkdtemp(join(tmpdir(), 'hibi-addon-reload-'))
+  const profile = join(temp, 'profile')
+  const provider = await writeInstalled(
+    profile,
+    manifest('reload-provider', 'Reload provider', {
+      styles: ['provider.css'],
+      themes: [scheme],
+    }),
+    {
+      'index.js': providerSource(1),
+      'provider.css': '.reload-probe { color: rgb(1, 2, 3); }',
+    },
+    'a',
+  )
+  await writeInstalled(
+    profile,
+    manifest('reload-consumer', 'Reload consumer', {
+      requires: { addons: [{ id: 'reload-provider' }] },
+      styles: ['consumer.css'],
+    }),
+    {
+      'index.js': consumerSource,
+      'consumer.css': '.reload-probe { outline-color: rgb(1, 2, 3); }',
+    },
+    'b',
+  )
+  const preferences = join(profile, 'addons.json')
+  await writeFile(
+    preferences,
+    JSON.stringify({
+      'reload-provider': true,
+      'reload-consumer': true,
+      'quick-note': true,
+    }),
+  )
+  const app = await electron.launch({
+    args: [resolve('.'), `--user-data-dir=${profile}`],
+  })
+  t.after(async () => {
+    await app.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => ({ response: 1 })
+    })
+    await app.close()
+    await rm(temp, { recursive: true, force: true })
+  })
+  const page = await app.firstWindow()
+  await waitForDocumentEditor(app, page)
+  await page.waitForFunction(() => window.consumerSaw === 1)
+  const reload = (id, scope = 'code') =>
+    app.evaluate(
+      ({ BrowserWindow }, request) => {
+        BrowserWindow.getAllWindows()
+          .find((window) => window.webContents.getURL() === 'app://hibi/')
+          .webContents.send('addons:reload', request)
+      },
+      { id, scope },
+    )
+  const log = () => page.evaluate(() => window.reloadLog.splice(0))
+  const message = (pattern) =>
+    page.waitForFunction(
+      (source) => new RegExp(source, 'i').test(document.body.innerText),
+      pattern.source,
+    )
+  const saved = async () => (await stat(preferences)).mtimeMs
+  const before = await saved()
+  await log()
+
+  const editor = page.getByRole('textbox', { name: /document editor/i })
+  await editor.click()
+  await page.keyboard.type('Draft kept across reload')
+  await waitForAppState(
+    page,
+    async () => (await window.hibi.getDocument()).dirty,
+  )
+
+  // Consumers stop first; providers start first.
+  await reload('reload-provider')
+  await page.waitForFunction(() => window.consumerSaw === 2)
+  assert.deepEqual(await log(), [
+    'stop:consumer',
+    'stop:provider',
+    'start:provider',
+    'start:consumer',
+  ])
+  await waitForDocumentEditor(app, page)
+  assert.match(await editor.innerText(), /Draft kept across reload/)
+  assert.equal(
+    (await page.evaluate(() => window.hibi.getDocument())).dirty,
+    true,
+  )
+
+  // A newer reload supersedes a start that is still running; the late start leaves nothing behind.
+  await page.evaluate(() => {
+    window.holdProvider = true
+  })
+  await reload('reload-provider')
+  await page.waitForFunction(() => !!window.releaseProvider)
+  await reload('reload-provider')
+  await page.waitForFunction(() => window.consumerSaw === 4)
+  await page.evaluate(() => window.releaseProvider())
+  await page.waitForFunction(
+    () =>
+      getComputedStyle(document.documentElement)
+        .getPropertyValue('--provider-generation')
+        .trim() === '4',
+  )
+  await page.evaluate(() => new Promise(requestAnimationFrame))
+  assert.equal(
+    await page
+      .locator('style[data-addon-style="reload-provider.generation"]')
+      .count(),
+    1,
+  )
+  assert.equal(
+    await page.evaluate(() =>
+      getComputedStyle(document.documentElement)
+        .getPropertyValue('--provider-generation')
+        .trim(),
+    ),
+    '4',
+  )
+  assert.equal(
+    await page.locator('link[data-addon-style^="reload-"]').count(),
+    2,
+  )
+  await log()
+
+  // A throwing stop still restarts the provider and its consumer.
+  await page.evaluate(() => localStorage.setItem('reload-provider-throw', '1'))
+  await reload('reload-provider')
+  await page.waitForFunction(() => window.consumerSaw === 5)
+  await message(/could not fully stop reload provider/)
+  await page.evaluate(() => localStorage.removeItem('reload-provider-throw'))
+  assert.deepEqual(await log(), [
+    'stop:consumer',
+    'stop:provider',
+    'start:provider',
+    'start:consumer',
+  ])
+
+  // A failed addon starts again once a later reload finds the cause fixed.
+  await page.evaluate(() => localStorage.setItem('reload-provider-fail', '1'))
+  await reload('reload-provider')
+  await message(/provider start failed/)
+  await page.waitForFunction(() => window.providerStarts === 6)
+  await page.evaluate(() => localStorage.removeItem('reload-provider-fail'))
+  await reload('reload-provider')
+  await page.waitForFunction(() => window.consumerSaw === 7)
+  await log()
+
+  // Stylesheet-only updates swap sheets and themes without restarting code.
+  await page.evaluate(() => {
+    window.useDusk()
+    const probe = document.createElement('div')
+    probe.className = 'reload-probe'
+    document.body.append(probe)
+    window.schemeChanges = []
+    new MutationObserver((records) =>
+      window.schemeChanges.push(...records.map((record) => record.oldValue)),
+    ).observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-colorscheme'],
+      attributeOldValue: true,
+    })
+  })
+  await writeFile(
+    join(provider, 'provider.css'),
+    '.reload-probe { color: rgb(4, 5, 6); }',
+  )
+  await reload('reload-provider', 'styles')
+  await page.waitForFunction(
+    () =>
+      getComputedStyle(document.querySelector('.reload-probe')).color ===
+      'rgb(4, 5, 6)',
+  )
+  assert.deepEqual(
+    await page.evaluate(() =>
+      [...document.body.querySelectorAll('[data-addon-style^="reload-"]')].map(
+        (element) => `${element.localName}:${element.dataset.addonStyle}`,
+      ),
+    ),
+    [
+      'link:reload-consumer',
+      'link:reload-provider',
+      'style:reload-provider.generation',
+    ],
+  )
+  assert.equal(
+    await page.evaluate(
+      () =>
+        getComputedStyle(document.querySelector('.reload-probe')).outlineColor,
+    ),
+    'rgb(1, 2, 3)',
+  )
+  assert.equal(
+    await page.evaluate(() => document.documentElement.dataset.colorscheme),
+    'reload-provider.dusk',
+  )
+  assert.deepEqual(
+    await page.evaluate(() =>
+      window.schemeChanges.filter((value) => value !== 'reload-provider.dusk'),
+    ),
+    [],
+  )
+  assert.equal(await page.evaluate(() => window.providerStarts), 7)
+  assert.deepEqual(await log(), [])
+
+  // Reloading never writes enabled settings.
+  assert.equal(await saved(), before)
+
+  // Visible settings and open addon windows refuse a reload instead of discarding their state.
+  await clickMenu(app, 'Settings')
+  await page.getByRole('tab', { name: /^reload provider$/i }).click()
+  await reload('reload-provider')
+  await message(
+    /leave the reload provider settings before reloading reload provider/,
+  )
+  assert.equal(await page.evaluate(() => window.providerStarts), 7)
+  await page.getByRole('button', { name: /^back to app$/i }).click()
+  await page
+    .getByRole('main', { name: /^settings$/i })
+    .waitFor({ state: 'hidden' })
+  await reload('reload-provider')
+  await page.waitForFunction(() => window.consumerSaw === 8)
+
+  await page.evaluate(() =>
+    window.hibi.openAddonWindow('quick-note', { id: 'reload', show: false }),
+  )
+  await reload('quick-note')
+  await message(/close the quick note windows before reloading quick note/)
+  await page.evaluate(() =>
+    window.hibi.closeAddonWindow('quick-note', 'reload'),
+  )
+  await waitForAppState(
+    page,
+    async () => !(await window.hibi.getAddonWindowOwners()).length,
+  )
+  assert.equal(await saved(), before)
+  assert.match(await readFile(preferences, 'utf8'), /"reload-provider":true/)
+})
+
+test('a reviewed replacement stays enabled and reloads in place unless its access changes', {
+  timeout: 60000,
+}, async (t) => {
+  const temp = await mkdtemp(join(tmpdir(), 'hibi-addon-replace-'))
+  const profile = join(temp, 'profile')
+  const preferences = join(profile, 'addons.json')
+  const data = manifest('reload-provider', 'Reload provider')
+  await writeInstalled(profile, data, { 'index.js': providerSource(1) }, 'a')
+  await writeInstalled(
+    profile,
+    manifest('reload-consumer', 'Reload consumer', {
+      requires: { addons: [{ id: 'reload-provider' }] },
+    }),
+    { 'index.js': consumerSource },
+    'b',
+  )
+  await writeFile(
+    preferences,
+    JSON.stringify({ 'reload-provider': true, 'reload-consumer': true }),
+  )
+  const same = join(temp, 'same')
+  await writePackage(
+    same,
+    { ...data, version: '2.0.0' },
+    { 'index.js': providerSource(2) },
+  )
+  const widened = join(temp, 'widened')
+  await writePackage(
+    widened,
+    {
+      ...data,
+      version: '3.0.0',
+      network: { origins: ['https://example.com'] },
+    },
+    { 'index.js': providerSource(3) },
+  )
+  const app = await electron.launch({
+    args: [resolve('.'), `--user-data-dir=${profile}`],
+  })
+  t.after(async () => {
+    await app.close()
+    await rm(temp, { recursive: true, force: true })
+  })
+  await app.evaluate(({ dialog }) => {
+    globalThis.packageReviews = []
+    dialog.showOpenDialog = async () => ({
+      canceled: false,
+      filePaths: [globalThis.packageSource],
+    })
+    dialog.showMessageBox = async (_window, options) => {
+      globalThis.packageReviews.push(options.detail)
+      return { response: 1 }
+    }
+  })
+  const page = await app.firstWindow()
+  await waitForDocumentEditor(app, page)
+  await page.waitForFunction(() => window.consumerSaw === 1)
+  const install = async (source) => {
+    await app.evaluate((_electron, source) => {
+      globalThis.packageSource = source
+    }, source)
+    await clickMenu(app, 'Command palette')
+    await page
+      .getByRole('combobox', { name: /search commands/i })
+      .fill('install addon')
+    await page.getByRole('option').first().click()
+  }
+  const enabled = async () =>
+    (await page.evaluate(() => window.hibi.getAddonStates())).find(
+      (state) => state.id === 'reload-provider',
+    ).enabled
+  const before = (await stat(preferences)).mtimeMs
+
+  await install(same)
+  await page.waitForFunction(
+    () => window.providerVersion === 2 && window.consumerSaw === 2,
+  )
+  assert.equal(await enabled(), true)
+  assert.equal(await page.evaluate(() => window.providerStarts), 2)
+  assert.deepEqual(await page.evaluate(() => window.reloadLog), [
+    'start:provider',
+    'start:consumer',
+    'stop:consumer',
+    'stop:provider',
+    'start:provider',
+    'start:consumer',
+  ])
+  assert.equal((await stat(preferences)).mtimeMs, before)
+  assert.match(
+    await app.evaluate(() => globalThis.packageReviews.at(-1)),
+    /keeps its current setting/,
+  )
+
+  await install(widened)
+  await waitForAppState(
+    page,
+    async () =>
+      !(await window.hibi.getAddonStates()).find(
+        (state) => state.id === 'reload-provider',
+      ).enabled,
+  )
+  assert.match(
+    await app.evaluate(() => globalThis.packageReviews.at(-1)),
+    /stay disabled until you enable it/,
+  )
+  assert.equal(
+    JSON.parse(await readFile(preferences, 'utf8'))['reload-provider'],
+    false,
+  )
+  await page.waitForFunction(() => window.reloadLog.at(-1) === 'stop:provider')
+  assert.equal(await page.evaluate(() => window.providerVersion), 2)
+})

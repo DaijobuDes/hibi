@@ -3,6 +3,7 @@ export const ADDON_WINDOW_CHANNELS = {
   focus: 'addon-windows:focus',
   close: 'addon-windows:close',
   closed: 'addon-windows:closed',
+  owners: 'addon-windows:owners',
   /** Requests from inside an addon window, scoped to the addon that owns it. */
   context: 'addon-windows:context',
   states: 'addon-windows:states',

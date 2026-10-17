@@ -17,7 +17,6 @@ function describeAddon(
     flavors?: readonly MarkdownFlavor[] | undefined
     Settings?: ComponentType
     themes?: readonly ColorschemeInput[]
-    loadResources?: (typeof catalog)[number]['loadResources']
   } = {},
 ) {
   let pending: Promise<unknown> | undefined
@@ -34,12 +33,7 @@ function describeAddon(
     ...(declared.Settings ? { Settings: declared.Settings } : {}),
     async start(context) {
       const token = ++generation
-      const themes = declared.loadResources
-        ? (await declared.loadResources()).themes
-        : declared.themes
-      if (token !== generation) return
-      // Declared themes are data owned by this activation; source themes still register colors in `start`.
-      for (const theme of themes ?? []) context.colorschemes.register(theme)
+      // The host registers declared themes; a theme package has no code to load.
       if (manifest.kind === 'theme' && declared.themes) return
       const definition = await startupSpan(
         `addon-load:${manifest.id}`,
@@ -98,11 +92,10 @@ function describeAddon(
   return { addon: descriptor, retire }
 }
 const bundled = catalog.map(
-  ({ manifest, load, loadSettings, loadResources, flavors }): Addon => {
+  ({ manifest, load, loadSettings, flavors }): Addon => {
     const importer = async () => (await load()).default
     return describeAddon(manifest, importer, {
       flavors,
-      ...(loadResources ? { loadResources } : {}),
       ...(loadSettings || manifest.fileExtensions?.length
         ? {
             Settings: lazy(async () => ({
@@ -125,6 +118,7 @@ const installed = new Map<
     retire: () => void
     source: 'local' | 'third-party'
     styles: readonly string[]
+    themes: readonly ColorschemeInput[]
   }
 >()
 const listeners = new Set<() => void>()
@@ -155,14 +149,26 @@ export const addonRegistry = {
     }
   },
   isInstalled: (id: string) => installed.has(id),
-  styles: async (id: string) =>
-    installed.get(id)?.styles ??
-    (await catalog.find((item) => item.manifest.id === id)?.loadResources?.())
-      ?.styles,
+  /** Declared stylesheet URLs and color schemes, read again for each activation or in-place update. */
+  resources: async (
+    id: string,
+  ): Promise<{
+    styles: readonly string[]
+    themes: readonly ColorschemeInput[]
+  }> => {
+    const entry = installed.get(id)
+    if (entry) return { styles: entry.styles, themes: entry.themes }
+    const resources = await catalog
+      .find((item) => item.manifest.id === id)
+      ?.loadResources?.()
+    return { styles: resources?.styles ?? [], themes: resources?.themes ?? [] }
+  },
   origin: (id: string) =>
     installed.get(id)?.source ?? origins.get(id) ?? 'local',
+  /** Returns the ids whose installed files were replaced. */
   hydrate(packages: readonly InstalledAddon[]) {
     const ids = new Set(packages.map((item) => item.manifest.id))
+    const replaced: string[] = []
     for (const [id, entry] of installed)
       if (!ids.has(id)) {
         entry.retire()
@@ -172,7 +178,10 @@ export const addonRegistry = {
       const signature = JSON.stringify(item)
       const previous = installed.get(item.manifest.id)
       if (previous?.signature === signature) continue
-      previous?.retire()
+      if (previous) {
+        previous.retire()
+        replaced.push(item.manifest.id)
+      }
       const { url } = item
       installed.set(item.manifest.id, {
         signature,
@@ -192,8 +201,10 @@ export const addonRegistry = {
         ),
         source: item.source ?? 'local',
         styles: item.styles ?? [],
+        themes: item.themes,
       })
     }
     publish()
+    return replaced
   },
 }

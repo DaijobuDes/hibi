@@ -208,6 +208,16 @@ if (process.isMainFrame) {
       return () =>
         ipcRenderer.removeListener(ADDON_WINDOW_CHANNELS.closed, listener)
     },
+    getAddonWindowOwners: () =>
+      ipcRenderer.invoke(ADDON_WINDOW_CHANNELS.owners),
+    onAddonReload: (callback) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        request: { id: string; scope: 'code' | 'styles' },
+      ) => callback(request)
+      ipcRenderer.on(ADDON_CHANNELS.reload, listener)
+      return () => ipcRenderer.removeListener(ADDON_CHANNELS.reload, listener)
+    },
     onGlobalShortcut: (callback) => {
       const listener = (
         _event: Electron.IpcRendererEvent,

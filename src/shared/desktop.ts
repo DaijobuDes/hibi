@@ -113,6 +113,12 @@ export type DesktopApi = {
   onAddonWindowClosed: (
     callback: (addonId: string, id: string) => void,
   ) => () => void
+  /** Addons whose windows are open, loading, or kept alive while hidden. */
+  getAddonWindowOwners: () => Promise<string[]>
+  /** `styles` swaps package stylesheets and themes; `code` restarts the addon and its required consumers. */
+  onAddonReload: (
+    callback: (request: { id: string; scope: 'code' | 'styles' }) => void,
+  ) => () => void
   onGlobalShortcut: (
     callback: (
       invocation: import('./global-shortcuts').GlobalShortcutInvocation,

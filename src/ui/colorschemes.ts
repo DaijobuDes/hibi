@@ -105,7 +105,13 @@ export function createColorschemeStore(
     schemes: [...schemes.values()],
     active: current(),
   }
+  let held = 0
+  let changed = false
   const publish = () => {
+    if (held) {
+      changed = true
+      return
+    }
     snapshot = {
       preferences,
       schemes: [...schemes.values()],
@@ -178,6 +184,18 @@ export function createColorschemeStore(
         active = false
         schemes.delete(scheme.id)
         publish()
+      }
+    },
+    /** Apply several registrations as one publication, so a replaced selection never shows its fallback. */
+    batch(changes: () => void) {
+      held++
+      try {
+        changes()
+      } finally {
+        if (!--held && changed) {
+          changed = false
+          publish()
+        }
       }
     },
     /** The selected mode and the colorscheme for each appearance. */

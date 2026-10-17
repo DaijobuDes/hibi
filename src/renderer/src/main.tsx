@@ -867,6 +867,10 @@ function App() {
       openDependencySettings: () => openSetting('dependencies'),
       openAddonSettings: (id) =>
         openSetting('addons', id ? `addon-${id}` : undefined),
+      settingsVisible: (id) =>
+        settingsOpen &&
+        (settingsCategory === `plugin-${id}` ||
+          settingsCategory.startsWith(`addon-${id}.`)),
       openSidebar: selectSidebarView,
       closeSidebar: (side) => {
         if (side === 'right') {

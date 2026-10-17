@@ -74,6 +74,7 @@ import { WORKSPACE_SETTINGS_CHANNELS } from '../shared/workspace-settings'
 import { AddonHotkeys } from './addon-hotkeys'
 import { createAddonStorage } from './addon-storage'
 import {
+  addonWindowOwners,
   addonWindowSender,
   closeAddonWindow,
   closeAddonWindows,
@@ -1641,6 +1642,7 @@ if (!app.requestSingleInstanceLock()) {
       handle(ADDON_WINDOW_CHANNELS.close, (_event, addonId: unknown, id) => {
         if (typeof addonId === 'string') closeAddonWindow(addonId, id)
       })
+      handle(ADDON_WINDOW_CHANNELS.owners, addonWindowOwners)
       onAddonWindowClosed((addonId, id) =>
         mainWindow?.webContents.send(ADDON_WINDOW_CHANNELS.closed, addonId, id),
       )
