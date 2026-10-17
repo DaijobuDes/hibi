@@ -213,6 +213,10 @@ export type DesktopApi = {
     workspace?: WorkspaceState | null
   } | null>
   getInstalledAddons: () => Promise<import('./sideload').InstalledAddon[]>
+  /** Declared stylesheets and themes read again from an installed addon's files. */
+  getInstalledAddonResources: (
+    id: string,
+  ) => Promise<Pick<import('./sideload').InstalledAddon, 'styles' | 'themes'>>
   /** `openSettings` lists addons whose settings are on screen; a replacement of one is refused. */
   installAddon: (
     url?: string,

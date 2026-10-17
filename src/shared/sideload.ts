@@ -49,6 +49,7 @@ export const SIDELOAD_CHANNELS = {
   folder: 'addons:folder',
   garden: 'addons:garden',
   remove: 'addons:remove',
+  resources: 'addons:resources',
   documentation: 'addons:documentation',
   link: 'addons:documentation-link',
 } as const

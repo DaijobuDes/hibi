@@ -149,14 +149,21 @@ export const addonRegistry = {
     }
   },
   isInstalled: (id: string) => installed.has(id),
-  /** Declared stylesheet URLs and color schemes, read again for each activation or in-place update. */
+  /** Declared stylesheet URLs and color schemes; `reread` validates an installed package's current files again. */
   resources: async (
     id: string,
+    reread = false,
   ): Promise<{
     styles: readonly string[]
     themes: readonly ColorschemeInput[]
   }> => {
     const entry = installed.get(id)
+    if (entry && reread) {
+      const { styles = [], themes } =
+        await window.hibi.getInstalledAddonResources(id)
+      // Later activations keep the updated resources.
+      Object.assign(entry, { styles, themes })
+    }
     if (entry) return { styles: entry.styles, themes: entry.themes }
     const resources = await catalog
       .find((item) => item.manifest.id === id)

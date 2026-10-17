@@ -33,6 +33,7 @@ import { setDocumentExtensions } from './document-types'
 import { validateMarkdown, writeText } from './files'
 import {
   installedAddons,
+  installedResources,
   installPackage,
   installPackageSelection,
   loadInstalledAddons,
@@ -517,6 +518,14 @@ export async function installAddonSelection(
     keys,
     bundledManifests,
     replacing(openSettings),
+  )
+}
+
+/** Current declared stylesheets and themes of an installed addon, read again from its files. */
+export function installedAddonResources(id: unknown) {
+  return installedResources(
+    id,
+    bundledManifests.map((manifest) => manifest.id),
   )
 }
 

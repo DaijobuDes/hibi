@@ -994,7 +994,7 @@ export function useAddons(
       const restyle = async () => {
         const revision = ++restyles
         const [{ styles, themes }, { linkAddonSheets }] = await Promise.all([
-          addonRegistry.resources(id),
+          addonRegistry.resources(id, true),
           import('./addon-sheets'),
         ])
         if (disposed || revision !== restyles) return false

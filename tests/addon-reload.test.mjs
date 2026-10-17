@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import test from 'node:test'
 import {
   electron,
@@ -74,8 +74,10 @@ async function writePackage(folder, data, files) {
     'hibi-addon.json': JSON.stringify(data),
     'README.md': `# ${data.name}`,
     ...files,
-  }))
+  })) {
+    await mkdir(dirname(join(folder, path)), { recursive: true })
     await writeFile(join(folder, path), content)
+  }
   return Object.keys(files)
 }
 const sendReload = (app, id, scope = 'code') =>
@@ -111,11 +113,12 @@ test('reload restarts an addon and its consumers in place, refuses open windows 
     profile,
     manifest('reload-provider', 'Reload provider', {
       styles: ['provider.css'],
-      themes: [scheme],
+      themes: ['themes/dusk.json'],
     }),
     {
       'index.js': providerSource(1),
       'provider.css': '.reload-probe { color: rgb(1, 2, 3); }',
+      'themes/dusk.json': JSON.stringify(scheme),
     },
     'a',
   )
@@ -262,9 +265,23 @@ test('reload restarts an addon and its consumers in place, refuses open windows 
       attributeOldValue: true,
     })
   })
+  const accent = () =>
+    page.evaluate(() =>
+      getComputedStyle(document.documentElement)
+        .getPropertyValue('--accent')
+        .trim(),
+    )
+  assert.equal(await accent(), '#88cccc')
   await writeFile(
     join(provider, 'provider.css'),
     '.reload-probe { color: rgb(4, 5, 6); }',
+  )
+  await writeFile(
+    join(provider, 'themes/dusk.json'),
+    JSON.stringify({
+      ...scheme,
+      colors: { ...scheme.colors, accent: '#ff00ff' },
+    }),
   )
   await reload('reload-provider', 'styles')
   await page.waitForFunction(
@@ -272,6 +289,7 @@ test('reload restarts an addon and its consumers in place, refuses open windows 
       getComputedStyle(document.querySelector('.reload-probe')).color ===
       'rgb(4, 5, 6)',
   )
+  assert.equal(await accent(), '#ff00ff')
   assert.deepEqual(
     await page.evaluate(() =>
       [...document.body.querySelectorAll('[data-addon-style^="reload-"]')].map(

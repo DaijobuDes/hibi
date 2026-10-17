@@ -3794,6 +3794,9 @@
     "src/main/addons.ts",
     "src/main/sideload.ts"
   ],
+  "4df5dee77e86": [
+    "src/main/sideload.ts"
+  ],
   "f5d528d723d2": [
     "src/addons/vim/Settings.tsx"
   ],
@@ -5388,6 +5391,9 @@
   ],
   "880be33a67e8": [
     "src/shared/addon-manifest.ts"
+  ],
+  "6f53a2be45b1": [
+    "src/main/sideload.ts"
   ],
   "217fd53d2b6e": [
     "src/main/sideload.ts"

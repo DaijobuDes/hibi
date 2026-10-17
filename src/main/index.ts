@@ -94,6 +94,7 @@ import {
   getAddonStates,
   installAddon,
   installAddonSelection,
+  installedAddonResources,
   invalidateAddonActivations,
   invokeAddon,
   isAddonActivationCurrent,
@@ -1550,6 +1551,9 @@ if (!app.requestSingleInstanceLock()) {
         trustedWindow(event)
         return installedAddons()
       })
+      handle(SIDELOAD_CHANNELS.resources, (_event, id: unknown) =>
+        installedAddonResources(id),
+      )
       handle(
         SIDELOAD_CHANNELS.install,
         (event, url: unknown, openSettings: unknown) =>
