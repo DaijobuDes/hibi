@@ -574,7 +574,7 @@ export function useAddons(
         await whenStarted(owner)
       }
     },
-    [activation, started, whenStarted],
+    [started, whenStarted],
   )
   const executeCommand = useCallback(
     async (
