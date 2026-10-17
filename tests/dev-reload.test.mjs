@@ -5,6 +5,7 @@ import {
   cp,
   mkdir,
   mkdtemp,
+  readdir,
   readFile,
   realpath,
   rm,
@@ -81,6 +82,61 @@ test('development watches main, renderer, preload, addons, and documentation gen
       filter: (file) => !file.split(sep).includes('useraddons'),
     })
   await symlink(resolve('node_modules'), join(root, 'node_modules'), 'junction')
+  const localFolder = join(root, 'src/useraddons/dev-watch-local')
+  await mkdir(localFolder, { recursive: true })
+  for (const [name, content] of Object.entries({
+    'hibi-addon.json': JSON.stringify({
+      id: 'dev-watch-local',
+      capabilities: [],
+      name: 'Local watch fixture',
+      description: 'Local targeted update probe',
+      apiVersion: 2,
+      kind: 'extension',
+      version: '1.0.0',
+      authors: [{ displayName: 'Test' }],
+      startup: 'background',
+      defaultEnabled: true,
+      entry: 'index.ts',
+      styles: ['declared.css'],
+      themes: ['theme.json'],
+    }),
+    'README.md': '# Local watch fixture',
+    'theme.json': JSON.stringify({
+      id: 'watch',
+      name: 'Watch theme',
+      appearance: 'dark',
+      author: 'Test',
+      license: { name: 'MIT', text: 'Permission notice' },
+      colors: {
+        background: '#101820',
+        surface: '#202830',
+        ink: '#eeeeee',
+        muted: '#aaaaaa',
+        accent: '#88cccc',
+        border: '#333333',
+      },
+    }),
+    'helper.ts': "export const label = 'local original'",
+    'inline.css': 'body { --local-inline: original; }',
+    'declared.css': 'body { --local-declared: original; }',
+    'index.ts': `
+      import { label } from './helper'
+      import css from './inline.css?inline'
+      export default () => ({
+        start(context) {
+          const probe = window.localWatchProbe ??= { starts: 0, stops: 0, state: 41 }
+          probe.starts++
+          window.useLocalWatchTheme = () => context.colorschemes.setPreferences({
+            mode: 'dark', dark: 'dev-watch-local.watch',
+          })
+          context.styles.register('inline', css)
+          context.statusBar.register({ id: 'probe', label })
+        },
+        stop() { window.localWatchProbe.stops++ },
+      })
+    `,
+  }))
+    await writeFile(join(localFolder, name), content)
   const previewFolder = join(root, 'src/addons/ui-preview')
   const previewManifest = join(previewFolder, 'hibi-addon.json')
   await writeFile(
@@ -105,6 +161,9 @@ test('development watches main, renderer, preload, addons, and documentation gen
       import { createElement } from 'react'
       import original from './index'
       const owner = location.pathname.endsWith('/addon-window.html')
+      const lifecycle = owner ? undefined : (window.previewWatchProbe ??= {
+        starts: 0, stops: 0, state: 73,
+      })
       const probe = owner ? (window.catalogWindowProbe = {
         sealed: window.hibiAddonWindow.seal() === undefined,
         desktop: typeof window.hibi,
@@ -118,7 +177,12 @@ test('development watches main, renderer, preload, addons, and documentation gen
           ...definition,
           start(context) {
             if (probe) probe.starts++
+            if (lifecycle) lifecycle.starts++
             return original.start(context)
+          },
+          stop() {
+            if (lifecycle) lifecycle.stops++
+            original.stop?.()
           },
           windows: {
             ...original.windows,
@@ -239,7 +303,10 @@ dialog.showMessageBox = (...args) => {
   await mkdir(profile)
   await writeFile(
     join(profile, 'addons.json'),
-    JSON.stringify({ 'typing-speed': true }),
+    JSON.stringify({
+      'typing-speed': true,
+      'ui-preview': true,
+    }),
   )
   const seenEndpoints = []
   const pendingLines = { stdout: '', stderr: '' }
@@ -392,10 +459,155 @@ dialog.showMessageBox = (...args) => {
     })
   }
   page.on('websocket', onViteSocket)
-  await replace(
-    'src/addons/typing-speed/index.ts',
-    'This estimates how many words you type per minute.',
-    'Updated typing speed runtime.',
+  async function addonUpdate(id, scope, edit, status = 'reloaded') {
+    const messages = []
+    const collect = (message) => messages.push(message.text().slice(0, 500))
+    page.on('console', collect)
+    try {
+      await Promise.all([
+        page.waitForEvent('console', {
+          timeout: status === 'idle' ? 7000 : undefined,
+          predicate: (message) =>
+            message.type() === 'info' &&
+            message.text() === `addon ${id}: ${scope} ${status}`,
+        }),
+        edit(),
+      ])
+    } catch (error) {
+      assert.fail(
+        `${error.message}\n${messages.slice(-8).join('\n')}\n${output.slice(-1800)}`,
+      )
+    } finally {
+      page.off('console', collect)
+    }
+  }
+  const addonFailure = (edit) =>
+    Promise.all([
+      page.waitForEvent('console', {
+        predicate: (message) =>
+          message.type() === 'error' &&
+          message
+            .text()
+            .includes('addon update failed; keeping the running addon'),
+      }),
+      edit(),
+    ])
+  async function captureAddonState() {
+    await page.waitForFunction(
+      () => window.previewWatchProbe?.starts && window.localWatchProbe?.starts,
+    )
+    await page.evaluate(() => {
+      window.watchSentinel?.remove()
+      window.watchSentinel = document.createElement('span')
+      window.watchSentinel.id = 'dev-watch-sentinel'
+      document.body.append(window.watchSentinel)
+    })
+    return addonState()
+  }
+  async function addonState() {
+    return {
+      endpoints: seenEndpoints.length,
+      ...(await page.evaluate(async () => {
+        const draft = await window.hibi.getDocument()
+        return {
+          epoch: performance.timeOrigin,
+          sentinel:
+            Boolean(window.watchSentinel?.isConnected) &&
+            document.getElementById('dev-watch-sentinel') ===
+              window.watchSentinel,
+          preview: { ...window.previewWatchProbe },
+          local: { ...window.localWatchProbe },
+          markdown: draft.markdown,
+          dirty: draft.dirty,
+        }
+      })),
+    }
+  }
+  const beforeAddons = await captureAddonState()
+  await page.waitForFunction(() =>
+    Boolean(
+      document.querySelector('style[data-addon-style="ui-preview.preview"]'),
+    ),
+  )
+  await page.evaluate(() => {
+    window.previewStyle = document.querySelector(
+      'style[data-addon-style="ui-preview.preview"]',
+    )
+    window.localWatchProbe.state = 42
+    window.previewWatchProbe.state = 74
+  })
+  beforeAddons.local.state = 42
+  beforeAddons.preview.state = 74
+  const previewCss = join(previewFolder, 'style.css')
+  await addonUpdate('ui-preview', 'styles', async () =>
+    writeFile(
+      previewCss,
+      `${await readFile(previewCss, 'utf8')}\nbody { --preview-watch: updated; }\n`,
+    ),
+  )
+  await page.waitForFunction(
+    () =>
+      getComputedStyle(document.body)
+        .getPropertyValue('--preview-watch')
+        .trim() === 'updated',
+  )
+  assert.equal(
+    await page.evaluate(
+      () =>
+        window.previewStyle ===
+        document.querySelector('style[data-addon-style="ui-preview.preview"]'),
+    ),
+    true,
+  )
+  assert.deepEqual(await addonState(), beforeAddons)
+  for (const [file, property] of [
+    ['inline.css', '--local-inline'],
+    ['declared.css', '--local-declared'],
+  ]) {
+    await page.waitForFunction(
+      (property) =>
+        getComputedStyle(document.body).getPropertyValue(property).trim() ===
+        'original',
+      property,
+    )
+    await addonUpdate('dev-watch-local', 'styles', () =>
+      replace(`src/useraddons/dev-watch-local/${file}`, 'original', 'updated'),
+    )
+    await page.waitForFunction(
+      (property) =>
+        getComputedStyle(document.body).getPropertyValue(property).trim() ===
+        'updated',
+      property,
+    )
+    assert.deepEqual(await addonState(), beforeAddons)
+  }
+  await page.evaluate(() => window.useLocalWatchTheme())
+  await page.waitForFunction(
+    () =>
+      getComputedStyle(document.documentElement)
+        .getPropertyValue('--accent')
+        .trim() === '#88cccc',
+  )
+  await addonUpdate('dev-watch-local', 'styles', () =>
+    replace('src/useraddons/dev-watch-local/theme.json', '#88cccc', '#ff00ff'),
+  )
+  await page.waitForFunction(
+    () =>
+      getComputedStyle(document.documentElement)
+        .getPropertyValue('--accent')
+        .trim() === '#ff00ff',
+  )
+  assert.deepEqual(await addonState(), beforeAddons)
+  mark(
+    'inline css, declared sheets, and theme json update without addon restarts',
+  )
+
+  await addonUpdate('typing-speed', 'code', () =>
+    replace(
+      'src/addons/typing-speed/index.ts',
+      'This estimates how many words you type per minute.',
+      'Updated typing speed runtime.',
+    ),
   )
   await page.waitForFunction(() =>
     document
@@ -408,14 +620,189 @@ dialog.showMessageBox = (...args) => {
     'unsaved watch draft',
   )
   mark('addon runtime updated and draft retained')
-  // The addon change reloads the page; a preload rebuild must reach its new Vite socket.
-  await until(
-    () => viteConnections > 0,
-    'vite websocket reconnects after addon reload',
-  ).catch((error) => {
-    t.diagnostic(`vite websocket events: ${viteEvents.join(', ') || 'none'}`)
-    throw error
+  assert.deepEqual(await addonState(), beforeAddons)
+  await addonUpdate('dev-watch-local', 'code', () =>
+    replace(
+      'src/useraddons/dev-watch-local/helper.ts',
+      'local original',
+      'local updated',
+    ),
+  )
+  assert.equal(
+    await page
+      .locator('[data-status-id="dev-watch-local.probe"]')
+      .textContent(),
+    'Local updated',
+    JSON.stringify(await addonState()),
+  )
+  const afterHelper = {
+    ...beforeAddons,
+    local: {
+      ...beforeAddons.local,
+      starts: beforeAddons.local.starts + 1,
+      stops: beforeAddons.local.stops + 1,
+    },
+  }
+  assert.deepEqual(await addonState(), afterHelper)
+  const helper = join(localFolder, 'helper.ts')
+  const workingHelper = await readFile(helper, 'utf8')
+  await addonUpdate('ui-preview', 'styles', () =>
+    addonFailure(() =>
+      Promise.all([
+        writeFile(helper, 'export const label = ;'),
+        replace(
+          'src/addons/ui-preview/style.css',
+          '--preview-watch: updated',
+          '--preview-watch: coalesced',
+        ),
+      ]),
+    ),
+  )
+  await page.waitForFunction(
+    () =>
+      getComputedStyle(document.body)
+        .getPropertyValue('--preview-watch')
+        .trim() === 'coalesced',
+  )
+  assert.deepEqual(await addonState(), afterHelper)
+  await page.getByText(/^local updated$/i).waitFor()
+  await addonUpdate('dev-watch-local', 'code', () =>
+    writeFile(
+      helper,
+      workingHelper.replace('local updated', 'local recovered'),
+    ),
+  )
+  await page.getByText(/^local recovered$/i).waitFor()
+  assert.deepEqual(await addonState(), {
+    ...afterHelper,
+    local: {
+      ...afterHelper.local,
+      starts: afterHelper.local.starts + 1,
+      stops: afterHelper.local.stops + 1,
+    },
   })
+  const afterRecovery = await addonState()
+  await addonFailure(() =>
+    writeFile(helper, "export const renamed = 'missing label'"),
+  )
+  assert.deepEqual(await addonState(), afterRecovery)
+  await page.getByText(/^local recovered$/i).waitFor()
+  await addonUpdate('dev-watch-local', 'code', () =>
+    writeFile(helper, workingHelper.replace('local updated', 'local linked')),
+  )
+  await page.getByText(/^local linked$/i).waitFor()
+  const afterLink = {
+    ...afterRecovery,
+    local: {
+      ...afterRecovery.local,
+      starts: afterRecovery.local.starts + 1,
+      stops: afterRecovery.local.stops + 1,
+    },
+  }
+  assert.deepEqual(await addonState(), afterLink)
+
+  const localManifest = join(localFolder, 'hibi-addon.json')
+  const localMetadata = JSON.parse(await readFile(localManifest, 'utf8'))
+  for (const enabled of [false, true]) {
+    localMetadata.defaultEnabled = enabled
+    await addonUpdate(
+      'dev-watch-local',
+      'code',
+      () => writeFile(localManifest, JSON.stringify(localMetadata)),
+      'idle',
+    )
+    await waitForAsync(
+      page,
+      async (enabled) => {
+        const state = (await window.hibi.getAddonStates()).find(
+          (entry) => entry.id === 'dev-watch-local',
+        )
+        return state.enabled === enabled && state.savedEnabled === undefined
+      },
+      enabled,
+    )
+    assert.equal(
+      await page.evaluate(async () => {
+        const { addons } = await import('/src/addon-registry.ts')
+        return addons.find(({ manifest }) => manifest.id === 'dev-watch-local')
+          .manifest.defaultEnabled
+      }),
+      enabled,
+    )
+    await page.locator('[data-status-id="dev-watch-local.probe"]').waitFor({
+      state: enabled ? 'visible' : 'detached',
+    })
+    assert.deepEqual(await addonState(), {
+      ...afterLink,
+      local: {
+        ...afterLink.local,
+        starts: afterLink.local.starts + Number(enabled),
+        stops: afterLink.local.stops + 1,
+      },
+    })
+  }
+  assert.equal(
+    Object.hasOwn(
+      JSON.parse(await readFile(join(profile, 'addons.json'), 'utf8')),
+      'dev-watch-local',
+    ),
+    false,
+  )
+  mark(
+    'link failures keep running addon; manifest defaults toggle without saved override',
+  )
+  for (const metadata of [
+    { network: { origins: ['https://example.com'] } },
+    { requires: { addons: [{ id: 'typing-speed' }] } },
+  ]) {
+    const beforePermissions = await addonState()
+    const request = {
+      owner: 'dev-watch-local',
+      scope: { kind: 'session' },
+      key: 'watch-permissions',
+      version: 1,
+    }
+    assert.equal(
+      (
+        await page.evaluate(
+          (request) =>
+            window.hibi.writeAddonStorage({
+              ...request,
+              value: 'old activation',
+              baseRevision: 0,
+            }),
+          request,
+        )
+      ).status,
+      'saved',
+    )
+    Object.assign(localMetadata, metadata)
+    await addonUpdate('dev-watch-local', 'code', () =>
+      writeFile(localManifest, JSON.stringify(localMetadata)),
+    )
+    assert.deepEqual(
+      await page.evaluate(
+        (request) => window.hibi.readAddonStorage(request),
+        request,
+      ),
+      { status: 'missing', revision: 0 },
+    )
+    assert.deepEqual(await addonState(), {
+      ...beforePermissions,
+      local: {
+        ...beforePermissions.local,
+        starts: beforePermissions.local.starts + 1,
+        stops: beforePermissions.local.stops + 1,
+      },
+    })
+  }
+  mark('permission and requirement edits retire old main activation resources')
+  assert.equal(
+    viteConnections,
+    0,
+    `addon updates keep the Vite socket: ${viteEvents}`,
+  )
+  mark('local helper compile failure keeps old addon; recovery preserves draft')
   const preload = join(root, 'src/preload/index.ts')
   const preloadSource = await readFile(preload, 'utf8')
   const preloadUrl = page.url()
@@ -750,9 +1137,9 @@ dialog.showMessageBox = (...args) => {
   const canceledStarts = seenEndpoints.length
   await writeFile(cancelNextClose, '')
   await replace(
-    'src/main/imports.ts',
-    "instructions: 'Updated folder importer.',",
-    "instructions: 'Canceled rebuild importer.',",
+    'src/addons/ui-preview/host.ts',
+    "'owner-native'",
+    "'owner-native-canceled'",
   )
   await until(
     () =>
@@ -769,9 +1156,16 @@ dialog.showMessageBox = (...args) => {
     60000,
   )
   assert.equal(seenEndpoints.length, canceledStarts)
-  assert.equal(
-    (await page.evaluate(() => window.hibi.getDocument())).markdown,
-    'draft protected from restart',
+  assert.deepEqual(
+    await page.evaluate(async () => {
+      const draft = await window.hibi.getDocument()
+      return {
+        markdown: draft.markdown,
+        dirty: draft.dirty,
+        dirtyTab: draft.tabs.some((tab) => tab.dirty),
+      }
+    }),
+    { markdown: 'draft protected from restart', dirty: true, dirtyTab: true },
   )
   assert.equal(
     (await page.evaluate(() => window.hibi.listImporters())).find(
@@ -779,30 +1173,99 @@ dialog.showMessageBox = (...args) => {
     ).instructions,
     'Updated folder importer.',
   )
-  mark('canceled restart keeps running app and dirty draft')
+  mark('native addon restart cancellation keeps running app and dirty draft')
 
   await clearDraft('draft protected from restart')
   await replace(
-    'src/main/imports.ts',
-    "instructions: 'Canceled rebuild importer.',",
-    "instructions: 'Latest folder importer.',",
+    'src/addons/ui-preview/host.ts',
+    "'owner-native-canceled'",
+    "'owner-native-updated'",
   )
   await connectRestartedPage(canceledStarts)
   assert.equal(
     (await page.evaluate(() => window.hibi.listImporters())).find(
       (importer) => importer.id === 'folder',
     ).instructions,
-    'Latest folder importer.',
+    'Updated folder importer.',
   )
-  mark('clean rebuild restarts after earlier cancellation')
+  mark('native addon clean rebuild restarts after earlier cancellation')
 
-  const metadataStarts = seenEndpoints.length
+  await page
+    .getByRole('textbox', { name: 'Document editor', exact: true })
+    .fill('draft protected from contract restart')
+  await waitForAsync(page, async () => {
+    const document = await window.hibi.getDocument()
+    return (
+      document.markdown === 'draft protected from contract restart' &&
+      document.dirty
+    )
+  })
+  const beforeContract = await captureAddonState()
+  const contractStarts = seenEndpoints.length
+  const canceledRestarts = output.split(
+    'electron restart canceled; keeping current app',
+  ).length
+  await rm(closePromptCanceled)
+  await writeFile(cancelNextClose, '')
+  await writeFile(
+    join(previewFolder, 'host-next.ts'),
+    (await readFile(join(previewFolder, 'host.ts'), 'utf8')).replace(
+      'owner-native-updated',
+      'owner-native-contract',
+    ),
+  )
   await replace(
     'src/addons/ui-preview/hibi-addon.json',
-    '"name": "UI preview"',
-    '"name": "Updated UI preview"',
+    '"entry": "host.ts"',
+    '"entry": "host-next.ts"',
   )
-  await connectRestartedPage(metadataStarts)
+  await until(
+    () =>
+      output.split('electron restart canceled; keeping current app').length >
+      canceledRestarts,
+    'native contract restart is canceled',
+    60000,
+  )
+  await Promise.all([
+    page.waitForEvent('console', {
+      predicate: (message) =>
+        message.type() === 'warning' &&
+        message
+          .text()
+          .includes('Native or analysis changes are waiting for restart'),
+    }),
+    (async () => {
+      const manifest = JSON.parse(await readFile(previewManifest, 'utf8'))
+      manifest.description = 'Pending native contract'
+      await writeFile(previewManifest, JSON.stringify(manifest, null, 2))
+    })(),
+  ])
+  assert.deepEqual(await addonState(), beforeContract)
+  await clearDraft('draft protected from contract restart')
+  await replace(
+    'src/addons/ui-preview/host-next.ts',
+    'export default',
+    '\nexport default',
+  )
+  await connectRestartedPage(contractStarts)
+  mark('native contract stays pending after cancellation until guarded restart')
+
+  const beforeMetadata = await captureAddonState()
+  await addonUpdate('ui-preview', 'code', () =>
+    replace(
+      'src/addons/ui-preview/hibi-addon.json',
+      '"name": "UI preview"',
+      '"name": "Updated UI preview"',
+    ),
+  )
+  assert.deepEqual(await addonState(), {
+    ...beforeMetadata,
+    preview: {
+      ...beforeMetadata.preview,
+      starts: beforeMetadata.preview.starts + 1,
+      stops: beforeMetadata.preview.stops + 1,
+    },
+  })
   assert.equal(
     await page.evaluate(async () => {
       const { addons } = await import('/src/addon-registry.ts')
@@ -837,13 +1300,41 @@ dialog.showMessageBox = (...args) => {
       closed: true,
       factories: 1,
       starts: 0,
-      native: 'owner-native',
+      native: 'owner-native-contract',
     },
   )
-  await owner.close()
-  mark(
-    'json catalog resolves a declared factory entry after sealing the owner bridge',
+  const beforeRefusal = await captureAddonState()
+  const ownerEpoch = await owner.evaluate(() => performance.timeOrigin)
+  await Promise.all([
+    page.waitForEvent('console', {
+      predicate: (message) =>
+        message.type() === 'warning' &&
+        /addon ui-preview: Close the Updated UI preview windows before reloading Updated UI preview/i.test(
+          message.text(),
+        ),
+    }),
+    replace(
+      'src/addons/ui-preview/window.tsx',
+      'if (probe) probe.factories++',
+      'if (probe) probe.factories += 2',
+    ),
+  ])
+  assert.deepEqual(await addonState(), beforeRefusal)
+  assert.equal(await owner.evaluate(() => performance.timeOrigin), ownerEpoch)
+  assert.equal(
+    await owner.evaluate(() => window.catalogWindowProbe.factories),
+    1,
   )
+  await owner.getByRole('button', { name: 'Close', exact: true }).waitFor()
+  await owner.close()
+  await addonUpdate('ui-preview', 'code', () =>
+    replace(
+      'src/addons/ui-preview/window.tsx',
+      'if (probe) probe.factories += 2',
+      'if (probe) probe.factories++',
+    ),
+  )
+  mark('metadata updates main owner title; open owner refuses code replacement')
 
   const noticeId = 'addon:typst:typst-assets'
   phase('read original notice')
@@ -851,14 +1342,18 @@ dialog.showMessageBox = (...args) => {
     (id) => window.hibi.getLicense(id),
     noticeId,
   )
-  const noticeStarts = seenEndpoints.length
+  const beforeNotice = await captureAddonState()
   const noticePath = join(root, 'src/addons/typst/hibi-addon.json')
   const noticeManifest = JSON.parse(await readFile(noticePath, 'utf8'))
   assert.equal(noticeManifest.licenses[0].text, originalNotice)
   noticeManifest.licenses[0].text = `Catalog notice probe.\n${originalNotice}`
-  await writeFile(noticePath, JSON.stringify(noticeManifest, null, 2))
-
-  await connectRestartedPage(noticeStarts)
+  await addonUpdate(
+    'typst',
+    'code',
+    () => writeFile(noticePath, JSON.stringify(noticeManifest, null, 2)),
+    'idle',
+  )
+  assert.deepEqual(await addonState(), beforeNotice)
   assert.equal(
     await page.evaluate((id) => window.hibi.getLicense(id), noticeId),
     `Catalog notice probe.\n${originalNotice}`,
@@ -879,4 +1374,24 @@ dialog.showMessageBox = (...args) => {
   mark('documentation generator updated')
   refreshDiagnostic()
   completed = true
+})
+
+test('production output omits the addon development bridge and watcher', async () => {
+  await assert.rejects(access(resolve('out/.addon-restart')), {
+    code: 'ENOENT',
+  })
+  let checked = 0
+  for (const directory of ['out/main', 'out/preload', 'out/renderer']) {
+    for (const file of await readdir(resolve(directory), { recursive: true })) {
+      if (!/\.m?js$/.test(file)) continue
+      const code = await readFile(resolve(directory, file), 'utf8')
+      assert.doesNotMatch(
+        code,
+        /addons:development-manifest|updateDevelopmentAddon|developmentContract|hibi:addon-update|watchAddonDevelopment|addon-development/,
+        `${directory}/${file} contains addon development code`,
+      )
+      checked++
+    }
+  }
+  assert.ok(checked > 0, 'production JavaScript was checked')
 })
