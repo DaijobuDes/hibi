@@ -25,12 +25,15 @@ export type InstallCandidate = {
   data?: ReturnType<typeof admitInstalledAddon>
 }
 
+// Set-valued fields compare without order; omitted capabilities (the full legacy SDK) differ from `[]`.
 const access = (manifest: AddonManifest) =>
   JSON.stringify([
     manifest.kind ?? 'extension',
-    manifest.capabilities ?? null,
-    manifest.network?.origins ?? [],
-    manifest.dependencies ?? [],
+    manifest.capabilities ? [...manifest.capabilities].sort() : null,
+    [...(manifest.network?.origins ?? [])].sort(),
+    (manifest.dependencies ?? [])
+      .map((dependency) => JSON.stringify(dependency))
+      .sort(),
   ])
 /** A replacement that asks for the same access keeps the user's enabled setting. */
 export const sameAddonAccess = (previous: AddonManifest, next: AddonManifest) =>

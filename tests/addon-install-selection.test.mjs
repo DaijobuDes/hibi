@@ -723,26 +723,35 @@ test('cancellation after backup prevents publication and restores the old packag
 test('replacements keep their enabled setting only while their access is unchanged', async (t) => {
   const f = await fixture(t)
   f.choose(join(f.source, 'one'))
+  const origins = ['https://example.com', 'https://example.org']
   for (const fields of [
     {},
     { version: '2.0.0', description: 'Updated fixture' },
-    { version: '3.0.0', network: { origins: ['https://example.com'] } },
-    { version: '4.0.0', network: { origins: ['https://example.com'] } },
+    { version: '3.0.0', network: { origins: origins.slice(0, 1) } },
+    { version: '4.0.0', network: { origins: origins.slice(0, 1) } },
     {
       version: '5.0.0',
-      network: { origins: ['https://example.com'] },
+      network: { origins: origins.slice(0, 1) },
       capabilities: [],
+    },
+    { version: '6.0.0', network: { origins }, capabilities: ['ui', 'rich'] },
+    // Reordered set-valued fields grant nothing new.
+    {
+      version: '7.0.0',
+      network: { origins: origins.toReversed() },
+      capabilities: ['rich', 'ui'],
     },
   ]) {
     await f.write(packageFiles('one', 'one', fields))
     await f.prepare()
   }
-  assert.deepEqual(f.kept, [false, true, false, true, false])
+  const expected = [false, true, false, true, false, false, true]
+  assert.deepEqual(f.kept, expected)
   assert.deepEqual(
     f.confirmations.map(({ detail }) =>
       /keeps its current setting/.test(detail),
     ),
-    [false, true, false, true, false],
+    expected,
   )
 })
 
