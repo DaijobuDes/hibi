@@ -1,6 +1,10 @@
 import { isAbsolute, relative, resolve, sep } from 'node:path'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'electron-vite'
+import {
+  addonDevelopmentStyles,
+  developmentMetadata,
+} from './scripts/addon-development'
 import { addonCatalog } from './scripts/addon-packages'
 import { analysisBundles, sandboxPreloads } from './scripts/analysis-bundles'
 import { writeLicenses } from './scripts/licenses'
@@ -71,6 +75,11 @@ export default defineConfig({
         watch: {
           chokidar: {
             ignored: (path: string) => {
+              if (
+                process.env.NODE_ENV_ELECTRON_VITE === 'development' &&
+                developmentMetadata.has(path)
+              )
+                return true
               const part = relative(mainOutput, path)
               return (
                 part === '' ||
@@ -104,6 +113,7 @@ export default defineConfig({
   renderer: {
     plugins: [
       addonCatalog('renderer'),
+      addonDevelopmentStyles(),
       react(),
       startupBundle(),
       diagnosticArtifacts.renderer,

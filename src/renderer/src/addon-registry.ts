@@ -91,24 +91,45 @@ function describeAddon(
   }
   return { addon: descriptor, retire }
 }
-const bundled = catalog.map(
-  ({ manifest, load, loadSettings, flavors }): Addon => {
-    const importer = async () => (await load()).default
-    return describeAddon(manifest, importer, {
-      flavors,
-      ...(loadSettings || manifest.fileExtensions?.length
-        ? {
-            Settings: lazy(async () => ({
-              default: loadSettings
-                ? (await loadSettings()).Settings
-                : ((await normalizeDefinition(await importer(), manifest))
-                    ?.Settings ?? (() => null)),
-            })),
-          }
-        : {}),
-    }).addon
-  },
-)
+function describeBundled({
+  manifest,
+  load,
+  loadSettings,
+  flavors,
+}: (typeof catalog)[number]): Addon {
+  const importer = async () => (await load()).default
+  return describeAddon(manifest, importer, {
+    flavors,
+    ...(loadSettings || manifest.fileExtensions?.length
+      ? {
+          Settings: lazy(async () => ({
+            default: loadSettings
+              ? (await loadSettings()).Settings
+              : ((await normalizeDefinition(await importer(), manifest))
+                  ?.Settings ?? (() => null)),
+          })),
+        }
+      : {}),
+  }).addon
+}
+const bundled = catalog.map(describeBundled)
+
+/** Prepared descriptors publish only after the reload operation accepts them. */
+export function prepareBundledAddon(
+  item: (typeof catalog)[number],
+  scope: 'code' | 'styles',
+) {
+  const index = catalog.findIndex(
+    (entry) => entry.manifest.id === item.manifest.id,
+  )
+  const next = scope === 'code' ? describeBundled(item) : undefined
+  return () => {
+    catalog[index] = item
+    if (next) bundled[index] = next
+    details = undefined
+    if (next) publish()
+  }
+}
 export let addons = bundled
 const installed = new Map<
   string,
@@ -130,6 +151,7 @@ let details: Promise<void> | undefined
 export const addonRegistry = {
   snapshot: () => addons,
   loadDetails() {
+    if (import.meta.hot) return Promise.resolve()
     details ??= import('virtual:hibi-addon-catalog/details')
       .then(({ default: metadata }) => {
         for (const { manifest } of bundled)

@@ -7,6 +7,11 @@ import { validateAddonRequirements } from '../src/shared/addon-dependencies'
 import { parseAddonManifest } from '../src/shared/addon-manifest'
 import { MAX_ADDON_MANIFEST_BYTES } from '../src/shared/addon-package'
 import type { ColorschemeInput } from '../src/shared/colorschemes'
+import {
+  addonDevelopment,
+  developmentMainInputs,
+  developmentMetadata,
+} from './addon-development'
 
 export type AddonPackage = {
   manifest: AddonManifest
@@ -19,6 +24,7 @@ export type AddonPackage = {
   flavors?: string
   styles: string[]
   themes: ColorschemeInput[]
+  themeFiles: string[]
 }
 
 const slash = (path: string) => path.split(sep).join('/')
@@ -147,6 +153,9 @@ export async function readAddonPackages(
         entry: await file(parsed.entry),
         styles,
         themes,
+        themeFiles: [...themeFiles.keys()].map((file) =>
+          slash(resolve(path, file)),
+        ),
         ...(parsed.native ? { native: await file(parsed.native.entry) } : {}),
         ...(analysis
           ? {
@@ -195,6 +204,11 @@ export function addonCatalog(
   ]
   const inputs = new Set<string>()
   let pending: Promise<AddonPackage[]> | undefined
+  let development: ReturnType<typeof addonDevelopment> | undefined
+  let revision = 0
+  const devMain =
+    process === 'main' &&
+    globalThis.process.env.NODE_ENV_ELECTRON_VITE === 'development'
   return {
     name: `addon-catalog-${process}`,
     resolveId(id) {
@@ -206,10 +220,43 @@ export function addonCatalog(
       )
         return `\0${id}`
     },
+    buildStart() {
+      if (devMain) pending = undefined
+    },
+    buildEnd() {
+      if (devMain)
+        for (const path of this.getWatchFiles()) developmentMainInputs.add(path)
+    },
+    async configureServer(server) {
+      if (process !== 'renderer') return
+      development = addonDevelopment(
+        server,
+        root,
+        await readAddonPackages(root),
+        () => {
+          pending = undefined
+          return readAddonPackages(root)
+        },
+        (timestamp) => {
+          revision = timestamp
+          pending = undefined
+          for (const module of server.moduleGraph.idToModuleMap.values())
+            if (module.id?.startsWith(`\0${catalogId}/`))
+              server.moduleGraph.invalidateModule(
+                module,
+                new Set(),
+                timestamp,
+                true,
+              )
+        },
+      )
+    },
     watchChange(id) {
       if (inputs.has(slash(id))) pending = undefined
     },
-    handleHotUpdate({ file, server }) {
+    hotUpdate({ file, server, timestamp }) {
+      if (this.environment.name !== 'client') return
+      if (development?.(file, timestamp)) return []
       if (!inputs.has(slash(file))) return
       pending = undefined
       for (const id of moduleIds) {
@@ -231,7 +278,16 @@ export function addonCatalog(
         this.addWatchFile(path)
       })
       const packages = await pending
-      for (const input of inputs) this.addWatchFile(input)
+      for (const input of inputs) {
+        this.addWatchFile(input)
+        if (
+          devMain &&
+          packages.some((item) =>
+            input.startsWith(`${slash(resolve(root, item.directory))}/`),
+          )
+        )
+          developmentMetadata.add(input)
+      }
       if (resourceOwner) {
         const item = packages.find(
           ({ manifest }) => manifest.id === resourceOwner,
@@ -260,7 +316,7 @@ export function addonCatalog(
       const imports: string[] = []
       const entries = packages.map((item, index) => {
         const load = (path: string) =>
-          `import(${JSON.stringify(slash(resolve(root, path)))})`
+          `import(${JSON.stringify(slash(resolve(root, path)) + (development && revision ? `?t=${revision}` : ''))})`
         const resources =
           item.styles.length || item.themes.length
             ? `loadResources:()=>import(${JSON.stringify(resourcesId + item.manifest.id)}).then(module=>module.default)`
@@ -273,7 +329,7 @@ export function addonCatalog(
           ...manifest
         } = item.manifest
         const parts = [
-          `manifest:${JSON.stringify(manifest)}`,
+          `manifest:${JSON.stringify(development ? item.manifest : manifest)}`,
           `source:${JSON.stringify(item.source)}`,
         ]
         if (process === 'main') {

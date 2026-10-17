@@ -410,6 +410,11 @@ async function savePreferences(
   await writeFile(`${path}.tmp`, JSON.stringify(next), { mode: 0o600 })
   await rename(`${path}.tmp`, path)
   enabled = next
+  return refreshAddonStates(before)
+}
+
+/** Refresh availability and owned resources without changing saved preferences. */
+export async function refreshAddonStates(before: readonly AddonState[]) {
   await deactivateUnavailable(before)
   const states = getAddonStates()
   onAddonStatesChanged(states)

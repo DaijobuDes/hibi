@@ -42,6 +42,8 @@ export async function reloadAddons(
     readOnly: () => () => void
     activeView: () => ViewTarget | null
     reviewed?: boolean
+    /** Publish a prepared development descriptor after guards and the editor gate. */
+    replace?: (() => void | Promise<void>) | undefined
   },
 ): Promise<AddonReloadResult> {
   const { running, reloads, restarts } = host
@@ -100,14 +102,32 @@ export async function reloadAddons(
     ]),
   ]
   for (const id of restarting) restarts.set(id, token)
-  if (!restarting.length) return finish({ status: 'idle' })
-  if (host.affectsEditor(closure)) {
+  if (restarting.length && host.affectsEditor(closure)) {
     // Editing pauses until the restarted addons settle; then selection and focus return.
     const restore = keepEditorState(host.activeView)
     const end = host.readOnly()
     editable = () => void restore().finally(end)
   }
-  for (const id of ids) running.get(id)?.stop()
+  const previous = ids.map((id) => running.get(id))
+  try {
+    if (host.replace) await host.replace()
+  } catch (error) {
+    return finish({
+      status: 'failed',
+      message: error instanceof Error ? error.message : String(error),
+    })
+  }
+  if (superseded()) return finish({ status: 'superseded' })
+  if (host.replace) {
+    const next = host.current()
+    restarting = restarting.filter((id) => {
+      if (next.relevantIds.has(id) && !next.windowBlocked(id)) return true
+      if (restarts.get(id) === token) restarts.delete(id)
+      return false
+    })
+  }
+  for (const runtime of previous) runtime?.stop()
+  if (!restarting.length) return finish({ status: 'idle' })
   if (retried.length) host.retry(retried)
   const outcomes = await Promise.allSettled(restarting.map(host.whenStarted))
   if (superseded()) return finish({ status: 'superseded' })

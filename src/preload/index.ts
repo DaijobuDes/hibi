@@ -210,6 +210,12 @@ if (process.isMainFrame) {
     },
     getAddonWindowOwners: () =>
       ipcRenderer.invoke(ADDON_WINDOW_CHANNELS.owners),
+    ...(import.meta.env.DEV
+      ? {
+          updateDevelopmentAddon: (value: unknown) =>
+            ipcRenderer.invoke('addons:development-manifest', value),
+        }
+      : {}),
     onAddonReload: (callback) => {
       const listener = (
         _event: Electron.IpcRendererEvent,
