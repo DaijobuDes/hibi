@@ -55,6 +55,7 @@ import { createAddonExchange } from './addon-exchange'
 import { createAddonGlobalShortcuts } from './addon-global-shortcuts'
 import { createAddonOverrides } from './addon-overrides'
 import { addonRegistry } from './addon-registry'
+import type { AddonReloadResult } from './addon-reload'
 import { createAddonStorageScope } from './addon-storage'
 import { addonViews } from './addon-views'
 import { codeHtml, codeLanguages } from './code-languages'
@@ -117,9 +118,6 @@ function loadInteractionBroker() {
   return interactionBrokerModule
 }
 
-export type AddonReloadResult =
-  | { status: 'reloaded' | 'idle' | 'superseded' }
-  | { status: 'refused' | 'failed'; reason: string }
 export type RegisteredCommand = Omit<AddonCommand, 'run'> & {
   addonId: string
   canRun: (context: CommandExecutionContext) => boolean
@@ -2385,19 +2383,20 @@ export function useAddons(
           await reviewAddonInstall(dialogService.api, session)
         }
       } finally {
-        const [states, packages] = await Promise.all([
+        const [states, packages, { reloadAddons }] = await Promise.all([
           window.hibi.getAddonStates(),
           window.hibi.getInstalledAddons(),
+          import('./addon-reload'),
         ])
         setStates(states)
-        // A replacement that kept its enabled setting restarts with its new files.
+        // A replacement that kept its enabled setting restarts with its new files before the start effect sees them.
         const replaced = addonRegistry
           .hydrate(packages)
           .filter((id) =>
             states.some((state) => state.id === id && state.enabled),
           )
         if (replaced.length)
-          void reloadAddons(replaced, true).then(reportReload, (error) =>
+          void reloadAddons(replaced, reloadHost(true)).catch((error) =>
             latest.current.error(error),
           )
       }
@@ -2406,95 +2405,29 @@ export function useAddons(
     }
   }
   const reloads = useRef(new Map<string, object>()).current
-  /**
-   * Stop running addons and their running required consumers, consumers
-   * first, then wait for the start effect to restart them provider-first.
-   * Enabled settings are never written. A newer reload of any affected addon
-   * supersedes this one; its discarded starts clean up through `stop`.
-   * `reviewed` skips the window and settings checks for a replacement the
-   * user confirmed, whose previous files are no longer served.
-   */
-  async function reloadAddons(
-    ids: readonly string[],
-    reviewed = false,
-  ): Promise<AddonReloadResult> {
-    const token = {}
-    const manifests = currentActivation.current.catalog.map(
-      (addon) => addon.manifest,
-    )
-    const name = (id = ids[0] ?? '') =>
-      manifests.find((manifest) => manifest.id === id)?.name ?? id
-    const closure = [
-      ...new Set(ids.flatMap((id) => [id, ...addonDependents(manifests, id)])),
-    ]
-    // Addons a superseded reload is still restarting stay part of this one.
-    const pending = closure.filter((id) => reloads.has(id))
-    for (const id of closure) reloads.set(id, token)
-    const superseded = () => closure.some((id) => reloads.get(id) !== token)
-    const finish = (result: AddonReloadResult) => {
-      for (const id of closure)
-        if (reloads.get(id) === token) reloads.delete(id)
-      return result
-    }
-    if (!reviewed) {
-      const visible = closure.find((id) => latest.current.settingsVisible?.(id))
-      if (visible)
-        return finish({
-          status: 'refused',
-          reason: `Leave the ${name(visible)} settings before reloading ${name()}.`,
-        })
-      const owners = await window.hibi.getAddonWindowOwners()
-      const windowed = closure.find((id) => owners.includes(id))
-      if (windowed)
-        return finish({
-          status: 'refused',
-          reason: `Close the ${name(windowed)} windows before reloading ${name()}.`,
-        })
-      if (superseded()) return finish({ status: 'superseded' })
-    }
-    // A reload is an explicit retry: failed addons in the closure and their required providers start again.
-    const { settled, dependencies } = currentActivation.current
-    const retried = [
-      ...new Set([
-        ...ids.flatMap((id) => dependencies.get(id) ?? []),
-        ...closure,
-      ]),
-    ].filter((id) => settled.get(id) === false)
-    const restarting = [
-      ...new Set([
-        ...closure.filter((id) => running.has(id)),
-        ...pending,
-        ...retried,
-      ]),
-    ]
-    if (!restarting.length) return finish({ status: 'idle' })
-    for (const id of ids) running.get(id)?.stop()
-    if (retried.length)
+  const reloadHost = (reviewed = false) => ({
+    current: () => currentActivation.current,
+    running,
+    reloads,
+    whenStarted,
+    retry: (ids: readonly string[]) =>
       setSettled((current) => {
         const next = new Map(current)
-        for (const id of retried) if (next.get(id) === false) next.delete(id)
+        for (const id of ids) if (next.get(id) === false) next.delete(id)
         return next
-      })
-    const outcomes = await Promise.allSettled(restarting.map(whenStarted))
-    if (superseded()) return finish({ status: 'superseded' })
-    const failed = restarting.filter(
-      (_, index) => outcomes[index]?.status === 'rejected',
-    )
-    return finish(
-      failed.length
-        ? {
-            status: 'failed',
-            reason: `${failed.map(name).join(', ')} could not restart.`,
-          }
-        : { status: 'reloaded' },
-    )
-  }
+      }),
+    settingsVisible: (id: string) => !!latest.current.settingsVisible?.(id),
+    reviewed,
+  })
   /** `styles` swaps package stylesheets and themes in place; `code` restarts the addon. */
   async function reload(
     id: string,
     scope: 'code' | 'styles',
   ): Promise<AddonReloadResult> {
-    if (scope === 'code') return reloadAddons([id])
+    if (scope === 'code') {
+      const { reloadAddons } = await import('./addon-reload')
+      return reloadAddons([id], reloadHost())
+    }
     const runtime = running.get(id)
     if (!runtime) return { status: 'idle' }
     try {
