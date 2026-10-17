@@ -146,7 +146,12 @@ export async function installedResources(
     throw new Error(
       'The addon installation record is invalid. Reinstall the addon.',
     )
-  const { styles = [], themes } = descriptor({ ...entry, ...data })
+  // A manifest that no longer lists styles must not inherit the installed URLs.
+  const { styles = [], themes } = descriptor({
+    ...entry,
+    ...data,
+    styles: data.styles ?? [],
+  })
   return { styles, themes }
 }
 export function installedDocumentationPath(id: string, path: string) {

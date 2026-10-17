@@ -322,6 +322,24 @@ test('reload restarts an addon and its consumers in place, refuses open windows 
   assert.equal(await page.evaluate(() => window.providerStarts), 7)
   assert.deepEqual(await log(), [])
 
+  // A manifest that drops its stylesheets removes them in place too.
+  const declared = JSON.parse(
+    await readFile(join(provider, 'hibi-addon.json'), 'utf8'),
+  )
+  delete declared.styles
+  await writeFile(join(provider, 'hibi-addon.json'), JSON.stringify(declared))
+  await reload('reload-provider', 'styles')
+  await page
+    .locator('link[data-addon-style="reload-provider"]')
+    .waitFor({ state: 'detached' })
+  assert.notEqual(
+    await page.evaluate(
+      () => getComputedStyle(document.querySelector('.reload-probe')).color,
+    ),
+    'rgb(4, 5, 6)',
+  )
+  assert.equal(await page.evaluate(() => window.providerStarts), 7)
+
   // Reloading never writes enabled settings.
   assert.equal(await saved(), before)
 
