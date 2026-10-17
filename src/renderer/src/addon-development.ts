@@ -19,6 +19,7 @@ export function watchAddonDevelopment(
   const update = (request: {
     id: string
     scope: 'code' | 'styles'
+    contract: string
     catalog: string
     css: { after: string }[]
   }) => {
@@ -31,7 +32,12 @@ export function watchAddonDevelopment(
           (entry: { manifest: { id: string } }) =>
             entry.manifest.id === request.id,
         )
-        if (request.scope === 'code') {
+        if (
+          request.scope === 'code' &&
+          (await window.hibi.getAddonStates()).some(
+            (state) => state.id === request.id && state.enabled,
+          )
+        ) {
           await item.load()
           await item.loadSettings?.()
         }
@@ -51,10 +57,13 @@ export function watchAddonDevelopment(
           request.scope,
           async () => {
             if (request.scope === 'code')
-              candidate.states = await window.hibi.updateDevelopmentAddon?.({
-                ...item.manifest,
-                entry: 'index.js',
-              })
+              candidate.states = await window.hibi.updateDevelopmentAddon?.(
+                {
+                  ...item.manifest,
+                  entry: 'index.js',
+                },
+                request.contract,
+              )
             publish()
             for (const element of document.querySelectorAll<HTMLStyleElement>(
               'style[data-addon-style]',

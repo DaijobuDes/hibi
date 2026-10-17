@@ -414,14 +414,23 @@ async function savePreferences(
 }
 
 /** Refresh availability and owned resources without changing saved preferences. */
-export async function refreshAddonStates(before: readonly AddonState[]) {
-  await deactivateUnavailable(before)
+export async function refreshAddonStates(
+  before: readonly AddonState[],
+  changed: readonly string[] = [],
+) {
+  await deactivateUnavailable(before, changed)
   const states = getAddonStates()
   onAddonStatesChanged(states)
   return states
 }
 
-async function deactivateUnavailable(before: readonly AddonState[]) {
+async function deactivateUnavailable(
+  before: readonly AddonState[],
+  changed: readonly string[],
+) {
+  const retired = new Set(
+    changed.flatMap((id) => [id, ...addonDependents(manifests(), id)]),
+  )
   const current = new Set(
     getAddonStates()
       .filter(active)
@@ -429,7 +438,10 @@ async function deactivateUnavailable(before: readonly AddonState[]) {
   )
   const lost = new Set(
     before
-      .filter((state) => active(state) && !current.has(state.id))
+      .filter(
+        (state) =>
+          active(state) && (!current.has(state.id) || retired.has(state.id)),
+      )
       .map((state) => state.id),
   )
   const ids = new Set(

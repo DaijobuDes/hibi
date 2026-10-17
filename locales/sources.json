@@ -3489,6 +3489,9 @@
   "cd452315c10b": [
     "src/main/addons.ts"
   ],
+  "2361f5c438f6": [
+    "src/main/addon-development.ts"
+  ],
   "793e568c3c97": [
     "src/shared/document-journal.ts"
   ],
@@ -4575,6 +4578,9 @@
   "159713231bf6": [
     "src/renderer/src/UpdateSettings.tsx"
   ],
+  "e154258ffb08": [
+    "src/main/addon-development.ts"
+  ],
   "9e0c50a4c600": [
     "src/renderer/src/VersionHistory.tsx"
   ],
@@ -5409,6 +5415,9 @@
   ],
   "2440b28c8988": [
     "src/shared/addon-manifest.ts"
+  ],
+  "b2632672a130": [
+    "src/main/addon-development.ts"
   ],
   "d62200507764": [
     "src/shared/host-network.ts"

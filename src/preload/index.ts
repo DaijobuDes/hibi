@@ -212,8 +212,8 @@ if (process.isMainFrame) {
       ipcRenderer.invoke(ADDON_WINDOW_CHANNELS.owners),
     ...(import.meta.env.DEV
       ? {
-          updateDevelopmentAddon: (value: unknown) =>
-            ipcRenderer.invoke('addons:development-manifest', value),
+          updateDevelopmentAddon: (value: unknown, contract: string) =>
+            ipcRenderer.invoke('addons:development-manifest', value, contract),
         }
       : {}),
     onAddonReload: (callback) => {

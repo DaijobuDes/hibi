@@ -1,3 +1,4 @@
+import { writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import {
   type ModuleNode,
@@ -30,6 +31,23 @@ export { css as default, previousCss }
 }
 
 // Shared with the main build: metadata updates do not replace native code.
+export const developmentRestartFile = (root: string) =>
+  resolve(root, 'out/.addon-restart')
+export const developmentContract = (entry: AddonPackage) =>
+  JSON.stringify([
+    entry.native,
+    entry.analysis,
+    ...(entry.native
+      ? [
+          entry.manifest.dependencies,
+          entry.manifest.fileExtensions,
+          entry.manifest.importer,
+          entry.manifest.fileExtensions?.length
+            ? entry.manifest.name
+            : undefined,
+        ]
+      : []),
+  ])
 export const developmentMetadata = new Set<string>()
 export const developmentMainInputs = new Set<string>()
 
@@ -82,25 +100,13 @@ export function addonDevelopment(
         try {
           const item = next.find((entry) => entry.manifest.id === id)!
           const old = packages.get(id)!
-          const nativeContract = (entry: AddonPackage) =>
-            JSON.stringify([
-              entry.native,
-              entry.analysis,
-              entry.manifest.dependencies,
-              entry.manifest.fileExtensions,
-              entry.manifest.importer,
-              entry.manifest.fileExtensions?.length
-                ? entry.manifest.name
-                : undefined,
-            ])
           if (
             ((item.native || old.native) &&
-              nativeContract(item) !== nativeContract(old)) ||
+              developmentContract(item) !== developmentContract(old)) ||
             item.analysis !== old.analysis
           ) {
-            server.config.logger.warn(
-              `addon ${id}: native or analysis contract changed; restart the development command`,
-            )
+            await writeFile(developmentRestartFile(root), String(timestamp))
+            packages.set(id, item)
             continue
           }
           const scope = [...files].every(
@@ -141,10 +147,13 @@ export function addonDevelopment(
               if (dependency.file?.startsWith(`${root}/src/`))
                 await compile(dependency.url)
           }
-          for (const path of [
-            item.entry,
-            ...(scope === 'code' ? [item.settings, item.flavors] : []),
-          ])
+          const codeChanged = [...files].some(
+            (file) =>
+              /\.[cm]?[jt]sx?$/.test(file) && !developmentMetadata.has(file),
+          )
+          for (const path of codeChanged
+            ? [item.entry, item.settings, item.flavors]
+            : [])
             if (path)
               await compile(version(url(resolve(root, path)), timestamp))
           for (const sheet of css) await server.transformRequest(sheet.after)
@@ -158,6 +167,7 @@ export function addonDevelopment(
             data: {
               id,
               scope,
+              contract: developmentContract(item),
               catalog: version(`/@id/__x00__${catalog}`, timestamp),
               css,
             },

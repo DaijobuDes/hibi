@@ -6,14 +6,23 @@ import { getAddonManifests, getAddonStates, refreshAddonStates } from './addons'
 import { setDocumentExtensions } from './document-types'
 
 /** Development metadata only; native loaders keep the guarded process restart. */
-export async function updateDevelopmentAddon(value: unknown) {
+export async function updateDevelopmentAddon(
+  value: unknown,
+  contract: unknown,
+) {
   if (Buffer.byteLength(JSON.stringify(value) ?? '') > MAX_ADDON_MANIFEST_BYTES)
     throw new Error('The addon manifest exceeds 64 KiB.')
   const { manifest } = parseAddonManifest(value, { trust: 'compiled' })
-  const previous = catalog.find(
-    (item) => item.manifest.id === manifest.id,
-  )?.manifest
-  if (!previous) throw new Error('Restart development after adding an addon.')
+  const entry = catalog.find((item) => item.manifest.id === manifest.id)
+  if (!entry) throw new Error('Restart development after adding an addon.')
+  if (typeof contract !== 'string' || entry.developmentContract !== contract)
+    throw new Error(
+      'Native or analysis changes are waiting for restart. Save drafts, then edit the native file again or restart development.',
+    )
+  const previous = entry.manifest
+  const changed =
+    JSON.stringify([previous.requires, previous.network]) !==
+    JSON.stringify([manifest.requires, manifest.network])
   validateAddonRequirements(
     getAddonManifests().map((item) =>
       item.id === manifest.id ? manifest : item,
@@ -32,5 +41,5 @@ export async function updateDevelopmentAddon(value: unknown) {
   setDocumentExtensions(
     getAddonManifests().flatMap((item) => item.fileExtensions ?? []),
   )
-  return refreshAddonStates(before)
+  return refreshAddonStates(before, changed ? [manifest.id] : [])
 }

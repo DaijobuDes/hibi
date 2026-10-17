@@ -1429,11 +1429,16 @@ if (!app.requestSingleInstanceLock()) {
         return shell.openExternal(SPONSOR_URL)
       })
       if (import.meta.env.DEV)
-        handle('addons:development-manifest', async (event, value: unknown) => {
-          trustedWindow(event)
-          const { updateDevelopmentAddon } = await import('./addon-development')
-          return updateDevelopmentAddon(value)
-        })
+        handle(
+          'addons:development-manifest',
+          async (event, value: unknown, contract: unknown) => {
+            trustedWindow(event)
+            const { updateDevelopmentAddon } = await import(
+              './addon-development'
+            )
+            return updateDevelopmentAddon(value, contract)
+          },
+        )
       handle(ADDON_CHANNELS.states, (event) => {
         trustedWindow(event)
         return getAddonStates()

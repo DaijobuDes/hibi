@@ -1,4 +1,12 @@
-import { lstat, readdir, readFile, realpath } from 'node:fs/promises'
+import {
+  lstat,
+  mkdir,
+  open,
+  readdir,
+  readFile,
+  realpath,
+  rm,
+} from 'node:fs/promises'
 import { basename, join, relative, resolve, sep } from 'node:path'
 import { build } from 'esbuild'
 import type { Plugin } from 'vite'
@@ -9,8 +17,10 @@ import { MAX_ADDON_MANIFEST_BYTES } from '../src/shared/addon-package'
 import type { ColorschemeInput } from '../src/shared/colorschemes'
 import {
   addonDevelopment,
+  developmentContract,
   developmentMainInputs,
   developmentMetadata,
+  developmentRestartFile,
 } from './addon-development'
 
 export type AddonPackage = {
@@ -220,8 +230,18 @@ export function addonCatalog(
       )
         return `\0${id}`
     },
-    buildStart() {
-      if (devMain) pending = undefined
+    async buildStart() {
+      if (process !== 'main') return
+      const signal = developmentRestartFile(root)
+      if (!devMain) {
+        await rm(signal, { force: true })
+        return
+      }
+      pending = undefined
+      await mkdir(resolve(root, 'out'), { recursive: true })
+      const file = await open(signal, 'a')
+      await file.close()
+      this.addWatchFile(signal)
     },
     buildEnd() {
       if (devMain)
@@ -333,6 +353,10 @@ export function addonCatalog(
           `source:${JSON.stringify(item.source)}`,
         ]
         if (process === 'main') {
+          if (devMain)
+            parts.push(
+              `developmentContract:${JSON.stringify(developmentContract(item))}`,
+            )
           parts.push(
             `directory:${JSON.stringify(item.directory.replace(/^src\//, '../'))}`,
           )
