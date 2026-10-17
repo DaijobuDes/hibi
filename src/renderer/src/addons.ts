@@ -524,7 +524,6 @@ export function useAddons(
   /** Settles when the owner next finishes starting, fails, or stops. */
   const whenStarted = useCallback(
     (owner: string) => {
-      if (started.has(owner)) return Promise.resolve()
       let pending = activation.get(owner)
       if (!pending) {
         let resolve!: () => void, reject!: (error: unknown) => void
@@ -554,7 +553,7 @@ export function useAddons(
       }
       return pending.promise
     },
-    [activation, started],
+    [activation],
   )
   const activateAddon = useCallback(
     async (owner: string) => {
@@ -678,6 +677,25 @@ export function useAddons(
   const mounted = useRef(false)
   useEffect(() => {
     mounted.current = true
+    if (import.meta.hot) {
+      let disposed = false
+      let stop: (() => void) | undefined
+      const hot = import.meta.hot
+      void import('./addon-development').then(({ watchAddonDevelopment }) => {
+        if (!disposed)
+          stop = watchAddonDevelopment(hot, (...args) =>
+            reloadAddon.current(...args),
+          )
+      })
+      return () => {
+        disposed = true
+        stop?.()
+        mounted.current = false
+        for (const runtime of running.values()) runtime.stop()
+        for (const request of activation.values())
+          request.reject(new Error('The addon host stopped.'))
+      }
+    }
     return () => {
       mounted.current = false
       for (const runtime of running.values()) runtime.stop()
@@ -2478,61 +2496,11 @@ export function useAddons(
   async function reload(
     id: string,
     scope: 'code' | 'styles',
-    replace?: () => void | Promise<void>,
-    candidate?: { manifest: AddonManifest; states?: AddonState[] | undefined },
   ): Promise<AddonReloadResult> {
     if (scope === 'code') {
       const { reloadAddons } = await import('./addon-reload')
-      const host = reloadHost()
-      if (candidate) {
-        host.current = () => {
-          const current = currentActivation.current
-          const catalog = current.catalog.map((addon) =>
-            addon.manifest.id === id
-              ? { ...addon, manifest: candidate.manifest }
-              : addon,
-          )
-          const manifests = catalog.map((addon) => addon.manifest)
-          const states = candidate.states ?? current.states
-          const dependencies = requiredAddonDependencyMap(manifests)
-          const available = new Set(
-            resolveAddonDependencies(manifests, states).order,
-          )
-          const relevantIds = new Set<string>()
-          for (const manifest of manifests)
-            if (
-              states.some(
-                (state) => state.id === manifest.id && state.enabled,
-              ) &&
-              triggered(manifest)
-            )
-              for (const owner of [
-                manifest.id,
-                ...(dependencies.get(manifest.id) ?? []),
-              ])
-                relevantIds.add(owner)
-          return {
-            ...current,
-            catalog,
-            states,
-            dependencies,
-            relevantIds,
-            windowBlocked: (owner) =>
-              current.windowBlocked(owner) || !available.has(owner),
-          }
-        }
-      }
-      return reloadAddons([id], {
-        ...host,
-        replace: replace
-          ? async () => {
-              await replace()
-              if (candidate?.states) setStates(candidate.states)
-            }
-          : undefined,
-      })
+      return reloadAddons([id], reloadHost())
     }
-    await replace?.()
     // A start still in progress publishes the resources it read.
     const runtime = started.has(id) ? running.get(id) : undefined
     if (!runtime) return { status: 'idle' }
@@ -2551,8 +2519,31 @@ export function useAddons(
     if (result.status === 'refused')
       latest.current.error(new Error(result.message))
   }, [])
-  const reloadAddon = useRef(reload)
+  const reloadAddon =
+    useRef<
+      (
+        id: string,
+        scope: 'code' | 'styles',
+        prepare?: () => Promise<() => void>,
+      ) => Promise<AddonReloadResult>
+    >(reload)
   reloadAddon.current = reload
+  if (import.meta.hot)
+    reloadAddon.current = async (id, scope, prepare) => {
+      if (!prepare) return reload(id, scope)
+      if (scope === 'styles') {
+        const commit = await prepare()
+        commit()
+        return reload(id, scope)
+      }
+      const { reloadAddons } = await import('./addon-reload')
+      return reloadAddons([id], {
+        ...reloadHost(),
+        prepare,
+        whenStarted: (owner) =>
+          started.has(owner) ? Promise.resolve() : whenStarted(owner),
+      })
+    }
   useEffect(
     () =>
       window.hibi.onAddonReload(({ id, scope }) => {
@@ -2562,22 +2553,6 @@ export function useAddons(
       }),
     [reportReload],
   )
-  useEffect(() => {
-    if (!import.meta.hot || editorOnly) return
-    let disposed = false
-    let stop: (() => void) | undefined
-    const hot = import.meta.hot
-    void import('./addon-development').then(({ watchAddonDevelopment }) => {
-      if (!disposed)
-        stop = watchAddonDevelopment(hot, (...args) =>
-          reloadAddon.current(...args),
-        )
-    })
-    return () => {
-      disposed = true
-      stop?.()
-    }
-  }, [editorOnly])
   async function remove(id: string) {
     try {
       if (!(await confirmDependents(id, true))) return

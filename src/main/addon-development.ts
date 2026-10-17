@@ -3,7 +3,7 @@ import { validateAddonRequirements } from '../shared/addon-dependencies'
 import { addonDevelopmentManifestContract } from '../shared/addon-development'
 import { parseAddonManifest } from '../shared/addon-manifest'
 import { MAX_ADDON_MANIFEST_BYTES } from '../shared/addon-package'
-import { getAddonManifests, getAddonStates } from './addons'
+import { getAddonManifests } from './addons'
 
 /** Development metadata only; native loaders keep the guarded process restart. */
 export async function updateDevelopmentAddon(
@@ -39,5 +39,4 @@ export async function updateDevelopmentAddon(
   details[manifest.id] = manifest.licenses
     ? { licenses: manifest.licenses }
     : {}
-  return getAddonStates()
 }

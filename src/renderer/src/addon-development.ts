@@ -1,4 +1,3 @@
-import type { Addon, AddonState } from '../../addons/api'
 import { prepareBundledAddon } from './addon-registry'
 import type { AddonReloadResult } from './addon-reload'
 
@@ -8,13 +7,10 @@ export function watchAddonDevelopment(
   reload: (
     id: string,
     scope: 'code' | 'styles',
-    replace: () => Promise<void>,
-    candidate: {
-      manifest: Addon['manifest']
-      states?: AddonState[] | undefined
-    },
+    prepare: () => Promise<() => void>,
   ) => Promise<AddonReloadResult>,
 ) {
+  if (window.hibiAddonWindow) return () => {}
   let pending = Promise.resolve()
   const update = (request: {
     id: string
@@ -49,22 +45,16 @@ export function watchAddonDevelopment(
           }),
         )
         const publish = prepareBundledAddon(item, request.scope)
-        const candidate = {
-          manifest: item.manifest,
-          states: undefined as AddonState[] | undefined,
-        }
-        const result = await reload(
-          request.id,
-          request.scope,
-          async () => {
-            if (request.scope === 'code')
-              candidate.states = await window.hibi.updateDevelopmentAddon?.(
-                {
-                  ...item.manifest,
-                  entry: 'index.js',
-                },
-                request.contract,
-              )
+        const result = await reload(request.id, request.scope, async () => {
+          if (request.scope === 'code')
+            await window.hibi.updateDevelopmentAddon?.(
+              {
+                ...item.manifest,
+                entry: 'index.js',
+              },
+              request.contract,
+            )
+          return () => {
             publish()
             for (const element of document.querySelectorAll<HTMLStyleElement>(
               'style[data-addon-style]',
@@ -80,9 +70,8 @@ export function watchAddonDevelopment(
                       element.textContent ?? ''
                     ).replaceAll(before, after)
             for (const [, , apply] of replacements) apply?.()
-          },
-          candidate,
-        )
+          }
+        })
         hot.send('hibi:addon-result', {
           id: request.id,
           revision: request.revision,

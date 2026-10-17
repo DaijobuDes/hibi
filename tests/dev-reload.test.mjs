@@ -101,6 +101,14 @@ test('development watches main, renderer, preload, addons, and documentation gen
       themes: ['theme.json'],
     }),
     'README.md': '# Local watch fixture',
+    'Settings.tsx': `
+      import { useState } from 'react'
+      export function Settings() {
+        const [draft, setDraft] = useState('')
+        return <input aria-label="Local settings draft" value={draft}
+          onChange={event => setDraft(event.target.value)} />
+      }
+    `,
     'theme.json': JSON.stringify({
       id: 'watch',
       name: 'Watch theme',
@@ -312,6 +320,31 @@ test('development watches main, renderer, preload, addons, and documentation gen
     fixtureConfig.replace(
       "server: { host: '127.0.0.1' }",
       `server: { host: '127.0.0.1', fs: { allow: ${JSON.stringify([root, resolve('node_modules')])} } }`,
+    ),
+  )
+  const holdAddonPrepare = join(root, 'hold-addon-prepare')
+  const addonPreparePaused = join(root, 'addon-prepare-paused')
+  const releaseAddonPrepare = join(root, 'release-addon-prepare')
+  const preparePath = join(root, 'src/main/addon-development.ts')
+  const prepareSource = await readFile(preparePath, 'utf8')
+  const prepareMarker = '  for (const key of Object.keys(previous))'
+  assert.equal(prepareSource.split(prepareMarker).length, 2)
+  await writeFile(
+    preparePath,
+    prepareSource.replace(
+      prepareMarker,
+      `
+  if (manifest.id === 'dev-watch-local') {
+    const fs = await import('node:fs/promises')
+    if (await fs.access(${JSON.stringify(holdAddonPrepare)}).then(() => true, () => false)) {
+      await fs.writeFile(${JSON.stringify(addonPreparePaused)}, '')
+      while (true) {
+        try { await fs.access(${JSON.stringify(releaseAddonPrepare)}); break } catch {}
+        await new Promise(done => setTimeout(done, 50))
+      }
+    }
+  }
+${prepareMarker}`,
     ),
   )
   const cancelNextClose = join(root, 'cancel-next-close')
@@ -849,6 +882,85 @@ dialog.showMessageBox = (...args) => {
     },
   })
   mark('imported local json dependency reloads only its owner')
+
+  const beforeSettingsRace = await addonState()
+  await writeFile(holdAddonPrepare, '')
+  try {
+    await Promise.all([
+      page.waitForEvent('console', {
+        predicate: (message) =>
+          message.type() === 'warning' &&
+          /addon dev-watch-local: Leave the Local watch fixture settings before reloading Local watch fixture/i.test(
+            message.text(),
+          ),
+      }),
+      (async () => {
+        await replace(
+          'src/useraddons/dev-watch-local/helper.ts',
+          'local linked',
+          'local prepared',
+        )
+        await until(
+          () =>
+            access(addonPreparePaused).then(
+              () => true,
+              () => false,
+            ),
+          'addon metadata preparation waits before renderer commit',
+        )
+        await page
+          .getByRole('button', { name: /^settings$/i, exact: true })
+          .click()
+        await page.getByRole('tab', { name: /^local watch fixture$/i }).click()
+        await page
+          .getByRole('textbox', { name: 'Local settings draft', exact: true })
+          .fill('unsaved local settings draft')
+        await writeFile(releaseAddonPrepare, '')
+      })(),
+    ])
+    assert.equal(
+      await page
+        .getByRole('textbox', {
+          name: 'Local settings draft',
+          exact: true,
+        })
+        .inputValue(),
+      'unsaved local settings draft',
+    )
+    assert.deepEqual(await addonState(), beforeSettingsRace)
+  } finally {
+    await writeFile(releaseAddonPrepare, '')
+    await rm(holdAddonPrepare, { force: true })
+  }
+  await page.getByRole('button', { name: /^back to app$/i }).click()
+  await page
+    .getByRole('main', { name: /^settings$/i })
+    .waitFor({ state: 'hidden' })
+  await addonUpdate('dev-watch-local', 'code', () =>
+    replace(
+      'src/useraddons/dev-watch-local/inline.css',
+      '--local-inline: overlapped',
+      '--local-inline: settings-recovered',
+    ),
+  )
+  await page.getByText(/^local prepared$/i).waitFor()
+  await page.waitForFunction(
+    () =>
+      getComputedStyle(document.body)
+        .getPropertyValue('--local-inline')
+        .trim() === 'settings-recovered',
+  )
+  assert.deepEqual(await addonState(), {
+    ...beforeSettingsRace,
+    local: {
+      ...beforeSettingsRace.local,
+      starts: beforeSettingsRace.local.starts + 1,
+      stops: beforeSettingsRace.local.stops + 1,
+    },
+  })
+  mark(
+    'settings opened during prepare keep drafts; later css edit recovers pending code',
+  )
 
   assert.equal(
     viteConnections,

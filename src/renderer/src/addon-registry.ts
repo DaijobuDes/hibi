@@ -91,12 +91,12 @@ function describeAddon(
   }
   return { addon: descriptor, retire }
 }
-function describeBundled({
+const describeBundled = ({
   manifest,
   load,
   loadSettings,
   flavors,
-}: (typeof catalog)[number]): Addon {
+}: (typeof catalog)[number]): Addon => {
   const importer = async () => (await load()).default
   return describeAddon(manifest, importer, {
     flavors,

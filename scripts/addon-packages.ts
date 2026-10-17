@@ -301,9 +301,9 @@ export function addonCatalog(
       return []
     },
     async load(id) {
-      if (development && id === `\0${moduleId}`)
+      if (development && (id === `\0${moduleId}` || id === `\0${windowsId}`))
         return `const load = url => import(/* @vite-ignore */ url)
-export default (await load(${JSON.stringify(`/@id/__x00__${moduleId}?revision=`)} + Date.now())).default`
+export default (await load(${JSON.stringify(`/@id/__x00__${id.slice(1)}?revision=`)} + Date.now())).default`
       const snapshot = development && /\?revision=(\d+)$/.exec(id)
       const moduleRevision = snapshot ? Number(snapshot[1]) : revision
       if (development) id = id.replace(/\?revision=\d+$/, '')

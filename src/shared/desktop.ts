@@ -119,7 +119,7 @@ export type DesktopApi = {
   updateDevelopmentAddon?: (
     manifest: unknown,
     contract: string,
-  ) => Promise<AddonState[]>
+  ) => Promise<void>
   /** `styles` swaps package stylesheets and themes; `code` restarts the addon and its required consumers. */
   onAddonReload: (
     callback: (request: { id: string; scope: 'code' | 'styles' }) => void,
