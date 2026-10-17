@@ -442,9 +442,10 @@ function App() {
     }
   }
 
-  function showDocument() {
+  function showDocument(since?: number) {
     addonViews.selectDocument()
-    setSettingsOpen(false)
+    if (since === undefined || !settingsOpenedSince(since))
+      setSettingsOpen(false)
   }
   const availableFlavors = useSyncExternalStore(
     flavors.subscribe,
@@ -1221,6 +1222,12 @@ function App() {
     void window.hibi.setHotkeyRecording(false).then(finish, finish)
   }
 
+  // Settings opened while an operation was pending, such as from a new vault's
+  // backup prompt, stay open when the operation finishes.
+  function settingsOpenedSince(intent: number) {
+    return settingsIntent.current !== intent && settingsVisible.current
+  }
+
   function toggleSettings() {
     if (settingsLeaving.current || !settingsVisible.current) openSettings()
     else leaveSettings()
@@ -1330,11 +1337,13 @@ function App() {
       requested = false
       running = true
       startBusy()
+      // The startup folder can open here, so its vault prompt may open Settings first.
+      const intent = settingsIntent.current
       try {
         const result = await window.hibi.openExternalDocuments()
         if (result.document) {
           await acceptOperationDocument(result.document, true)
-          showDocument()
+          showDocument(intent)
           setWorkspace(await window.hibi.getWorkspace())
         }
         if (result.errors.length) setError(result.errors.join('\n'))
@@ -1423,6 +1432,7 @@ function App() {
     if (busyRef.current) return null
     startBusy()
     setError('')
+    const intent = settingsIntent.current
     try {
       const next = await (recentId
         ? window.hibi.openRecentWorkspace(recentId)
@@ -1432,7 +1442,7 @@ function App() {
         selectSidebarView('workspace')
         setWorkspaceRename(null)
         setSidebarOpen(true)
-        setSettingsOpen(false)
+        setSettingsOpen(settingsOpenedSince(intent))
       }
       return next
     } catch (error) {
@@ -1599,13 +1609,17 @@ function App() {
   async function openDroppedFile(file: File) {
     if (busyRef.current || dialogs.isOpen()) return
     startBusy()
+    const intent = settingsIntent.current
     try {
       const result = await window.hibi.openDroppedFile(file)
       if (result?.document) {
         await acceptOperationDocument(result.document, true)
-        showDocument()
+        showDocument(intent)
         setWorkspace(await window.hibi.getWorkspace())
-        if ('workspace' in result) selectSidebarView('workspace')
+        if ('workspace' in result) {
+          selectSidebarView('workspace')
+          setSettingsOpen(settingsOpenedSince(intent))
+        }
       }
     } catch (error) {
       setError(
@@ -1899,6 +1913,11 @@ function App() {
       const destination = from.pop()!
       to.push(history.current)
       history.navigating = true
+      if (destination.open !== settingsVisible.current) {
+        settingsIntent.current++
+        settingsVisible.current = destination.open
+        settingsLeaving.current = false
+      }
       setSettingsCategory(destination.category)
       setSettingsOpen(destination.open)
       showTitlebar()
