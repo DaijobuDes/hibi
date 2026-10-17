@@ -6,7 +6,12 @@ import test from 'node:test'
 import { setTimeout } from 'node:timers/promises'
 import { mathFlavor } from '../src/addons/math/syntax.ts'
 import { electron, waitForDocumentEditor } from './electron.mjs'
-import { clickMenu, pressShortcut, splitTab } from './keyboard.mjs'
+import {
+  clickMenu,
+  pressShortcut,
+  replaceRichText,
+  splitTab,
+} from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
 
 test('math detection respects code, escaped delimiters, and currency spacing', () => {
@@ -427,4 +432,115 @@ test('split focus preserves each file flavor', {
     () => document.querySelectorAll('.editor-page[data-side]').length === 0,
   )
   assert.equal(await page.locator('.tiptap .github-alert').count(), 0)
+})
+
+test('rich editor survives document-only syntax and rebuilds for flavor changes', {
+  timeout: 45000,
+}, async (t) => {
+  const profile = await mkdtemp(join(tmpdir(), 'hibi-rich-rebuild-'))
+  const addon = join(profile, 'installed-addons', 'syntax-probe')
+  await mkdir(addon, { recursive: true })
+  await writeFile(
+    join(addon, 'hibi-addon.json'),
+    JSON.stringify({
+      id: 'syntax-probe',
+      name: 'Syntax probe',
+      kind: 'extension',
+      description: 'Document syntax fixture',
+      apiVersion: 2,
+      version: '1.0.0',
+      authors: [{ displayName: 'Test' }],
+      capabilities: [],
+      entry: 'index.js',
+    }),
+  )
+  await writeFile(
+    join(addon, '.hibi-install.json'),
+    JSON.stringify({
+      hash: 'a'.repeat(64),
+      files: ['index.js', 'hibi-addon.json'],
+      source: 'local',
+    }),
+  )
+  await writeFile(
+    join(addon, 'index.js'),
+    'export default () => ({ start(context) { window.syntaxProbe = context.editor } })',
+  )
+  await writeFile(
+    join(profile, 'addons.json'),
+    JSON.stringify({ 'syntax-probe': true }),
+  )
+  const app = await electron.launch({
+    args: [resolve('.'), `--user-data-dir=${profile}`],
+  })
+  t.after(async () => {
+    await app.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => ({ response: 1 })
+    })
+    await app.close()
+    await rm(profile, { recursive: true, force: true })
+  })
+  const page = await app.firstWindow()
+  page.setDefaultTimeout(7000)
+  const errors = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await waitForDocumentEditor(app, page)
+  await page.waitForFunction(() => !!window.syntaxProbe)
+  const editor = page.getByRole('textbox', {
+    name: 'Document editor',
+    exact: true,
+  })
+  await replaceRichText(page, editor, 'Keep this draft.')
+  await waitForAsync(
+    page,
+    async () =>
+      (await window.hibi.getDocument()).markdown === 'Keep this draft.',
+  )
+  const remember = () =>
+    page.evaluate(() => {
+      window.richEditor = document.querySelector('.tiptap').editor
+    })
+  const subscript = (expected) =>
+    page.waitForFunction(
+      (expected) =>
+        document
+          .querySelector('.tiptap')
+          ?.editor?.extensionManager.extensions.some(
+            (extension) => extension.name === 'subscript',
+          ) === expected,
+      expected,
+    )
+  await remember()
+  // Format addons such as rst register preview-only syntax after the editor is ready.
+  await page.evaluate(async () => {
+    window.syntaxProbe.registerDocumentSyntax({
+      id: 'preview',
+      label: 'Probe preview',
+      group: 'Probe',
+      level: 'block',
+    })
+    // React applies store updates in microtasks, so a rebuild lands before this task.
+    await new Promise((resolve) => setTimeout(resolve))
+  })
+  assert.equal(
+    await page.evaluate(() => window.richEditor.isDestroyed),
+    false,
+    'document-only syntax keeps the rich editor',
+  )
+  for (const enabled of [false, true]) {
+    await page.evaluate(
+      (enabled) => window.hibi.setAddonEnabled('text-extras', enabled),
+      enabled,
+    )
+    await page.waitForFunction(() => window.richEditor.isDestroyed)
+    await subscript(enabled)
+    await waitForDocumentEditor(app, page)
+    assert.equal(await editor.textContent(), 'Keep this draft.')
+    assert.equal(
+      (await page.evaluate(() => window.hibi.getDocument())).markdown,
+      'Keep this draft.',
+    )
+    await remember()
+  }
+  assert.deepEqual(errors, [])
 })
