@@ -179,7 +179,9 @@ test('rebind, conflict, clear, reset, native menus, and relaunch persistence', {
   await page.evaluate(() => {
     window.recordingFocus = []
     new MutationObserver(() => {
-      const recorder = document.querySelector('[aria-pressed="true"]')
+      const recorder = document.querySelector(
+        '.hotkey-recorder[aria-pressed="true"]',
+      )
       if (recorder)
         window.recordingFocus.push(document.activeElement === recorder)
     }).observe(document.body, {

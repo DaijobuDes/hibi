@@ -174,7 +174,9 @@ test('addon menu and configurable in-app shortcut use one lazy command', {
   await page.evaluate(() => {
     window.recordingFocus = []
     new MutationObserver(() => {
-      const recorder = document.querySelector('[aria-pressed="true"]')
+      const recorder = document.querySelector(
+        '.hotkey-recorder[aria-pressed="true"]',
+      )
       if (recorder)
         window.recordingFocus.push(document.activeElement === recorder)
     }).observe(document.body, {
