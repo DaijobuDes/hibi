@@ -42,6 +42,8 @@ export async function reloadAddons(
     readOnly: () => () => void
     activeView: () => ViewTarget | null
     reviewed?: boolean
+    /** Prepare a synchronous development commit after guards and the editor gate. */
+    prepare?: (() => Promise<() => void>) | undefined
   },
 ): Promise<AddonReloadResult> {
   const { running, reloads, restarts } = host
@@ -100,14 +102,42 @@ export async function reloadAddons(
     ]),
   ]
   for (const id of restarting) restarts.set(id, token)
-  if (!restarting.length) return finish({ status: 'idle' })
+  if (!restarting.length && !(import.meta.hot && host.prepare))
+    return finish({ status: 'idle' })
   if (host.affectsEditor(closure)) {
     // Editing pauses until the restarted addons settle; then selection and focus return.
     const restore = keepEditorState(host.activeView)
     const end = host.readOnly()
     editable = () => void restore().finally(end)
   }
-  for (const id of ids) running.get(id)?.stop()
+  if (import.meta.hot && host.prepare) {
+    const previous = ids.map((id) => running.get(id))
+    try {
+      const commit = await host.prepare()
+      const owners = await window.hibi.getAddonWindowOwners()
+      if (superseded()) return finish({ status: 'superseded' })
+      const visible = closure.find(host.settingsVisible)
+      if (visible)
+        return finish({
+          status: 'refused',
+          message: `Leave the ${name(visible)} settings before reloading ${name()}.`,
+        })
+      const windowed = closure.find((id) => owners.includes(id))
+      if (windowed)
+        return finish({
+          status: 'refused',
+          message: `Close the ${name(windowed)} windows before reloading ${name()}.`,
+        })
+      commit()
+    } catch (error) {
+      return finish({
+        status: 'failed',
+        message: error instanceof Error ? error.message : String(error),
+      })
+    }
+    for (const runtime of previous) runtime?.stop()
+  } else for (const id of ids) running.get(id)?.stop()
+  if (import.meta.hot && !restarting.length) return finish({ status: 'idle' })
   if (retried.length) host.retry(retried)
   const outcomes = await Promise.allSettled(restarting.map(host.whenStarted))
   if (superseded()) return finish({ status: 'superseded' })

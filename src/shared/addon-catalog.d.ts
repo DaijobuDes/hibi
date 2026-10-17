@@ -3,6 +3,7 @@ declare module 'virtual:hibi-addon-catalog/main' {
     manifest: import('../addons/api').AddonManifest
     source: 'built-in' | 'local'
     directory: string
+    developmentContract?: string
     loadNative?: () => Promise<import('../addons/api').NativeAddon>
   }[]
   export default catalog

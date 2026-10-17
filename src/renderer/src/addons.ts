@@ -677,6 +677,25 @@ export function useAddons(
   const mounted = useRef(false)
   useEffect(() => {
     mounted.current = true
+    if (import.meta.hot) {
+      let disposed = false
+      let stop: (() => void) | undefined
+      const hot = import.meta.hot
+      void import('./addon-development').then(({ watchAddonDevelopment }) => {
+        if (!disposed)
+          stop = watchAddonDevelopment(hot, (...args) =>
+            reloadAddon.current(...args),
+          )
+      })
+      return () => {
+        disposed = true
+        stop?.()
+        mounted.current = false
+        for (const runtime of running.values()) runtime.stop()
+        for (const request of activation.values())
+          request.reject(new Error('The addon host stopped.'))
+      }
+    }
     return () => {
       mounted.current = false
       for (const runtime of running.values()) runtime.stop()
@@ -2500,8 +2519,31 @@ export function useAddons(
     if (result.status === 'refused')
       latest.current.error(new Error(result.message))
   }, [])
-  const reloadAddon = useRef(reload)
+  const reloadAddon =
+    useRef<
+      (
+        id: string,
+        scope: 'code' | 'styles',
+        prepare?: () => Promise<() => void>,
+      ) => Promise<AddonReloadResult>
+    >(reload)
   reloadAddon.current = reload
+  if (import.meta.hot)
+    reloadAddon.current = async (id, scope, prepare) => {
+      if (!prepare) return reload(id, scope)
+      if (scope === 'styles') {
+        const commit = await prepare()
+        commit()
+        return reload(id, scope)
+      }
+      const { reloadAddons } = await import('./addon-reload')
+      return reloadAddons([id], {
+        ...reloadHost(),
+        prepare,
+        whenStarted: (owner) =>
+          started.has(owner) ? Promise.resolve() : whenStarted(owner),
+      })
+    }
   useEffect(
     () =>
       window.hibi.onAddonReload(({ id, scope }) => {

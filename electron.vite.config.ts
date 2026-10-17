@@ -1,6 +1,10 @@
 import { isAbsolute, relative, resolve, sep } from 'node:path'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'electron-vite'
+import {
+  addonDevelopmentStyles,
+  developmentMetadata,
+} from './scripts/addon-development'
 import { addonCatalog } from './scripts/addon-packages'
 import { analysisBundles, sandboxPreloads } from './scripts/analysis-bundles'
 import { writeLicenses } from './scripts/licenses'
@@ -27,6 +31,19 @@ export default defineConfig({
     define: diagnosticsDefines(),
     plugins: [
       addonCatalog('main'),
+      {
+        name: 'watch-inline-assets',
+        load: {
+          order: 'pre',
+          handler(id) {
+            if (
+              process.env.NODE_ENV_ELECTRON_VITE === 'development' &&
+              /\?inline(?:&|$)/.test(id)
+            )
+              this.addWatchFile(id.replace(/\?.*$/, ''))
+          },
+        },
+      },
       {
         name: 'app-licenses',
         buildStart() {
@@ -71,6 +88,13 @@ export default defineConfig({
         watch: {
           chokidar: {
             ignored: (path: string) => {
+              const input = path.split(sep).join('/')
+              if (
+                process.env.NODE_ENV_ELECTRON_VITE === 'development' &&
+                developmentMetadata.has(input) &&
+                !input.endsWith('.md')
+              )
+                return true
               const part = relative(mainOutput, path)
               return (
                 part === '' ||
@@ -104,6 +128,7 @@ export default defineConfig({
   renderer: {
     plugins: [
       addonCatalog('renderer'),
+      addonDevelopmentStyles(),
       react(),
       startupBundle(),
       diagnosticArtifacts.renderer,

@@ -211,6 +211,9 @@
   "4b392ad897a3": [
     "src/renderer/src/AddonHotkeySettings.tsx"
   ],
+  "0a8aff3bb923": [
+    "src/main/addon-development.ts"
+  ],
   "1dda1ac8e844": [
     "src/shared/addon-dependencies.ts"
   ],
@@ -4575,6 +4578,9 @@
   "159713231bf6": [
     "src/renderer/src/UpdateSettings.tsx"
   ],
+  "e154258ffb08": [
+    "src/main/addon-development.ts"
+  ],
   "9e0c50a4c600": [
     "src/renderer/src/VersionHistory.tsx"
   ],
@@ -5409,6 +5415,9 @@
   ],
   "2440b28c8988": [
     "src/shared/addon-manifest.ts"
+  ],
+  "b2632672a130": [
+    "src/main/addon-development.ts"
   ],
   "d62200507764": [
     "src/shared/host-network.ts"

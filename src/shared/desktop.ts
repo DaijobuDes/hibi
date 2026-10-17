@@ -115,6 +115,12 @@ export type DesktopApi = {
   ) => () => void
   /** Addons whose windows are open, loading, or kept alive while hidden. */
   getAddonWindowOwners: () => Promise<string[]>
+  /** Source development only; validates metadata, then applies it after the renderer commits. */
+  updateDevelopmentAddon?: (
+    manifest: unknown,
+    contract: string,
+    apply?: boolean,
+  ) => Promise<void>
   /** `styles` swaps package stylesheets and themes; `code` restarts the addon and its required consumers. */
   onAddonReload: (
     callback: (request: { id: string; scope: 'code' | 'styles' }) => void,
