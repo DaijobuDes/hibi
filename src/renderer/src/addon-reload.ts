@@ -21,6 +21,9 @@ export async function reloadAddons(
       catalog: readonly { manifest: AddonManifest }[]
       settled: ReadonlyMap<string, boolean>
       dependencies: ReadonlyMap<string, readonly string[]>
+      /** Enabled addons that the current view or a request activates, with their providers. */
+      relevantIds: ReadonlySet<string>
+      windowBlocked: (id: string) => boolean
     }
     running: ReadonlyMap<string, { stop: () => void }>
     /** The newest reload of each addon. */
@@ -64,19 +67,25 @@ export async function reloadAddons(
       })
     if (superseded()) return finish({ status: 'superseded' })
   }
-  // A reload is an explicit retry: failed addons in the closure and their required providers start again.
-  const { settled, dependencies } = host.current()
+  // A reload is an explicit retry: failed addons in the closure and their required providers start again,
+  // and so do consumers they were blocking. Addons that would not start now are not awaited.
+  const { settled, dependencies, relevantIds, windowBlocked } = host.current()
   const retried = [
     ...new Set([
-      ...ids.flatMap((id) => dependencies.get(id) ?? []),
+      ...closure.flatMap((id) => dependencies.get(id) ?? []),
       ...closure,
     ]),
   ].filter((id) => settled.get(id) === false)
+  const unblocked = closure.filter((id) =>
+    dependencies.get(id)?.some((provider) => retried.includes(provider)),
+  )
   const restarting = [
     ...new Set([
       ...closure.filter((id) => running.has(id)),
       ...pending,
-      ...retried,
+      ...[...retried, ...unblocked].filter(
+        (id) => relevantIds.has(id) && !windowBlocked(id),
+      ),
     ]),
   ]
   if (!restarting.length) return finish({ status: 'idle' })

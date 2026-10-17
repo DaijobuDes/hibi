@@ -76,6 +76,15 @@ async function writePackage(folder, data, files) {
     await writeFile(join(folder, path), content)
   return Object.keys(files)
 }
+const sendReload = (app, id, scope = 'code') =>
+  app.evaluate(
+    ({ BrowserWindow }, request) => {
+      BrowserWindow.getAllWindows()
+        .find((window) => window.webContents.getURL() === 'app://hibi/')
+        .webContents.send('addons:reload', request)
+    },
+    { id, scope },
+  )
 async function writeInstalled(profile, data, files, hash) {
   const folder = join(profile, 'installed-addons', data.id)
   const written = await writePackage(folder, data, files)
@@ -142,15 +151,7 @@ test('reload restarts an addon and its consumers in place, refuses open windows 
   const page = await app.firstWindow()
   await waitForDocumentEditor(app, page)
   await page.waitForFunction(() => window.consumerSaw === 1)
-  const reload = (id, scope = 'code') =>
-    app.evaluate(
-      ({ BrowserWindow }, request) => {
-        BrowserWindow.getAllWindows()
-          .find((window) => window.webContents.getURL() === 'app://hibi/')
-          .webContents.send('addons:reload', request)
-      },
-      { id, scope },
-    )
+  const reload = (id, scope) => sendReload(app, id, scope)
   const log = () => page.evaluate(() => window.reloadLog.splice(0))
   const message = (pattern) =>
     page.waitForFunction(
@@ -446,4 +447,111 @@ test('a reviewed replacement stays enabled and reloads in place unless its acces
   )
   await page.waitForFunction(() => window.reloadLog.at(-1) === 'stop:provider')
   assert.equal(await page.evaluate(() => window.providerVersion), 2)
+})
+
+async function launchRetryFixtures(t) {
+  const temp = await mkdtemp(join(tmpdir(), 'hibi-addon-retry-'))
+  const profile = join(temp, 'profile')
+  const providerFixture = (id) => `export default () => ({
+    async start() {
+      window.starts ||= {};
+      window.starts['${id}'] = (window.starts['${id}'] || 0) + 1;
+      if (localStorage.getItem('${id}-fail')) throw new Error('${id} start failed');
+      (window.live ||= {})['${id}'] = true;
+      if (window.hold === '${id}') {
+        window.hold = null;
+        await new Promise((resolve) => { window.release = resolve; });
+      }
+    },
+    stop() { window.live['${id}'] = false; },
+  });`
+  for (const [id, fields, source] of [
+    ['retry-a', {}, providerFixture('retry-a')],
+    ['retry-b', {}, providerFixture('retry-b')],
+    [
+      'retry-x',
+      { requires: { addons: [{ id: 'retry-a' }, { id: 'retry-b' }] } },
+      providerFixture('retry-x'),
+    ],
+    [
+      'retry-c',
+      {
+        requires: { addons: [{ id: 'retry-a' }] },
+        activation: 'command',
+        commands: [{ id: 'probe', label: 'Retry commander probe' }],
+      },
+      `export default () => ({
+        start(context) {
+          window.starts ||= {};
+          window.starts['retry-c'] = (window.starts['retry-c'] || 0) + 1;
+          context.commands.register({ id: 'probe', label: 'Retry commander probe', run() { window.commanderRan = true; } });
+        },
+      });`,
+    ],
+  ])
+    await writeInstalled(
+      profile,
+      manifest(id, id, fields),
+      { 'index.js': source },
+      'c',
+    )
+  await writeFile(
+    join(profile, 'addons.json'),
+    JSON.stringify({
+      'retry-a': true,
+      'retry-b': true,
+      'retry-x': true,
+      'retry-c': true,
+    }),
+  )
+  const app = await electron.launch({
+    args: [resolve('.'), `--user-data-dir=${profile}`],
+  })
+  t.after(async () => {
+    await app.close()
+    await rm(temp, { recursive: true, force: true })
+  })
+  const page = await app.firstWindow()
+  await waitForDocumentEditor(app, page)
+  const counts = () => page.evaluate(() => ({ ...window.starts }))
+  const live = (...ids) =>
+    page.waitForFunction((ids) => ids.every((id) => window.live?.[id]), ids)
+  await live('retry-a', 'retry-b', 'retry-x')
+  return { app, page, counts, live }
+}
+
+test('reload retries failed providers across its closure and the consumers they blocked', {
+  timeout: 60000,
+}, async (t) => {
+  const { app, page, counts, live } = await launchRetryFixtures(t)
+
+  // Both providers of `retry-x` fail; reloading one retries the other and the consumer they blocked.
+  await page.evaluate(() => {
+    localStorage.setItem('retry-a-fail', '1')
+    localStorage.setItem('retry-b-fail', '1')
+  })
+  let before = await counts()
+  await sendReload(app, 'retry-a')
+  await page.waitForFunction(
+    (before) => window.starts['retry-a'] > before['retry-a'],
+    before,
+  )
+  before = await counts()
+  await sendReload(app, 'retry-b')
+  await page.waitForFunction(
+    (before) => window.starts['retry-b'] > before['retry-b'],
+    before,
+  )
+  assert.equal(
+    await page.evaluate(() => Object.values(window.live).some(Boolean)),
+    false,
+  )
+  await page.evaluate(() => {
+    localStorage.removeItem('retry-a-fail')
+    localStorage.removeItem('retry-b-fail')
+  })
+  before = await counts()
+  await sendReload(app, 'retry-a')
+  await live('retry-a', 'retry-b', 'retry-x')
+  assert.equal((await counts())['retry-x'], before['retry-x'] + 1)
 })

@@ -505,6 +505,7 @@ export function useAddons(
     available,
     dependencies,
     windowBlocked,
+    relevantIds,
   })
   currentActivation.current = {
     states,
@@ -513,6 +514,7 @@ export function useAddons(
     available,
     dependencies,
     windowBlocked,
+    relevantIds,
   }
   /** Settles when the owner next finishes starting, fails, or stops. */
   const whenStarted = useCallback(
