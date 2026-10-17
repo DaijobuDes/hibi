@@ -203,8 +203,9 @@ if (process.isMainFrame) {
         id: string,
       ) => callback(addonId, id)
       ipcRenderer.on(ADDON_WINDOW_CHANNELS.closed, listener)
-      return () =>
+      return () => {
         ipcRenderer.removeListener(ADDON_WINDOW_CHANNELS.closed, listener)
+      }
     },
     getAddonWindowOwners: () =>
       ipcRenderer.invoke(ADDON_WINDOW_CHANNELS.owners),
@@ -238,8 +239,9 @@ if (process.isMainFrame) {
           .invoke(BACKGROUND_CHANNELS.settingsReady)
           .catch(console.error)
       }
-      return () =>
+      return () => {
         transport.removeListener(BACKGROUND_CHANNELS.settings, listener)
+      }
     },
     getUpdateState: () => transport.invoke(UPDATE_CHANNELS.get),
     setUpdateChannel: (channel) =>
@@ -519,8 +521,9 @@ if (process.isMainFrame) {
       const listener = () => callback()
       ipcRenderer.on(DOCUMENT_CHANNELS.externalPending, listener)
       if (externalPending) queueMicrotask(callback)
-      return () =>
+      return () => {
         ipcRenderer.removeListener(DOCUMENT_CHANNELS.externalPending, listener)
+      }
     },
     newDocument: () => ipcRenderer.invoke(DOCUMENT_CHANNELS.new),
     saveDocument: (saveAs) =>

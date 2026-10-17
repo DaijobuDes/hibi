@@ -9,7 +9,7 @@ const evaluate = new Function(
   await readFile(new URL('../out/preload/index.cjs', import.meta.url), 'utf8'),
 )
 
-for (const [method, channel] of [
+for (const [method, channel, arity = 1] of [
   ['onAddonReload', 'addons:reload'],
   ['onGlobalShortcut', 'global-shortcut:invoked'],
   ['onUpdateChanged', 'updates:changed'],
@@ -18,6 +18,9 @@ for (const [method, channel] of [
   ['onAddonHotkeysChanged', 'addon-hotkeys:changed'],
   ['onAddonCommand', 'addon-hotkeys:invoke'],
   ['onCommand', 'app:command'],
+  ['onAddonWindowClosed', 'addon-windows:closed', 2],
+  ['onOpenSettings', 'background:settings', 0],
+  ['onExternalDocuments', 'document:external-pending', 0],
 ])
   test(`${method} strips events and disposes only its own subscription`, () => {
     const transport = Object.assign(new EventEmitter(), {
@@ -32,21 +35,24 @@ for (const [method, channel] of [
       }),
       { isMainFrame: true },
     )
+    const initialListeners = transport.listenerCount(channel)
     const calls = []
     const callback = (...args) => calls.push(args)
     const stop = exposed.get('hibi')[method](callback)
     const keep = exposed.get('hibi')[method](callback)
     const event = { sender: transport }
     const payload = Object.freeze({ id: 'probe' })
+    const expected = [payload, 'extra'].slice(0, arity)
     transport.emit(channel, event, payload, 'extra')
-    assert.deepEqual(calls, [[payload], [payload]])
-    assert.equal(calls[0][0], payload)
+    assert.deepEqual(calls, [expected, expected])
+    assert.equal(calls[0][0], expected[0])
     assert.equal(stop(), undefined)
     stop()
-    assert.equal(transport.listenerCount(channel), 1)
-    transport.emit(channel, event, payload)
-    assert.deepEqual(calls, [[payload], [payload], [payload]])
+    assert.equal(transport.listenerCount(channel), initialListeners + 1)
+    transport.emit(channel, event, payload, 'extra')
+    assert.deepEqual(calls, [expected, expected, expected])
     keep()
-    assert.equal(transport.emit(channel, event, payload), false)
+    transport.emit(channel, event, payload)
+    assert.equal(transport.listenerCount(channel), initialListeners)
     assert.equal(calls.length, 3)
   })
