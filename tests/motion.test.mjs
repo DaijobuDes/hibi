@@ -3,8 +3,8 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 import test from 'node:test'
-import { electron } from './electron.mjs'
-import { clickMenu } from './keyboard.mjs'
+import { electron, waitForDocumentEditor } from './electron.mjs'
+import { clickMenu, replaceRichText, replaceSourceText } from './keyboard.mjs'
 import { checkSidebarResize } from './sidebar-resize.mjs'
 import { uiName } from './ui.mjs'
 
@@ -148,7 +148,8 @@ test('split panes align corresponding carets in both directions without feedback
     (_, index) =>
       `## section ${index}\n\n${'words that wrap differently in each pane. '.repeat(12)}`,
   ).join('\n\n')
-  await source.fill(markdown)
+  await waitForDocumentEditor(app, page, { name: 'Markdown editor' })
+  await replaceSourceText(page, source, markdown)
   await page.mouse.move(500, 18)
   await page.waitForFunction(() => {
     const bar = document.querySelector('.editor-toolbar')
@@ -303,8 +304,12 @@ test('source font and layout are ready before the pane starts moving', {
     ),
   ])
   const rich = page.getByRole('textbox', { name: /document editor/i })
-  await rich.waitFor()
-  await rich.fill('keep edits made while the source engine loads')
+  await waitForDocumentEditor(app, page)
+  await replaceRichText(
+    page,
+    rich,
+    'keep edits made while the source engine loads',
+  )
   await page
     .getByRole('button', { name: /^side-by-side$/i, exact: true })
     .click()
