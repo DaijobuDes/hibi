@@ -282,6 +282,12 @@ test('reference preparation yields to find, cancels and reacquires without parti
     ),
     false,
   )
+  // Cancellation alone must stop preparation; request 3 would replace it anyway.
+  assert.equal(
+    MarkdownSourceReferences.prototype.update.mock.calls.at(-1).result.next()
+      .done,
+    true,
+  )
   cancel = false
   request(3)
   assert.equal(
