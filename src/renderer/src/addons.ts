@@ -1079,6 +1079,7 @@ export function useAddons(
         running.delete(id)
         if (mounted.current)
           setSettled((current) => {
+            if (current.get(id) === false) return current
             const next = new Map(current)
             next.delete(id)
             return next

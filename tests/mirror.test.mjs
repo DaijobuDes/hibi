@@ -5,7 +5,8 @@ import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { Schema } from '@tiptap/pm/model'
 import { markdownPositions } from '../src/renderer/src/markdown-positions.ts'
-import { electron } from './electron.mjs'
+import { electron, waitForDocumentEditor } from './electron.mjs'
+import { replaceRichText } from './keyboard.mjs'
 
 test('caret mapping skips formatting and link destinations, including repeated words', () => {
   const schema = new Schema({
@@ -42,7 +43,8 @@ test('split view mirrors the caret without moving focus or selecting the other p
   const page = await app.firstWindow()
   page.setDefaultTimeout(6000)
   const rich = page.getByRole('textbox', { name: /document editor/i })
-  await rich.fill('mirror this text')
+  await waitForDocumentEditor(app, page)
+  await replaceRichText(page, rich, 'mirror this text')
   await page
     .getByRole('button', { name: /^side-by-side$/i, exact: true })
     .click()

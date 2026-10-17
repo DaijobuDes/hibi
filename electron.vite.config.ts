@@ -13,15 +13,56 @@ import { startupBundle } from './scripts/startup-bundle'
 const diagnosticArtifacts = diagnosticsBuild()
 const mainOutput = resolve('out/main')
 
+let licenseBuild = Promise.resolve<PromiseSettledResult<void>[]>([])
+const drainLicenses = {
+  order: 'pre' as const,
+  sequential: true,
+  async handler() {
+    await licenseBuild
+  },
+}
+
 export default defineConfig({
   main: {
     define: diagnosticsDefines(),
     plugins: [
       addonCatalog('main'),
-      { name: 'app-licenses', buildStart: writeLicenses },
+      {
+        name: 'app-licenses',
+        buildStart() {
+          licenseBuild = Promise.allSettled([writeLicenses()])
+        },
+        buildEnd: {
+          order: 'post',
+          sequential: true,
+          async handler() {
+            const [result] = await licenseBuild
+            if (result?.status === 'rejected') throw result.reason
+          },
+        },
+        closeBundle: drainLicenses,
+        closeWatcher: drainLicenses,
+      },
       analysisBundles(),
     ],
     build: {
+      // Development workers load installed compilers directly.
+      externalizeDeps:
+        process.env.NODE_ENV_ELECTRON_VITE === 'development'
+          ? {
+              include: [
+                '@markdoc/markdoc',
+                '@mdx-js/mdx',
+                'hast-util-to-html',
+                'mdast-util-to-hast',
+                'mdsvex',
+                'react',
+                'react-dom',
+                'remark-gfm',
+                'svelte',
+              ],
+            }
+          : true,
       // Keep old lazy chunks available until the dev watcher restarts Electron.
       emptyOutDir: process.env.NODE_ENV_ELECTRON_VITE !== 'development',
       // unzipper's optional S3 adapter must stay lazy; hibi only opens local buffers.

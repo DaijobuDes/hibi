@@ -15,7 +15,21 @@ function fixture(t, source = 'one two one') {
     new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         pending.delete(check)
-        reject(new Error('Missing worker reply'))
+        reject(
+          Object.assign(new Error('Missing worker reply'), {
+            expected: String(predicate),
+            recent: messages
+              .slice(-8)
+              .map(({ type, epoch, id, version, stage, message }) => ({
+                type,
+                epoch,
+                id,
+                version,
+                stage,
+                message,
+              })),
+          }),
+        )
       }, 2000)
       const check = () => {
         const found = messages.find(predicate)
@@ -191,7 +205,7 @@ test('reference preparation yields to find, cancels and reacquires without parti
     '../src/shared/markdown-source-references.ts'
   )
   const update = MarkdownSourceReferences.prototype.update
-  const f = fixture(t, '[ref]: /first\n\n'.repeat(4000))
+  const f = fixture(t, '[ref]: /first\n\n'.repeat(50))
   let entered = false,
     cancel = false,
     turn = 0
@@ -219,6 +233,9 @@ test('reference preparation yields to find, cancels and reacquires without parti
               0,
             )
         }
+        // Slow steps make slicing deterministic across timer resolutions.
+        const end = performance.now() + 1
+        while (performance.now() < end) {}
         yield step
       }
     },

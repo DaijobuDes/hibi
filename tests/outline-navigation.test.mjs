@@ -8,7 +8,7 @@ import {
   stopElectronTree,
   waitForDocumentEditor,
 } from './electron.mjs'
-import { clickMenu } from './keyboard.mjs'
+import { clickMenu, replaceSourceText } from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
 
 test('large outline follows rich and source carets with bounded rows and ignores stale results', {
@@ -160,7 +160,7 @@ test('large outline follows rich and source carets with bounded rows and ignores
     name: 'Markdown editor',
     exact: true,
   })
-  await source.waitFor()
+  await waitForDocumentEditor(app, page, { name: 'Markdown editor' })
   await source.focus()
   await source.press('ControlOrMeta+a')
   await source.press('ArrowRight')
@@ -274,15 +274,15 @@ test('source outline resolves references through its worker and preserves native
   )
   assert.equal(await page.evaluate(() => window.outlineWorkers.length), 1)
 
-  await source.fill(original.replace('[ref]:', '[gone]:'))
+  await replaceSourceText(page, source, original.replace('[ref]:', '[gone]:'))
   await expectLabels(['**literal** [label][ref]', 'real'])
-  await source.fill(original)
+  await replaceSourceText(page, source, original)
   await expectLabels(nativeLabels)
   const nested = original.replace(
     '$$\n# hidden math\n$$',
     () => '> $$\n> # hidden math\n> $$',
   )
-  await source.fill(nested)
+  await replaceSourceText(page, source, nested)
   await waitForAsync(
     page,
     async (expected) => (await window.hibi.getDocument()).markdown === expected,
@@ -298,7 +298,7 @@ test('source outline resolves references through its worker and preserves native
   )
   await unavailable.waitFor()
   assert.equal(await outline.locator('.sidebar-label').count(), 0)
-  await source.fill(original)
+  await replaceSourceText(page, source, original)
   await expectLabels(nativeLabels)
   assert.equal(await unavailable.count(), 0)
   assert.equal(await page.evaluate(() => window.outlineWorkers.length), 1)

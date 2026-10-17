@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { electron, waitForDocumentEditor } from './electron.mjs'
-import { clickMenu } from './keyboard.mjs'
+import { clickMenu, replaceRichText } from './keyboard.mjs'
 
 test('spell checking toggles live, persists, and preserves text in both views', {
   timeout: 30000,
@@ -25,7 +25,7 @@ test('spell checking toggles live, persists, and preserves text in both views', 
   const rich = page.getByRole('textbox', { name: /document editor/i })
   await waitForDocumentEditor(app, page)
   assert.equal(await rich.getAttribute('spellcheck'), 'true')
-  await rich.fill('mispellled text')
+  await replaceRichText(page, rich, 'mispellled text')
   const change = async () => {
     await clickMenu(app, 'Settings')
     await page.getByRole('tab', { name: /^editor$/i, exact: true }).click()

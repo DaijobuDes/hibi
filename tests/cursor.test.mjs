@@ -106,6 +106,7 @@ test('cursor appearance, movement, selection hiding, and persistence in both edi
   const rich = page.getByRole('textbox', { name: /document editor/i })
   phase = 'initial editor'
   await rich.waitFor()
+  phase = 'dismiss start screen'
   await page.getByRole('button', { name: /dismiss this screen/i }).click()
   phase = 'initial caret'
   // Exercise caret rendering without taking focus from the user's active window.

@@ -11,8 +11,12 @@ import {
   alertToken,
   alertTypes,
 } from '../src/addons/markdown/alerts.ts'
-import { electron } from './electron.mjs'
-import { pressShortcut, replaceRichText } from './keyboard.mjs'
+import { electron, waitForDocumentEditor } from './electron.mjs'
+import {
+  pressShortcut,
+  replaceRichText,
+  replaceSourceText,
+} from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
 
 test('Markdown callouts preserve quote boundaries, titles and fold markers', () => {
@@ -134,7 +138,8 @@ test('github alerts edit in rich view, preview in split, and export with markers
         `> [!${type.toUpperCase()}]\n> **hello ${type}**\n>\n> - first\n> - second`,
     )
     .join('\n\n')
-  await source.fill(initial)
+  await waitForDocumentEditor(app, page, { name: 'Markdown editor' })
+  await replaceSourceText(page, source, initial)
   await pressShortcut(app, `${mod}+Shift+\\`)
   await page.waitForFunction(
     () => document.querySelectorAll('.tiptap .github-alert').length === 5,

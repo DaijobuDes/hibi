@@ -3,8 +3,8 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { electron } from './electron.mjs'
-import { clickMenu } from './keyboard.mjs'
+import { electron, waitForDocumentEditor } from './electron.mjs'
+import { clickMenu, replaceRichText } from './keyboard.mjs'
 
 test('editing awaits required addon startup and disabled pending addons cannot register late commands', {
   timeout: 30000,
@@ -74,8 +74,8 @@ test('editing awaits required addon startup and disabled pending addons cannot r
     name: 'Document editor',
     exact: true,
   })
-  await editor.waitFor()
-  await editor.fill('Preserve these edits')
+  await waitForDocumentEditor(app, page)
+  await replaceRichText(page, editor, 'Preserve these edits')
   await page.waitForFunction(
     () =>
       document.documentElement.getAttribute('data-delayed-background') ===

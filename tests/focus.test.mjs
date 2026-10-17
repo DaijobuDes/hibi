@@ -3,8 +3,8 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { electron } from './electron.mjs'
-import { clickMenu } from './keyboard.mjs'
+import { electron, waitForDocumentEditor } from './electron.mjs'
+import { clickMenu, replaceRichText, replaceSourceText } from './keyboard.mjs'
 
 test('closing settings never overrides a newer editor focus', {
   timeout: 15000,
@@ -22,9 +22,12 @@ test('closing settings never overrides a newer editor focus', {
   })
   const page = await app.firstWindow()
   page.setDefaultTimeout(5000)
-  await page
-    .getByRole('textbox', { name: /document editor/i })
-    .fill('initial text')
+  await waitForDocumentEditor(app, page)
+  await replaceRichText(
+    page,
+    page.getByRole('textbox', { name: /document editor/i }),
+    'initial text',
+  )
   await page
     .getByRole('button', { name: /^side-by-side$/i, exact: true })
     .click()
@@ -46,7 +49,8 @@ test('closing settings never overrides a newer editor focus', {
     await source.evaluate((element) => element === document.activeElement),
     true,
   )
-  await source.fill('# source text')
+  await waitForDocumentEditor(app, page, { name: 'Markdown editor' })
+  await replaceSourceText(page, source, '# source text')
   await page
     .getByRole('heading', { name: /^source text$/i, exact: true })
     .waitFor()

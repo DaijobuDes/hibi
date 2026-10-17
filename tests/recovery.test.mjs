@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { build } from 'vite'
-import { electron } from './electron.mjs'
-import { clickMenu } from './keyboard.mjs'
+import { electron, waitForDocumentEditor } from './electron.mjs'
+import { clickMenu, replaceRichText } from './keyboard.mjs'
 
 test('recovery preview preserves the live draft; real render failures offer recovery actions', {
   timeout: 45000,
@@ -23,9 +23,12 @@ test('recovery preview preserves the live draft; real render failures offer reco
   })
   const page = await app.firstWindow()
   page.setDefaultTimeout(6500)
-  await page
-    .getByRole('textbox', { name: /document editor/i })
-    .fill('keep this draft')
+  await waitForDocumentEditor(app, page)
+  await replaceRichText(
+    page,
+    page.getByRole('textbox', { name: /document editor/i }),
+    'keep this draft',
+  )
   await clickMenu(app, 'Settings')
   await page.getByRole('tab', { name: 'About', exact: true }).click()
   await page.getByRole('button', { name: /preview recovery screen/i }).click()

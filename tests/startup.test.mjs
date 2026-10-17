@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { electron } from './electron.mjs'
-import { pressShortcut } from './keyboard.mjs'
+import { pressShortcut, replaceRichText } from './keyboard.mjs'
 import { uiName } from './ui.mjs'
 
 test('startup placeholder stays out of documents and reopens persisted recent workspaces', {
@@ -74,7 +74,7 @@ test('startup placeholder stays out of documents and reopens persisted recent wo
     ),
     ['untitled.md'],
   )
-  await rich.fill('')
+  await replaceRichText(page, rich, '')
   assert.equal(await welcome().count(), 0)
   await page.locator('.document-tab .tab-close').click()
   await welcome().waitFor()

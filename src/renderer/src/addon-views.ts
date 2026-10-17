@@ -139,13 +139,14 @@ function open(
     },
     hide() {
       if (!instances.has(id)) return
+      const focused = window.document.activeElement
       const element = window.document.querySelector(
         `[data-addon-view="${CSS.escape(id)}"]`,
       )
-      const focusedInView = element?.contains(window.document.activeElement)
+      const focusedInView = element?.contains(focused)
       const focusedInTab = window.document
         .getElementById(`addon-tab-${id}`)
-        ?.parentElement?.contains(window.document.activeElement)
+        ?.parentElement?.contains(focused)
       if (focusedInView && !tab) {
         const target =
           returnFocus?.isConnected && !returnFocus.closest('[hidden], [inert]')
@@ -173,13 +174,19 @@ function open(
       if (focusTarget === id) focusTarget = null
       publish()
       if (tab && (focusedInView || focusedInTab))
-        requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          const current = window.document.activeElement
+          if (
+            activeTab !== null ||
+            (current !== focused && current !== window.document.body)
+          )
+            return
           window.document
             .querySelector<HTMLElement>(
               '.editor-panes .rich-pane:not([inert]) [contenteditable="true"], .editor-panes .source-pane:not([inert]) [contenteditable="true"]',
             )
-            ?.focus({ preventScroll: true }),
-        )
+            ?.focus({ preventScroll: true })
+        })
     },
     close() {
       if (!instances.has(id)) return

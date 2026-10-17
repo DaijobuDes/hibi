@@ -5,8 +5,8 @@ import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { analyze } from '../src/addons/review/analyze.ts'
 import { textProjection } from '../src/renderer/src/text-projection.ts'
-import { electron } from './electron.mjs'
-import { clickMenu } from './keyboard.mjs'
+import { electron, waitForDocumentEditor } from './electron.mjs'
+import { clickMenu, replaceRichText } from './keyboard.mjs'
 
 test('review checks exact literal spans and bounds its results', () => {
   const projection = textProjection(
@@ -40,9 +40,12 @@ test('review highlights and fixes both editors, keeps undo, and disposes annotat
   })
   const page = await app.firstWindow()
   page.setDefaultTimeout(8000)
-  await page
-    .getByRole('textbox', { name: 'Document editor', exact: true })
-    .fill('teh very very note')
+  await waitForDocumentEditor(app, page)
+  await replaceRichText(
+    page,
+    page.getByRole('textbox', { name: 'Document editor', exact: true }),
+    'teh very very note',
+  )
   await page.locator('.toolbar-slot[data-hidden="false"]').waitFor()
   await page
     .locator('[data-toolbar-id="review.open"]')

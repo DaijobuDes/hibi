@@ -5,7 +5,12 @@ import { basename, join, resolve } from 'node:path'
 import test from 'node:test'
 import { setTimeout as delay } from 'node:timers/promises'
 import { electron, waitForDocumentEditor } from './electron.mjs'
-import { clickMenu, replaceRichText, splitTab } from './keyboard.mjs'
+import {
+  clickMenu,
+  replaceRichText,
+  replaceSourceText,
+  splitTab,
+} from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
 
 test('split panes keep both editors mounted, edit both files, and share one document session', {
@@ -509,7 +514,7 @@ test('split panes keep both editors mounted, edit both files, and share one docu
       ?.textContent?.includes('edited a!'),
   )
   const long = `edited a!\n${Array.from({ length: 100 }, (_, index) => `line ${index}`).join('\n')}`
-  await rightSource.fill(long)
+  await replaceSourceText(page, rightSource, long)
   await page.waitForFunction(() =>
     document
       .querySelector('.editor-page[data-side="left"] .cm-content')

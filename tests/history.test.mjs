@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { setTimeout as delay } from 'node:timers/promises'
-import { electron } from './electron.mjs'
+import { electron, startupDiagnostics } from './electron.mjs'
 import { pressShortcut, replaceRichText } from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
 
@@ -89,6 +89,15 @@ test('local history snapshots on save, previews, and restores without overwritin
     .getByRole('button')
     .last()
     .click()
+    .catch(async (error) => {
+      try {
+        console.error(
+          'history version click:',
+          JSON.stringify(await startupDiagnostics(app, page)),
+        )
+      } catch {}
+      throw error
+    })
   await page.waitForFunction(
     () =>
       document.querySelector('[aria-label="version preview" i]').textContent ===
