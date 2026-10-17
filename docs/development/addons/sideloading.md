@@ -109,6 +109,6 @@ Structurally valid packages with duplicate IDs are all blocked. A valid package 
 
 ## Update a package
 
-Increase the version and install the replacement. If its kind, SDK capabilities, network origins, and external tools are unchanged, it keeps its enabled setting. A running addon then restarts with the new files, together with the addons that require it. Open documents and unsaved edits stay as they are. If any of those fields change, the replacement stays disabled until the user reviews and enables it.
+Increase the version and install the replacement. If its kind, SDK capabilities, network origins, and external tools are unchanged, it keeps its enabled setting. A running addon then restarts with the new files, together with the addons that require it. Open documents and unsaved edits stay as they are. While the settings of one of these addons are on screen, or one of them has a window open, Hibi refuses the replacement so their unsaved input is not lost; close them and install again. If any of those fields change, the replacement stays disabled until the user reviews and enables it.
 
 A restart runs your code from the beginning. Values in memory, React state, and session storage start fresh, while global and workspace storage remain. Make `stop()` remove everything `start()` created so the new copy finds no leftovers.

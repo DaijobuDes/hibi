@@ -1028,6 +1028,9 @@
   "6c73f172ed0b": [
     "src/renderer/src/addon-reload.ts"
   ],
+  "a6e10f215483": [
+    "src/main/addons.ts"
+  ],
   "426be84ac71a": [
     "src/main/workspace-files.ts"
   ],
@@ -3164,6 +3167,9 @@
   ],
   "3eaa4332ff51": [
     "src/renderer/src/addon-reload.ts"
+  ],
+  "7b0d34ecd30b": [
+    "src/main/addons.ts"
   ],
   "bcccb5388362": [
     "src/renderer/src/CommandPalette.tsx"

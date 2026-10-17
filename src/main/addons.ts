@@ -62,6 +62,13 @@ let onAddonDeactivated: (id: string, generation: number) => Promise<void> =
 
 let onAddonStatesChanged: (states: AddonState[]) => void = () => {}
 
+let windowOwners: () => readonly string[] = () => []
+
+/** Addons whose windows are open; a replacement of one is refused rather than restarted. */
+export function setAddonWindowOwners(read: () => readonly string[]): void {
+  windowOwners = read
+}
+
 /** Called after each accepted addon state change. */
 export function setAddonStatesHandler(
   handler: (states: AddonState[]) => void,
@@ -442,8 +449,24 @@ async function deactivateUnavailable(before: readonly AddonState[]) {
 async function disableAddonForReplacement(
   id: string,
   keep = false,
+  openSettings: readonly string[] = [],
 ): Promise<() => Promise<void>> {
   if (keep) {
+    // Restarting would discard what these show, so refuse before anything is retired or replaced.
+    const name = (owner: string) =>
+      manifests().find((manifest) => manifest.id === owner)?.name ?? owner
+    const affected = [id, ...addonDependents(manifests(), id)]
+    const windows = windowOwners()
+    const windowed = affected.find((owner) => windows.includes(owner))
+    if (windowed)
+      throw new Error(
+        `Close the ${name(windowed)} windows, then install the replacement again.`,
+      )
+    const visible = affected.find((owner) => openSettings.includes(owner))
+    if (visible)
+      throw new Error(
+        `Leave the ${name(visible)} settings, then install the replacement again.`,
+      )
     // The setting stays; work admitted for the old files retires and the renderer reloads the addon.
     const generation = getAddonActivationGeneration(id)
     if (generation !== null) {
@@ -462,26 +485,38 @@ async function disableAddonForReplacement(
   }
 }
 
-export async function installAddon(window: BrowserWindow, url?: unknown) {
-  return installPackage(
-    window,
-    bundledManifests,
-    disableAddonForReplacement,
-    url,
+/** Addons whose settings the requesting window shows; anything malformed counts as none. */
+const replacing = (openSettings: unknown) => (id: string, keep: boolean) =>
+  disableAddonForReplacement(
+    id,
+    keep,
+    Array.isArray(openSettings) &&
+      openSettings.length <= 64 &&
+      openSettings.every((owner) => typeof owner === 'string')
+      ? openSettings
+      : [],
   )
+
+export async function installAddon(
+  window: BrowserWindow,
+  url?: unknown,
+  openSettings?: unknown,
+) {
+  return installPackage(window, bundledManifests, replacing(openSettings), url)
 }
 
 export async function installAddonSelection(
   window: BrowserWindow,
   id: unknown,
   keys: unknown,
+  openSettings?: unknown,
 ) {
   return installPackageSelection(
     window,
     id,
     keys,
     bundledManifests,
-    disableAddonForReplacement,
+    replacing(openSettings),
   )
 }
 

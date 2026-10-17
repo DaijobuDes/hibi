@@ -10,6 +10,7 @@ import type { DialogApi } from '../../ui/dialogs'
 export async function reviewAddonInstall(
   dialogs: DialogApi,
   session: AddonInstallSession,
+  openSettings: readonly string[] = [],
 ): Promise<void> {
   let operation: Promise<AddonInstallResult[]> | undefined
   let cancellation: Promise<void> | undefined
@@ -20,7 +21,7 @@ export async function reviewAddonInstall(
   }
   const install = (keys: string[]) => {
     operation = window.hibi
-      .installAddonSelection(session.id, keys)
+      .installAddonSelection(session.id, keys, openSettings)
       .catch((error): AddonInstallResult[] =>
         keys.map((key) => ({
           key,

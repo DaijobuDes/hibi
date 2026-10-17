@@ -2384,11 +2384,15 @@ export function useAddons(
   }
   async function install(url?: string) {
     try {
-      const session = await window.hibi.installAddon(url)
+      // Main refuses to replace an addon in place while its settings are on screen.
+      const openSettings = catalog
+        .map(({ manifest }) => manifest.id)
+        .filter((id) => latest.current.settingsVisible?.(id))
+      const session = await window.hibi.installAddon(url, openSettings)
       try {
         if (session) {
           const { reviewAddonInstall } = await import('./AddonInstallChooser')
-          await reviewAddonInstall(dialogService.api, session)
+          await reviewAddonInstall(dialogService.api, session, openSettings)
         }
       } finally {
         const [states, packages, { reloadAddons }] = await Promise.all([

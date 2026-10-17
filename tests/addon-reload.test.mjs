@@ -37,7 +37,7 @@ const manifest = (id, name, fields = {}) => ({
   capabilities: [],
   ...fields,
 })
-const providerSource = (version) => `export default () => ({
+const providerSource = (version) => `export default (sdk) => ({
   async start(context) {
     const generation = (window.providerStarts = (window.providerStarts || 0) + 1);
     window.providerVersion = ${version};
@@ -55,7 +55,9 @@ const providerSource = (version) => `export default () => ({
     window.reloadLog.push('stop:provider');
     if (localStorage.getItem('reload-provider-throw')) throw new Error('Provider stop failed');
   },
-  Settings: () => null,
+  Settings: sdk?.React
+    ? () => sdk.React.createElement('input', { 'aria-label': 'Reload provider draft' })
+    : () => null,
 });`
 const consumerSource = `export default () => ({
   async start(context) {
@@ -342,7 +344,9 @@ test('a reviewed replacement stays enabled and reloads in place unless its acces
   const temp = await mkdtemp(join(tmpdir(), 'hibi-addon-replace-'))
   const profile = join(temp, 'profile')
   const preferences = join(profile, 'addons.json')
-  const data = manifest('reload-provider', 'Reload provider')
+  const data = manifest('reload-provider', 'Reload provider', {
+    capabilities: ['ui'],
+  })
   await writeInstalled(profile, data, { 'index.js': providerSource(1) }, 'a')
   await writeInstalled(
     profile,
@@ -408,6 +412,25 @@ test('a reviewed replacement stays enabled and reloads in place unless its acces
       (state) => state.id === 'reload-provider',
     ).enabled
   const before = (await stat(preferences)).mtimeMs
+
+  // Open settings with unsaved input refuse the replacement before anything changes.
+  await clickMenu(app, 'Settings')
+  await page.getByRole('tab', { name: /^reload provider$/i }).click()
+  const draft = page.getByRole('textbox', { name: /reload provider draft/i })
+  await draft.fill('unsaved settings draft')
+  await install(same)
+  await page.waitForFunction(() =>
+    /leave the reload provider settings, then install the replacement again/i.test(
+      document.body.innerText,
+    ),
+  )
+  assert.equal(await draft.inputValue(), 'unsaved settings draft')
+  assert.equal(await page.evaluate(() => window.providerVersion), 1)
+  assert.equal(await page.evaluate(() => window.providerStarts), 1)
+  await page.getByRole('button', { name: /^back to app$/i }).click()
+  await page
+    .getByRole('main', { name: /^settings$/i })
+    .waitFor({ state: 'hidden' })
 
   await install(same)
   await page.waitForFunction(

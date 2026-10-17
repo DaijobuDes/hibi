@@ -213,12 +213,15 @@ export type DesktopApi = {
     workspace?: WorkspaceState | null
   } | null>
   getInstalledAddons: () => Promise<import('./sideload').InstalledAddon[]>
+  /** `openSettings` lists addons whose settings are on screen; a replacement of one is refused. */
   installAddon: (
     url?: string,
+    openSettings?: readonly string[],
   ) => Promise<import('./sideload').AddonInstallSession | null>
   installAddonSelection: (
     sessionId: string,
     candidateKeys: string[],
+    openSettings?: readonly string[],
   ) => Promise<import('./sideload').AddonInstallResult[]>
   cancelAddonInstall: (sessionId: string) => Promise<void>
   openAddonsFolder: () => Promise<void>

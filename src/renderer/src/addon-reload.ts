@@ -11,7 +11,8 @@ export type AddonReloadResult =
  * Enabled settings are never written. A newer reload of any affected addon
  * supersedes this one; its discarded starts clean up through `stop`.
  * `reviewed` skips the window and settings checks for a replacement the user
- * confirmed, whose previous files are no longer served.
+ * confirmed: main already refused it while those were open, and the previous
+ * files are no longer served.
  */
 export async function reloadAddons(
   ids: readonly string[],

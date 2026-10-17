@@ -399,6 +399,45 @@ test('replacement and removal block dependents, retain their preferences, and re
   assert.equal(stateOf(h, 'consumer').blockedBy, undefined)
 })
 
+test('an in-place replacement is refused before anything changes while its settings or a consumer window is open', async (t) => {
+  const h = await host(t)
+  await h.loadAddons()
+  const source = join(h.state.root, 'sources')
+  for (const manifest of [
+    details('provider'),
+    details('consumer', { requires: requires('provider') }),
+  ]) {
+    h.state.source = await fixture(source, manifest)
+    await h.installAddon(h.window)
+  }
+  await h.enableAddon('consumer', true, true)
+  const generation = h.getAddonActivationGeneration('provider')
+  const version = () =>
+    h.installedAddons().find((addon) => addon.manifest.id === 'provider')
+      .manifest.version
+  h.state.source = await fixture(
+    source,
+    details('provider', { version: '2.0.0' }),
+  )
+  await assert.rejects(
+    h.installAddon(h.window, undefined, ['provider']),
+    /Leave the provider settings, then install the replacement again/,
+  )
+  h.setAddonWindowOwners(() => ['consumer'])
+  await assert.rejects(
+    h.installAddon(h.window),
+    /Close the consumer windows, then install the replacement again/,
+  )
+  assert.equal(version(), '1.0.0')
+  assert.equal(h.isAddonActivationCurrent('provider', generation), true)
+  assert.equal(stateOf(h, 'provider').enabled, true)
+  h.setAddonWindowOwners(() => [])
+  await h.installAddon(h.window, undefined, ['unrelated'])
+  assert.equal(version(), '2.0.0')
+  assert.equal(h.isAddonActivationCurrent('provider', generation), false)
+  assert.equal(stateOf(h, 'provider').enabled, true)
+})
+
 test('addon states distinguish manifest defaults from explicit saved activation choices', async (t) => {
   const h = await host(t, [details('markdown'), details('autocomplete')])
   await h.loadAddons()
