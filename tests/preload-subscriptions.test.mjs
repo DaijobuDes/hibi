@@ -9,6 +9,15 @@ const evaluate = new Function(
   await readFile(new URL('../out/preload/index.cjs', import.meta.url), 'utf8'),
 )
 
+const evaluateAddonWindow = new Function(
+  'require',
+  'process',
+  await readFile(
+    new URL('../out/preload/addon-window.cjs', import.meta.url),
+    'utf8',
+  ),
+)
+
 for (const [method, channel, arity = 1] of [
   ['onAddonReload', 'addons:reload'],
   ['onGlobalShortcut', 'global-shortcut:invoked'],
@@ -21,6 +30,7 @@ for (const [method, channel, arity = 1] of [
   ['onAddonWindowClosed', 'addon-windows:closed', 2],
   ['onOpenSettings', 'background:settings', 0],
   ['onExternalDocuments', 'document:external-pending', 0],
+  ['onStates', 'addon-windows:states-changed'],
 ])
   test(`${method} strips events and disposes only its own subscription`, () => {
     const transport = Object.assign(new EventEmitter(), {
@@ -28,18 +38,23 @@ for (const [method, channel, arity = 1] of [
       send() {},
     })
     const exposed = new Map()
-    evaluate(
+    const preload = method === 'onStates' ? evaluateAddonWindow : evaluate
+    preload(
       () => ({
         ipcRenderer: transport,
         contextBridge: { exposeInMainWorld: exposed.set.bind(exposed) },
       }),
       { isMainFrame: true },
     )
+    const api =
+      method === 'onStates'
+        ? exposed.get('hibiAddonWindow').seal()
+        : exposed.get('hibi')
     const initialListeners = transport.listenerCount(channel)
     const calls = []
     const callback = (...args) => calls.push(args)
-    const stop = exposed.get('hibi')[method](callback)
-    const keep = exposed.get('hibi')[method](callback)
+    const stop = api[method](callback)
+    const keep = api[method](callback)
     const event = { sender: transport }
     const payload = Object.freeze({ id: 'probe' })
     const expected = [payload, 'extra'].slice(0, arity)
