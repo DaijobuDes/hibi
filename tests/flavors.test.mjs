@@ -528,10 +528,17 @@ test('rich editor survives document-only syntax and rebuilds for flavor changes'
     'document-only syntax keeps the rich editor',
   )
   for (const enabled of [false, true]) {
-    await page.evaluate(
-      (enabled) => window.hibi.setAddonEnabled('text-extras', enabled),
+    await clickMenu(app, 'Settings')
+    await page
+      .getByRole('tab', { name: /^addon manager$/i, exact: true })
+      .click()
+    await page.locator('#addon-text-extras').click()
+    await page.waitForFunction(
+      (enabled) =>
+        document.querySelector('#addon-text-extras').checked === enabled,
       enabled,
     )
+    await page.getByRole('button', { name: /^back to app$/i }).click()
     await page.waitForFunction(() => window.richEditor.isDestroyed)
     await subscript(enabled)
     await waitForDocumentEditor(app, page)
