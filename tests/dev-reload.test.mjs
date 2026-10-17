@@ -152,17 +152,22 @@ test('development watches main, renderer, preload, addons, and documentation gen
     ),
   )
   await writeFile(
+    join(previewFolder, 'host-label.ts'),
+    'export const valid = true',
+  )
+  await writeFile(
     join(previewFolder, 'host.ts'),
-    "export default { id: 'ui-preview', queries: { probe: async () => 'owner-native' }, methods: {} }",
+    "import { valid } from './host-label'; export default { id: 'ui-preview', queries: { probe: async () => valid ? 'owner-native' : 'invalid' }, methods: {} }",
   )
   await writeFile(
     join(previewFolder, 'window.tsx'),
     `
       import { createElement } from 'react'
       import original from './index'
+      import { valid } from './host-label'
       const owner = location.pathname.endsWith('/addon-window.html')
       const lifecycle = owner ? undefined : (window.previewWatchProbe ??= {
-        starts: 0, stops: 0, state: 73,
+        starts: 0, stops: 0, state: valid ? 73 : 0,
       })
       const probe = owner ? (window.catalogWindowProbe = {
         sealed: window.hibiAddonWindow.seal() === undefined,
@@ -1134,12 +1139,22 @@ dialog.showMessageBox = (...args) => {
       document.tabs.some((tab) => tab.dirty)
     )
   })
+  const beforeNativeFailure = await captureAddonState()
+  await writeFile(
+    join(previewFolder, 'host-label.ts'),
+    'export const nativeCompileFailure = ;',
+  )
+  await until(
+    () => output.includes('nativeCompileFailure = ;'),
+    'native helper compile fails',
+    60000,
+  )
+  assert.deepEqual(await addonState(), beforeNativeFailure)
   const canceledStarts = seenEndpoints.length
   await writeFile(cancelNextClose, '')
-  await replace(
-    'src/addons/ui-preview/host.ts',
-    "'owner-native'",
-    "'owner-native-canceled'",
+  await writeFile(
+    join(previewFolder, 'host-label.ts'),
+    'export const valid = true',
   )
   await until(
     () =>
@@ -1155,6 +1170,7 @@ dialog.showMessageBox = (...args) => {
     'watcher acknowledges canceled restart',
     60000,
   )
+  assert.deepEqual(await addonState(), beforeNativeFailure)
   assert.equal(seenEndpoints.length, canceledStarts)
   assert.deepEqual(
     await page.evaluate(async () => {
@@ -1178,7 +1194,7 @@ dialog.showMessageBox = (...args) => {
   await clearDraft('draft protected from restart')
   await replace(
     'src/addons/ui-preview/host.ts',
-    "'owner-native-canceled'",
+    "'owner-native'",
     "'owner-native-updated'",
   )
   await connectRestartedPage(canceledStarts)

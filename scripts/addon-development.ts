@@ -190,11 +190,10 @@ export function addonDevelopment(
     const item = [...packages.values()].find((entry) =>
       file.startsWith(`${normalizePath(resolve(root, entry.directory))}/`),
     )
-    if (
-      !item ||
-      (developmentMainInputs.has(file) && !developmentMetadata.has(file))
-    )
-      return false
+    if (!item) return false
+    // The main watcher owns their guarded restart, including shared renderer imports.
+    if (developmentMainInputs.has(file) && !developmentMetadata.has(file))
+      return true
     const pending = changes.get(item.manifest.id) ?? {
       files: new Set<string>(),
       timestamp,

@@ -110,6 +110,23 @@ const chunks = [
                     return watchHook();
                 }`,
       ],
+      [
+        `            let firstBundle = true;
+            const closeBundle = () => {`,
+        `            let firstBundle = true;
+            let buildFailed = false;
+            const closeBundle = (error) => {
+                if (error || buildFailed) return;`,
+      ],
+      [
+        `                        name: 'vite:electron-watcher',
+                        closeBundle`,
+        `                        name: 'vite:electron-watcher',
+                        buildStart() { buildFailed = false; },
+                        buildEnd(error) { buildFailed = !!error; },
+                        renderError() { buildFailed = true; },
+                        closeBundle`,
+      ],
     ],
   ],
   [
