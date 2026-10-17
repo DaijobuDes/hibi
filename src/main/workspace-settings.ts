@@ -37,7 +37,7 @@ import {
   workspaceMetadata,
   writeWorkspaceText,
 } from './workspace-metadata'
-import { isPathInside } from './workspace-paths.ts'
+import { isPathInside } from './workspace-paths'
 
 const defaults: WorkspacePreferences = {
   enabled: false,

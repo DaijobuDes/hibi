@@ -25,7 +25,7 @@ import {
   isPathInside,
   resolveWorkspaceEntry,
   validateWorkspaceName,
-} from './workspace-paths.ts'
+} from './workspace-paths'
 
 export { validateWorkspaceName } from './workspace-paths'
 

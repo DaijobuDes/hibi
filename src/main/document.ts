@@ -38,7 +38,7 @@ import {
   writeText,
 } from './files'
 import { recordVersion } from './history'
-import { isPathInside } from './workspace-paths.ts'
+import { isPathInside } from './workspace-paths'
 
 let path: string | null = null
 let pendingPath: string | null = null

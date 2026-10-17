@@ -32,7 +32,7 @@ import { renameWithTableLayout } from './workspace-layout'
 import {
   isPathInside as inside,
   resolveWorkspaceEntry,
-} from './workspace-paths.ts'
+} from './workspace-paths'
 
 const MAX_BINARY_BYTES = 16 * 1024 * 1024
 

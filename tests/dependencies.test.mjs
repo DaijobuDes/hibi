@@ -146,6 +146,23 @@ test('tool exclusion keeps containment boundaries on posix and windows', async (
         excluded ? null : candidate,
         candidate,
       )
+    if (paths === win32)
+      for (const [candidate, root, excluded] of [
+        ['c:\\NOTES\\tool', 'C:\\notes\\tool', true],
+        ['\\\\server\\share\\notes', '\\\\server\\share\\notes', true],
+        ['\\\\server\\share\\notes\\tool', '\\\\server\\share\\notes', true],
+        [
+          '\\\\server\\share\\notes-copy\\tool',
+          '\\\\server\\share\\notes',
+          false,
+        ],
+        ['\\\\server\\other\\notes\\tool', '\\\\server\\share\\notes', false],
+      ])
+        assert.equal(
+          await module.exports.executableFile(candidate, root),
+          excluded ? null : candidate,
+          candidate,
+        )
   }
 })
 
