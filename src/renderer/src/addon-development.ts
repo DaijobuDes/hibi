@@ -45,17 +45,17 @@ export function watchAddonDevelopment(
           }),
         )
         const publish = prepareBundledAddon(item, request.scope)
+        const manifest = { ...item.manifest, entry: 'index.js' }
+        let committed = false
         const result = await reload(request.id, request.scope, async () => {
           if (request.scope === 'code')
             await window.hibi.updateDevelopmentAddon?.(
-              {
-                ...item.manifest,
-                entry: 'index.js',
-              },
+              manifest,
               request.contract,
             )
           return () => {
             publish()
+            committed = true
             for (const element of document.querySelectorAll<HTMLStyleElement>(
               'style[data-addon-style]',
             ))
@@ -72,6 +72,12 @@ export function watchAddonDevelopment(
             for (const [, , apply] of replacements) apply?.()
           }
         })
+        if (committed && request.scope === 'code')
+          await window.hibi.updateDevelopmentAddon?.(
+            manifest,
+            request.contract,
+            true,
+          )
         hot.send('hibi:addon-result', {
           id: request.id,
           revision: request.revision,

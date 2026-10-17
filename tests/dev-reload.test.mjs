@@ -91,6 +91,14 @@ test('development watches main, renderer, preload, addons, and documentation gen
       capabilities: ['rich'],
       name: 'Local watch fixture',
       description: 'Local targeted update probe',
+      licenses: [
+        {
+          id: 'watch-notice',
+          name: 'Watch notice',
+          license: 'MIT',
+          text: 'Original local watch notice.',
+        },
+      ],
       apiVersion: 2,
       kind: 'extension',
       version: '1.0.0',
@@ -153,6 +161,10 @@ test('development watches main, renderer, preload, addons, and documentation gen
   }))
     await writeFile(join(localFolder, name), content)
   const previewFolder = join(root, 'src/addons/ui-preview')
+  const originalImage =
+    "<svg xmlns='http://www.w3.org/2000/svg' width='1' height='1'><rect width='1' height='1' fill='red'/></svg>"
+  const watchImage = join(previewFolder, 'watch.svg')
+  await writeFile(watchImage, originalImage)
   const previewManifest = join(previewFolder, 'hibi-addon.json')
   await writeFile(
     previewManifest,
@@ -327,7 +339,7 @@ test('development watches main, renderer, preload, addons, and documentation gen
   const releaseAddonPrepare = join(root, 'release-addon-prepare')
   const preparePath = join(root, 'src/main/addon-development.ts')
   const prepareSource = await readFile(preparePath, 'utf8')
-  const prepareMarker = '  for (const key of Object.keys(previous))'
+  const prepareMarker = '  if (apply !== true) return'
   assert.equal(prepareSource.split(prepareMarker).length, 2)
   await writeFile(
     preparePath,
@@ -613,20 +625,7 @@ dialog.showMessageBox = (...args) => {
   beforeAddons.preview.state = 74
   const previewCss = join(previewFolder, 'style.css')
   await addonUpdate('ui-preview', 'styles', async () => {
-    await Promise.all([
-      writeFile(
-        join(previewFolder, 'README.md'),
-        `${await readFile(join(previewFolder, 'README.md'), 'utf8')}\nignored watch probe\n`,
-      ),
-      writeFile(
-        join(previewFolder, 'watch.png'),
-        Buffer.from(
-          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aG9sAAAAASUVORK5CYII=',
-          'base64',
-        ),
-      ),
-      writeFile(join(previewFolder, '4913'), 'ignored editor probe'),
-    ])
+    await writeFile(join(previewFolder, '4913'), 'ignored editor probe')
     await writeFile(
       previewCss,
       `${await readFile(previewCss, 'utf8')}\nbody { --preview-watch: updated; }\n`,
@@ -884,6 +883,19 @@ dialog.showMessageBox = (...args) => {
   mark('imported local json dependency reloads only its owner')
 
   const beforeSettingsRace = await addonState()
+  const localNoticeId = 'addon:dev-watch-local:watch-notice'
+  const originalLocalNotice = await page.evaluate(
+    (id) => window.hibi.getLicense(id),
+    localNoticeId,
+  )
+  assert.equal(originalLocalNotice, 'Original local watch notice.')
+  const raceManifestPath = join(localFolder, 'hibi-addon.json')
+  const pendingMetadata = JSON.parse(await readFile(raceManifestPath, 'utf8'))
+  pendingMetadata.description = 'Prepared local update probe'
+  pendingMetadata.licenses[0].text = 'Updated local watch notice.'
+  const localSettings = page.getByRole('tabpanel', {
+    name: /^local watch fixture$/i,
+  })
   await writeFile(holdAddonPrepare, '')
   try {
     await Promise.all([
@@ -895,11 +907,14 @@ dialog.showMessageBox = (...args) => {
           ),
       }),
       (async () => {
-        await replace(
-          'src/useraddons/dev-watch-local/helper.ts',
-          'local linked',
-          'local prepared',
-        )
+        await Promise.all([
+          replace(
+            'src/useraddons/dev-watch-local/helper.ts',
+            'local linked',
+            'local prepared',
+          ),
+          writeFile(raceManifestPath, JSON.stringify(pendingMetadata)),
+        ])
         await until(
           () =>
             access(addonPreparePaused).then(
@@ -908,10 +923,20 @@ dialog.showMessageBox = (...args) => {
             ),
           'addon metadata preparation waits before renderer commit',
         )
+        assert.equal(
+          await page.evaluate(
+            (id) => window.hibi.getLicense(id),
+            localNoticeId,
+          ),
+          originalLocalNotice,
+        )
         await page
           .getByRole('button', { name: /^settings$/i, exact: true })
           .click()
         await page.getByRole('tab', { name: /^local watch fixture$/i }).click()
+        await localSettings
+          .getByText('Local targeted update probe', { exact: true })
+          .waitFor()
         await page
           .getByRole('textbox', { name: 'Local settings draft', exact: true })
           .fill('unsaved local settings draft')
@@ -928,6 +953,13 @@ dialog.showMessageBox = (...args) => {
       'unsaved local settings draft',
     )
     assert.deepEqual(await addonState(), beforeSettingsRace)
+    assert.equal(
+      await page.evaluate((id) => window.hibi.getLicense(id), localNoticeId),
+      originalLocalNotice,
+    )
+    await localSettings
+      .getByText('Local targeted update probe', { exact: true })
+      .waitFor()
   } finally {
     await writeFile(releaseAddonPrepare, '')
     await rm(holdAddonPrepare, { force: true })
@@ -958,8 +990,22 @@ dialog.showMessageBox = (...args) => {
       stops: beforeSettingsRace.local.stops + 1,
     },
   })
+  await waitForAsync(
+    page,
+    async ({ id, text }) => (await window.hibi.getLicense(id)) === text,
+    { id: localNoticeId, text: pendingMetadata.licenses[0].text },
+  )
+  await page.getByRole('button', { name: /^settings$/i, exact: true }).click()
+  await page.getByRole('tab', { name: /^local watch fixture$/i }).click()
+  await localSettings
+    .getByText(pendingMetadata.description, { exact: true })
+    .waitFor()
+  await page.getByRole('button', { name: /^back to app$/i }).click()
+  await page
+    .getByRole('main', { name: /^settings$/i })
+    .waitFor({ state: 'hidden' })
   mark(
-    'settings opened during prepare keep drafts; later css edit recovers pending code',
+    'settings refusal preserves metadata and drafts; recovery publishes code and notices',
   )
 
   assert.equal(
@@ -1255,13 +1301,32 @@ dialog.showMessageBox = (...args) => {
     page = browser.contexts()[0].pages()[0]
     await page.waitForFunction(() => Boolean(window.hibi))
   }
+  const readFixtureDocumentation = () =>
+    page.evaluate(() =>
+      Promise.all([
+        window.hibi.getAddonDocumentation('ui-preview', 'README.md'),
+        window.hibi.getAddonDocumentation('ui-preview', 'watch.svg'),
+      ]),
+    )
+  const originalReadme = await readFile(
+    join(previewFolder, 'README.md'),
+    'utf8',
+  )
+  const beforeDocumentation = await readFixtureDocumentation()
+  assert.equal(beforeDocumentation[0].content, originalReadme)
+  const updatedReadme = `${originalReadme}\nUpdated addon documentation probe.\n`
+  const updatedImage = originalImage.replace("fill='red'", "fill='blue'")
   const initialStarts = seenEndpoints.length
   await writeFile(holdMainBuild, '')
-  await replace(
-    'src/main/imports.ts',
-    "instructions: '',",
-    "instructions: 'Updated folder importer.',",
-  )
+  await Promise.all([
+    replace(
+      'src/main/imports.ts',
+      "instructions: '',",
+      "instructions: 'Updated folder importer.',",
+    ),
+    writeFile(join(previewFolder, 'README.md'), updatedReadme),
+    writeFile(watchImage, updatedImage),
+  ])
   await until(
     () =>
       access(mainBuildPaused).then(
@@ -1278,15 +1343,33 @@ dialog.showMessageBox = (...args) => {
     '',
     'running main process still loads its original importer chunk',
   )
+  assert.deepEqual(
+    await readFixtureDocumentation(),
+    beforeDocumentation,
+    'running main keeps original documentation and image until restart',
+  )
   await writeFile(releaseMainBuild, '')
   await connectRestartedPage(initialStarts)
+  const afterDocumentation = await readFixtureDocumentation()
+  assert.equal(afterDocumentation[0].content, updatedReadme)
+  assert.notEqual(afterDocumentation[1].content, beforeDocumentation[1].content)
+  const imageData = afterDocumentation[1].content
+  const imageBody = imageData.slice(imageData.indexOf(',') + 1)
+  assert.equal(
+    imageData.startsWith('data:image/svg+xml;base64,')
+      ? Buffer.from(imageBody, 'base64').toString('utf8')
+      : decodeURIComponent(imageBody),
+    updatedImage,
+  )
   assert.equal(
     (await page.evaluate(() => window.hibi.listImporters())).find(
       (importer) => importer.id === 'folder',
     ).instructions,
     'Updated folder importer.',
   )
-  mark('main rebuild keeps old importer code until restart')
+  mark(
+    'guarded main restart refreshes importer, addon readme, and imported image',
+  )
 
   await page
     .getByRole('textbox', { name: 'Document editor', exact: true })

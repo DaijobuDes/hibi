@@ -9,6 +9,7 @@ import { getAddonManifests } from './addons'
 export async function updateDevelopmentAddon(
   value: unknown,
   contract: unknown,
+  apply: unknown = false,
 ) {
   if (Buffer.byteLength(JSON.stringify(value) ?? '') > MAX_ADDON_MANIFEST_BYTES)
     throw new Error('The addon manifest exceeds 64 KiB.')
@@ -33,6 +34,7 @@ export async function updateDevelopmentAddon(
   const { default: details } = await import(
     'virtual:hibi-addon-catalog/details'
   )
+  if (apply !== true) return
   for (const key of Object.keys(previous))
     delete (previous as unknown as Record<string, unknown>)[key]
   Object.assign(previous, manifest)

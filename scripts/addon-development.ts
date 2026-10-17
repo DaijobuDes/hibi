@@ -41,7 +41,6 @@ export const developmentContract = (entry: AddonPackage) =>
     addonDevelopmentManifestContract(entry.manifest, Boolean(entry.native)),
   ])
 export const developmentMetadata = new Set<string>()
-export const developmentDirectories = new Set<string>()
 export const developmentMainInputs = new Set<string>()
 
 /** Use Vite's existing watcher; publish only a successfully transformed edit batch. */
@@ -199,8 +198,11 @@ export function addonDevelopment(
       file.startsWith(`${normalizePath(resolve(root, entry.directory))}/`),
     )
     if (!item) return false
-    // The main watcher owns their guarded restart, including shared renderer imports.
-    if (developmentMainInputs.has(file) && !developmentMetadata.has(file))
+    // Main owns guarded restarts for shared runtime inputs and documentation.
+    if (
+      developmentMainInputs.has(file) &&
+      (!developmentMetadata.has(file) || file.endsWith('.md'))
+    )
       return true
     if (
       !/\.[cm]?[jt]sx?$/.test(file) &&

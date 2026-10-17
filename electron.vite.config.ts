@@ -3,8 +3,6 @@ import react from '@vitejs/plugin-react'
 import { defineConfig } from 'electron-vite'
 import {
   addonDevelopmentStyles,
-  developmentDirectories,
-  developmentMainInputs,
   developmentMetadata,
 } from './scripts/addon-development'
 import { addonCatalog } from './scripts/addon-packages'
@@ -80,12 +78,8 @@ export default defineConfig({
               const input = path.split(sep).join('/')
               if (
                 process.env.NODE_ENV_ELECTRON_VITE === 'development' &&
-                (developmentMetadata.has(input) ||
-                  (/\.(?:md|png|jpg|jpeg|gif|webp|avif|svg)$/.test(input) &&
-                    !developmentMainInputs.has(input) &&
-                    [...developmentDirectories].some((directory) =>
-                      input.startsWith(directory),
-                    )))
+                developmentMetadata.has(input) &&
+                !input.endsWith('.md')
               )
                 return true
               const part = relative(mainOutput, path)

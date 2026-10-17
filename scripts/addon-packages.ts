@@ -18,7 +18,6 @@ import type { ColorschemeInput } from '../src/shared/colorschemes'
 import {
   addonDevelopment,
   developmentContract,
-  developmentDirectories,
   developmentMainInputs,
   developmentMetadata,
   developmentRestartFile,
@@ -248,24 +247,10 @@ export function addonCatalog(
     },
     buildEnd() {
       if (devMain) {
-        for (const id of this.getModuleIds()) {
-          const file = slash(id.replace(/\?.*$/, ''))
-          const info = this.getModuleInfo(id)
-          if (
-            !/\.(?:md|png|jpg|jpeg|gif|webp|avif|svg)$/.test(file) ||
-            [
-              ...(info?.importers ?? []),
-              ...(info?.dynamicImporters ?? []),
-            ].some(
-              (importer) =>
-                !slash(importer).endsWith('/src/main/addon-documentation.ts'),
-            )
-          )
-            developmentMainInputs.add(file)
-        }
+        for (const id of this.getModuleIds())
+          developmentMainInputs.add(slash(id.replace(/\?.*$/, '')))
         for (const file of this.getWatchFiles())
-          if (!/\.(?:md|png|jpg|jpeg|gif|webp|avif|svg)$/.test(file))
-            developmentMainInputs.add(slash(file))
+          developmentMainInputs.add(slash(file))
       }
     },
     async configureServer(server) {
@@ -322,9 +307,6 @@ export default (await load(${JSON.stringify(`/@id/__x00__${id.slice(1)}?revision
         watch(path)
       })
       const packages = await pending
-      if (devMain)
-        for (const item of packages)
-          developmentDirectories.add(`${slash(resolve(root, item.directory))}/`)
       for (const input of inputs) {
         watch(input)
         if (
