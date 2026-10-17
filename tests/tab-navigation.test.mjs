@@ -7,7 +7,8 @@ import {
   launchBenchmarkApp,
   waitForEditor,
 } from '../scripts/benchmark-flows.mjs'
-import { clickMenu, pressShortcut } from './keyboard.mjs'
+import { waitForDocumentEditor } from './electron.mjs'
+import { clickMenu, pressShortcut, replaceSourceText } from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
 
 test('tab shortcuts wrap and preserve source drafts without saving', {
@@ -54,7 +55,8 @@ test('tab shortcuts wrap and preserve source drafts without saving', {
   await cycle('Left', ids[0])
   await pressShortcut(app, `${mod}+Shift+]`)
   const source = page.getByRole('textbox', { name: /markdown editor/i })
-  await source.fill('draft a')
+  await waitForDocumentEditor(app, page, { name: 'Markdown editor' })
+  await replaceSourceText(page, source, 'draft a')
   await cycle('Right', ids[1])
   await cycle('Left', ids[0])
   await waitForAsync(page, async () => {

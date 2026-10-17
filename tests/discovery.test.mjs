@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { electron, waitForDocumentEditor } from './electron.mjs'
-import { pressShortcut } from './keyboard.mjs'
+import { pressShortcut, replaceRichText } from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
 
 test('palette discovers settings, addon controls, themes, and formatting without visiting their pages', {
@@ -84,7 +84,8 @@ test('palette discovers settings, addon controls, themes, and formatting without
   )
   await page.getByRole('button', { name: /^back to app$/i }).click()
   const rich = page.getByRole('textbox', { name: /document editor/i })
-  await rich.fill('format from palette')
+  await waitForDocumentEditor(app, page)
+  await replaceRichText(page, rich, 'format from palette')
   await rich.press(`${mod}+a`)
   await choose('format bold')
   await waitForAsync(

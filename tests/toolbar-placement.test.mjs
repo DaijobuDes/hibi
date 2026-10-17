@@ -3,8 +3,8 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { electron } from './electron.mjs'
-import { clickMenu } from './keyboard.mjs'
+import { electron, waitForDocumentEditor } from './electron.mjs'
+import { clickMenu, replaceRichText } from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
 
 test('toolbar placements persist, keep menu-only actions in overflow, and recover from all hidden', {
@@ -43,7 +43,8 @@ test('toolbar placements persist, keep menu-only actions in overflow, and recove
   const errors = []
   page.on('pageerror', (error) => errors.push(error.message))
   const rich = page.getByRole('textbox', { name: /document editor/i })
-  await rich.fill('hello')
+  await waitForDocumentEditor(app, page)
+  await replaceRichText(page, rich, 'hello')
   const bar = page.getByRole('navigation', { name: /editor toolbar/i })
   const inline = (id) =>
     bar.locator(`:scope > [data-toolbar-id="format.${id}"]`)

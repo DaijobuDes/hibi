@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { electron, waitForAppState } from './electron.mjs'
+import { replaceSourceText } from './keyboard.mjs'
 
 test('workspace can show all files and opens unsupported text in source only', {
   timeout: 60000,
@@ -130,7 +131,7 @@ test('workspace can show all files and opens unsupported text in source only', {
     await page.getByRole('button', { name: 'normal' }).isDisabled(),
     true,
   )
-  await source.fill('{"enabled":false}')
+  await replaceSourceText(page, source, '{"enabled":false}')
   await waitForAppState(page, () =>
     window.hibi
       .getDocument()

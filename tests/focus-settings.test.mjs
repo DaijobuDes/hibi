@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { settingsPages } from '../src/renderer/src/settings-pages.ts'
-import { electron } from './electron.mjs'
-import { clickMenu } from './keyboard.mjs'
+import { electron, waitForDocumentEditor } from './electron.mjs'
+import { clickMenu, replaceRichText } from './keyboard.mjs'
 
 test('settings registrations use addon ownership and clean up without collisions', () => {
   const Content = () => null
@@ -132,8 +132,8 @@ test('status visibility, zen mode, settings groups, search clear and import noti
   page.setDefaultTimeout(6000)
   await page.emulateMedia({ reducedMotion: 'reduce' })
   const editor = page.getByRole('textbox', { name: /document editor/i })
-  await editor.waitFor()
-  await editor.fill('A quiet place to write.')
+  await waitForDocumentEditor(app, page)
+  await replaceRichText(page, editor, 'A quiet place to write.')
   const choose = async (label) => {
     await clickMenu(app, 'Command palette')
     await page.getByRole('combobox', { name: /search commands/i }).fill(label)

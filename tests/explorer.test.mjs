@@ -15,7 +15,7 @@ import {
   waitForAppState,
   waitForDocumentEditor,
 } from './electron.mjs'
-import { pressShortcut } from './keyboard.mjs'
+import { pressShortcut, replaceRichText } from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
 
 test('workspace popovers, durable folders, ephemeral files, inline rename, dirty state, and safe file actions', {
@@ -103,7 +103,7 @@ test('workspace popovers, durable folders, ephemeral files, inline rename, dirty
   )
   const rich = page.getByRole('textbox', { name: /document editor/i })
   await waitForDocumentEditor(app, page)
-  await rich.fill('unsaved text')
+  await replaceRichText(page, rich, 'unsaved text')
   assert.equal(await page.locator('.sidebar-dirty').count(), 1)
   await assert.rejects(access(join(root, 'guides', 'hello.md')))
   await pressShortcut(app, `${mod}+s`)
@@ -113,7 +113,7 @@ test('workspace popovers, durable folders, ephemeral files, inline rename, dirty
     'unsaved text',
   )
   await page.waitForFunction(() => !document.querySelector('.sidebar-dirty'))
-  await rich.fill('still editing')
+  await replaceRichText(page, rich, 'still editing')
   await page.getByRole('button', { name: /actions for hello\.md/i }).click()
   await page.getByRole('menuitem', { name: /^rename$/i, exact: true }).click()
   await rename.fill('renamed.md')

@@ -10,8 +10,8 @@ import {
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { electron } from './electron.mjs'
-import { clickMenu, pressShortcut } from './keyboard.mjs'
+import { electron, waitForDocumentEditor } from './electron.mjs'
+import { clickMenu, pressShortcut, replaceRichText } from './keyboard.mjs'
 import { checkSidebarResize } from './sidebar-resize.mjs'
 import { uiName } from './ui.mjs'
 
@@ -124,9 +124,12 @@ test('nested workspace editing, addon lifecycle, and offline static export', {
     page.evaluate(() => window.hibi.openWorkspaceFile('escape/outside.md')),
     /outside/,
   )
-  await page
-    .getByRole('textbox', { name: /document editor/i })
-    .fill('unsaved workspace draft')
+  await waitForDocumentEditor(app, page)
+  await replaceRichText(
+    page,
+    page.getByRole('textbox', { name: /document editor/i }),
+    'unsaved workspace draft',
+  )
   assert.equal(
     await page.locator('.workspace-sidebar').getAttribute('data-open'),
     'true',

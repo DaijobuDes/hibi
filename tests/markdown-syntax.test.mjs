@@ -11,8 +11,13 @@ import {
 } from '../src/addons/text-extras/syntax.ts'
 import { markdownSyntax } from '../src/renderer/src/markdown-syntax.ts'
 import { installSyntaxPreferences } from '../src/renderer/src/syntax-parser.ts'
-import { electron } from './electron.mjs'
-import { clickMenu, pressShortcut, replaceRichText } from './keyboard.mjs'
+import { electron, waitForDocumentEditor } from './electron.mjs'
+import {
+  clickMenu,
+  pressShortcut,
+  replaceRichText,
+  replaceSourceText,
+} from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
 import { uiName } from './ui.mjs'
 
@@ -103,7 +108,8 @@ test('syntax settings preserve edits, update rich formatting, and discover addon
   const source = page.getByRole('textbox', { name: /markdown editor/i })
   const initial =
     '# one\n\n## two\n\n**bold** H~2~O ~~strike~~\n\n-# small **text**\n\n> [!WARNING]\n> hello'
-  await source.fill(initial)
+  await waitForDocumentEditor(app, page, { name: 'Markdown editor' })
+  await replaceSourceText(page, source, initial)
   await page
     .getByRole('button', { name: /^side-by-side$/i, exact: true })
     .click()

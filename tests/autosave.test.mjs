@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { setTimeout as delay } from 'node:timers/promises'
-import { electron } from './electron.mjs'
-import { clickMenu } from './keyboard.mjs'
+import { electron, waitForDocumentEditor } from './electron.mjs'
+import { clickMenu, replaceRichText } from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
 
 test('autosave keeps a dirty tab scheduled after focus moves to another tab', {
@@ -49,7 +49,8 @@ test('autosave keeps a dirty tab scheduled after focus moves to another tab', {
     )
   }
   await page.getByRole('tab', { name: 'a.md' }).click()
-  await rich.fill('edited a')
+  await waitForDocumentEditor(app, page)
+  await replaceRichText(page, rich, 'edited a')
   await page.getByRole('tab', { name: 'b.md' }).click()
   const deadline = performance.now() + 7000
   while (
@@ -102,11 +103,12 @@ test('autosave preserves later edits, pauses on external changes, and never prom
   await page.getByRole('checkbox', { name: /^autosave$/i, exact: true }).check()
   await page.getByLabel(/^save after$/i, { exact: true }).selectOption('1000')
   await page.getByRole('button', { name: /^back to app$/i }).click()
-  await rich.fill('new draft')
+  await waitForDocumentEditor(app, page)
+  await replaceRichText(page, rich, 'new draft')
   await page.waitForTimeout(1200)
   assert.equal(await app.evaluate(() => globalThis.dialogsShown), 0)
   assert.equal(await pill.innerText(), 'Autosave · save first')
-  await rich.fill('')
+  await replaceRichText(page, rich, '')
   await clickMenu(app, 'Open…')
   await waitForAsync(
     page,
@@ -127,14 +129,14 @@ test('autosave preserves later edits, pauses on external changes, and never prom
       return result
     })
   })
-  await rich.fill('first automatic save')
+  await replaceRichText(page, rich, 'first automatic save')
   await waitForAsync(
     page,
     async () =>
       (await window.hibi.getDocument()).savedMarkdown ===
       'first automatic save',
   )
-  await rich.fill('keep typing during save')
+  await replaceRichText(page, rich, 'keep typing during save')
   await waitForAsync(page, async () => !(await window.hibi.getDocument()).dirty)
   await page.waitForFunction(
     () =>
@@ -145,7 +147,7 @@ test('autosave preserves later edits, pauses on external changes, and never prom
   assert.equal(await readFile(file, 'utf8'), 'keep typing during save')
   assert.ok((await page.evaluate(() => window.hibi.listVersions())).length >= 3)
   await writeFile(file, 'external edit')
-  await rich.fill('local edit')
+  await replaceRichText(page, rich, 'local edit')
   await page.waitForFunction(
     () =>
       document.querySelector('[data-status-id="autosave"]').textContent ===
@@ -157,7 +159,7 @@ test('autosave preserves later edits, pauses on external changes, and never prom
     (await page.evaluate(() => window.hibi.getDocument())).dirty,
     true,
   )
-  await rich.fill('another local edit')
+  await replaceRichText(page, rich, 'another local edit')
   await page.waitForTimeout(1200)
   assert.equal(await readFile(file, 'utf8'), 'external edit')
   await clickMenu(app, 'Save')
@@ -168,7 +170,7 @@ test('autosave preserves later edits, pauses on external changes, and never prom
       document.querySelector('.tiptap')?.getAttribute('contenteditable') ===
       'true',
   )
-  await rich.fill('autosave resumes')
+  await replaceRichText(page, rich, 'autosave resumes')
   await waitForAsync(page, async () => !(await window.hibi.getDocument()).dirty)
   assert.equal(await readFile(file, 'utf8'), 'autosave resumes')
   await page.reload()

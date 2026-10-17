@@ -11,8 +11,8 @@ import {
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { crashAndReload, electron } from './electron.mjs'
-import { clickMenu } from './keyboard.mjs'
+import { crashAndReload, electron, waitForDocumentEditor } from './electron.mjs'
+import { clickMenu, replaceRichText } from './keyboard.mjs'
 
 test('an unavailable unsafe log directory leaves editing, saving and user files intact', {
   timeout: 20000,
@@ -33,9 +33,12 @@ test('an unavailable unsafe log directory leaves editing, saving and user files 
   })
   const page = await app.firstWindow()
   page.setDefaultTimeout(6000)
-  await page
-    .getByRole('textbox', { name: 'Document editor', exact: true })
-    .fill('PRIVATE SAVED DOCUMENT')
+  await waitForDocumentEditor(app, page)
+  await replaceRichText(
+    page,
+    page.getByRole('textbox', { name: 'Document editor', exact: true }),
+    'PRIVATE SAVED DOCUMENT',
+  )
   await app.evaluate(({ dialog }, path) => {
     dialog.showSaveDialog = async () => ({ canceled: false, filePath: path })
     dialog.showMessageBox = async () => ({ response: 1 })
@@ -66,14 +69,14 @@ test('default diagnostics preserve editing, use the raw bridge and export only s
   const page = await app.firstWindow()
   page.setDefaultTimeout(6000)
   const editor = page.getByRole('textbox', { name: /document editor/i })
-  await editor.waitFor()
+  await waitForDocumentEditor(app, page)
   const config = await page.evaluate(async () =>
     JSON.parse(await window.hibiDiagnostics.configuration()),
   )
   assert.equal(config.profile, 'debug')
   assert.ok(config.artifacts.length > 0)
   const sentinel = 'PRIVATE DIAGNOSTIC DOCUMENT 雪'
-  await editor.fill(sentinel)
+  await replaceRichText(page, editor, sentinel)
   const captured = await page.evaluate(
     ({ config, sentinel }) => {
       const frames = [[config.artifacts[0][1], 12, 3]]
@@ -165,7 +168,7 @@ test('lost diagnostic credit cannot delay save, canceled close or acknowledged r
     name: 'Document editor',
     exact: true,
   })
-  await editor.waitFor()
+  await waitForDocumentEditor(app, page)
   await page.evaluate(() => window.hibiDiagnostics.configuration())
   const invalid = await app.evaluate(
     async ({ BrowserWindow, ipcMain, dialog }, file) => {
@@ -208,11 +211,11 @@ test('lost diagnostic credit cannot delay save, canceled close or acknowledged r
   })
   await new Promise((resolve) => setTimeout(resolve, 300))
   const sentinel = 'PRIVATE SAVED TEXT 雪'
-  await editor.fill(sentinel)
+  await replaceRichText(page, editor, sentinel)
   const saved = await page.evaluate(() => window.hibi.saveDocument(true))
   assert.equal(saved.markdown, sentinel)
   assert.equal(await readFile(file, 'utf8'), sentinel)
-  await editor.fill('PRIVATE RECOVERED TEXT 雪')
+  await replaceRichText(page, editor, 'PRIVATE RECOVERED TEXT 雪')
   await page.evaluate(() => window.hibi.flushDocumentChanges())
   const canceled = await app.evaluate(async ({ BrowserWindow, dialog }) => {
     const window = BrowserWindow.getAllWindows()[0]

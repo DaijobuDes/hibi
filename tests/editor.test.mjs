@@ -3,8 +3,8 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { electron } from './electron.mjs'
-import { clickMenu } from './keyboard.mjs'
+import { electron, waitForDocumentEditor } from './electron.mjs'
+import { clickMenu, replaceRichText, replaceSourceText } from './keyboard.mjs'
 
 test('empty entry, three views, and lossless source switching', {
   timeout: 30000,
@@ -27,7 +27,7 @@ test('empty entry, three views, and lossless source switching', {
   page.setDefaultTimeout(7000)
   await page.emulateMedia({ reducedMotion: 'reduce' })
   const rich = page.getByRole('textbox', { name: /document editor/i })
-  await rich.waitFor()
+  await waitForDocumentEditor(app, page)
   assert.equal((await rich.innerText()).trim(), '')
   assert.equal(
     await rich.locator('p').getAttribute('data-placeholder'),
@@ -39,7 +39,7 @@ test('empty entry, three views, and lossless source switching', {
         document.activeElement?.getAttribute('aria-label') ?? ''
       ).toLowerCase() === 'document editor',
   )
-  await rich.fill('hello editor')
+  await replaceRichText(page, rich, 'hello editor')
   await page.waitForFunction(
     () =>
       document.querySelector('.workspace-sidebar').getAttribute('data-open') ===
@@ -106,7 +106,8 @@ test('empty entry, three views, and lossless source switching', {
   assert.equal(await source.innerText(), 'hello editor')
   const markdown =
     '# hello\n\n**bold** text\n\n- [x] done\n\n| name | value |\n| --- | --- |\n| one | two |'
-  await source.fill(markdown)
+  await waitForDocumentEditor(app, page, { name: 'Markdown editor' })
+  await replaceSourceText(page, source, markdown)
   await rich.getByRole('heading', { name: /^hello$/i, exact: true }).waitFor()
   assert.equal(await rich.locator('strong').innerText(), 'bold')
   assert.equal(await rich.getByRole('checkbox').isChecked(), true)
@@ -126,7 +127,8 @@ test('empty entry, three views, and lossless source switching', {
   )
   const extended =
     '---\ntitle: keep me\n---\n\n<div data-value="keep">custom html</div>\n'
-  await source.fill(extended)
+  await waitForDocumentEditor(app, page, { name: 'Markdown editor' })
+  await replaceSourceText(page, source, extended)
   await page
     .getByRole('button', { name: /^side-by-side$/i, exact: true })
     .click()

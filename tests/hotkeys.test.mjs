@@ -10,8 +10,12 @@ import {
   shortcutLabels,
   validateHotkeys,
 } from '../src/shared/hotkeys.ts'
-import { electron, waitForAppState } from './electron.mjs'
-import { pressShortcut } from './keyboard.mjs'
+import {
+  electron,
+  waitForAppState,
+  waitForDocumentEditor,
+} from './electron.mjs'
+import { pressShortcut, replaceRichText } from './keyboard.mjs'
 
 test('hotkey validation rejects conflicts and preserves standard editing keys', () => {
   const defaults = defaultHotkeys('darwin')
@@ -139,8 +143,8 @@ test('rebind, conflict, clear, reset, native menus, and relaunch persistence', {
   const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
   const storedMod = process.platform === 'darwin' ? 'meta' : 'ctrl'
   const rich = page.getByRole('textbox', { name: /document editor/i })
-  await rich.waitFor()
-  await rich.fill('keyboard checks')
+  await waitForDocumentEditor(app, page)
+  await replaceRichText(page, rich, 'keyboard checks')
   for (const [key, mode] of [
     ['Shift+]', 'markdown'],
     ['Shift+\\', 'side-by-side'],

@@ -90,7 +90,12 @@ test('frontmatter contributes slash actions in rich and source panes only while 
   }
   await rich.waitFor()
   await mode('source view')
-  await source.fill('# keep heading\n\nfirst\n\n/frontmatter\n\nafter')
+  await waitForDocumentEditor(app, page, { name: 'Markdown editor' })
+  await replaceSourceText(
+    page,
+    source,
+    '# keep heading\n\nfirst\n\n/frontmatter\n\nafter',
+  )
   await mode('normal')
   await rich
     .locator('p')
@@ -109,7 +114,8 @@ test('frontmatter contributes slash actions in rich and source panes only while 
 
   await mode('source view')
   const original = 'hello\n\n/properties\n\nworld'
-  await source.fill(original)
+  await waitForDocumentEditor(app, page, { name: 'Markdown editor' })
+  await replaceSourceText(page, source, original)
   await source.press('ArrowUp')
   await source.press('ArrowUp')
   await source.press('End')
@@ -123,7 +129,7 @@ test('frontmatter contributes slash actions in rich and source panes only while 
   assert.equal(await read(), original)
 
   const existing = '---\ntitle: keep\n---\n\n/frontmatter'
-  await source.fill(existing)
+  await replaceSourceText(page, source, existing)
   await menu.waitFor()
   await action.waitFor({ state: 'hidden' })
   assert.equal(await action.count(), 0)
@@ -146,13 +152,15 @@ test('frontmatter contributes slash actions in rich and source panes only while 
     await page.getByRole('button', { name: /^back to app$/i }).click()
   }
   await toggle(false)
-  await source.fill('/yaml')
+  await waitForDocumentEditor(app, page, { name: 'Markdown editor' })
+  await replaceSourceText(page, source, '/yaml')
   await page.evaluate(() => new Promise(requestAnimationFrame))
   assert.equal(await action.count(), 0)
   await source.press('Escape')
   await toggle(true)
-  await source.fill('')
-  await source.fill('/yaml')
+  await waitForDocumentEditor(app, page, { name: 'Markdown editor' })
+  await replaceSourceText(page, source, '')
+  await replaceSourceText(page, source, '/yaml')
   await action.waitFor()
   await source.press('Enter')
   assert.equal(await read(), addFrontmatter(''))
@@ -485,7 +493,12 @@ test('frontmatter addon, inline rename, and centered workspace entry preserve do
     .getByRole('button', { name: /^source view$/i, exact: true })
     .click()
   const source = page.getByRole('textbox', { name: /markdown editor/i })
-  await source.fill('---\ntitle: changed\n---\n\nsource body')
+  await waitForDocumentEditor(app, page, { name: 'Markdown editor' })
+  await replaceSourceText(
+    page,
+    source,
+    '---\ntitle: changed\n---\n\nsource body',
+  )
   await page.getByRole('button', { name: /^normal$/i, exact: true }).click()
   await source.waitFor({ state: 'hidden' })
   await replaceRichText(page, rich, 'visual body')

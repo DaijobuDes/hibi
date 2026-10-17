@@ -3,8 +3,8 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { electron } from './electron.mjs'
-import { clickMenu } from './keyboard.mjs'
+import { electron, waitForDocumentEditor } from './electron.mjs'
+import { clickMenu, replaceRichText } from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
 
 test('a review addon applies source edits atomically, preserves undo, and rejects stale or stopped requests', {
@@ -70,9 +70,12 @@ test('a review addon applies source edits atomically, preserves undo, and reject
   page.setDefaultTimeout(6000)
   const original = 'very very good and teh note'
   const corrected = 'very good and the note'
-  await page
-    .getByRole('textbox', { name: 'Document editor', exact: true })
-    .fill(original)
+  await waitForDocumentEditor(app, page)
+  await replaceRichText(
+    page,
+    page.getByRole('textbox', { name: 'Document editor', exact: true }),
+    original,
+  )
   const richResult = await page.evaluate(() => {
     const { context, review } = window.reviewFixture
     return context.editor.applySourceEdits(review())

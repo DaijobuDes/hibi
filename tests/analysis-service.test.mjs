@@ -6,8 +6,12 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { validateAnalysisProjection } from '../src/shared/analysis.ts'
-import { electron, waitForElectronExit } from './electron.mjs'
-import { clickMenu } from './keyboard.mjs'
+import {
+  electron,
+  waitForDocumentEditor,
+  waitForElectronExit,
+} from './electron.mjs'
+import { clickMenu, replaceRichText } from './keyboard.mjs'
 
 test('electron cleanup waits for exit and transport and reports close and crash failures', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] })
@@ -205,7 +209,8 @@ test('analysis is process-isolated, bounded, connection-bound, and revoked on ca
     name: 'Document editor',
     exact: true,
   })
-  await editor.fill('probe')
+  await waitForDocumentEditor(app, page)
+  await replaceRichText(page, editor, 'probe')
   await page.waitForFunction(() => window.analysisFixtures?.['other-addon'])
   const probe = await page.evaluate(async () => {
     const first = window.analysisFixtures['probe-addon']
@@ -252,9 +257,9 @@ test('analysis is process-isolated, bounded, connection-bound, and revoked on ca
       const context = window.analysisFixtures['probe-addon']
       return context.analysis.run(context.editor.getTextProjection())
     })
-  await editor.fill('large')
+  await replaceRichText(page, editor, 'large')
   assert.equal((await run()).status, 'failed')
-  await editor.fill('delay')
+  await replaceRichText(page, editor, 'delay')
   const queued = await page.evaluate(async () => {
     const c = window.analysisFixtures['probe-addon'],
       p = c.editor.getTextProjection()
@@ -273,25 +278,26 @@ test('analysis is process-isolated, bounded, connection-bound, and revoked on ca
     window.analysisPending = c.analysis.run(c.editor.getTextProjection())
   })
   await clickMenu(app, 'New')
-  await editor.fill('another document')
+  await waitForDocumentEditor(app, page)
+  await replaceRichText(page, editor, 'another document')
   assert.equal(
     (await page.evaluate(() => window.analysisPending)).status,
     'stale',
   )
-  await editor.fill('spin')
+  await replaceRichText(page, editor, 'spin')
   await page.evaluate(() => {
     const c = window.analysisFixtures['probe-addon']
     window.analysisPending = c.analysis.run(c.editor.getTextProjection())
   })
   const typedAt = Date.now()
-  await editor.fill('typing stays responsive')
+  await replaceRichText(page, editor, 'typing stays responsive')
   assert.ok(Date.now() - typedAt < 1500)
   const timedOut = await page.evaluate(() => window.analysisPending)
   assert.equal(timedOut.status, 'failed')
   assert.match(timedOut.message, /too long/)
-  await editor.fill('probe again')
+  await replaceRichText(page, editor, 'probe again')
   assert.equal((await run()).status, 'complete')
-  await editor.fill('delay crash')
+  await replaceRichText(page, editor, 'delay crash')
   await page.evaluate(() => {
     const c = window.analysisFixtures['probe-addon']
     window.analysisPending = c.analysis.run(c.editor.getTextProjection())
@@ -312,9 +318,9 @@ test('analysis is process-isolated, bounded, connection-bound, and revoked on ca
     (await page.evaluate(() => window.analysisPending)).status,
     'failed',
   )
-  await editor.fill('probe after crash')
+  await replaceRichText(page, editor, 'probe after crash')
   assert.equal((await run()).status, 'complete')
-  await editor.fill('delay cancel')
+  await replaceRichText(page, editor, 'delay cancel')
   await page.evaluate(() => {
     const c = window.analysisFixtures['probe-addon']
     window.analysisPending = c.analysis.run(c.editor.getTextProjection())
@@ -324,7 +330,7 @@ test('analysis is process-isolated, bounded, connection-bound, and revoked on ca
     (await page.evaluate(() => window.analysisPending)).status,
     'cancelled',
   )
-  await editor.fill('delay disable')
+  await replaceRichText(page, editor, 'delay disable')
   await clickMenu(app, 'Settings')
   await page.getByRole('tab', { name: 'Addon Manager', exact: true }).click()
   await page.evaluate(() => {
@@ -350,9 +356,10 @@ test('analysis is process-isolated, bounded, connection-bound, and revoked on ca
       window.analysisFixtures['probe-addon'] !== window.stoppedAnalyzer,
   )
   await page.getByRole('button', { name: 'Back to app', exact: true }).click()
-  await editor.fill('probe restored')
+  await waitForDocumentEditor(app, page)
+  await replaceRichText(page, editor, 'probe restored')
   assert.equal((await run()).status, 'complete')
-  await editor.fill('delay after re-enable')
+  await replaceRichText(page, editor, 'delay after re-enable')
   await page.evaluate(() => {
     const c = window.analysisFixtures['probe-addon']
     window.analysisPending = c.analysis.run(c.editor.getTextProjection())

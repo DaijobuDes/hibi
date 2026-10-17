@@ -10,6 +10,7 @@ import {
   clickMenu,
   pressShortcut,
   replaceRichText,
+  replaceSourceText,
   splitTab,
 } from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
@@ -82,7 +83,8 @@ test('flavors auto-detect, persist overrides, render/edit math, and export it of
   const initial =
     '# math\n\ninline $x^2$\n\ntext $$x$$\n\ntext $$x$$ more\n\n$$\n\\frac{1}{2}\n$$\n\n`$literal$`\n\n```javascript\nconst answer = 42\n```'
   const hiddenText = await page.locator('.tiptap').textContent()
-  await source.fill(initial)
+  await waitForDocumentEditor(app, page, { name: 'Markdown editor' })
+  await replaceSourceText(page, source, initial)
   await page
     .locator('.source-pane .hibi-token-keyword')
     .filter({ hasText: /const/i })

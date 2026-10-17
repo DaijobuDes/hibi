@@ -8,8 +8,8 @@ import {
   needsOwnedSource,
   parseSyntaxDescriptors,
 } from '../src/shared/preservation.ts'
-import { electron } from './electron.mjs'
-import { clickMenu, replaceRichText } from './keyboard.mjs'
+import { electron, waitForDocumentEditor } from './electron.mjs'
+import { clickMenu, replaceRichText, replaceSourceText } from './keyboard.mjs'
 
 test('verbatim projections preserve surrounding bytes and reject unprovable bodies', () => {
   const adapter = {
@@ -157,12 +157,12 @@ test('custom source stays locked while its addon enables and survives rich editi
   )
   assert.equal(await page.evaluate(() => window.citationsLoaded), undefined)
   await page.getByRole('button', { name: 'Source view', exact: true }).click()
-  await page.waitForFunction(
-    () => document.querySelector('.cm-content')?.isContentEditable,
+  await waitForDocumentEditor(app, page, { name: 'Markdown editor' })
+  await replaceSourceText(
+    page,
+    page.getByRole('textbox', { name: 'Markdown editor', exact: true }),
+    `${prefix}Unsaved body`,
   )
-  await page
-    .getByRole('textbox', { name: 'Markdown editor', exact: true })
-    .fill(`${prefix}Unsaved body`)
   await app.evaluate(({ ipcMain }) => {
     const enable = ipcMain._invokeHandlers.get('addons:enable')
     if (!enable) throw new Error('The addon enable handler is not ready.')

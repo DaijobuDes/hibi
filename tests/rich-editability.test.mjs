@@ -3,8 +3,8 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { electron } from './electron.mjs'
-import { clickMenu, pressShortcut } from './keyboard.mjs'
+import { electron, waitForDocumentEditor } from './electron.mjs'
+import { clickMenu, pressShortcut, replaceRichText } from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
 
 test('empty formatted blocks remain editable and rich editing survives vim and view switches', {
@@ -30,7 +30,8 @@ test('empty formatted blocks remain editable and rich editing survives vim and v
   await page.getByRole('tab', { name: /^addon manager$/i, exact: true }).click()
   await page.locator('#addon-vim').click()
   await page.getByRole('button', { name: /^back to app$/i }).click()
-  await rich.fill('/table')
+  await waitForDocumentEditor(app, page)
+  await replaceRichText(page, rich, '/table')
   await rich.press('Enter')
   await rich.locator('td').first().click()
   await page.keyboard.press('Enter')
@@ -92,7 +93,7 @@ test('empty formatted blocks remain editable and rich editing survives vim and v
         document.querySelector('.tiptap')?.getAttribute('contenteditable') ===
           'true',
     )
-    await rich.fill(`/${command}`)
+    await replaceRichText(page, rich, `/${command}`)
     await page.getByRole('listbox', { name: /slash commands/i }).waitFor()
     await rich.press('Enter')
     await rich
