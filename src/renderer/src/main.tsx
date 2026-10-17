@@ -442,9 +442,10 @@ function App() {
     }
   }
 
-  function showDocument() {
+  function showDocument(since?: number) {
     addonViews.selectDocument()
-    setSettingsOpen(false)
+    if (since === undefined || !settingsOpenedSince(since))
+      setSettingsOpen(false)
   }
   const availableFlavors = useSyncExternalStore(
     flavors.subscribe,
@@ -1336,11 +1337,13 @@ function App() {
       requested = false
       running = true
       startBusy()
+      // The startup folder can open here, so its vault prompt may open Settings first.
+      const intent = settingsIntent.current
       try {
         const result = await window.hibi.openExternalDocuments()
         if (result.document) {
           await acceptOperationDocument(result.document, true)
-          showDocument()
+          showDocument(intent)
           setWorkspace(await window.hibi.getWorkspace())
         }
         if (result.errors.length) setError(result.errors.join('\n'))
@@ -1611,8 +1614,7 @@ function App() {
       const result = await window.hibi.openDroppedFile(file)
       if (result?.document) {
         await acceptOperationDocument(result.document, true)
-        if (settingsOpenedSince(intent)) addonViews.selectDocument()
-        else showDocument()
+        showDocument(intent)
         setWorkspace(await window.hibi.getWorkspace())
         if ('workspace' in result) {
           selectSidebarView('workspace')
@@ -1911,6 +1913,10 @@ function App() {
       const destination = from.pop()!
       to.push(history.current)
       history.navigating = true
+      if (destination.open !== settingsVisible.current) {
+        settingsIntent.current++
+        settingsVisible.current = destination.open
+      }
       setSettingsCategory(destination.category)
       setSettingsOpen(destination.open)
       showTitlebar()
