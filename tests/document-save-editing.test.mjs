@@ -64,8 +64,13 @@ test('typing stays available and unsaved while a save finishes', {
     )
     await app.evaluate(() => globalThis.releaseSave())
     await idle()
+    // The renderer accepted the save reply and still shows the typed text as unsaved.
+    const title = page.locator('.document-title')
+    await title.getByText('note.md').waitFor()
+    await title.getByRole('status', { name: /unsaved changes/i }).waitFor()
     const current = await page.evaluate(() => window.hibi.getDocument())
     assert.equal(current.dirty, true)
+    assert.ok(current.markdown.includes(text))
     assert.equal(await readFile(file, 'utf8'), before)
     await pressShortcut(app, `${mod}+s`)
     await waitForAsync(
