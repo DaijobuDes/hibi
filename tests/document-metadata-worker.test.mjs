@@ -3,7 +3,12 @@ import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { electron, stopElectronTree } from './electron.mjs'
+import {
+  electron,
+  stopElectronTree,
+  waitForDocumentEditor,
+} from './electron.mjs'
+import { replaceRichText } from './keyboard.mjs'
 
 test('native module worker loads metadata lazily, shares find, and releases parser owners', {
   timeout: 30000,
@@ -33,9 +38,12 @@ test('native module worker loads metadata lazily, shares find, and releases pars
   })
   const page = await app.firstWindow()
   page.setDefaultTimeout(7000)
-  await page
-    .getByRole('textbox', { name: 'Document editor', exact: true })
-    .fill('one two')
+  await waitForDocumentEditor(app, page)
+  await replaceRichText(
+    page,
+    page.getByRole('textbox', { name: 'Document editor', exact: true }),
+    'one two',
+  )
   await page.getByText('2 words · 7 characters', { exact: true }).waitFor()
   const header = '---\r\nname: hibi\r\n---\r\n\r\n'
   const result = await page.evaluate(async (asset) => {
