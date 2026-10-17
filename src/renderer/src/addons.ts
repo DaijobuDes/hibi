@@ -976,8 +976,8 @@ export function useAddons(
       }
       const live = <T>(
         call: () => Promise<T>,
-        message = 'This addon has stopped.',
-      ) => (disposed ? Promise.reject(new Error(message)) : call())
+        error = () => new Error('This addon has stopped.'),
+      ) => (disposed ? Promise.reject(error()) : call())
       const track = (remove: () => void) => {
         const cleanup = () => {
           remove()
@@ -1296,13 +1296,13 @@ export function useAddons(
               list: () =>
                 live(
                   () => window.hibi.getDependencies(id),
-                  'Enable this addon first.',
+                  () => new Error('Enable this addon first.'),
                 ),
               check: (dependency) =>
                 live(
                   () =>
                     window.hibi.checkDependency({ addon: id, id: dependency }),
-                  'Enable this addon first.',
+                  () => new Error('Enable this addon first.'),
                 ),
               install: (dependency) =>
                 live(
@@ -1311,7 +1311,7 @@ export function useAddons(
                       addon: id,
                       id: dependency,
                     }),
-                  'Enable this addon first.',
+                  () => new Error('Enable this addon first.'),
                 ),
               openSettings: () => {
                 if (!disposed) latest.current.openDependencySettings()
@@ -1943,7 +1943,8 @@ export function useAddons(
               snapshot: () =>
                 live(
                   () => latest.current.workspace.snapshot(),
-                  'Enable this addon in Settings → Addons first.',
+                  () =>
+                    new Error('Enable this addon in Settings → Addons first.'),
                 ),
               changeSnapshot: () =>
                 live(() => window.hibi.getWorkspaceChangeSnapshot()),
@@ -2022,7 +2023,8 @@ export function useAddons(
               index: () =>
                 live(
                   () => latest.current.workspace.index(),
-                  'Enable this addon in Settings → Addons first.',
+                  () =>
+                    new Error('Enable this addon in Settings → Addons first.'),
                 ),
               get: () => latest.current.workspace.get(),
               open: () =>
@@ -2043,7 +2045,8 @@ export function useAddons(
                       `native query:${method}`,
                       () => window.hibi.queryAddon(id, method, input),
                     ) as Promise<T>,
-                  'Enable this addon in Settings → Addons first.',
+                  () =>
+                    new Error('Enable this addon in Settings → Addons first.'),
                 ),
               invoke: <T>(method: string, input?: unknown) =>
                 live(
@@ -2053,7 +2056,8 @@ export function useAddons(
                       `native action:${method}`,
                       () => latest.current.invoke(id, method, input),
                     ) as Promise<T>,
-                  'Enable this addon in Settings → Addons first.',
+                  () =>
+                    new Error('Enable this addon in Settings → Addons first.'),
                 ),
             },
             notify: (message) => {
