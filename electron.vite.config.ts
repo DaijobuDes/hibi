@@ -145,5 +145,15 @@ export default defineConfig({
       },
     },
     server: { host: '127.0.0.1' },
+    // Development loads addons through a dynamic catalog import that the
+    // dependency scan cannot follow. Without their entries, the first editor
+    // load re-bundles their dependencies and reloads the window.
+    optimizeDeps: {
+      entries: [
+        'index.html',
+        'addon-window.html',
+        '../addons/*/index.{ts,tsx}',
+      ],
+    },
   },
 })
