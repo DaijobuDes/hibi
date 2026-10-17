@@ -124,33 +124,18 @@ export async function reloadAddons(
   )
 }
 
-const frame = () => new Promise(requestAnimationFrame)
+const nextFrame = () => new Promise(requestAnimationFrame)
 
-/** Text length from the start of `root` to a page position, stable across a rebuilt editor. */
-const textOffset = (root: Element, node: Node, offset: number) => {
-  const range = document.createRange()
-  range.setStart(root, 0)
-  range.setEnd(node, offset)
-  return range.toString().length
-}
-const textPoint = (root: Element, offset: number): [Node, number] => {
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
-  let remaining = offset
-  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    const length = node.textContent?.length ?? 0
-    if (remaining <= length) return [node, remaining]
-    remaining -= length
-  }
-  return [root, root.childNodes.length]
-}
 const moves = /^(?:Arrow|Home$|End$|Page)/
 
 /**
  * Capture the active editor's selection and focus; the returned function puts
  * them back once the editor current then has loaded the document, waiting a
- * few frames for a rebuilt editor. A selection the user picks meanwhile is
- * read from the page when they pick it and wins, also when the editor is
- * rebuilt afterwards; editor notifications and their order are not trusted.
+ * few frames for a rebuilt editor. A selection the user picks meanwhile wins,
+ * also when the editor is rebuilt afterwards. Input inside the live editor
+ * marks a pick; its document positions come from that editor's own selection
+ * once the view owning the surface reports it, whatever order its
+ * notifications arrive in.
  */
 function keepEditorState(activeView: () => ViewTarget | null) {
   const view = activeView()
@@ -167,7 +152,20 @@ function keepEditorState(activeView: () => ViewTarget | null) {
   const active = document.activeElement
   const focused = active instanceof HTMLElement && active.isContentEditable
   const surface = `.editor-panes :is(.rich-pane, .source-pane):not([inert]) ${start.value.editor === 'rich' ? '.ProseMirror' : '.cm-content'}`
-  let chosen: { root: Element; anchor: number; focus: number } | undefined
+  let pick: { root: Element; anchor?: number; head?: number } | undefined
+  let frame = 0
+  // While the picked surface is on the page, its view's latest selection is the pick; a rebuild after it ends sampling.
+  const sample = () => {
+    if (!pick?.root.isConnected) return
+    const current = read()
+    if (!current?.ok || current.value.editor !== start.value.editor) return
+    pick.anchor = current.value.anchor
+    pick.head = current.value.head
+  }
+  const follow = () => {
+    sample()
+    frame = requestAnimationFrame(follow)
+  }
   const choose = (event: Event) => {
     if (
       event instanceof KeyboardEvent &&
@@ -176,72 +174,49 @@ function keepEditorState(activeView: () => ViewTarget | null) {
     )
       return
     const root =
-      event.target instanceof Element
-        ? event.target.closest('.ProseMirror, .cm-content')
-        : null
-    const selection = getSelection()
-    if (
-      !root?.matches(surface) ||
-      !selection?.anchorNode ||
-      !selection.focusNode ||
-      !root.contains(selection.anchorNode) ||
-      !root.contains(selection.focusNode)
-    )
-      return
-    chosen = {
-      root,
-      anchor: textOffset(root, selection.anchorNode, selection.anchorOffset),
-      focus: textOffset(root, selection.focusNode, selection.focusOffset),
-    }
+      event.target instanceof Element ? event.target.closest(surface) : null
+    if (!root) return
+    pick = { root }
+    cancelAnimationFrame(frame)
+    follow()
   }
+  const unsubscribe = editorViewRegistry.subscribe(sample)
   for (const type of ['pointerup', 'keyup'])
     window.addEventListener(type, choose, true)
-  const focus = (root: HTMLElement | null) => {
-    if (focused && document.activeElement === document.body)
-      root?.focus({ preventScroll: true })
-  }
   return async () => {
     // Let the restarted configuration render, including an editor it rebuilds.
-    await frame()
-    await frame()
+    await nextFrame()
+    await nextFrame()
     let current = read()
     for (let attempt = 0; !current?.ok && attempt < 120; attempt++) {
-      await frame()
+      await nextFrame()
       current = read()
     }
     for (const type of ['pointerup', 'keyup'])
       window.removeEventListener(type, choose, true)
-    if (chosen) {
-      // The user's choice stands; a rebuilt editor gets the same text range back.
-      if (chosen.root.isConnected) return focus(document.querySelector(surface))
-      const needed = Math.max(chosen.anchor, chosen.focus)
-      let root = document.querySelector<HTMLElement>(surface)
-      for (
-        let attempt = 0;
-        (root?.textContent?.length ?? 0) < needed && attempt < 120;
-        attempt++
-      ) {
-        await frame()
-        root = document.querySelector<HTMLElement>(surface)
-      }
-      if (!root) return
-      focus(root)
-      getSelection()?.setBaseAndExtent(
-        ...textPoint(root, chosen.anchor),
-        ...textPoint(root, chosen.focus),
-      )
-      return
-    }
+    unsubscribe()
+    cancelAnimationFrame(frame)
+    const target = pick
+      ? pick.anchor === undefined || pick.head === undefined
+        ? undefined
+        : { anchor: pick.anchor, head: pick.head }
+      : start.value
     if (
+      target &&
       current?.ok &&
       current.value.editor === start.value.editor &&
-      current.value.contentVersion === start.value.contentVersion
+      current.value.contentVersion === start.value.contentVersion &&
+      (current.value.anchor !== target.anchor ||
+        current.value.head !== target.head)
     )
       editorViewRegistry.setSelection({
         ...current.value,
-        anchor: start.value.anchor,
-        head: start.value.head,
+        anchor: target.anchor,
+        head: target.head,
       })
-    focus(document.querySelector(surface))
+    if (focused && document.activeElement === document.body)
+      document
+        .querySelector<HTMLElement>(surface)
+        ?.focus({ preventScroll: true })
   }
 }

@@ -754,14 +754,25 @@ test('editing stays read-only while an editor extension reloads and keeps a sele
       capabilities: undefined,
     }),
     {
-      // The restarted consumer adds a syntax flavor, so the editor rebuilds after the user's choice.
-      'index.js': `export default () => ({
+      // The restarted consumer adds a syntax flavor, so the editor rebuilds after the user's choice
+      // with a widget that renders text before it.
+      'index.js': `export default ({ tiptap }) => ({
         async start(context) {
           window.consumerStarts = (window.consumerStarts || 0) + 1;
           if (window.holdConsumer) {
             window.holdConsumer = false;
             await new Promise((resolve) => { window.releaseConsumer = resolve; });
-            context.editor.registerFlavor({ id: 'late', name: 'Late', kind: 'syntax', description: 'Rebuilds the editor', detect: () => false });
+            const widget = tiptap.Extension.create({
+              name: 'lateWidget',
+              addDecorations: () => ({
+                create: () => [tiptap.Decoration.Widget(0, () => {
+                  const element = document.createElement('div');
+                  element.textContent = 'Rendered widget text ';
+                  return element;
+                }, { key: 'late-widget' })],
+              }),
+            });
+            context.editor.registerFlavor({ id: 'late', name: 'Late', kind: 'syntax', description: 'Rebuilds the editor', detect: () => false, richExtensions: [widget] });
           }
         },
       });`,
@@ -829,6 +840,7 @@ test('editing stays read-only while an editor extension reloads and keeps a sele
     0,
     'the editor rebuilt after the selection was chosen',
   )
+  await editor.getByText('Rendered widget text').waitFor()
   await page.waitForFunction(
     (moved) => getSelection().toString() === moved,
     moved,
