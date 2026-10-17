@@ -74,6 +74,7 @@ import { WORKSPACE_SETTINGS_CHANNELS } from '../shared/workspace-settings'
 import { AddonHotkeys } from './addon-hotkeys'
 import { createAddonStorage } from './addon-storage'
 import {
+  addonWindowOwners,
   addonWindowSender,
   closeAddonWindow,
   closeAddonWindows,
@@ -93,6 +94,7 @@ import {
   getAddonStates,
   installAddon,
   installAddonSelection,
+  installedAddonResources,
   invalidateAddonActivations,
   invokeAddon,
   isAddonActivationCurrent,
@@ -102,6 +104,7 @@ import {
   runNativeGlobalShortcut,
   setAddonDeactivationHandler,
   setAddonStatesHandler,
+  setAddonWindowOwners,
   windowAddonName,
 } from './addons'
 import { analysisService } from './analysis'
@@ -476,6 +479,7 @@ setAddonDeactivationHandler(async (id, generation) => {
   await addonStorage.clearSession(id)
 })
 setAddonStatesHandler(sendAddonWindowStates)
+setAddonWindowOwners(addonWindowOwners)
 addonStorage.subscribe((change) => {
   if (mainWindow && !mainWindow.isDestroyed())
     mainWindow.webContents.send(ADDON_STORAGE_CHANNELS.changed, change)
@@ -1547,13 +1551,22 @@ if (!app.requestSingleInstanceLock()) {
         trustedWindow(event)
         return installedAddons()
       })
-      handle(SIDELOAD_CHANNELS.install, (event, url: unknown) =>
-        runFileOperation(event, (window) => installAddon(window, url)),
+      handle(SIDELOAD_CHANNELS.resources, (_event, id: unknown) =>
+        installedAddonResources(id),
       )
-      handle(SIDELOAD_CHANNELS.selection, (event, id: unknown, keys: unknown) =>
-        runFileOperation(event, (window) =>
-          installAddonSelection(window, id, keys),
-        ),
+      handle(
+        SIDELOAD_CHANNELS.install,
+        (event, url: unknown, openSettings: unknown) =>
+          runFileOperation(event, (window) =>
+            installAddon(window, url, openSettings),
+          ),
+      )
+      handle(
+        SIDELOAD_CHANNELS.selection,
+        (event, id: unknown, keys: unknown, openSettings: unknown) =>
+          runFileOperation(event, (window) =>
+            installAddonSelection(window, id, keys, openSettings),
+          ),
       )
       handle(SIDELOAD_CHANNELS.cancel, (event, id: unknown) =>
         cancelPackageInstall(trustedWindow(event), id),
@@ -1641,6 +1654,7 @@ if (!app.requestSingleInstanceLock()) {
       handle(ADDON_WINDOW_CHANNELS.close, (_event, addonId: unknown, id) => {
         if (typeof addonId === 'string') closeAddonWindow(addonId, id)
       })
+      handle(ADDON_WINDOW_CHANNELS.owners, addonWindowOwners)
       onAddonWindowClosed((addonId, id) =>
         mainWindow?.webContents.send(ADDON_WINDOW_CHANNELS.closed, addonId, id),
       )

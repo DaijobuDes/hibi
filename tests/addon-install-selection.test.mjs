@@ -108,10 +108,12 @@ async function fixture(t) {
   )
   const api = module.exports
   const sessions = []
-  const disable = async (id) => {
+  const kept = []
+  const disable = async (id, keep) => {
     const previous = preferences.get(id)
     preferences.set(id, false)
     order.push(id)
+    kept.push(keep)
     await hook?.(id)
     return async () => {
       if (previous === undefined) preferences.delete(id)
@@ -147,6 +149,7 @@ async function fixture(t) {
     window,
     confirmations,
     order,
+    kept,
     preferences,
     prepare,
     install,
@@ -717,6 +720,41 @@ test('cancellation after backup prevents publication and restores the old packag
   assert.deepEqual(await fs.readdir(f.temporary), [])
 })
 
+test('replacements keep their enabled setting only while their access is unchanged', async (t) => {
+  const f = await fixture(t)
+  f.choose(join(f.source, 'one'))
+  const origins = ['https://example.com', 'https://example.org']
+  for (const fields of [
+    {},
+    { version: '2.0.0', description: 'Updated fixture' },
+    { version: '3.0.0', network: { origins: origins.slice(0, 1) } },
+    { version: '4.0.0', network: { origins: origins.slice(0, 1) } },
+    {
+      version: '5.0.0',
+      network: { origins: origins.slice(0, 1) },
+      capabilities: [],
+    },
+    { version: '6.0.0', network: { origins }, capabilities: ['ui', 'rich'] },
+    // Reordered set-valued fields grant nothing new.
+    {
+      version: '7.0.0',
+      network: { origins: origins.toReversed() },
+      capabilities: ['rich', 'ui'],
+    },
+  ]) {
+    await f.write(packageFiles('one', 'one', fields))
+    await f.prepare()
+  }
+  const expected = [false, true, false, true, false, false, true]
+  assert.deepEqual(f.kept, expected)
+  assert.deepEqual(
+    f.confirmations.map(({ detail }) =>
+      /keeps its current setting/.test(detail),
+    ),
+    expected,
+  )
+})
+
 test('failed replacement restores old files and enabled preference before continuing batch', async (t) => {
   const f = await fixture(t)
   await f.write(packageFiles('one', 'one'))
@@ -732,6 +770,7 @@ test('failed replacement restores old files and enabled preference before contin
   assert.deepEqual(session.candidates[0].replaces, {
     version: '1.0.0',
     source: 'local',
+    keepsSetting: true,
   })
   f.onRename((source, destination) => {
     if (

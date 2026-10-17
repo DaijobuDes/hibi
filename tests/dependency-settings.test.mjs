@@ -10,7 +10,8 @@ import {
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { electron } from './electron.mjs'
+import { electron, waitForDocumentEditor } from './electron.mjs'
+import { replaceRichText } from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
 
 test('dependency settings discover addon requirements, manage shared paths, and preserve editor drafts', {
@@ -94,7 +95,8 @@ test('dependency settings discover addon requirements, manage shared paths, and 
   const errors = []
   page.on('pageerror', (error) => errors.push(error.message))
   const editor = page.getByRole('textbox', { name: /document editor/i })
-  await editor.fill('Keep this unsaved draft.')
+  await waitForDocumentEditor(app, page)
+  await replaceRichText(page, editor, 'Keep this unsaved draft.')
   await page.waitForFunction(() => !!window.fixtureDependencies)
   await assert.rejects(
     page.evaluate(() => window.fixtureDependencies.check('undeclared')),

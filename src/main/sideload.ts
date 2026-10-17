@@ -32,6 +32,7 @@ import type {
 import {
   type InstallCandidate,
   inspectAddonCandidates,
+  sameAddonAccess,
   validateCandidateSelection,
   validateGraph,
 } from './addon-install-candidates'
@@ -121,6 +122,37 @@ export function installedAddons(): InstalledAddon[] {
     ...(styles ? { styles } : {}),
     source: source ?? 'local',
   }))
+}
+/** An installed addon's declared stylesheets and themes, read again from its files and validated as at load. */
+export async function installedResources(
+  id: unknown,
+  builtins: readonly string[],
+): Promise<Pick<InstalledAddon, 'styles' | 'themes'>> {
+  const entry = installed.find((item) => item.manifest.id === id)
+  if (!entry) throw new Error('Only installed addons can update in place.')
+  const folder = join(root(), entry.manifest.id)
+  const record = JSON.parse(
+    await readFile(join(folder, '.hibi-install.json'), 'utf8'),
+  )
+  if (record.hash !== entry.hash)
+    throw new Error('The addon installation changed. Reinstall the addon.')
+  const data = await readManifest(
+    folder,
+    builtins,
+    record.resources === true ? 'install' : 'load',
+    entry.files,
+  )
+  if (data.manifest.id !== entry.manifest.id)
+    throw new Error(
+      'The addon installation record is invalid. Reinstall the addon.',
+    )
+  // A manifest that no longer lists styles must not inherit the installed URLs.
+  const { styles = [], themes } = descriptor({
+    ...entry,
+    ...data,
+    styles: data.styles ?? [],
+  })
+  return { styles, themes }
 }
 export function installedDocumentationPath(id: string, path: string) {
   const entry = installed.find((item) => item.manifest.id === id)
@@ -266,7 +298,7 @@ export async function cancelPackageInstall(
 export async function installPackage(
   window: BrowserWindow,
   builtins: readonly AddonManifest[],
-  disable: (id: string) => Promise<() => Promise<void>>,
+  disable: (id: string, keep: boolean) => Promise<() => Promise<void>>,
   url?: unknown,
 ): Promise<AddonInstallSession | null> {
   const previous = installSessions.get(window.id)
@@ -340,7 +372,7 @@ export async function installPackage(
       const verdict = await dialog.showMessageBox(window, {
         type: data.manifest.kind === 'extension' ? 'warning' : 'question',
         message: `Install ${data.manifest.name} ${data.manifest.version}?`,
-        detail: `${data.manifest.description}\n\nBy ${data.manifest.authors?.map((author) => author.displayName).join(', ')}${session.host ? `\n\nDownloaded from ${session.host}` : ''}${candidate.review.replaces ? `\n\nReplaces ${candidate.review.replaces.version} (${candidate.review.replaces.source}).` : ''}${data.manifest.network ? `\n\nConnects to: ${data.manifest.network.origins.join(', ')}` : ''}\n\n${data.manifest.kind === 'extension' ? 'Extensions can run code and read or edit documents in Hibi. Only install addons you trust. ' : ''}This addon will stay disabled until you enable it.`,
+        detail: `${data.manifest.description}\n\nBy ${data.manifest.authors?.map((author) => author.displayName).join(', ')}${session.host ? `\n\nDownloaded from ${session.host}` : ''}${candidate.review.replaces ? `\n\nReplaces ${candidate.review.replaces.version} (${candidate.review.replaces.source}).` : ''}${data.manifest.network ? `\n\nConnects to: ${data.manifest.network.origins.join(', ')}` : ''}\n\n${data.manifest.kind === 'extension' ? 'Extensions can run code and read or edit documents in Hibi. Only install addons you trust. ' : ''}${candidate.review.replaces?.keepsSetting ? 'Its access is unchanged, so it keeps its current setting.' : 'This addon will stay disabled until you enable it.'}`,
         buttons: [
           'Cancel',
           candidate.review.replaces ? 'Replace addon' : 'Install',
@@ -406,7 +438,7 @@ export async function installPackageSelection(
   id: unknown,
   keys: unknown,
   builtins: readonly AddonManifest[],
-  disable: (id: string) => Promise<() => Promise<void>>,
+  disable: (id: string, keep: boolean) => Promise<() => Promise<void>>,
 ): Promise<AddonInstallResult[]> {
   const session = installSessions.get(window.id)
   if (!session || session.id !== id || session.active)
@@ -480,7 +512,7 @@ async function installDirectory(
   session: InstallSession,
   candidate: InstallCandidate,
   builtins: readonly AddonManifest[],
-  disable: (id: string) => Promise<() => Promise<void>>,
+  disable: (id: string, keep: boolean) => Promise<() => Promise<void>>,
 ): Promise<void> {
   if (candidate.review.status !== 'installable')
     throw new Error(candidate.review.reasons.join('\n'))
@@ -529,16 +561,19 @@ async function installDirectory(
         return null
       },
     )
-    if (
-      exists &&
-      !installed.some((item) => item.manifest.id === data.manifest.id)
+    const previous = installed.find(
+      (item) => item.manifest.id === data.manifest.id,
     )
+    if (exists && !previous)
       throw new Error(
         'An unrecognized addon already uses this ID. Check the addons folder before installing.',
       )
     session.abort.signal.throwIfAborted()
     validate()
-    restore = await disable(data.manifest.id)
+    restore = await disable(
+      data.manifest.id,
+      !!previous && sameAddonAccess(previous.manifest, data.manifest),
+    )
     session.abort.signal.throwIfAborted()
     if (exists) {
       await rename(destination, backup)
