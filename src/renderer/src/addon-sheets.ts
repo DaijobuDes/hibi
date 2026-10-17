@@ -1,16 +1,5 @@
 /** A stalled stylesheet fails its activation instead of holding the editor. */
 const ADDON_SHEET_TIMEOUT_MS = 5000
-const revisions = new Map<string, number>()
-
-/**
- * Later links for this owner bypass the browser's copy of sheets that changed
- * behind the same URL.
- * ponytail: nested `@import` and font URLs keep their cached copies; revise
- * them too if in-place updates need to cover package-relative imports.
- */
-export function reviseAddonSheets(owner: string) {
-  revisions.set(owner, (revisions.get(owner) ?? 0) + 1)
-}
 
 /**
  * Declarative package sheets sit in the body, after every head stylesheet and
@@ -19,7 +8,17 @@ export function reviseAddonSheets(owner: string) {
  * Sheets load inactive and apply together only when `publish` runs after a
  * successful activation.
  */
-export function linkAddonSheets(owner: string, urls: readonly string[]) {
+export function linkAddonSheets(
+  owner: string,
+  urls: readonly string[],
+  /**
+   * A later revision bypasses the browser's copy of sheets that changed behind
+   * the same URL.
+   * ponytail: nested `@import` and font URLs keep their cached copies; revise
+   * them too if in-place updates need to cover package-relative imports.
+   */
+  revision?: number,
+) {
   const links = new Map<HTMLLinkElement, () => void>()
   const ready = Promise.all(
     urls.map(
@@ -58,7 +57,6 @@ export function linkAddonSheets(owner: string, urls: readonly string[]) {
           links.set(element, settle)
           element.onload = settle
           element.onerror = fail
-          const revision = revisions.get(owner)
           element.href = revision
             ? `${href}${href.includes('?') ? '&' : '?'}revision=${revision}`
             : href
@@ -80,4 +78,3 @@ export function linkAddonSheets(owner: string, urls: readonly string[]) {
     },
   }
 }
-export type AddonSheets = ReturnType<typeof linkAddonSheets>

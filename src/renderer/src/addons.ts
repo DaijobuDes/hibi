@@ -93,6 +93,8 @@ export { addons } from './addon-registry'
 
 const ADDON_ISSUE_URL = 'https://github.com/schmayterling/hibi/issues/new'
 const completionActivations = new Map<string, number>()
+/** Package sheet revisions after in-place updates, kept across restarts so later links skip cached copies. */
+const sheetRevisions = new Map<string, number>()
 let completionBrokerModule: Promise<
   typeof import('./completion-broker')
 > | null = null
@@ -979,19 +981,22 @@ export function useAddons(
         return cleanup
       }
       // Declared package resources; once started, an in-place update swaps them without restarting code.
-      let linked: import('./addon-sheets').AddonSheets | undefined
+      let linked:
+        | ReturnType<typeof import('./addon-sheets').linkAddonSheets>
+        | undefined
       let declaredSchemes: (() => void)[] = []
       let restyles = 0
       const restyle = async () => {
         const revision = ++restyles
-        const [{ styles, themes }, { linkAddonSheets, reviseAddonSheets }] =
-          await Promise.all([
-            addonRegistry.resources(id),
-            import('./addon-sheets'),
-          ])
+        const [{ styles, themes }, { linkAddonSheets }] = await Promise.all([
+          addonRegistry.resources(id),
+          import('./addon-sheets'),
+        ])
         if (disposed || revision !== restyles) return false
-        reviseAddonSheets(id)
-        const next = styles.length ? linkAddonSheets(id, styles) : undefined
+        sheetRevisions.set(id, (sheetRevisions.get(id) ?? 0) + 1)
+        const next = styles.length
+          ? linkAddonSheets(id, styles, sheetRevisions.get(id))
+          : undefined
         try {
           await next?.ready
         } catch (error) {
@@ -2132,7 +2137,7 @@ export function useAddons(
               if (styles.length) {
                 const { linkAddonSheets } = await import('./addon-sheets')
                 if (!disposed) {
-                  linked = linkAddonSheets(id, styles)
+                  linked = linkAddonSheets(id, styles, sheetRevisions.get(id))
                   cleanups.add(linked.dispose)
                 }
               }
