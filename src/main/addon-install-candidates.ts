@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { AddonManifest } from '../addons/api'
 import {
+  isAddonInDependencyCycle,
   requiredAddonDependencies,
   resolveAddonDependencies,
   validateAddonRequirements,
@@ -225,21 +226,8 @@ export function validateCandidateSelection(
       installed,
     )
     const byId = new Map(graph.map((manifest) => [manifest.id, manifest]))
-    const cyclic = (id: string) => {
-      const visited = new Set<string>()
-      const reachesOwner = (owner: string): boolean => {
-        for (const dependency of byId.get(owner)?.requires?.addons ?? []) {
-          if (dependency.id === id) return true
-          if (visited.has(dependency.id)) continue
-          visited.add(dependency.id)
-          if (reachesOwner(dependency.id)) return true
-        }
-        return false
-      }
-      return reachesOwner(id)
-    }
     const cycles = eligible.filter((candidate) =>
-      cyclic(candidate.data!.manifest.id),
+      isAddonInDependencyCycle(byId, candidate.data!.manifest.id),
     )
     if (cycles.length) {
       for (const candidate of cycles)
