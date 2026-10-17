@@ -1221,6 +1221,12 @@ function App() {
     void window.hibi.setHotkeyRecording(false).then(finish, finish)
   }
 
+  // Settings opened while an operation was pending, such as from a new vault's
+  // backup prompt, stay open when the operation finishes.
+  function settingsOpenedSince(intent: number) {
+    return settingsIntent.current !== intent && settingsVisible.current
+  }
+
   function toggleSettings() {
     if (settingsLeaving.current || !settingsVisible.current) openSettings()
     else leaveSettings()
@@ -1423,6 +1429,7 @@ function App() {
     if (busyRef.current) return null
     startBusy()
     setError('')
+    const intent = settingsIntent.current
     try {
       const next = await (recentId
         ? window.hibi.openRecentWorkspace(recentId)
@@ -1432,7 +1439,7 @@ function App() {
         selectSidebarView('workspace')
         setWorkspaceRename(null)
         setSidebarOpen(true)
-        setSettingsOpen(false)
+        setSettingsOpen(settingsOpenedSince(intent))
       }
       return next
     } catch (error) {
@@ -1599,13 +1606,18 @@ function App() {
   async function openDroppedFile(file: File) {
     if (busyRef.current || dialogs.isOpen()) return
     startBusy()
+    const intent = settingsIntent.current
     try {
       const result = await window.hibi.openDroppedFile(file)
       if (result?.document) {
         await acceptOperationDocument(result.document, true)
-        showDocument()
+        if (settingsOpenedSince(intent)) addonViews.selectDocument()
+        else showDocument()
         setWorkspace(await window.hibi.getWorkspace())
-        if ('workspace' in result) selectSidebarView('workspace')
+        if ('workspace' in result) {
+          selectSidebarView('workspace')
+          setSettingsOpen(settingsOpenedSince(intent))
+        }
       }
     } catch (error) {
       setError(
