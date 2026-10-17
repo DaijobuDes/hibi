@@ -67,6 +67,8 @@ test('desktop launch, isolation, offline reload, and recovery', {
         'focusAddonWindow',
         'closeAddonWindow',
         'onAddonWindowClosed',
+        'getAddonWindowOwners',
+        'onAddonReload',
         'getBackgroundMode',
         'setBackgroundMode',
         'onOpenSettings',
