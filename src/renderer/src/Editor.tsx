@@ -323,6 +323,10 @@ export function MarkdownEditor({
     markdownSyntax.subscribe,
     markdownSyntax.version,
   )
+  const schemaVersion = useSyncExternalStore(
+    markdownSyntax.subscribe,
+    markdownSyntax.schemaVersion,
+  )
   const richSyntaxCompatible = richExtensions.every(
     (extension) =>
       'addonId' in extension &&
@@ -534,7 +538,7 @@ export function MarkdownEditor({
     body: projection.content,
     document: documentState,
   }
-  // biome-ignore lint/correctness/useExhaustiveDependencies: syntaxVersion rebuilds preference-dependent schema extensions.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: schemaVersion rebuilds preference-dependent schema extensions.
   const extensions = useMemo(
     () => [
       ...editorExtensions(flavors, documentHistory),
@@ -571,7 +575,7 @@ export function MarkdownEditor({
         : []),
       tableLayout.configure({ tabId: documentState.tabId }),
     ],
-    [flavors, syntaxVersion, documentRevision, documentState.tabId],
+    [flavors, schemaVersion, documentRevision, documentState.tabId],
   )
   const editor = useEditor(
     {
@@ -623,7 +627,7 @@ export function MarkdownEditor({
           editorViewRegistry.changed(viewIdRef.current as ViewId, 'rich')
       },
     },
-    [markdownExtensions, flavors, syntaxVersion],
+    [markdownExtensions, flavors, schemaVersion],
   )
   useEffect(() => {
     if (!editor) return
