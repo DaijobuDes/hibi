@@ -6,6 +6,7 @@ import {
   type Plugin,
   type ViteDevServer,
 } from 'vite'
+import { addonDevelopmentManifestContract } from '../src/shared/addon-development'
 import type { AddonPackage } from './addon-packages'
 
 /** Keep the previous inline CSS value without relying on browser URL aliases. */
@@ -22,9 +23,9 @@ export function addonDevelopmentStyles(): Plugin {
       )
         return
       return `${code.replace('export default ', 'const css = ')}
-const previousCss = import.meta.hot.data.css
-import.meta.hot.data.css = css
-export { css as default, previousCss }
+const previousCss = import.meta.hot.data.css ??= css
+const applyCss = () => { import.meta.hot.data.css = css }
+export { css as default, previousCss, applyCss }
 `
     },
   }
@@ -37,18 +38,10 @@ export const developmentContract = (entry: AddonPackage) =>
   JSON.stringify([
     entry.native,
     entry.analysis,
-    ...(entry.native
-      ? [
-          entry.manifest.dependencies,
-          entry.manifest.fileExtensions,
-          entry.manifest.importer,
-          entry.manifest.fileExtensions?.length
-            ? entry.manifest.name
-            : undefined,
-        ]
-      : []),
+    addonDevelopmentManifestContract(entry.manifest, Boolean(entry.native)),
   ])
 export const developmentMetadata = new Set<string>()
+export const developmentDirectories = new Set<string>()
 export const developmentMainInputs = new Set<string>()
 
 /** Use Vite's existing watcher; publish only a successfully transformed edit batch. */
@@ -57,12 +50,24 @@ export function addonDevelopment(
   sourceRoot: string,
   initial: AddonPackage[],
   read: () => Promise<AddonPackage[]>,
-  invalidate: (timestamp: number) => void,
+  refresh: (timestamp: number) => void,
 ) {
   const root = normalizePath(sourceRoot)
   const packages = new Map(initial.map((item) => [item.manifest.id, item]))
   server.watcher.add(initial.map((item) => resolve(root, item.directory)))
   const changes = new Map<string, { files: Set<string>; timestamp: number }>()
+  const unapplied = new Map<string, { files: Set<string>; timestamp: number }>()
+  server.ws.on(
+    'hibi:addon-result',
+    (result: { id?: string; revision?: number; status?: string }) => {
+      if (
+        result?.id &&
+        (result.status === 'reloaded' || result.status === 'idle') &&
+        unapplied.get(result.id)?.timestamp === result.revision
+      )
+        unapplied.delete(result.id)
+    },
+  )
   let timer: ReturnType<typeof setTimeout>
   let work = Promise.resolve()
   const url = (path: string) =>
@@ -98,17 +103,16 @@ export function addonDevelopment(
       }
       for (const [id, { files, timestamp }] of batch) {
         try {
-          const item = next.find((entry) => entry.manifest.id === id)!
-          const old = packages.get(id)!
-          if (
-            ((item.native || old.native) &&
-              developmentContract(item) !== developmentContract(old)) ||
-            item.analysis !== old.analysis
-          ) {
+          const item = next.find((entry) => entry.manifest.id === id)
+          const old = packages.get(id)
+          if (!item || !old) continue
+          if (developmentContract(item) !== developmentContract(old)) {
             await writeFile(developmentRestartFile(root), String(timestamp))
             packages.set(id, item)
             continue
           }
+          for (const file of unapplied.get(id)?.files ?? []) files.add(file)
+          unapplied.set(id, { files, timestamp })
           const scope = [...files].every(
             (file) => file.endsWith('.css') || item.themeFiles.includes(file),
           )
@@ -136,7 +140,7 @@ export function addonDevelopment(
                 timestamp,
                 true,
               )
-          invalidate(timestamp)
+          refresh(timestamp)
           const seen = new Set<ModuleNode>()
           const compile = async (path: string) => {
             await server.transformRequest(path)
@@ -147,19 +151,22 @@ export function addonDevelopment(
               if (dependency.file?.startsWith(`${root}/src/`))
                 await compile(dependency.url)
           }
-          const codeChanged = [...files].some(
-            (file) =>
-              /\.[cm]?[jt]sx?$/.test(file) && !developmentMetadata.has(file),
-          )
+          const codeChanged =
+            scope === 'code' &&
+            [...files].some((file) => !developmentMetadata.has(file))
           for (const path of codeChanged
             ? [item.entry, item.settings, item.flavors]
             : [])
             if (path)
               await compile(version(url(resolve(root, path)), timestamp))
           for (const sheet of css) await server.transformRequest(sheet.after)
-          const catalog = 'virtual:hibi-addon-catalog/renderer'
-          await server.transformRequest(version(catalog, timestamp))
-          if (changes.has(id)) continue
+          const catalog = `virtual:hibi-addon-catalog/renderer?revision=${timestamp}`
+          await server.transformRequest(catalog)
+          const pending = changes.get(id)
+          if (pending) {
+            for (const file of files) pending.files.add(file)
+            continue
+          }
           packages.set(id, item)
           server.ws.send({
             type: 'custom',
@@ -167,8 +174,9 @@ export function addonDevelopment(
             data: {
               id,
               scope,
+              revision: timestamp,
               contract: developmentContract(item),
-              catalog: version(`/@id/__x00__${catalog}`, timestamp),
+              catalog: `/@id/__x00__${catalog}`,
               css,
             },
           })
@@ -193,6 +201,17 @@ export function addonDevelopment(
     if (!item) return false
     // The main watcher owns their guarded restart, including shared renderer imports.
     if (developmentMainInputs.has(file) && !developmentMetadata.has(file))
+      return true
+    if (
+      !/\.[cm]?[jt]sx?$/.test(file) &&
+      !file.endsWith('/hibi-addon.json') &&
+      !file.endsWith('.css') &&
+      !item.themeFiles.includes(file) &&
+      !developmentMetadata.has(file) &&
+      ![...(server.moduleGraph.getModulesByFile(file) ?? [])].some(
+        (module) => module.importers.size,
+      )
+    )
       return true
     const pending = changes.get(item.manifest.id) ?? {
       files: new Set<string>(),

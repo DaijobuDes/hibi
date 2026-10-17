@@ -20,6 +20,7 @@ export function watchAddonDevelopment(
     id: string
     scope: 'code' | 'styles'
     contract: string
+    revision: number
     catalog: string
     css: { after: string }[]
   }) => {
@@ -44,7 +45,7 @@ export function watchAddonDevelopment(
         const replacements = await Promise.all(
           request.css.map(async ({ after }) => {
             const next = await import(/* @vite-ignore */ after)
-            return [next.previousCss, next.default] as const
+            return [next.previousCss, next.default, next.applyCss] as const
           }),
         )
         const publish = prepareBundledAddon(item, request.scope)
@@ -78,9 +79,15 @@ export function watchAddonDevelopment(
                     element.textContent = (
                       element.textContent ?? ''
                     ).replaceAll(before, after)
+            for (const [, , apply] of replacements) apply?.()
           },
           candidate,
         )
+        hot.send('hibi:addon-result', {
+          id: request.id,
+          revision: request.revision,
+          status: result.status,
+        })
         if (result.status === 'refused' || result.status === 'failed') {
           console.warn(`addon ${request.id}: ${result.message}`)
         } else if (result.status !== 'superseded') {

@@ -1,9 +1,9 @@
 import catalog from 'virtual:hibi-addon-catalog/main'
 import { validateAddonRequirements } from '../shared/addon-dependencies'
+import { addonDevelopmentManifestContract } from '../shared/addon-development'
 import { parseAddonManifest } from '../shared/addon-manifest'
 import { MAX_ADDON_MANIFEST_BYTES } from '../shared/addon-package'
-import { getAddonManifests, getAddonStates, refreshAddonStates } from './addons'
-import { setDocumentExtensions } from './document-types'
+import { getAddonManifests, getAddonStates } from './addons'
 
 /** Development metadata only; native loaders keep the guarded process restart. */
 export async function updateDevelopmentAddon(
@@ -15,20 +15,21 @@ export async function updateDevelopmentAddon(
   const { manifest } = parseAddonManifest(value, { trust: 'compiled' })
   const entry = catalog.find((item) => item.manifest.id === manifest.id)
   if (!entry) throw new Error('Restart development after adding an addon.')
-  if (typeof contract !== 'string' || entry.developmentContract !== contract)
-    throw new Error(
-      'Native or analysis changes are waiting for restart. Save drafts, then edit the native file again or restart development.',
-    )
   const previous = entry.manifest
-  const changed =
-    JSON.stringify([previous.requires, previous.network]) !==
-    JSON.stringify([manifest.requires, manifest.network])
+  if (
+    addonDevelopmentManifestContract(previous, Boolean(entry.loadNative)) !==
+      addonDevelopmentManifestContract(manifest, Boolean(entry.loadNative)) ||
+    typeof contract !== 'string' ||
+    entry.developmentContract !== contract
+  )
+    throw new Error(
+      'Addon contract changes are waiting for restart. Save drafts, then edit the addon again or restart development.',
+    )
   validateAddonRequirements(
     getAddonManifests().map((item) =>
       item.id === manifest.id ? manifest : item,
     ),
   )
-  const before = getAddonStates()
   const { default: details } = await import(
     'virtual:hibi-addon-catalog/details'
   )
@@ -38,8 +39,5 @@ export async function updateDevelopmentAddon(
   details[manifest.id] = manifest.licenses
     ? { licenses: manifest.licenses }
     : {}
-  setDocumentExtensions(
-    getAddonManifests().flatMap((item) => item.fileExtensions ?? []),
-  )
-  return refreshAddonStates(before, changed ? [manifest.id] : [])
+  return getAddonStates()
 }

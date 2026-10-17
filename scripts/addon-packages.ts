@@ -9,7 +9,7 @@ import {
 } from 'node:fs/promises'
 import { basename, join, relative, resolve, sep } from 'node:path'
 import { build } from 'esbuild'
-import type { Plugin } from 'vite'
+import type { Plugin, ViteDevServer } from 'vite'
 import type { AddonManifest } from '../src/addons/api'
 import { validateAddonRequirements } from '../src/shared/addon-dependencies'
 import { parseAddonManifest } from '../src/shared/addon-manifest'
@@ -18,6 +18,7 @@ import type { ColorschemeInput } from '../src/shared/colorschemes'
 import {
   addonDevelopment,
   developmentContract,
+  developmentDirectories,
   developmentMainInputs,
   developmentMetadata,
   developmentRestartFile,
@@ -215,6 +216,7 @@ export function addonCatalog(
   const inputs = new Set<string>()
   let pending: Promise<AddonPackage[]> | undefined
   let development: ReturnType<typeof addonDevelopment> | undefined
+  let developmentServer: ViteDevServer | undefined
   let revision = 0
   const devMain =
     process === 'main' &&
@@ -222,11 +224,12 @@ export function addonCatalog(
   return {
     name: `addon-catalog-${process}`,
     resolveId(id) {
+      const catalog = development ? id.replace(/\?revision=\d+$/, '') : id
       if (
-        moduleIds.includes(id) ||
+        moduleIds.includes(catalog) ||
         (process === 'renderer' &&
-          id.startsWith(resourcesId) &&
-          /^[a-z][a-z0-9-]{0,47}$/.test(id.slice(resourcesId.length)))
+          catalog.startsWith(resourcesId) &&
+          /^[a-z][a-z0-9-]{0,47}$/.test(catalog.slice(resourcesId.length)))
       )
         return `\0${id}`
     },
@@ -244,11 +247,30 @@ export function addonCatalog(
       this.addWatchFile(signal)
     },
     buildEnd() {
-      if (devMain)
-        for (const path of this.getWatchFiles()) developmentMainInputs.add(path)
+      if (devMain) {
+        for (const id of this.getModuleIds()) {
+          const file = slash(id.replace(/\?.*$/, ''))
+          const info = this.getModuleInfo(id)
+          if (
+            !/\.(?:md|png|jpg|jpeg|gif|webp|avif|svg)$/.test(file) ||
+            [
+              ...(info?.importers ?? []),
+              ...(info?.dynamicImporters ?? []),
+            ].some(
+              (importer) =>
+                !slash(importer).endsWith('/src/main/addon-documentation.ts'),
+            )
+          )
+            developmentMainInputs.add(file)
+        }
+        for (const file of this.getWatchFiles())
+          if (!/\.(?:md|png|jpg|jpeg|gif|webp|avif|svg)$/.test(file))
+            developmentMainInputs.add(slash(file))
+      }
     },
     async configureServer(server) {
       if (process !== 'renderer') return
+      developmentServer = server
       development = addonDevelopment(
         server,
         root,
@@ -260,14 +282,6 @@ export function addonCatalog(
         (timestamp) => {
           revision = timestamp
           pending = undefined
-          for (const module of server.moduleGraph.idToModuleMap.values())
-            if (module.id?.startsWith(`\0${catalogId}/`))
-              server.moduleGraph.invalidateModule(
-                module,
-                new Set(),
-                timestamp,
-                true,
-              )
         },
       )
     },
@@ -287,21 +301,34 @@ export function addonCatalog(
       return []
     },
     async load(id) {
+      if (development && id === `\0${moduleId}`)
+        return `const load = url => import(/* @vite-ignore */ url)
+export default (await load(${JSON.stringify(`/@id/__x00__${moduleId}?revision=`)} + Date.now())).default`
+      const snapshot = development && /\?revision=(\d+)$/.exec(id)
+      const moduleRevision = snapshot ? Number(snapshot[1]) : revision
+      if (development) id = id.replace(/\?revision=\d+$/, '')
       const resourceOwner =
         process === 'renderer' && id.startsWith(`\0${resourcesId}`)
           ? id.slice(resourcesId.length + 1)
           : undefined
       if (!resourceOwner && !moduleIds.some((module) => id === `\0${module}`))
         return
+      const watch = (path: string) => {
+        if (developmentServer) developmentServer.watcher.add(path)
+        else this.addWatchFile(path)
+      }
       pending ??= readAddonPackages(root, (path) => {
         inputs.add(slash(path))
-        this.addWatchFile(path)
+        watch(path)
       })
       const packages = await pending
+      if (devMain)
+        for (const item of packages)
+          developmentDirectories.add(`${slash(resolve(root, item.directory))}/`)
       for (const input of inputs) {
-        this.addWatchFile(input)
+        watch(input)
         if (
-          devMain &&
+          (devMain || developmentServer) &&
           packages.some((item) =>
             input.startsWith(`${slash(resolve(root, item.directory))}/`),
           )
@@ -335,11 +362,17 @@ export function addonCatalog(
         )}`
       const imports: string[] = []
       const entries = packages.map((item, index) => {
-        const load = (path: string) =>
-          `import(${JSON.stringify(slash(resolve(root, path)) + (development && revision ? `?t=${revision}` : ''))})`
+        const load = (path: string, virtual = false) => {
+          let target = virtual ? path : slash(resolve(root, path))
+          if (development)
+            target = virtual
+              ? `/@id/__x00__${target}?revision=${moduleRevision}`
+              : `/@fs/${target.replace(/^\//, '')}?t=${moduleRevision}`
+          return `${development ? 'load' : 'import'}(${JSON.stringify(target)})`
+        }
         const resources =
           item.styles.length || item.themes.length
-            ? `loadResources:()=>import(${JSON.stringify(resourcesId + item.manifest.id)}).then(module=>module.default)`
+            ? `loadResources:()=>${load(resourcesId + item.manifest.id, true)}.then(module=>module.default)`
             : undefined
         if (id === `\0${windowsId}`)
           return `{id:${JSON.stringify(item.manifest.id)},capabilities:${JSON.stringify(item.manifest.capabilities)},load:()=>${load(item.entry)}${resources ? `,${resources}` : ''}}`
@@ -371,14 +404,16 @@ export function addonCatalog(
             parts.push(`loadSettings:()=>${load(item.settings)}`)
           if (item.flavors) {
             imports.push(
-              `import flavors${index} from ${JSON.stringify(slash(resolve(item.flavors)))}`,
+              development
+                ? `const {default:flavors${index}} = await ${load(item.flavors)}`
+                : `import flavors${index} from ${JSON.stringify(slash(resolve(item.flavors)))}`,
             )
             parts.push(`flavors:flavors${index}`)
           }
         }
         return `{${parts.join(',')}}`
       })
-      return `${imports.join('\n')}\nexport default [${entries.join(',\n')}]`
+      return `${development ? 'const load = url => import(/* @vite-ignore */ url)\n' : ''}${imports.join('\n')}\nexport default [${entries.join(',\n')}]`
     },
   }
 }

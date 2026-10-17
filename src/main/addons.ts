@@ -410,27 +410,13 @@ async function savePreferences(
   await writeFile(`${path}.tmp`, JSON.stringify(next), { mode: 0o600 })
   await rename(`${path}.tmp`, path)
   enabled = next
-  return refreshAddonStates(before)
-}
-
-/** Refresh availability and owned resources without changing saved preferences. */
-export async function refreshAddonStates(
-  before: readonly AddonState[],
-  changed: readonly string[] = [],
-) {
-  await deactivateUnavailable(before, changed)
+  await deactivateUnavailable(before)
   const states = getAddonStates()
   onAddonStatesChanged(states)
   return states
 }
 
-async function deactivateUnavailable(
-  before: readonly AddonState[],
-  changed: readonly string[],
-) {
-  const retired = new Set(
-    changed.flatMap((id) => [id, ...addonDependents(manifests(), id)]),
-  )
+async function deactivateUnavailable(before: readonly AddonState[]) {
   const current = new Set(
     getAddonStates()
       .filter(active)
@@ -438,10 +424,7 @@ async function deactivateUnavailable(
   )
   const lost = new Set(
     before
-      .filter(
-        (state) =>
-          active(state) && (!current.has(state.id) || retired.has(state.id)),
-      )
+      .filter((state) => active(state) && !current.has(state.id))
       .map((state) => state.id),
   )
   const ids = new Set(

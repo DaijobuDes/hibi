@@ -3,6 +3,8 @@ import react from '@vitejs/plugin-react'
 import { defineConfig } from 'electron-vite'
 import {
   addonDevelopmentStyles,
+  developmentDirectories,
+  developmentMainInputs,
   developmentMetadata,
 } from './scripts/addon-development'
 import { addonCatalog } from './scripts/addon-packages'
@@ -75,9 +77,15 @@ export default defineConfig({
         watch: {
           chokidar: {
             ignored: (path: string) => {
+              const input = path.split(sep).join('/')
               if (
                 process.env.NODE_ENV_ELECTRON_VITE === 'development' &&
-                developmentMetadata.has(path)
+                (developmentMetadata.has(input) ||
+                  (/\.(?:md|png|jpg|jpeg|gif|webp|avif|svg)$/.test(input) &&
+                    !developmentMainInputs.has(input) &&
+                    [...developmentDirectories].some((directory) =>
+                      input.startsWith(directory),
+                    )))
               )
                 return true
               const part = relative(mainOutput, path)

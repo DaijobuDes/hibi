@@ -211,6 +211,9 @@
   "4b392ad897a3": [
     "src/renderer/src/AddonHotkeySettings.tsx"
   ],
+  "0a8aff3bb923": [
+    "src/main/addon-development.ts"
+  ],
   "1dda1ac8e844": [
     "src/shared/addon-dependencies.ts"
   ],
@@ -3488,9 +3491,6 @@
   ],
   "cd452315c10b": [
     "src/main/addons.ts"
-  ],
-  "2361f5c438f6": [
-    "src/main/addon-development.ts"
   ],
   "793e568c3c97": [
     "src/shared/document-journal.ts"
