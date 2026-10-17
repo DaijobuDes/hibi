@@ -806,7 +806,9 @@ test('editing stays read-only while an editor extension reloads and keeps a sele
   )
   // The user moves the selection with the mouse; typing changes nothing while the reload runs.
   await editor.getByText(/Hello world/).dblclick({ position: { x: 5, y: 5 } })
-  await page.waitForFunction(() => getSelection().toString() === 'Hello')
+  // Windows word selection includes the trailing space.
+  await page.waitForFunction(() => /^Hello\s?$/.test(getSelection().toString()))
+  const moved = await page.evaluate(() => getSelection().toString())
   await page.keyboard.type('xyz')
   assert.equal(await markdown(), before)
   await page.evaluate(() => window.releaseConsumer())
@@ -816,7 +818,7 @@ test('editing stays read-only while an editor extension reloads and keeps a sele
         .querySelector('[role="textbox"][aria-label="Document editor"]')
         ?.getAttribute('aria-readonly') === 'false',
   )
-  assert.equal(await page.evaluate(() => getSelection().toString()), 'Hello')
+  assert.equal(await page.evaluate(() => getSelection().toString()), moved)
   assert.equal(await markdown(), before)
   await page.keyboard.press('End')
   await page.keyboard.type('!')
