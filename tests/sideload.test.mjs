@@ -10,8 +10,13 @@ import {
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { electron } from './electron.mjs'
-import { clickMenu, pressShortcut } from './keyboard.mjs'
+import { electron, waitForDocumentEditor } from './electron.mjs'
+import {
+  clickMenu,
+  pressShortcut,
+  replaceRichText,
+  replaceSourceText,
+} from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
 
 test('sideloads reviewed packages disabled, discovers their settings/themes/commands, and cleans up removal', {
@@ -138,7 +143,8 @@ test('sideloads reviewed packages disabled, discovers their settings/themes/comm
     ),
   )
   await page.reload()
-  await rich.fill('keep this draft')
+  await waitForDocumentEditor(app, page)
+  await replaceRichText(page, rich, 'keep this draft')
   await pressShortcut(app, `${mod}+Shift+o`)
   await page.getByRole('button', { name: /new workspace file/i }).waitFor()
   assert.equal(await page.evaluate(() => window.fixtureStarts), undefined)
@@ -220,7 +226,8 @@ test('sideloads reviewed packages disabled, discovers their settings/themes/comm
   await pressShortcut(app, `${mod}+Shift+]`)
   const source = page.getByRole('textbox', { name: /markdown editor/i })
   const code = 'keep this draft\n\n```fixture-code\nhello addon\n```'
-  await source.fill(code)
+  await waitForDocumentEditor(app, page, { name: 'Markdown editor' })
+  await replaceSourceText(page, source, code)
   await page
     .locator('.source-pane .hibi-token-keyword')
     .filter({ hasText: /^hello addon$/i })
