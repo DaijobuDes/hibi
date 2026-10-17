@@ -3,8 +3,12 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { electron, startupDiagnostics } from './electron.mjs'
-import { pressShortcut } from './keyboard.mjs'
+import {
+  electron,
+  startupDiagnostics,
+  waitForDocumentEditor,
+} from './electron.mjs'
+import { pressShortcut, replaceSourceText } from './keyboard.mjs'
 
 test('sidebar starts hidden, stays open while typing, and navigates the page outline in either editor', {
   timeout: 30000,
@@ -46,7 +50,8 @@ test('sidebar starts hidden, stays open while typing, and navigates the page out
     '# alpha\n\n' +
     'paragraph\n\n'.repeat(40) +
     '## second\n\n```md\n# code example\n```\n'
-  await source.fill(text)
+  await waitForDocumentEditor(app, page, { name: 'Markdown editor' })
+  await replaceSourceText(page, source, text)
   await page.getByRole('button', { name: /toggle workspace sidebar/i }).click()
   await page
     .getByRole('button', { name: /^sidebar views$/i, exact: true })
@@ -137,7 +142,10 @@ test('outline nesting follows the cursor and sidebar view pins survive reload', 
   page.setDefaultTimeout(6500)
   await page.getByRole('button', { name: /^source view$/i }).click()
   const source = page.getByRole('textbox', { name: /markdown editor/i })
-  await source.fill(
+  await waitForDocumentEditor(app, page, { name: 'Markdown editor' })
+  await replaceSourceText(
+    page,
+    source,
     'introduction\n\n# alpha\n\nalpha body\n\n### deep\n\ndeep body\n\n## beta\n\nbeta body\n\n# final\n\nfinal body',
   )
   const views = page.getByRole('button', { name: /^sidebar views$/i })

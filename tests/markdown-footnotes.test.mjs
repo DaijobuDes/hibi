@@ -9,8 +9,8 @@ import { markedGithubFootnote } from 'marked-github-footnote'
 import { exportOptions } from '../src/addons/documentation/options.ts'
 import { prepareSite, siteFiles } from '../src/addons/documentation/site.ts'
 import { hasFootnoteDefinitions } from '../src/shared/markdown-footnotes.ts'
-import { electron } from './electron.mjs'
-import { pressShortcut } from './keyboard.mjs'
+import { electron, waitForDocumentEditor } from './electron.mjs'
+import { pressShortcut, replaceSourceText } from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
 
 const source =
@@ -358,7 +358,8 @@ test('source footnotes preview and save without changing markdown', {
   await page.getByRole('textbox', { name: /document editor/i }).waitFor()
   await pressShortcut(app, `${mod}+Shift+]`)
   const editor = page.getByRole('textbox', { name: /markdown editor/i })
-  await editor.fill(source)
+  await waitForDocumentEditor(app, page, { name: 'Markdown editor' })
+  await replaceSourceText(page, editor, source)
   await page.getByRole('button', { name: /^side-by-side$/i }).click()
   const preview = page.locator('.markdown-footnote-preview')
   await preview.locator('[data-footnotes]').waitFor()
@@ -381,7 +382,9 @@ test('source footnotes preview and save without changing markdown', {
   await waitForAsync(page, async () => !(await window.hibi.getDocument()).dirty)
   assert.equal(await readFile(file, 'utf8'), source)
 
-  await editor.fill(
+  await replaceSourceText(
+    page,
+    editor,
     'Unsafe[^note].\n\n[^note]: <img src="x" onerror="window.footnoteAttack=true">',
   )
   await preview.locator('li#fn-note img').waitFor({ state: 'attached' })
