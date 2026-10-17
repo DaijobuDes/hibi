@@ -978,10 +978,9 @@ export function useAddons(
         cleanups.add(cleanup)
         return cleanup
       }
-      // Declared package resources; an in-place update swaps them without restarting code.
+      // Declared package resources; once started, an in-place update swaps them without restarting code.
       let linked: import('./addon-sheets').AddonSheets | undefined
       let declaredSchemes: (() => void)[] = []
-      let published = false
       let restyles = 0
       const restyle = async () => {
         const revision = ++restyles
@@ -1014,7 +1013,7 @@ export function useAddons(
         linked = next
         if (next) {
           cleanups.add(next.dispose)
-          if (published) next.publish()
+          next.publish()
         }
         return true
       }
@@ -2164,7 +2163,6 @@ export function useAddons(
                     )
                 }
                 linked?.publish()
-                published = true
               }
             },
             startDetail,
@@ -2428,7 +2426,8 @@ export function useAddons(
       const { reloadAddons } = await import('./addon-reload')
       return reloadAddons([id], reloadHost())
     }
-    const runtime = running.get(id)
+    // A start still in progress publishes the resources it read.
+    const runtime = started.has(id) ? running.get(id) : undefined
     if (!runtime) return { status: 'idle' }
     try {
       return { status: (await runtime.restyle()) ? 'reloaded' : 'superseded' }
