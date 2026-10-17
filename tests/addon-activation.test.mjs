@@ -42,32 +42,7 @@ test('capability SDKs defer irrelevant entries, activate command descriptors, an
       code: `window.disabledBackgroundEvaluations = (window.disabledBackgroundEvaluations || 0) + 1; export default () => ({ start() { window.disabledBackgroundStarts = (window.disabledBackgroundStarts || 0) + 1; } });`,
     },
   ]
-  for (const { code, ...manifest } of fixtures) {
-    const folder = join(profile, 'installed-addons', manifest.id)
-    await mkdir(folder, { recursive: true })
-    await writeFile(
-      join(folder, 'hibi-addon.json'),
-      JSON.stringify({
-        ...manifest,
-        name: manifest.id,
-        description: 'Activation fixture',
-        kind: 'extension',
-        apiVersion: 2,
-        version: '1.0.0',
-        authors: [{ displayName: 'Test' }],
-        entry: 'index.js',
-      }),
-    )
-    await writeFile(join(folder, 'index.js'), code)
-    await writeFile(
-      join(folder, '.hibi-install.json'),
-      JSON.stringify({
-        hash: 'a'.repeat(64),
-        files: ['hibi-addon.json', 'index.js'],
-        source: 'local',
-      }),
-    )
-  }
+  await writeFixtures(profile, fixtures)
   await writeFile(
     join(profile, 'addons.json'),
     JSON.stringify(
@@ -267,3 +242,112 @@ test('capability SDKs defer irrelevant entries, activate command descriptors, an
     true,
   )
 })
+
+test('a cancelled stale attempt keeps a committed failure from starting the addon again', {
+  timeout: 30000,
+}, async (t) => {
+  const profile = await mkdtemp(join(tmpdir(), 'hibi-activation-stale-'))
+  await writeFixtures(profile, [
+    {
+      id: 'stale-failure',
+      capabilities: [],
+      startup: 'background',
+      // Fails after the commit that shows the peer's status item but before that commit's effects run.
+      code: `export default () => ({ async start() { window.staleFailureStarts = (window.staleFailureStarts || 0) + 1; if (window.staleFailureStarts > 1) throw new Error('Repeated stale failure'); await new Promise(resolve => { const observer = new MutationObserver(() => { if (document.querySelector('.app-statusbar')?.textContent.includes('Stale peer ready')) { observer.disconnect(); resolve(); } }); observer.observe(document.body, { childList: true, subtree: true, characterData: true }); window.staleFailureArmed = true; }); throw new Error('Held stale failure'); } });`,
+    },
+    {
+      id: 'stale-peer',
+      capabilities: [],
+      startup: 'background',
+      code: `export default () => ({ async start(context) { await new Promise(resolve => { window.releaseStalePeer = resolve; }); context.statusBar.register({ id: 'ready', label: 'Stale peer ready' }); } });`,
+    },
+  ])
+  await writeFile(
+    join(profile, 'addons.json'),
+    JSON.stringify({ 'stale-failure': true, 'stale-peer': true }),
+  )
+  const app = await electron.launch({
+    args: [resolve('.'), `--user-data-dir=${profile}`],
+  })
+  t.after(async () => {
+    await app.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => ({ response: 1 })
+    })
+    await app.close()
+    await rm(profile, { recursive: true, force: true })
+  })
+  const page = await app.firstWindow()
+  await page.locator('.tiptap[contenteditable="true"]').waitFor()
+  page.setDefaultTimeout(8000)
+  await page.waitForFunction(
+    () => window.staleFailureArmed && window.releaseStalePeer,
+    undefined,
+    { polling: 100 },
+  )
+  // Hold background starts: the stale attempt is cancelled before it can run, and any restart waits for release.
+  await page.evaluate(() => {
+    const request = window.requestIdleCallback
+    const held = []
+    window.requestIdleCallback = (callback, options) =>
+      options?.timeout === 1000
+        ? held.push(callback)
+        : request(callback, options)
+    window.releaseBackgroundStarts = async () => {
+      // Idle time comes only after queued renders and their effects.
+      await new Promise((resolve) => request(resolve))
+      window.requestIdleCallback = request
+      for (const callback of held)
+        callback({ didTimeout: false, timeRemaining: () => 20 })
+      await new Promise((resolve) => request(resolve))
+      return held.length
+    }
+    window.releaseStalePeer()
+  })
+  await page
+    .getByRole('region', { name: 'Notifications', exact: true })
+    .locator('.toast[data-variant="error"]:not([data-closing="true"])')
+    .getByRole('alert')
+    .getByText('Held stale failure', { exact: true })
+    .waitFor()
+  assert.ok((await page.evaluate(() => window.releaseBackgroundStarts())) >= 1)
+  assert.equal(await page.evaluate(() => window.staleFailureStarts), 1)
+  // Turning it off and on is an explicit retry and still clears the failure.
+  await clickMenu(app, 'Settings')
+  await page.getByRole('tab', { name: 'Addon Manager', exact: true }).click()
+  const toggle = page.locator('#addon-stale-failure')
+  await toggle.click()
+  await page.waitForFunction(
+    () => !document.querySelector('#addon-stale-failure').checked,
+  )
+  await toggle.click()
+  await page.waitForFunction(() => window.staleFailureStarts === 2)
+})
+
+async function writeFixtures(profile, fixtures) {
+  for (const { code, ...manifest } of fixtures) {
+    const folder = join(profile, 'installed-addons', manifest.id)
+    await mkdir(folder, { recursive: true })
+    await writeFile(
+      join(folder, 'hibi-addon.json'),
+      JSON.stringify({
+        ...manifest,
+        name: manifest.id,
+        description: 'Activation fixture',
+        kind: 'extension',
+        apiVersion: 2,
+        version: '1.0.0',
+        authors: [{ displayName: 'Test' }],
+        entry: 'index.js',
+      }),
+    )
+    await writeFile(join(folder, 'index.js'), code)
+    await writeFile(
+      join(folder, '.hibi-install.json'),
+      JSON.stringify({
+        hash: 'a'.repeat(64),
+        files: ['hibi-addon.json', 'index.js'],
+        source: 'local',
+      }),
+    )
+  }
+}
