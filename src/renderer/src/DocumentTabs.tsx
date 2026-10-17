@@ -40,6 +40,7 @@ export function DocumentTabs({
   const dragged = useRef<string | null>(null)
   const keyboardFocus = useRef<string | null>(null)
   const navigationFocus = useRef<string | null>(null)
+  const navigationFrame = useRef(0)
   const [drop, setDrop] = useState<{
     id: string
     side: 'before' | 'after'
@@ -141,7 +142,7 @@ export function DocumentTabs({
     ) {
       const id = navigationFocus.current
       navigationFocus.current = null
-      requestAnimationFrame(() => {
+      navigationFrame.current = requestAnimationFrame(() => {
         const focused = window.document.activeElement
         if (
           focused === window.document.body ||
@@ -216,6 +217,8 @@ export function DocumentTabs({
           event.preventDefault()
           const tab = ordered[next]
           if (tab) {
+            // A newer key press supersedes focus still waiting for a frame.
+            cancelAnimationFrame(navigationFrame.current)
             navigationFocus.current = tab.id
             if (tab.addon) onSelectAddon(tab.id)
             else onSelect(tab.id)
