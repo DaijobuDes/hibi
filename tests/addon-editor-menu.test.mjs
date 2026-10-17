@@ -58,7 +58,11 @@ test('editor command shares rich and source action menus with guarded selection'
         return from === to ? [] : [{
           label: 'Replace selection',
           edit: { from, to, insertText: 'bye' },
-        }];
+        }, ...(window.editorMenuExtraActions ? Array.from({ length: 19 }, (_, index) => ({
+          label: 'Extra action ' + (index + 1),
+          detail: 'Replaces the selection with bye.',
+          edit: { from, to, insertText: 'bye' },
+        })) : [])];
       });
     } });`,
   )
@@ -153,6 +157,33 @@ test('editor command shares rich and source action menus with guarded selection'
     richInvocation.document.documentId,
     richInvocation.view.documentId,
   )
+
+  // Reaching an item below a long menu's fold scrolls the menu, not its anchor.
+  await page.evaluate(() => {
+    window.editorMenuExtraActions = true
+  })
+  await rich.press('Shift+F10')
+  const lastAction = menu.getByRole('menuitem', { name: 'Extra action 19' })
+  await lastAction.waitFor({ state: 'attached' })
+  assert.ok(
+    await menu.evaluate(
+      (element) => element.scrollHeight > element.clientHeight,
+    ),
+  )
+  await rich.press('ArrowUp')
+  await page.waitForFunction(
+    () =>
+      document.querySelector('[role="menu"][aria-label="Editor actions"]')
+        ?.scrollTop > 0,
+  )
+  assert.equal(await lastAction.getAttribute('aria-current'), 'true')
+  assert.equal(await menu.isVisible(), true)
+  // Scrolling the document still moves the menu's anchor and closes it.
+  await page.evaluate(() => document.dispatchEvent(new Event('scroll')))
+  await menu.waitFor({ state: 'hidden' })
+  await page.evaluate(() => {
+    window.editorMenuExtraActions = false
+  })
 
   await page.getByRole('button', { name: 'Source view', exact: true }).click()
   const source = page.getByRole('textbox', {
