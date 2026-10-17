@@ -3,8 +3,8 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { electron } from './electron.mjs'
-import { clickMenu, pressShortcut } from './keyboard.mjs'
+import { electron, waitForDocumentEditor } from './electron.mjs'
+import { clickMenu, pressShortcut, replaceSourceText } from './keyboard.mjs'
 
 test('code highlighting controls update both panes, persist, and discover addon languages', {
   timeout: 30000,
@@ -26,7 +26,12 @@ test('code highlighting controls update both panes, persist, and discover addon 
   await page.getByRole('textbox', { name: /document editor/i }).waitFor()
   await pressShortcut(app, `${mod}+Shift+]`)
   const original = '```js\nconst answer = 42\n```'
-  await page.getByRole('textbox', { name: /markdown editor/i }).fill(original)
+  await waitForDocumentEditor(app, page, { name: 'Markdown editor' })
+  await replaceSourceText(
+    page,
+    page.getByRole('textbox', { name: /markdown editor/i }),
+    original,
+  )
   await page
     .locator('.source-pane .hibi-token-keyword')
     .filter({ hasText: /const/i })

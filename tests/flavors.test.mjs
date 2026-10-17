@@ -6,7 +6,12 @@ import test from 'node:test'
 import { setTimeout } from 'node:timers/promises'
 import { mathFlavor } from '../src/addons/math/syntax.ts'
 import { electron, waitForDocumentEditor } from './electron.mjs'
-import { clickMenu, pressShortcut, splitTab } from './keyboard.mjs'
+import {
+  clickMenu,
+  pressShortcut,
+  replaceSourceText,
+  splitTab,
+} from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
 
 test('math detection respects code, escaped delimiters, and currency spacing', () => {
@@ -77,7 +82,8 @@ test('flavors auto-detect, persist overrides, render/edit math, and export it of
   const initial =
     '# math\n\ninline $x^2$\n\ntext $$x$$\n\ntext $$x$$ more\n\n$$\n\\frac{1}{2}\n$$\n\n`$literal$`\n\n```javascript\nconst answer = 42\n```'
   const hiddenText = await page.locator('.tiptap').textContent()
-  await source.fill(initial)
+  await waitForDocumentEditor(app, page, { name: 'Markdown editor' })
+  await replaceSourceText(page, source, initial)
   await page
     .locator('.source-pane .hibi-token-keyword')
     .filter({ hasText: /const/i })
