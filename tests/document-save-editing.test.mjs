@@ -1,10 +1,15 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { electron, waitForDocumentEditor } from './electron.mjs'
-import { pressShortcut, replaceRichText } from './keyboard.mjs'
+import {
+  clickMenu,
+  pressShortcut,
+  replaceRichText,
+  splitTab,
+} from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
 
 test('typing stays available and unsaved while a save finishes', {
@@ -93,4 +98,94 @@ test('typing stays available and unsaved while a save finishes', {
   await waitForDocumentEditor(app, page, { name: 'Markdown editor' })
   await source.press('ControlOrMeta+End')
   await saveWhileTyping(' third')
+})
+
+test('a save leaves other split panes read-only until it finishes', {
+  timeout: 45000,
+}, async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'hibi-save-split-'))
+  const a = join(root, 'a.md')
+  const b = join(root, 'b.md')
+  await writeFile(a, 'original a')
+  await writeFile(b, 'original b')
+  const app = await electron.launch({
+    args: [resolve('.'), `--user-data-dir=${join(root, 'profile')}`],
+  })
+  t.after(async () => {
+    await app.evaluate(({ dialog }) => {
+      globalThis.releaseSave?.()
+      dialog.showMessageBox = async () => ({ response: 1 })
+    })
+    await app.close()
+    await rm(root, { recursive: true, force: true })
+  })
+  const page = await app.firstWindow()
+  page.setDefaultTimeout(7000)
+  const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
+  await waitForDocumentEditor(app, page)
+  const ids = {}
+  for (const [name, file] of [
+    ['a.md', a],
+    ['b.md', b],
+  ]) {
+    await app.evaluate(({ dialog }, path) => {
+      dialog.showOpenDialog = async () => ({
+        canceled: false,
+        filePaths: [path],
+      })
+    }, file)
+    await clickMenu(app, 'Open…')
+    await waitForAsync(
+      page,
+      async (name) => (await window.hibi.getDocument()).name === name,
+      name,
+    )
+    ids[name] = (await page.evaluate(() => window.hibi.getDocument())).tabId
+  }
+  await page.getByRole('tab', { name: 'a.md', exact: true }).click()
+  await waitForAsync(
+    page,
+    async (id) => (await window.hibi.getDocument()).tabId === id,
+    ids['a.md'],
+  )
+  await splitTab(app, page, ids['b.md'])
+  const pane = (side, editor) =>
+    page.locator(`.editor-page[data-side="${side}"] ${editor}`)
+  await pane('right', '.tiptap[contenteditable="true"]').waitFor()
+  await pane('left', '.tiptap').click()
+  await waitForAsync(
+    page,
+    async (id) => (await window.hibi.getDocument()).tabId === id,
+    ids['a.md'],
+  )
+  await page.keyboard.type(' edited')
+  await app.evaluate(({ ipcMain }) => {
+    const save = ipcMain._invokeHandlers.get('document:save')
+    ipcMain._invokeHandlers.set('document:save', async (...args) => {
+      ipcMain._invokeHandlers.set('document:save', save)
+      const released = new Promise((resolve) => {
+        globalThis.releaseSave = resolve
+      })
+      const saved = await save(...args)
+      await released
+      return saved
+    })
+  })
+  await pressShortcut(app, `${mod}+s`)
+  await waitForAsync(page, async () => !(await window.hibi.getDocument()).dirty)
+  // Only the document being saved stays editable; focus cannot move to b.md yet.
+  await pane('left', '.tiptap[contenteditable="true"]').waitFor()
+  await pane('right', '.tiptap[contenteditable="false"]').waitFor()
+  await pane('right', '.tiptap').click({ force: true })
+  await page.keyboard.type(' stranded')
+  await app.evaluate(() => globalThis.releaseSave())
+  await page.waitForFunction(
+    () => document.querySelector('.app')?.getAttribute('aria-busy') === 'false',
+  )
+  await pressShortcut(app, `${mod}+s`)
+  await waitForAsync(page, async () =>
+    (await window.hibi.getDocument()).tabs.every((tab) => !tab.dirty),
+  )
+  assert.equal(await readFile(b, 'utf8'), 'original b')
+  assert.match(await readFile(a, 'utf8'), /edited/)
 })
