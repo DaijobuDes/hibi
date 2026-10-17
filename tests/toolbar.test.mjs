@@ -3,8 +3,13 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { electron } from './electron.mjs'
-import { clickMenu, pressShortcut } from './keyboard.mjs'
+import { electron, waitForDocumentEditor } from './electron.mjs'
+import {
+  clickMenu,
+  pressShortcut,
+  replaceRichText,
+  replaceSourceText,
+} from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
 import { uiName } from './ui.mjs'
 
@@ -329,7 +334,8 @@ test('markdown toolbar formats both panes without dragging and reorders only in 
       async (value) => (await window.hibi.getDocument()).markdown === value,
       value,
     )
-  await rich.fill('hello')
+  await waitForDocumentEditor(app, page)
+  await replaceRichText(page, rich, 'hello')
   assert.deepEqual(
     await action('bold').evaluate((button) => ({
       border: getComputedStyle(button).borderTopWidth,
@@ -437,7 +443,7 @@ test('markdown toolbar formats both panes without dragging and reorders only in 
     .getByRole('button', { name: /^source view$/i, exact: true })
     .click()
   const source = page.getByRole('textbox', { name: /markdown editor/i })
-  await source.waitFor()
+  await waitForDocumentEditor(app, page, { name: 'Markdown editor' })
   for (const [id, expected] of [
     ['bold', '**hello**'],
     ['italic', '*hello*'],
@@ -449,14 +455,14 @@ test('markdown toolbar formats both panes without dragging and reorders only in 
     ['checklist', '- [ ] hello'],
     ['quote', '> hello'],
   ]) {
-    await source.fill('hello')
+    await replaceSourceText(page, source, 'hello')
     await source.press('Control+a')
     await run(id)
     await waitForMarkdown(expected)
     await run('undo')
     await waitForMarkdown('hello')
   }
-  await source.fill('first\nsecond')
+  await replaceSourceText(page, source, 'first\nsecond')
   await source.press('Control+a')
   await run('numbered-list')
   await waitForMarkdown('1. first\n2. second')
@@ -465,7 +471,7 @@ test('markdown toolbar formats both panes without dragging and reorders only in 
   await source.press('Control+a')
   await run('code-block')
   assert.match(await read(), /^```\nfirst\nsecond\n```/)
-  await source.fill('image here')
+  await replaceSourceText(page, source, 'image here')
   await source.press('Control+a')
   await writeFile(
     join(profile, 'sample.gif'),
@@ -490,7 +496,7 @@ test('markdown toolbar formats both panes without dragging and reorders only in 
     await page.getByRole('dialog', { name: /insert image/i }).count(),
     0,
   )
-  await source.fill('split text')
+  await replaceSourceText(page, source, 'split text')
   await page
     .getByRole('button', { name: /^side-by-side$/i, exact: true })
     .click()
@@ -623,7 +629,8 @@ test('select all stays in the active pane after changing views or clicking line 
   await page.evaluate(() => localStorage.setItem('line-numbers', 'true'))
   await page.reload()
   const rich = page.getByRole('textbox', { name: /document editor/i })
-  await rich.fill('first\nsecond\nlast')
+  await waitForDocumentEditor(app, page)
+  await replaceRichText(page, rich, 'first\nsecond\nlast')
   const select = async () => {
     await pressShortcut(
       app,
