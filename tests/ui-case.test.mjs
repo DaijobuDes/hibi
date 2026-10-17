@@ -3,8 +3,8 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { electron } from './electron.mjs'
-import { clickMenu } from './keyboard.mjs'
+import { electron, waitForDocumentEditor } from './electron.mjs'
+import { clickMenu, replaceRichText } from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
 
 test('sentence case is default; lowercase covers UI and menus while preserving content and persists', {
@@ -61,9 +61,12 @@ test('sentence case is default; lowercase covers UI and menus while preserving c
     ),
     'File',
   )
-  await page
-    .getByRole('textbox', { name: /document editor/i })
-    .fill('CaseSensitiveValue')
+  await waitForDocumentEditor(app, page)
+  await replaceRichText(
+    page,
+    page.getByRole('textbox', { name: /document editor/i }),
+    'CaseSensitiveValue',
+  )
   await clickMenu(app, 'Settings')
   await page.getByRole('tab', { name: /^appearance$/i }).click()
   assert.equal(

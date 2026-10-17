@@ -16,7 +16,9 @@ export async function replaceRichText(page, target, text) {
 export async function replaceSourceText(page, target, text) {
   // CodeMirror owns selection; DOM-only fill can lose its range on focus/measure.
   await target.press('ControlOrMeta+a')
-  await page.keyboard.insertText(text)
+  // An empty insertText can be a no-op as the first edit in a fresh source view.
+  if (text) await page.keyboard.insertText(text)
+  else await target.press('Delete')
 }
 
 // CDP keyboard events bypass Electron's native shortcut processing.

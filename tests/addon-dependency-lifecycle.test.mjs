@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { electron, waitForDocumentEditor } from './electron.mjs'
-import { clickMenu } from './keyboard.mjs'
+import { clickMenu, replaceRichText } from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
 
 test('required addons confirm together, share versioned exports, and leave consumers blocked when disabled', {
@@ -348,9 +348,11 @@ test('a blocked feature consumer keeps rich editing and its draft through disabl
     'Provider ready',
   )
   const draft = 'Keep this unsaved dependency draft'
-  await page
-    .getByRole('textbox', { name: 'Document editor', exact: true })
-    .fill(draft)
+  await replaceRichText(
+    page,
+    page.getByRole('textbox', { name: 'Document editor', exact: true }),
+    draft,
+  )
   await clickMenu(app, 'Settings')
   await page.getByRole('tab', { name: /^addon manager$/i }).click()
   await page.locator('#addon-fixture-provider').click()
@@ -374,9 +376,11 @@ test('a blocked feature consumer keeps rich editing and its draft through disabl
   )
 
   const editedDraft = `${draft} while provider is disabled`
-  await page
-    .getByRole('textbox', { name: 'Document editor', exact: true })
-    .fill(editedDraft)
+  await replaceRichText(
+    page,
+    page.getByRole('textbox', { name: 'Document editor', exact: true }),
+    editedDraft,
+  )
   await waitForAsync(
     page,
     async (expected) => (await window.hibi.getDocument()).markdown === expected,

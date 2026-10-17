@@ -3,8 +3,17 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { electron, startupDiagnostics } from './electron.mjs'
-import { clickMenu, pressShortcut } from './keyboard.mjs'
+import {
+  electron,
+  startupDiagnostics,
+  waitForDocumentEditor,
+} from './electron.mjs'
+import {
+  clickMenu,
+  pressShortcut,
+  replaceRichText,
+  replaceSourceText,
+} from './keyboard.mjs'
 
 async function cursorDiagnostics(app, page, phase) {
   console.error('cursor phase:', phase)
@@ -138,7 +147,8 @@ test('cursor appearance, movement, selection hiding, and persistence in both edi
     '',
   )
   phase = 'rich fill'
-  await rich.fill('cursor movement sample')
+  await waitForDocumentEditor(app, page)
+  await replaceRichText(page, rich, 'cursor movement sample')
   const cursor = page.locator('.editor-cursor')
   await cursor.waitFor()
   assert.equal(await cursor.getAttribute('data-style'), 'bar')
@@ -281,7 +291,8 @@ test('cursor appearance, movement, selection hiding, and persistence in both edi
     .click()
   const source = page.getByRole('textbox', { name: /markdown editor/i })
   phase = 'source clear'
-  await source.fill('')
+  await waitForDocumentEditor(app, page, { name: 'Markdown editor' })
+  await replaceSourceText(page, source, '')
   await source.focus()
   await page.waitForFunction(() =>
     document.querySelector('.source-pane .editor-cursor'),
@@ -309,7 +320,7 @@ test('cursor appearance, movement, selection hiding, and persistence in both edi
     JSON.stringify(sourceGeometry),
   )
   phase = 'source fill'
-  await source.fill('source cursor sample')
+  await replaceSourceText(page, source, 'source cursor sample')
   await cursor.waitFor()
   assert.equal(
     await source.evaluate((element) => getComputedStyle(element).caretColor),
