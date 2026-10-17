@@ -728,7 +728,11 @@ test('replacements keep their enabled setting only while their access is unchang
     { version: '2.0.0', description: 'Updated fixture' },
     { version: '3.0.0', network: { origins: ['https://example.com'] } },
     { version: '4.0.0', network: { origins: ['https://example.com'] } },
-    { version: '5.0.0', network: { origins: ['https://example.com'] }, capabilities: [] },
+    {
+      version: '5.0.0',
+      network: { origins: ['https://example.com'] },
+      capabilities: [],
+    },
   ]) {
     await f.write(packageFiles('one', 'one', fields))
     await f.prepare()
