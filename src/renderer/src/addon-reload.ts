@@ -126,11 +126,31 @@ export async function reloadAddons(
 
 const frame = () => new Promise(requestAnimationFrame)
 
+/** Text length from the start of `root` to a page position, stable across a rebuilt editor. */
+const textOffset = (root: Element, node: Node, offset: number) => {
+  const range = document.createRange()
+  range.setStart(root, 0)
+  range.setEnd(node, offset)
+  return range.toString().length
+}
+const textPoint = (root: Element, offset: number): [Node, number] => {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  let remaining = offset
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const length = node.textContent?.length ?? 0
+    if (remaining <= length) return [node, remaining]
+    remaining -= length
+  }
+  return [root, root.childNodes.length]
+}
+const moves = /^(?:Arrow|Home$|End$|Page)/
+
 /**
  * Capture the active editor's selection and focus; the returned function puts
  * them back once the editor current then has loaded the document, waiting a
- * few frames for a rebuilt editor. A selection the user moved meanwhile, or
- * an edit, wins over the captured one.
+ * few frames for a rebuilt editor. A selection the user picks meanwhile is
+ * read from the page when they pick it and wins, also when the editor is
+ * rebuilt afterwards; editor notifications and their order are not trusted.
  */
 function keepEditorState(activeView: () => ViewTarget | null) {
   const view = activeView()
@@ -146,20 +166,40 @@ function keepEditorState(activeView: () => ViewTarget | null) {
   }
   const active = document.activeElement
   const focused = active instanceof HTMLElement && active.isContentEditable
-  const kind = start.value.editor === 'rich' ? '.ProseMirror' : '.cm-content'
-  let last = start.value
-  let moved = false
-  const unsubscribe = editorViewRegistry.subscribe(() => {
-    const current = read()
-    if (!current?.ok) return
-    // A change within one editor instance is the user's; a rebuilt editor starts over.
+  const surface = `.editor-panes :is(.rich-pane, .source-pane):not([inert]) ${start.value.editor === 'rich' ? '.ProseMirror' : '.cm-content'}`
+  let chosen: { root: Element; anchor: number; focus: number } | undefined
+  const choose = (event: Event) => {
     if (
-      current.value.editorGeneration === last.editorGeneration &&
-      (current.value.anchor !== last.anchor || current.value.head !== last.head)
+      event instanceof KeyboardEvent &&
+      !moves.test(event.key) &&
+      !(event.key === 'a' && (event.metaKey || event.ctrlKey))
     )
-      moved = true
-    last = current.value
-  })
+      return
+    const root =
+      event.target instanceof Element
+        ? event.target.closest('.ProseMirror, .cm-content')
+        : null
+    const selection = getSelection()
+    if (
+      !root?.matches(surface) ||
+      !selection?.anchorNode ||
+      !selection.focusNode ||
+      !root.contains(selection.anchorNode) ||
+      !root.contains(selection.focusNode)
+    )
+      return
+    chosen = {
+      root,
+      anchor: textOffset(root, selection.anchorNode, selection.anchorOffset),
+      focus: textOffset(root, selection.focusNode, selection.focusOffset),
+    }
+  }
+  for (const type of ['pointerup', 'keyup'])
+    window.addEventListener(type, choose, true)
+  const focus = (root: HTMLElement | null) => {
+    if (focused && document.activeElement === document.body)
+      root?.focus({ preventScroll: true })
+  }
   return async () => {
     // Let the restarted configuration render, including an editor it rebuilds.
     await frame()
@@ -169,9 +209,30 @@ function keepEditorState(activeView: () => ViewTarget | null) {
       await frame()
       current = read()
     }
-    unsubscribe()
+    for (const type of ['pointerup', 'keyup'])
+      window.removeEventListener(type, choose, true)
+    if (chosen) {
+      // The user's choice stands; a rebuilt editor gets the same text range back.
+      if (chosen.root.isConnected) return focus(document.querySelector(surface))
+      const needed = Math.max(chosen.anchor, chosen.focus)
+      let root = document.querySelector<HTMLElement>(surface)
+      for (
+        let attempt = 0;
+        (root?.textContent?.length ?? 0) < needed && attempt < 120;
+        attempt++
+      ) {
+        await frame()
+        root = document.querySelector<HTMLElement>(surface)
+      }
+      if (!root) return
+      focus(root)
+      getSelection()?.setBaseAndExtent(
+        ...textPoint(root, chosen.anchor),
+        ...textPoint(root, chosen.focus),
+      )
+      return
+    }
     if (
-      !moved &&
       current?.ok &&
       current.value.editor === start.value.editor &&
       current.value.contentVersion === start.value.contentVersion
@@ -181,11 +242,6 @@ function keepEditorState(activeView: () => ViewTarget | null) {
         anchor: start.value.anchor,
         head: start.value.head,
       })
-    if (focused && document.activeElement === document.body)
-      document
-        .querySelector<HTMLElement>(
-          `.editor-panes :is(.rich-pane, .source-pane):not([inert]) ${kind}`,
-        )
-        ?.focus({ preventScroll: true })
+    focus(document.querySelector(surface))
   }
 }

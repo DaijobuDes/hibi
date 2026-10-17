@@ -751,14 +751,17 @@ test('editing stays read-only while an editor extension reloads and keeps a sele
     manifest('slow-consumer', 'Slow consumer', {
       startup: 'background',
       requires: { addons: [{ id: 'frontmatter' }] },
+      capabilities: undefined,
     }),
     {
+      // The restarted consumer adds a syntax flavor, so the editor rebuilds after the user's choice.
       'index.js': `export default () => ({
-        async start() {
+        async start(context) {
           window.consumerStarts = (window.consumerStarts || 0) + 1;
           if (window.holdConsumer) {
             window.holdConsumer = false;
             await new Promise((resolve) => { window.releaseConsumer = resolve; });
+            context.editor.registerFlavor({ id: 'late', name: 'Late', kind: 'syntax', description: 'Rebuilds the editor', detect: () => false });
           }
         },
       });`,
@@ -811,14 +814,25 @@ test('editing stays read-only while an editor extension reloads and keeps a sele
   const moved = await page.evaluate(() => getSelection().toString())
   await page.keyboard.type('xyz')
   assert.equal(await markdown(), before)
-  await page.evaluate(() => window.releaseConsumer())
+  await page.evaluate(() => {
+    document.querySelector('.ProseMirror').dataset.chosenIn = ''
+    window.releaseConsumer()
+  })
   await page.waitForFunction(
     () =>
       document
         .querySelector('[role="textbox"][aria-label="Document editor"]')
         ?.getAttribute('aria-readonly') === 'false',
   )
-  assert.equal(await page.evaluate(() => getSelection().toString()), moved)
+  assert.equal(
+    await page.locator('.ProseMirror[data-chosen-in]').count(),
+    0,
+    'the editor rebuilt after the selection was chosen',
+  )
+  await page.waitForFunction(
+    (moved) => getSelection().toString() === moved,
+    moved,
+  )
   assert.equal(await markdown(), before)
   await page.keyboard.press('End')
   await page.keyboard.type('!')
