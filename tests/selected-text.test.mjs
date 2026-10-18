@@ -132,6 +132,34 @@ test('revocation and clear invalidate outstanding grants', async (t) => {
   failure(await service.read(target, 'demo', next))
 })
 
+test('pending picker rejects owner, session, and epoch changes even when cancelled', async (t) => {
+  const { file } = await fixture(t)
+  for (const action of ['revoke', 'clear', 'restart', 'session']) {
+    for (const selection of [file, null]) {
+      const entered = deferred(),
+        release = deferred()
+      const { service, owners } = serviceFor(file, {
+        selectFile: async () => {
+          entered.resolve()
+          await release.promise
+          return selection
+        },
+      })
+      const target = window()
+      const pending = service.select(target, 'demo')
+      await entered.promise
+      if (action === 'revoke') service.revokeAddon('demo')
+      if (action === 'clear') service.clear()
+      if (action === 'restart')
+        owners.set('demo', { addonId: 'demo', activationGeneration: 2 })
+      if (action === 'session') target.webContents = window().webContents
+      release.resolve()
+      failure(await pending, 'stale')
+      service.clear()
+    }
+  }
+})
+
 test('disabling during picker or file open cannot publish a grant', async (t) => {
   const { file } = await fixture(t)
   const pickerStarted = deferred()
@@ -176,10 +204,17 @@ test('disabling during picker or file open cannot publish a grant', async (t) =>
 
 test('disabling or clearing during file read prevents content delivery', async (t) => {
   const { file } = await fixture(t)
-  for (const action of ['revoke', 'clear']) {
+  for (const action of [
+    'revoke',
+    'clear',
+    'restart',
+    'session',
+    'destroy',
+    'expiry',
+  ]) {
     const readStarted = deferred()
     const releaseRead = deferred()
-    const { service, owners } = serviceFor(file, {
+    const { service, owners, advance } = serviceFor(file, {
       files: {
         lstat,
         realpath,
@@ -206,14 +241,19 @@ test('disabling or clearing during file read prevents content delivery', async (
     const token = await selectHandle(service, target)
     const pending = service.read(target, 'demo', token)
     await readStarted.promise
-    if (action === 'revoke') {
-      owners.delete('demo')
+    if (action === 'revoke') service.revokeAddon('demo')
+    if (action === 'clear') {
       service.revokeAddon('demo')
-    } else {
       service.clear()
     }
+    if (action === 'restart')
+      owners.set('demo', { addonId: 'demo', activationGeneration: 2 })
+    if (action === 'session') target.webContents = window().webContents
+    if (action === 'destroy') target.webContents.isDestroyed = () => true
+    if (action === 'expiry') advance(SELECTED_TEXT_TTL_MS)
     releaseRead.resolve()
     failure(await pending, 'stale')
+    failure(await service.read(target, 'demo', token), 'not-found')
     service.clear()
   }
 })

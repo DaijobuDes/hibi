@@ -241,6 +241,94 @@ test('cancellation during an import read delivers no bytes', async (t) => {
   service.clear()
 })
 
+test('pending import rejects owner, session, epoch, expiry, and cancellation changes', async (t) => {
+  const { input, output } = await fixture(t)
+  for (const action of [
+    'revoke',
+    'clear',
+    'restart',
+    'session',
+    'destroy',
+    'expiry',
+    'cancel',
+  ]) {
+    const entered = deferred(),
+      release = deferred()
+    const { service, owners, advance } = serviceFor(input, output, {
+      files: {
+        ...files,
+        async open(...args) {
+          const file = await open(...args)
+          return {
+            stat: (...values) => file.stat(...values),
+            close: () => file.close(),
+            async read(...values) {
+              entered.resolve()
+              await release.promise
+              return file.read(...values)
+            },
+          }
+        },
+      },
+    })
+    const target = window()
+    const handle = await importHandle(service, target)
+    const pending = service.readImport(target, 'demo', handle)
+    await entered.promise
+    if (action === 'revoke') service.revokeAddon('demo')
+    if (action === 'clear') {
+      service.revokeAddon('demo')
+      service.clear()
+    }
+    if (action === 'restart') owners.set('demo', owner('demo', 2))
+    if (action === 'session') target.webContents = window().webContents
+    if (action === 'destroy') target.isDestroyed = () => true
+    if (action === 'expiry') advance(HOST_SELECTED_IO_TTL_MS)
+    if (action === 'cancel') {
+      assert.equal((await service.cancel(target, 'demo', handle)).ok, true)
+      service.clear()
+    }
+    release.resolve()
+    expectFailure(await pending, action === 'cancel' ? 'cancelled' : 'stale')
+    expectFailure(await service.readImport(target, 'demo', handle), 'not-found')
+    service.clear()
+  }
+})
+
+test('pending import and export pickers reject late owner, session, and epoch changes', async (t) => {
+  const { input, output } = await fixture(t)
+  for (const action of ['revoke', 'clear', 'restart', 'session']) {
+    for (const mode of ['import', 'export']) {
+      const entered = deferred(),
+        release = deferred()
+      const pick = async () => {
+        entered.resolve()
+        await release.promise
+        return null
+      }
+      const { service, owners } = serviceFor(input, output, {
+        selectImport: pick,
+        selectExport: pick,
+      })
+      const target = window()
+      const pending =
+        mode === 'import'
+          ? service.selectImport(target, 'demo')
+          : service.selectExport(target, 'demo', {
+              suggestedName: 'output.bin',
+            })
+      await entered.promise
+      if (action === 'revoke') service.revokeAddon('demo')
+      if (action === 'clear') service.clear()
+      if (action === 'restart') owners.set('demo', owner('demo', 2))
+      if (action === 'session') target.webContents = window().webContents
+      release.resolve()
+      expectFailure(await pending, 'stale')
+      service.clear()
+    }
+  }
+})
+
 test('pending dialog is bounded and owner revocation discards its late selection', async (t) => {
   const { input, output } = await fixture(t)
   const entered = deferred(),
