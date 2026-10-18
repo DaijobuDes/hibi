@@ -41,6 +41,9 @@ test('typing coalesces formatting checks without delaying document changes or un
     for (const letter of 'hello') editor.commands.insertContent(letter)
     const immediate = { checks, text: editor.getText() }
     await new Promise(requestAnimationFrame)
+    const inFrame = checks
+    while (!checks) await new Promise(requestAnimationFrame)
+    await new Promise(requestAnimationFrame)
     const afterFrame = checks
     const persisted = (await window.hibi.getDocument()).markdown
     editor.commands.undo()
@@ -48,6 +51,7 @@ test('typing coalesces formatting checks without delaying document changes or un
     editor.commands.redo()
     return {
       immediate,
+      inFrame,
       afterFrame,
       visibleActions,
       persisted,
@@ -57,6 +61,8 @@ test('typing coalesces formatting checks without delaying document changes or un
   })
   assert.deepEqual(result.immediate, { checks: 0, text: 'hello' })
   assert.ok(result.visibleActions > 0)
+  // One refresh for all five transactions, after the frame that showed them.
+  assert.equal(result.inFrame, 0)
   assert.equal(result.afterFrame, result.visibleActions)
   assert.equal(result.persisted, 'hello')
   assert.equal(result.undone, '')
