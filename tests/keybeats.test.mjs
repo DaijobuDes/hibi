@@ -25,8 +25,13 @@ test('keybeats uses local audio, editor input, toolbar controls, and clean addon
   const errors = []
   page.on('pageerror', (error) => errors.push(error.message))
   const audioRequests = []
+  const audioFailures = []
   page.on('request', (request) => {
     if (request.url().includes('.mp3')) audioRequests.push(request.url())
+  })
+  page.on('requestfailed', (request) => {
+    if (request.url().includes('.mp3'))
+      audioFailures.push(request.failure()?.errorText)
   })
   assert.equal(
     await app.evaluate(({ BrowserWindow }) =>
@@ -59,7 +64,13 @@ test('keybeats uses local audio, editor input, toolbar controls, and clean addon
     navigator.mediaDevices.enumerateDevices = () =>
       new Promise((resolve) => {
         window.finishAudioPreparation = () => {
-          navigator.mediaDevices.enumerateDevices = enumerate
+          // Record when the restart's real device query starts and settles.
+          navigator.mediaDevices.enumerateDevices = () => {
+            window.audioTest.enumerate = [Math.round(performance.now())]
+            return enumerate().finally(() =>
+              window.audioTest.enumerate.push(Math.round(performance.now())),
+            )
+          }
           resolve([])
         }
       })
@@ -106,9 +117,35 @@ test('keybeats uses local audio, editor input, toolbar controls, and clean addon
   })
   assert.equal(await page.evaluate(() => window.audioTest.contexts), 0)
   assert.equal(audioRequests.length, 0)
+  const reenabled = await page.evaluate(() => Math.round(performance.now()))
   await page.locator('#addon-keybeats').click()
   await page.getByRole('tab', { name: /^keybeats$/i, exact: true }).click()
-  await page.waitForFunction(() => window.audioTest.decodes >= 12)
+  await page
+    .waitForFunction(() => window.audioTest.decodes >= 12)
+    .catch(async (error) => {
+      try {
+        console.error(
+          'keybeats restart:',
+          JSON.stringify({
+            reenabled,
+            requests: audioRequests.length,
+            failures: audioFailures.slice(0, 4),
+            errors: errors.slice(0, 4),
+            ...(await page.evaluate(async () => ({
+              now: Math.round(performance.now()),
+              audio: window.audioTest,
+              enabled: (
+                await window.hibi.getAddonStates()
+              ).find((state) => state.id === 'keybeats')?.enabled,
+              toasts: [...document.querySelectorAll('.toast-copy')]
+                .slice(0, 4)
+                .map((toast) => toast.textContent?.slice(0, 160)),
+            }))),
+          }),
+        )
+      } catch {}
+      throw error
+    })
   assert.ok(audioRequests.length >= 12 && audioRequests.length < 30)
   assert.ok(audioRequests.every((url) => url.startsWith('app://')))
   const plugin = page.getByRole('tabpanel', {

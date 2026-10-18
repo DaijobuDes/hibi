@@ -497,8 +497,23 @@ test('raw HTML stays inert and exact through rich edits, atom deletion, undo, an
   await t.test(
     'modified and superseded copies cannot restore chips',
     async () => {
+      // ProseMirror reads repeated clicks on one chip within 500 ms as double
+      // or triple clicks, which select differently, so select it directly.
+      const selectChip = (level) =>
+        rich.evaluate(
+          (element, type) => {
+            const { editor } = element
+            let chip = -1
+            editor.state.doc.descendants((node, pos) => {
+              if (chip < 0 && node.type.name === type) chip = pos
+              return chip < 0
+            })
+            editor.commands.setNodeSelection(chip)
+          },
+          `rawHtml${level === 'block' ? 'Block' : 'Inline'}`,
+        )
       for (const level of ['inline', 'block']) {
-        await rich.locator(`[data-raw-html="${level}"]`).first().click()
+        await selectChip(level)
         const before = await rich.evaluate((element) =>
           element.editor.getJSON(),
         )
@@ -512,7 +527,7 @@ test('raw HTML stays inert and exact through rich edits, atom deletion, undo, an
               element.editor.commands.setTextSelection({ from: 1, to: 3 }),
             )
             await copy()
-            await rich.locator(`[data-raw-html="${level}"]`).first().click()
+            await selectChip(level)
           }
           await paste({
             ...copied,
@@ -537,7 +552,6 @@ test('raw HTML stays inert and exact through rich edits, atom deletion, undo, an
               (await window.hibi.getDocument()).markdown === markdown,
             sourceEdited,
           )
-          await rich.locator(`[data-raw-html="${level}"]`).first().click()
         }
       }
     },
