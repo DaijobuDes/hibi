@@ -3108,14 +3108,20 @@ export function MarkdownEditor({
     const report = () => {
       const matches = getMatchHighlights(editor.state).find()
       const selection = editor.state.selection
-      setFindStatus({
-        total: matches.length,
-        current:
-          matches.findIndex(
-            (match) =>
-              match.from === selection.from && match.to === selection.to,
-          ) + 1,
-      })
+      const total = matches.length
+      const current =
+        matches.findIndex(
+          (match) => match.from === selection.from && match.to === selection.to,
+        ) + 1
+      // Keep the shown status when it is unchanged so typing does not re-render the editor.
+      setFindStatus((status) =>
+        status.total === total &&
+        status.current === current &&
+        !status.pending &&
+        !status.error
+          ? status
+          : { total, current },
+      )
     }
     editor.on('transaction', report)
     report()
