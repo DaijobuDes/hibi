@@ -121,7 +121,18 @@ test('exported footnote links survive site hydration', {
   const target = await app.evaluate(({ app, BrowserWindow }, url) => {
     const observation = {
       startedAt: performance.now(),
-      counts: { created: 0, start: 0, finish: 0, fail: 0, gone: 0, console: 0 },
+      counts: {
+        created: 0,
+        start: 0,
+        navigate: 0,
+        dom: 0,
+        finish: 0,
+        fail: 0,
+        gone: 0,
+        unresponsive: 0,
+        responsive: 0,
+        console: 0,
+      },
       events: [],
       dropped: 0,
       errors: 0,
@@ -162,6 +173,10 @@ test('exported footnote links survive site hydration', {
     })
     const contents = viewer.webContents
     contents.on('did-start-loading', () => record('start'))
+    contents.on('did-navigate', () => record('navigate'))
+    contents.on('dom-ready', () => record('dom'))
+    contents.on('unresponsive', () => record('unresponsive'))
+    contents.on('responsive', () => record('responsive'))
     contents.on('did-finish-load', () =>
       record('finish', () => [clip(contents.getURL())]),
     )
@@ -207,7 +222,7 @@ test('exported footnote links survive site hydration', {
         const [main, selected, dom, consoleMessages, pageErrors] =
           await Promise.all([
             bounded(() =>
-              app.evaluate(({ BrowserWindow }, target) => {
+              app.evaluate(({ app, BrowserWindow }, target) => {
                 const describe = (window) => {
                   try {
                     const contents = window.webContents
@@ -216,6 +231,9 @@ test('exported footnote links survive site hydration', {
                       webContentsId: contents.id,
                       url: contents.getURL().slice(0, 240),
                       loading: contents.isLoadingMainFrame(),
+                      pid: contents.getOSProcessId(),
+                      crashed: contents.isCrashed(),
+                      waiting: contents.isWaitingForResponse(),
                     }
                   } catch {
                     return { unavailable: true }
@@ -226,6 +244,17 @@ test('exported footnote links survive site hydration', {
                   intended: describe(BrowserWindow.fromId(target.windowId)),
                   windows: windows.slice(0, 8).map(describe),
                   omittedWindows: Math.max(0, windows.length - 8),
+                  // Cumulative cpu separates a busy renderer from a blocked one.
+                  processes: app
+                    .getAppMetrics()
+                    .slice(0, 12)
+                    .map(({ pid, type, creationTime, cpu }) => [
+                      pid,
+                      type,
+                      Math.round(Date.now() - creationTime),
+                      Math.round(cpu.percentCPUUsage),
+                      cpu.cumulativeCPUUsage?.toFixed(2),
+                    ]),
                   observation: globalThis.__hibiFootnoteSite ?? {
                     unavailable: true,
                   },
