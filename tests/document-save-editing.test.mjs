@@ -11,6 +11,8 @@ import {
   splitTab,
 } from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
+import { recordToasts } from './toasts.mjs'
+import { uiName } from './ui.mjs'
 
 test('typing stays available and unsaved while a save finishes', {
   timeout: 45000,
@@ -188,4 +190,75 @@ test('a save leaves other split panes read-only until it finishes', {
   )
   assert.equal(await readFile(b, 'utf8'), 'original b')
   assert.match(await readFile(a, 'utf8'), /edited/)
+})
+
+test('addon actions wait for a save to finish instead of refusing', {
+  timeout: 45000,
+}, async (t) => {
+  const profile = await mkdtemp(join(tmpdir(), 'hibi-save-addon-'))
+  const file = join(profile, 'note.md')
+  const app = await electron.launch({
+    args: [resolve('.'), `--user-data-dir=${join(profile, 'profile')}`],
+  })
+  t.after(async () => {
+    await app.evaluate(({ dialog }) => {
+      globalThis.releaseSave?.()
+      dialog.showMessageBox = async () => ({ response: 1 })
+    })
+    await app.close()
+    await rm(profile, { recursive: true, force: true })
+  })
+  const page = await app.firstWindow()
+  page.setDefaultTimeout(7000)
+  const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
+  await waitForDocumentEditor(app, page)
+  await clickMenu(app, 'Settings')
+  await page.getByRole('tab', { name: /^addon manager$/i, exact: true }).click()
+  await page.locator('#addon-typst').click()
+  await page.getByRole('button', { name: /^back to app$/i }).click()
+  await waitForDocumentEditor(app, page)
+  await app.evaluate(({ dialog }, filePath) => {
+    dialog.showSaveDialog = async () => ({ canceled: false, filePath })
+  }, file)
+  await replaceRichText(
+    page,
+    page.getByRole('textbox', { name: /document editor/i }),
+    'saved first',
+  )
+  // Main has written the file but still holds the reply, as when it records
+  // version history; the window stays busy until the reply arrives.
+  await app.evaluate(({ ipcMain }) => {
+    const save = ipcMain._invokeHandlers.get('document:save')
+    ipcMain._invokeHandlers.set('document:save', async (...args) => {
+      ipcMain._invokeHandlers.set('document:save', save)
+      const released = new Promise((resolve) => {
+        globalThis.releaseSave = resolve
+      })
+      const saved = await save(...args)
+      await released
+      return saved
+    })
+  })
+  await pressShortcut(app, `${mod}+s`)
+  await waitForAsync(page, async () => !(await window.hibi.getDocument()).dirty)
+  const stopToasts = await recordToasts(page)
+  await pressShortcut(app, `${mod}+k`)
+  const palette = page.getByRole('dialog', { name: /command palette/i })
+  await palette.getByRole('combobox').fill('new typst document')
+  await palette
+    .getByRole('option')
+    .filter({ has: page.getByText(uiName('New Typst document', true)) })
+    .first()
+    .click()
+  await palette.waitFor({ state: 'hidden' })
+  await app.evaluate(() => globalThis.releaseSave())
+  await waitForAsync(
+    page,
+    async () => (await window.hibi.getDocument()).name === 'untitled.typ',
+  )
+  assert.deepEqual(
+    (await stopToasts()).filter((toast) => /still running/i.test(toast)),
+    [],
+  )
+  assert.match(await readFile(file, 'utf8'), /saved first/)
 })
