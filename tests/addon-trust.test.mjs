@@ -9,6 +9,7 @@ import { signEnvelope, signingKey } from '../scripts/addon-signing.mjs'
 import { inventoryAddonDirectory } from '../src/main/addon-inventory.ts'
 import { addonFileHashes } from '../src/main/addon-trust-crypto.ts'
 import { electron, waitForDocumentEditor } from './electron.mjs'
+import { clickMenu } from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
 
 async function fixture(t) {
@@ -254,17 +255,23 @@ test('signed remote revocations disable installed versions, forbid enabling and 
   })
   const url = `http://127.0.0.1:${server.address().port}/revocations.json`
   let { app, page } = await f.launch(url)
+  await select(app, folder)
+  await page.evaluate(() => window.hibi.installAddon())
+  // A direct API install skips the chooser, so reload to list the package.
+  await page.reload()
+  await waitForDocumentEditor(app, page)
   await page.evaluate(() => {
     window.trustChangeCount = 0
     window.hibi.onAddonTrustChanged(() => {
       window.trustChangeCount++
     })
   })
-  await select(app, folder)
-  await page.evaluate(() => window.hibi.installAddon())
-  await page.evaluate(() =>
-    window.hibi.setAddonEnabled('revoked-fixture', true),
-  )
+  // Enable through settings so the renderer actually starts the addon.
+  await clickMenu(app, 'Settings')
+  await page.getByRole('tab', { name: /^addon manager$/i }).click()
+  const toggle = page.locator('#addon-revoked-fixture')
+  await toggle.check()
+  await page.waitForFunction(() => window.trustFixtureStarts === 1)
   assert.equal(
     (await page.evaluate(() => window.hibi.getAddonStates())).find(
       ({ id }) => id === 'revoked-fixture',
@@ -302,6 +309,12 @@ test('signed remote revocations disable installed versions, forbid enabling and 
       ),
   )
   await page.waitForFunction(() => window.trustChangeCount > 0)
+  // The trust change event stops the running renderer addon and locks its toggle.
+  await page.waitForFunction(() => window.trustFixtureStops === 1)
+  await waitForAsync(page, () => {
+    const box = document.querySelector('#addon-revoked-fixture')
+    return box && !box.checked && box.disabled
+  })
   await assert.rejects(
     page.evaluate(() =>
       window.hibi.setAddonEnabled('revoked-fixture', true, true),
