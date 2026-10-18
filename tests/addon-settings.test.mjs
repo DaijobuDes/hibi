@@ -89,12 +89,18 @@ test('compact filters reset preferences, keep addon rows stable, and install rev
     .getByRole('button', { name: 'Formats', exact: true })
     .click()
   await addons.getByRole('searchbox', { name: /filter addons/i }).fill('vim')
-  assert.equal(await addons.locator('.setting-row:visible').count(), 0)
+  assert.equal(
+    await addons.locator('.addon-list > .setting-row:visible').count(),
+    0,
+  )
   await categoryButtons
     .getByRole('button', { name: 'All', exact: true })
     .click()
   await addons.locator('#addon-vim').waitFor()
-  assert.equal(await addons.locator('.setting-row:visible').count(), 1)
+  assert.equal(
+    await addons.locator('.addon-list > .setting-row:visible').count(),
+    1,
+  )
   await addons.getByRole('searchbox', { name: /filter addons/i }).fill('')
   assert.equal(await addons.locator('#addon-frontmatter').isChecked(), true)
   const vim = addons.locator('#addon-vim')
@@ -163,9 +169,14 @@ test('compact filters reset preferences, keep addon rows stable, and install rev
     )
   }
   await addons.getByRole('searchbox', { name: /filter addons/i }).fill('vim')
-  assert.equal(await addons.locator('.setting-row:visible').count(), 1)
+  assert.equal(
+    await addons.locator('.addon-list > .setting-row:visible').count(),
+    1,
+  )
   assert.match(
-    await addons.locator('.setting-row:visible .addon-metadata').innerText(),
+    await addons
+      .locator('.addon-list > .setting-row:visible .addon-metadata')
+      .innerText(),
     /Built-in/,
   )
   await addons.locator('#addon-vim').click()
@@ -205,7 +216,9 @@ test('compact filters reset preferences, keep addon rows stable, and install rev
   await installed.waitFor()
   assert.equal(await installed.isChecked(), false)
   assert.match(
-    await addons.locator('.setting-row:visible .addon-metadata').innerText(),
+    await addons
+      .locator('.addon-list > .setting-row:visible .addon-metadata')
+      .innerText(),
     /Third-party.*Connects to: en\.wiktionary\.org, api\.datamuse\.com:8443/s,
   )
   assert.equal(await page.evaluate(() => window.urlFixtureStarted), undefined)
