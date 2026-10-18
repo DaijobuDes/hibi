@@ -13,7 +13,7 @@ import {
   waitForDocumentEditor,
 } from './electron.mjs'
 import { clickMenu } from './keyboard.mjs'
-import { waitForAsync } from './poll.mjs'
+import { APP_STATE_TIMEOUT, waitForAsync } from './poll.mjs'
 
 test('typing coalesces formatting checks without delaying document changes or undo', {
   timeout: 30000,
@@ -61,6 +61,224 @@ test('typing coalesces formatting checks without delaying document changes or un
   assert.equal(result.persisted, 'hello')
   assert.equal(result.undone, '')
   assert.equal(result.redone, 'hello')
+})
+
+test('formatting toolbar states match each action check across selections, typing and history', {
+  timeout: 60000,
+}, async (t) => {
+  const profile = await mkdtemp(join(tmpdir(), 'hibi-toolbar-states-'))
+  const file = join(profile, 'states.md')
+  await writeFile(
+    file,
+    [
+      '# Title',
+      'plain **bold** *italic* ~~strike~~ `code` [link](https://example.com) end',
+      '- one\n- two\n  - nested',
+      '1. first\n2. second',
+      '- [ ] task\n- [x] done',
+      '> quote',
+      '```js\nconst x = 1\n```',
+      '| a | b |\n| - | - |\n| cell | 2 |',
+      '',
+    ].join('\n\n'),
+  )
+  const app = await electron.launch({
+    args: [resolve('.'), `--user-data-dir=${profile}`, file],
+  })
+  t.after(async () => {
+    await app.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => ({ response: 1 })
+    })
+    await app.close()
+    await rm(profile, { recursive: true, force: true })
+  })
+  const page = await app.firstWindow()
+  await waitForDocumentEditor(app, page)
+  await page.evaluate(() => {
+    // The same capability and active checks FormattingToolbar runs for each rich action.
+    const list = (editor) =>
+      editor.isActive('taskList') ? 'taskItem' : 'listItem'
+    const actions = [
+      ['undo', (c) => c.undo()],
+      ['redo', (c) => c.redo()],
+      ['bold', (c) => c.toggleBold(), 'bold'],
+      ['italic', (c) => c.toggleItalic(), 'italic'],
+      ['strike', (c) => c.toggleStrike(), 'strike'],
+      ['inline-code', (c) => c.toggleCode(), 'code'],
+      ['subscript', (c) => c.toggleMark('subscript'), 'subscript'],
+      ['subtext', (c) => c.setNode('subtext'), 'subtext'],
+      ['paragraph', (c) => c.setParagraph(), 'paragraph'],
+      ...[1, 2, 3, 4, 5, 6].map((level) => [
+        `heading-${level}`,
+        (c) => c.toggleHeading({ level }),
+        'heading',
+        { level },
+      ]),
+      ['bullet-list', (c) => c.toggleBulletList(), 'bulletList'],
+      ['numbered-list', (c) => c.toggleOrderedList(), 'orderedList'],
+      ['checklist', (c) => c.toggleTaskList(), 'taskList'],
+      ['indent', (c, editor) => c.sinkListItem(list(editor))],
+      ['outdent', (c, editor) => c.liftListItem(list(editor))],
+      ['quote', (c) => c.toggleBlockquote(), 'blockquote'],
+      ['code-block', (c) => c.toggleCodeBlock(), 'codeBlock'],
+      ['divider', (c) => c.setHorizontalRule()],
+      ['hard-break', (c) => c.setHardBreak()],
+      ['link', (c) => c.setLink({ href: 'https://example.com' }), 'link'],
+      ['unlink', (c) => c.unsetLink()],
+      ['image', (c) => c.setImage({ src: 'image.png' })],
+      [
+        'table',
+        (c) => c.insertTable({ rows: 3, cols: 2, withHeaderRow: true }),
+      ],
+      ...[
+        ['row-before', (c) => c.addRowBefore()],
+        ['row-after', (c) => c.addRowAfter()],
+        ['row-delete', (c) => c.deleteRow()],
+        ['column-before', (c) => c.addColumnBefore()],
+        ['column-after', (c) => c.addColumnAfter()],
+        ['column-delete', (c) => c.deleteColumn()],
+        ['table-delete', (c) => c.deleteTable()],
+      ].map(([id, rich]) => [id, rich, undefined, undefined, true]),
+    ]
+    window.__toolbarStates = () => {
+      const editor = document.querySelector('.tiptap').editor
+      const inTable = editor.isActive('table')
+      const expected = {}
+      for (const [id, rich, active, attrs, table] of actions) {
+        if (table && !inTable) continue
+        let allowed
+        try {
+          allowed = rich(editor.can().chain(), editor).run()
+        } catch {
+          allowed = false
+        }
+        expected[id] = {
+          pressed: active ? String(editor.isActive(active, attrs)) : null,
+          disabled: !editor.isEditable || !allowed,
+        }
+      }
+      const actual = {}
+      for (const button of document.querySelectorAll(
+        '.editor-toolbar [data-toolbar-id^="format."]',
+      ))
+        actual[button.dataset.toolbarId.slice('format.'.length)] = {
+          pressed:
+            button.getAttribute('aria-pressed') ??
+            button.getAttribute('aria-checked'),
+          disabled: button.disabled,
+        }
+      return { expected, actual }
+    }
+  })
+  const states = () => page.evaluate(() => window.__toolbarStates())
+  const settled = async (label) => {
+    try {
+      await page.waitForFunction(
+        () => {
+          const { expected, actual } = window.__toolbarStates()
+          return JSON.stringify(actual) === JSON.stringify(expected)
+        },
+        undefined,
+        { timeout: APP_STATE_TIMEOUT },
+      )
+    } catch {
+      const { expected, actual } = await states()
+      assert.deepEqual(actual, expected, label)
+    }
+    return (await states()).actual
+  }
+  const select = (text, offset = 1, length = 0) =>
+    page.evaluate(
+      ({ text, offset, length }) => {
+        const editor = document.querySelector('.tiptap').editor
+        let from = null
+        editor.state.doc.descendants((node, position) => {
+          if (from === null && node.isText && node.text.includes(text))
+            from = position + node.text.indexOf(text) + offset
+          return from === null
+        })
+        editor.commands.setTextSelection({ from, to: from + length })
+      },
+      { text, offset, length },
+    )
+  const cases = {}
+  for (const [label, text, offset, length] of [
+    ['heading', 'Title'],
+    ['plain text', 'plain'],
+    ['bold text', 'bold'],
+    ['italic selection', 'italic', 0, 6],
+    ['mixed selection', 'plain', 0, 14],
+    ['inline code', 'code'],
+    ['link', 'link'],
+    ['first list item', 'one'],
+    ['second list item', 'two'],
+    ['nested list item', 'nested'],
+    ['numbered list', 'second'],
+    ['checklist', 'task'],
+    ['quote', 'quote'],
+    ['code block', 'const'],
+    ['table cell', 'cell'],
+  ]) {
+    await select(text, offset, length)
+    cases[label] = await settled(label)
+  }
+  await page.evaluate(() =>
+    document.querySelector('.tiptap').editor.commands.selectAll(),
+  )
+  cases['whole document'] = await settled('whole document')
+  assert.equal(cases.heading['heading-1'].pressed, 'true')
+  assert.equal(cases['bold text'].bold.pressed, 'true')
+  assert.equal(cases['plain text'].bold.pressed, 'false')
+  assert.equal(cases['code block']['code-block'].pressed, 'true')
+  assert.equal(cases['code block'].bold.disabled, true)
+  assert.equal(cases['first list item'].indent.disabled, true)
+  assert.equal(cases['second list item'].indent.disabled, false)
+  assert.equal(cases['nested list item'].outdent.disabled, false)
+  assert.equal(cases['table cell']['row-after'].disabled, false)
+  assert.equal(cases['plain text']['row-after'], undefined)
+
+  await select('end', 3)
+  await page.evaluate(() =>
+    document.querySelector('.tiptap').editor.commands.toggleBold(),
+  )
+  assert.equal((await settled('stored bold mark')).bold.pressed, 'true')
+  await page.evaluate(() => document.querySelector('.tiptap').focus())
+  await page.keyboard.type(' typed')
+  const typed = await settled('after typing')
+  assert.equal(typed.undo.disabled, false)
+  assert.equal(typed.bold.pressed, 'true')
+  await page.evaluate(() =>
+    document.querySelector('.tiptap').editor.commands.undo(),
+  )
+  assert.equal((await settled('after undo')).redo.disabled, false)
+  await page.evaluate(() =>
+    document.querySelector('.tiptap').editor.commands.redo(),
+  )
+  assert.equal((await settled('after redo')).redo.disabled, true)
+
+  await select('plain')
+  assert.equal((await settled('before toolbar click')).bold.pressed, 'false')
+  // A click before the toolbar refreshes still formats the live selection.
+  const shown = await page.evaluate(() => {
+    const editor = document.querySelector('.tiptap').editor
+    let from = null
+    editor.state.doc.descendants((node, position) => {
+      if (from === null && node.isText && node.text === 'bold') from = position
+      return from === null
+    })
+    editor.commands.setTextSelection({ from, to: from + 4 })
+    const button = document.querySelector(
+      '.editor-toolbar [data-toolbar-id="format.bold"]',
+    )
+    const pressed = button.getAttribute('aria-pressed')
+    button.click()
+    return pressed
+  })
+  assert.equal(shown, 'false')
+  await waitForAsync(page, async () =>
+    (await window.hibi.getDocument()).markdown.includes('plain bold *italic*'),
+  )
+  assert.equal((await settled('after toolbar click')).bold.pressed, 'false')
 })
 
 test('blank paragraphs and typed spaces survive tab switches without nonbreaking spaces', {
