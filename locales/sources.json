@@ -271,6 +271,9 @@
   "168511d24d9e": [
     "src/main/index.ts"
   ],
+  "bca93e89ae64": [
+    "src/renderer/src/AddonSettings.tsx"
+  ],
   "3b63ed958363": [
     "src/renderer/src/AddonHotkeySettings.tsx"
   ],
@@ -606,6 +609,9 @@
   ],
   "4dd68fc697c5": [
     "src/renderer/src/UpdateSettings.tsx"
+  ],
+  "235ba364867c": [
+    "src/renderer/src/AddonSettings.tsx"
   ],
   "f26f3275e735": [
     "src/renderer/src/UpdateSettings.tsx"
@@ -2541,6 +2547,9 @@
   "cc05d3346ee5": [
     "src/main/workspace.ts"
   ],
+  "3e1b6a32663d": [
+    "src/renderer/src/AddonSettings.tsx"
+  ],
   "a0b88bf9965c": [
     "src/addons/quick-note/CaptureWindow.tsx"
   ],
@@ -2555,6 +2564,9 @@
   ],
   "a08c88d1a75f": [
     "src/addons/quick-note/CaptureWindow.tsx"
+  ],
+  "163812ca2a6d": [
+    "src/renderer/src/AddonSettings.tsx"
   ],
   "9ba584a1febb": [
     "src/main/workspace-actions.ts"
@@ -2817,6 +2829,9 @@
   "f376d0e9a6a6": [
     "src/renderer/src/AddonInstallChooser.tsx"
   ],
+  "f200595370c1": [
+    "src/renderer/src/AddonSettings.tsx"
+  ],
   "100436457fde": [
     "src/shared/hotkeys.ts"
   ],
@@ -3049,6 +3064,9 @@
   ],
   "965a8cfa61e5": [
     "src/renderer/src/addon-views.ts"
+  ],
+  "97b096319f1c": [
+    "src/renderer/src/AddonInstallChooser.tsx"
   ],
   "5ce161d0f70e": [
     "src/shared/source-metrics.ts"
@@ -3791,6 +3809,9 @@
     "src/renderer/src/AddonSidebar.tsx",
     "src/renderer/src/OutlineSidebar.tsx",
     "src/site/main.tsx"
+  ],
+  "b67f932133c6": [
+    "src/renderer/src/AddonSettings.tsx"
   ],
   "6d3141557161": [
     "src/renderer/src/WorkspaceSettings.tsx"
@@ -4621,6 +4642,9 @@
   "740355addffc": [
     "src/renderer/src/AddonInstallChooser.tsx"
   ],
+  "27ef5bff72b0": [
+    "src/renderer/src/AddonInstallChooser.tsx"
+  ],
   "af6cace30a4a": [
     "src/renderer/src/rich-source-session.ts"
   ],
@@ -4812,6 +4836,9 @@
   "dbdebc5676f2": [
     "src/addons/ui-preview/index.tsx"
   ],
+  "8f6fb4eb7f42": [
+    "src/renderer/src/AddonSettings.tsx"
+  ],
   "d605d205a5bf": [
     "src/addons/graph/hibi-addon.json"
   ],
@@ -4996,6 +5023,9 @@
   ],
   "fe91f2d003c3": [
     "src/renderer/src/Titlebar.tsx"
+  ],
+  "465e9a60e6bf": [
+    "src/renderer/src/AddonInstallChooser.tsx"
   ],
   "28d03596d24e": [
     "src/renderer/src/Introduction.tsx"
@@ -6286,6 +6316,9 @@
   "1c59a85f5059": [
     "src/addons/quick-note/native.ts"
   ],
+  "1d9086a13ae7": [
+    "src/renderer/src/AddonInstallChooser.tsx"
+  ],
   "2b065c7c9ce4": [
     "src/renderer/src/Introduction.tsx"
   ],
@@ -6529,6 +6562,13 @@
   ],
   "59d881eadded": [
     "src/renderer/src/RecoveryScreen.tsx"
+  ],
+  "9daf8e05c684": [
+    "src/renderer/src/AddonInstallChooser.tsx",
+    "src/renderer/src/AddonSettings.tsx"
+  ],
+  "6a977a979919": [
+    "src/renderer/src/AddonSettings.tsx"
   ],
   "033f86f90810": [
     "src/addons/git/Panel.tsx"

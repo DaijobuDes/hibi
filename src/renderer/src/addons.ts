@@ -781,6 +781,30 @@ export function useAddons(
         setLoaded(true)
       })
   }, [toastService.api.show])
+  // A revocation disables installed addons while Hibi runs; changes before startup data loads refresh after it.
+  const [trustChanges, setTrustChanges] = useState(0)
+  useEffect(
+    () => window.hibi.onAddonTrustChanged(() => setTrustChanges((n) => n + 1)),
+    [],
+  )
+  useEffect(() => {
+    if (!loaded || !trustChanges) return
+    let active = true
+    void Promise.all([
+      window.hibi.getAddonStates(),
+      window.hibi.getInstalledAddons(),
+    ]).then(
+      ([states, packages]) => {
+        if (!active) return
+        setStates(states)
+        addonRegistry.hydrate(packages)
+      },
+      (error) => latest.current.error(error),
+    )
+    return () => {
+      active = false
+    }
+  }, [loaded, trustChanges])
   useEffect(() => {
     for (const [id, request] of activation)
       if (!available.has(id))

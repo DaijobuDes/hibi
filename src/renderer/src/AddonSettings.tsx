@@ -3,6 +3,8 @@ import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import type { Addon, AddonManifest, AddonState } from '../../addons/api'
 import { addonDefaultEnabled } from '../../shared/addon-defaults'
 import { addonPackageUrl } from '../../shared/addon-package'
+import type { AddonTrustSettings } from '../../shared/addon-trust'
+import { errorMessage } from '../../shared/errors'
 import { sentenceCase } from '../../shared/ui-case'
 import {
   Button,
@@ -50,6 +52,11 @@ export function AddonMetadata({ manifest }: { manifest: AddonManifest }) {
       <span>{sentenceCase(addonRegistry.origin(manifest.id))}</span>
       <span>{sentenceCase(manifest.kind ?? 'Extension')}</span>
       <span>v{manifest.version}</span>
+      {addonRegistry.trust(manifest.id) === 'unsigned' && (
+        <span data-tooltip="Hibi cannot confirm who made this addon.">
+          Unsigned
+        </span>
+      )}
       {!!manifest.network?.origins.length && (
         <span>
           {`Connects to: ${manifest.network.origins.map((origin) => new URL(origin).host).join(', ')}`}
@@ -139,7 +146,9 @@ export function AddonSettings({
   const toasts = useToasts()
   const enabled = (id: string) =>
     states.some((state) => state.id === id && state.enabled)
+  // Revoked addons stay disabled, so Reset all leaves them alone.
   const defaultEnabled = (manifest: AddonManifest) =>
+    !addonRegistry.revoked(manifest.id) &&
     addonDefaultEnabled(
       manifest.id,
       manifest.defaultEnabled,
@@ -255,6 +264,7 @@ export function AddonSettings({
             (id) => addons.find((addon) => addon.manifest.id === id)?.manifest,
           )
           const retry = blockedBy.every(enabled)
+          const revoked = addonRegistry.revoked(manifest.id)
           return (
             <SettingRow
               key={manifest.id}
@@ -283,26 +293,33 @@ export function AddonSettings({
                       </span>
                     )
                   })}
+                  {revoked && (
+                    <span className="addon-revoked">
+                      {`Hibi disabled this addon because it was revoked: ${revoked.reason}`}
+                    </span>
+                  )}
                 </>
               }
             >
               <div className="addon-actions">
-                {blockedBy.length > 0 && providers.every(Boolean) && (
-                  <Button
-                    disabled={busy}
-                    onClick={() =>
-                      void run(() => setEnabled(manifest.id, true))
-                    }
-                  >
-                    {blockedBy.length === 1
-                      ? retry
-                        ? `Retry ${providers[0]?.name}`
-                        : `Enable ${providers[0]?.name} too`
-                      : retry
-                        ? 'Retry required addons'
-                        : 'Enable required addons'}
-                  </Button>
-                )}
+                {!revoked &&
+                  blockedBy.length > 0 &&
+                  providers.every(Boolean) && (
+                    <Button
+                      disabled={busy}
+                      onClick={() =>
+                        void run(() => setEnabled(manifest.id, true))
+                      }
+                    >
+                      {blockedBy.length === 1
+                        ? retry
+                          ? `Retry ${providers[0]?.name}`
+                          : `Enable ${providers[0]?.name} too`
+                        : retry
+                          ? 'Retry required addons'
+                          : 'Enable required addons'}
+                    </Button>
+                  )}
                 {addonRegistry.isInstalled(manifest.id) && (
                   <Button
                     disabled={busy}
@@ -323,8 +340,8 @@ export function AddonSettings({
                     id={`addon-${manifest.id}`}
                     aria-label={manifest.name}
                     aria-describedby={`addon-${manifest.id}-description`}
-                    disabled={busy}
-                    checked={enabled(manifest.id)}
+                    disabled={busy || !!revoked}
+                    checked={!revoked && enabled(manifest.id)}
                     onChange={(event) => {
                       restoreFocus.current = event.target.id
                       const next = event.target.checked
@@ -345,6 +362,89 @@ export function AddonSettings({
           />
         </Panel>
       )}
+      <AddonSecuritySettings />
+    </>
+  )
+}
+
+function AddonSecuritySettings() {
+  const dialogs = useDialogs()
+  const [settings, setSettings] = useState<AddonTrustSettings | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  useEffect(() => {
+    let active = true
+    void window.hibi.getAddonTrustSettings().then(
+      (next) => {
+        if (active) setSettings(next)
+      },
+      (error) => {
+        if (active) setError(errorMessage(error))
+      },
+    )
+    return () => {
+      active = false
+    }
+  }, [])
+  async function save(changes: Partial<AddonTrustSettings>) {
+    setSaving(true)
+    setError('')
+    try {
+      setSettings(await window.hibi.setAddonTrustSettings(changes))
+    } catch (error) {
+      setError(errorMessage(error))
+    } finally {
+      setSaving(false)
+    }
+  }
+  async function allowUnsigned(allowUnsigned: boolean) {
+    if (
+      allowUnsigned &&
+      !(await dialogs.confirm({
+        title: 'Allow unsigned addons',
+        description:
+          'Unsigned addons can run code with access to your documents, and Hibi cannot confirm who made them. Only install unsigned addons from people you trust.',
+        confirmLabel: 'Allow unsigned addons',
+        destructive: true,
+      }))
+    )
+      return
+    await save({ allowUnsigned })
+  }
+  return (
+    <>
+      <h2>Security</h2>
+      <div className="settings-group">
+        <SettingRow
+          id="allow-unsigned-addons"
+          label="Allow unsigned addons"
+          description="Install addons that Hibi has not signed. Unsigned addons you already installed keep working."
+        >
+          <Toggle
+            id="allow-unsigned-addons"
+            aria-describedby="allow-unsigned-addons-description"
+            checked={settings?.allowUnsigned ?? false}
+            disabled={!settings || saving}
+            onChange={(event) => void allowUnsigned(event.target.checked)}
+          />
+        </SettingRow>
+        <SettingRow
+          id="check-revoked-addons"
+          label="Check for revoked addons"
+          description="Once a day, Hibi downloads a small signed list of revoked addons and disables any you have installed. It sends no information about your addons. Turning this off stops the download, but addons already on the list stay disabled."
+        >
+          <Toggle
+            id="check-revoked-addons"
+            aria-describedby="check-revoked-addons-description"
+            checked={settings?.checkRevocations ?? true}
+            disabled={!settings || saving}
+            onChange={(event) =>
+              void save({ checkRevocations: event.target.checked })
+            }
+          />
+        </SettingRow>
+        {error && <p role="alert">{error}</p>}
+      </div>
     </>
   )
 }

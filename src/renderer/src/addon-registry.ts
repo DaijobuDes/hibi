@@ -140,6 +140,8 @@ const installed = new Map<
     source: 'local' | 'third-party'
     styles: readonly string[]
     themes: readonly ColorschemeInput[]
+    trust: InstalledAddon['trust']
+    revoked: InstalledAddon['revoked']
   }
 >()
 const listeners = new Set<() => void>()
@@ -194,6 +196,10 @@ export const addonRegistry = {
   },
   origin: (id: string) =>
     installed.get(id)?.source ?? origins.get(id) ?? 'local',
+  /** Installed addons only; installs that predate signing count as unsigned. */
+  trust: (id: string) =>
+    installed.has(id) ? (installed.get(id)?.trust ?? 'unsigned') : undefined,
+  revoked: (id: string) => installed.get(id)?.revoked,
   /** Returns the ids whose installed files were replaced. */
   hydrate(packages: readonly InstalledAddon[]) {
     const ids = new Set(packages.map((item) => item.manifest.id))
@@ -231,6 +237,8 @@ export const addonRegistry = {
         source: item.source ?? 'local',
         styles: item.styles ?? [],
         themes: item.themes,
+        trust: item.trust,
+        revoked: item.revoked,
       })
     }
     publish()
