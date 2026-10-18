@@ -533,6 +533,7 @@ dialog.showMessageBox = (...args) => {
   await until(() => seenEndpoints.length > 0, 'dev app starts', 60000)
   phase('connect first devtools')
   browser = await chromium.connectOverCDP(seenEndpoints[0])
+  await until(() => browser.contexts()[0]?.pages()[0], 'dev app opens a page')
   let page = browser.contexts()[0].pages()[0]
   page.setDefaultTimeout(30000)
   phase('initial renderer readiness')
