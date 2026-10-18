@@ -74,7 +74,7 @@ Click anywhere on an addon row outside its controls to read its documentation. O
 
 1. Choose **Hibi garden** to browse [available addons](https://hibi.garden/addons).
 2. Choose **Install from URL** and enter a public HTTPS Git repository or addon ZIP URL. For a local package, run **Install addon…** from the command palette.
-3. Review the package details and trust notice. A single package uses the usual install confirmation. If Hibi finds several packages in nested folders, it lists them together with all installable packages selected. Invalid or blocked packages show a reason and cannot be selected.
+3. Review the package details and trust notice. Each package shows **Signed by Hibi** or **Unsigned**; see [signed addons](#signed-addons). A single package uses the usual install confirmation. If Hibi finds several packages in nested folders, it lists them together with all installable packages selected. Invalid or blocked packages show a reason and cannot be selected.
 4. In the review list, uncheck packages you do not want, then choose **Install selected**. Use `Tab` to move between controls and `Space` to toggle a checkbox.
 5. For several packages, review each row's result and close the dialog. Enable successfully installed addons when you are ready to use them.
 
@@ -83,6 +83,14 @@ Required providers install before addons that depend on them. Required providers
 Only install addons you trust. Enabled addons can access your documents and workspace. Git installation requires Git on your computer; private repositories and packages that need a build are unsupported.
 
 **Open addons folder** shows installed packages. A replacement that asks for the same access as the installed version keeps its enabled setting and restarts with the new files; your open documents stay as they are. If it asks for different access, such as new network origins, it stays disabled until you enable it. Removing a package moves it to the system trash.
+
+### Signed addons
+
+**Signed by Hibi** means Hibi signed the package and its files have not changed since. An **Unsigned** package has no signature, so Hibi cannot confirm who made it. A package whose signature does not match its files cannot be installed.
+
+Hibi installs only signed addons by default. To install an unsigned addon, turn on **Allow unsigned addons** under **Settings → Addon Manager → Security**, confirm, and then install the addon again. Unsigned addons can run code with access to your documents, so only allow them from people you trust. Addons you already installed keep working when the setting is off, and unsigned ones show **Unsigned** in their row.
+
+**Check for revoked addons** is on by default. Once a day, Hibi downloads a small signed list of addons that should no longer run; it sends no information about your addons. Hibi disables an installed addon that appears on the list, explains why in its row, and keeps it disabled while it stays on the list. Revoked versions cannot be installed. Turning the setting off stops the daily download, but addons already on the list stay disabled. If an addon is later removed from the list, it stays disabled until you enable it.
 
 ## Notifications
 
