@@ -11,6 +11,8 @@ import type {
   CredentialStatus,
 } from '../shared/host-credentials'
 
+import { retryRename } from './atomic-rename.ts'
+
 const MAX_ACTIVE = 4
 const MAX_PER_OWNER = 2
 const MAX_KEYS = 32
@@ -199,6 +201,7 @@ async function writeEntries(
   onCommitted: () => void,
   renameFile: typeof rename,
   onCommitPending: (pending: Promise<void>) => void,
+  signal: AbortSignal,
 ): Promise<void> {
   const bytes = Buffer.from(JSON.stringify({ version: 1, entries }), 'utf8')
   if (bytes.length > MAX_FILE_BYTES) return fail('limit-exceeded')
@@ -220,8 +223,14 @@ async function writeEntries(
       await file.close()
     }
     await beforeCommit()
-    commitGuard()
-    const commit = renameFile(temp, path).then(onCommitted)
+    const commit = retryRename(
+      () => {
+        commitGuard()
+        return renameFile(temp, path)
+      },
+      beforeCommit,
+      signal,
+    ).then(onCommitted)
     onCommitPending(commit)
     await commit
   } finally {
@@ -577,6 +586,7 @@ export class HostCredentials {
         (pending) => {
           active.commitPending = pending
         },
+        active.controller.signal,
       )
     } finally {
       active.commitPending = undefined
