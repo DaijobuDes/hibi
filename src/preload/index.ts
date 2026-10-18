@@ -348,8 +348,9 @@ if (process.isMainFrame) {
     onAddonTrustChanged: (callback) => {
       const listener = () => callback()
       ipcRenderer.on(ADDON_TRUST_CHANNELS.changed, listener)
-      return () =>
+      return () => {
         ipcRenderer.removeListener(ADDON_TRUST_CHANNELS.changed, listener)
+      }
     },
     getInstalledAddonResources: (id) =>
       ipcRenderer.invoke(SIDELOAD_CHANNELS.resources, id),
