@@ -41,7 +41,8 @@ test('pinned Electron exposes exact utility identity and passive JS observation 
       __HIBI_DIAGNOSTIC_PROFILE__: '"debug"',
     },
   })
-  const app = await electron.launch({ args: [root] })
+  // Measure only the application's own listener policy.
+  const app = await electron.launch({ args: [root], diagnostics: false })
   t.after(async () => {
     await app.close().catch(() => {})
     await rm(root, { recursive: true, force: true })
@@ -105,7 +106,7 @@ test('pinned Electron exposes exact utility identity and passive JS observation 
   const closed = once(crashed, 'close')
   stopElectronTree(crashed)
   await closed
-  const restarted = await electron.launch({ args: [root] })
+  const restarted = await electron.launch({ args: [root], diagnostics: false })
   try {
     await restarted.firstWindow()
     const previous = await restarted.evaluate(() =>
