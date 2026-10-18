@@ -74,14 +74,9 @@ function clearCache(): void {
   requestedSyntaxFingerprint = ''
 }
 
-const subscription = subscribeWorkspaceChanges((event) => {
+subscribeWorkspaceChanges((event) => {
   if (event.kind === 'resync') clearCache()
 })
-
-export function disposeWorkspaceReferenceQueries(): void {
-  subscription.dispose()
-  clearCache()
-}
 
 export interface OpenDocumentVersion {
   readonly file: string
