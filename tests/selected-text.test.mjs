@@ -132,6 +132,96 @@ test('revocation and clear invalidate outstanding grants', async (t) => {
   failure(await service.read(target, 'demo', next))
 })
 
+test('pending picker rejects owner, session, and epoch changes even when cancelled', async (t) => {
+  const { file } = await fixture(t)
+  for (const action of ['revoke', 'clear', 'restart', 'session']) {
+    for (const selection of [file, null]) {
+      const entered = deferred(),
+        release = deferred()
+      const { service, owners } = serviceFor(file, {
+        selectFile: async () => {
+          entered.resolve()
+          await release.promise
+          return selection
+        },
+      })
+      const target = window()
+      const pending = service.select(target, 'demo')
+      await entered.promise
+      if (action === 'revoke') service.revokeAddon('demo')
+      if (action === 'clear') service.clear()
+      if (action === 'restart')
+        owners.set('demo', { addonId: 'demo', activationGeneration: 2 })
+      if (action === 'session') target.webContents = window().webContents
+      release.resolve()
+      failure(await pending, 'stale')
+      service.clear()
+    }
+  }
+})
+
+test('destroyed windows and sessions are disposed before selecting text', async (t) => {
+  const { file } = await fixture(t)
+  let dialogs = 0
+  const { service } = serviceFor(file, {
+    selectFile: async () => {
+      dialogs++
+      return file
+    },
+  })
+  for (const kind of ['window', 'session']) {
+    const target = window()
+    if (kind === 'window') target.isDestroyed = () => true
+    else target.webContents.isDestroyed = () => true
+    failure(await service.select(target, 'demo'), 'disposed')
+  }
+  assert.equal(dialogs, 0)
+  service.clear()
+})
+
+for (const mode of ['selection', 'delivery'])
+  test(`final selected-text ${mode} check rejects revocation`, async (t) => {
+    const { file } = await fixture(t)
+    const entered = deferred(),
+      release = deferred()
+    let armed = mode === 'selection',
+      inspections = 0
+    const { service } = serviceFor(file, {
+      files: {
+        lstat,
+        open,
+        async realpath(...args) {
+          const path = await realpath(...args)
+          if (armed && ++inspections === 2) {
+            entered.resolve()
+            await release.promise
+          }
+          return path
+        },
+      },
+    })
+    const target = window()
+    const handle =
+      mode === 'delivery' ? await selectHandle(service, target) : null
+    armed = true
+    const pending =
+      mode === 'selection'
+        ? service.select(target, 'demo')
+        : service.read(target, 'demo', handle)
+    await entered.promise
+    service.revokeAddon('demo')
+    release.resolve()
+    try {
+      const result = await pending
+      failure(result, 'stale')
+      assert.equal(result.value, undefined)
+      if (handle)
+        failure(await service.read(target, 'demo', handle), 'not-found')
+    } finally {
+      service.clear()
+    }
+  })
+
 test('disabling during picker or file open cannot publish a grant', async (t) => {
   const { file } = await fixture(t)
   const pickerStarted = deferred()
@@ -176,10 +266,17 @@ test('disabling during picker or file open cannot publish a grant', async (t) =>
 
 test('disabling or clearing during file read prevents content delivery', async (t) => {
   const { file } = await fixture(t)
-  for (const action of ['revoke', 'clear']) {
+  for (const action of [
+    'revoke',
+    'clear',
+    'restart',
+    'session',
+    'destroy',
+    'expiry',
+  ]) {
     const readStarted = deferred()
     const releaseRead = deferred()
-    const { service, owners } = serviceFor(file, {
+    const { service, owners, advance } = serviceFor(file, {
       files: {
         lstat,
         realpath,
@@ -206,14 +303,19 @@ test('disabling or clearing during file read prevents content delivery', async (
     const token = await selectHandle(service, target)
     const pending = service.read(target, 'demo', token)
     await readStarted.promise
-    if (action === 'revoke') {
-      owners.delete('demo')
+    if (action === 'revoke') service.revokeAddon('demo')
+    if (action === 'clear') {
       service.revokeAddon('demo')
-    } else {
       service.clear()
     }
+    if (action === 'restart')
+      owners.set('demo', { addonId: 'demo', activationGeneration: 2 })
+    if (action === 'session') target.webContents = window().webContents
+    if (action === 'destroy') target.webContents.isDestroyed = () => true
+    if (action === 'expiry') advance(SELECTED_TEXT_TTL_MS)
     releaseRead.resolve()
     failure(await pending, 'stale')
+    failure(await service.read(target, 'demo', token), 'not-found')
     service.clear()
   }
 })
