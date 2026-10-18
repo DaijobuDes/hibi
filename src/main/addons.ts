@@ -32,6 +32,7 @@ import {
   updateDocument,
 } from './document'
 import { setDocumentExtensions } from './document-types'
+import { runFileDialog } from './file-operation-dialog'
 import { validateMarkdown, writeText } from './files'
 import {
   installedAddons,
@@ -676,11 +677,13 @@ export async function invokeAddon(
         !/^[a-z0-9]{1,12}$/.test(extension)
       )
         throw new Error('The addon returned an invalid export file.')
-      const result = await dialog.showSaveDialog(window, {
-        title: 'Export document',
-        defaultPath: basename(suggestedName),
-        filters: [{ name: extension, extensions: [extension] }],
-      })
+      const result = await runFileDialog(() =>
+        dialog.showSaveDialog(window, {
+          title: 'Export document',
+          defaultPath: basename(suggestedName),
+          filters: [{ name: extension, extensions: [extension] }],
+        }),
+      )
       if (result.canceled || !result.filePath) return null
       if (
         (await realpath(result.filePath).catch(() => result.filePath)) ===
@@ -720,11 +723,13 @@ export async function invokeAddon(
       }),
     },
     async exportHtml(html, suggestedName, pages) {
-      const result = await dialog.showSaveDialog(window, {
-        title: 'Export workspace to HTML',
-        defaultPath: basename(suggestedName),
-        filters: [{ name: 'HTML', extensions: ['html'] }],
-      })
+      const result = await runFileDialog(() =>
+        dialog.showSaveDialog(window, {
+          title: 'Export workspace to HTML',
+          defaultPath: basename(suggestedName),
+          filters: [{ name: 'HTML', extensions: ['html'] }],
+        }),
+      )
       if (result.canceled || !result.filePath) return null
       const path = result.filePath
       await writeText(path, html)

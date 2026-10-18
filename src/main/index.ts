@@ -154,6 +154,11 @@ import {
 } from './document'
 import { isDocumentName } from './document-types'
 import { externalFileArguments } from './external-files'
+import {
+  fileOperationDialogOpened,
+  fileOperationHasDialog,
+  withinFileOperation,
+} from './file-operation-dialog'
 import { GlobalShortcuts } from './global-shortcuts'
 import { listVersions, previewVersion } from './history'
 import { HostCredentials } from './host-credentials'
@@ -504,6 +509,8 @@ function resetAddonSessions(): void {
 }
 
 let fileOperation: Promise<unknown> | null = null
+const pendingFileOperations = new Set<Promise<void>>()
+let closing = false
 let quitting = false
 let recordingHotkey = false
 const globalShortcuts = new GlobalShortcuts(globalShortcut)
@@ -677,26 +684,46 @@ function storageGeneration(request: unknown): number {
   return generation
 }
 
+const fileOperationUnavailable = () =>
+  new Error(
+    'Another file operation is in progress. Wait for it to finish, then try again.',
+  )
+
 function runFileOperation<T>(
   event: IpcMainInvokeEvent,
   operation: (window: BrowserWindow) => Promise<T>,
 ) {
-  return lockFileOperation(trustedWindow(event), operation)
+  if (closing) throw fileOperationUnavailable()
+  return lockFileOperation(trustedWindow(event), () => {
+    if (closing) throw fileOperationUnavailable()
+    return operation(trustedWindow(event))
+  })
 }
 
-function lockFileOperation<T>(
+async function lockFileOperation<T>(
   window: BrowserWindow,
   operation: (window: BrowserWindow) => Promise<T>,
 ) {
-  if (fileOperation)
-    throw new Error(
-      'Another file operation is in progress. Wait for it to finish, then try again.',
-    )
-  const pending = operation(window).finally(() => {
-    fileOperation = null
+  let settle!: () => void
+  const completed = new Promise<void>((resolve) => {
+    settle = resolve
   })
-  fileOperation = pending
-  return pending
+  pendingFileOperations.add(completed)
+  try {
+    while (fileOperation) {
+      if (fileOperationHasDialog()) throw fileOperationUnavailable()
+      const running = fileOperation.catch(() => undefined)
+      await Promise.race([running, fileOperationDialogOpened() ?? running])
+    }
+    const pending = withinFileOperation(() => operation(window)).finally(() => {
+      fileOperation = null
+    })
+    fileOperation = pending
+    return await pending
+  } finally {
+    pendingFileOperations.delete(completed)
+    settle()
+  }
 }
 
 async function readAfterFileOperation<T>(
@@ -750,6 +777,7 @@ let windowSetupReady = false
 const appendDocumentChange = createJournalReceiver(getDocumentSourceFor)
 function createWindow(): void {
   if (!windowSetupReady) return
+  closing = false
   startupMark('window-start')
   const window = new BrowserWindow({
     width: 1000,
@@ -913,9 +941,11 @@ function createWindow(): void {
       return
     }
     confirmingClose = true
+    closing = true
     void (async () => {
       await flushRenderer()
-      await fileOperation?.catch(() => undefined)
+      while (pendingFileOperations.size)
+        await Promise.all(pendingFileOperations)
       if (
         quitting &&
         background.enabled &&
@@ -951,6 +981,7 @@ function createWindow(): void {
       })
       .finally(() => {
         confirmingClose = false
+        if (!allowClose) closing = false
         if (!quitting) cancelDevRestart()
       })
   })
@@ -1624,17 +1655,13 @@ if (!app.requestSingleInstanceLock()) {
       handle(
         ADDON_CHANNELS.enable,
         (event, id: unknown, enabled: unknown, includeRequired: unknown) =>
-          // An addon window's draft read or save may hold the lock; wait instead of refusing the toggle.
-          readAfterFileOperation(event, (window) =>
-            lockFileOperation(window, () =>
-              enableAddon(id, enabled, includeRequired),
-            ),
+          runFileOperation(event, () =>
+            enableAddon(id, enabled, includeRequired),
           ),
       )
       handle(
         ADDON_CHANNELS.invoke,
         (event, id: unknown, method: unknown, input: unknown) => {
-          const window = trustedWindow(event)
           const owner =
             typeof id === 'string' && typeof method === 'string'
               ? currentAddonOwner(id)
@@ -1643,33 +1670,27 @@ if (!app.requestSingleInstanceLock()) {
             throw new Error('Enable this addon in Settings → Addons first.')
           const { tabId, revision } = getDocumentSource().snapshot().document
           const workspace = currentWorkspaceTarget()
-          return readAfterFileOperation(
-            event,
-            // Recheck the sender and target after waiting before taking action.
-            () =>
-              runFileOperation(event, async (window) => {
-                const current = getDocumentSource().snapshot().document
-                if (
-                  current.tabId !== tabId ||
-                  current.revision !== revision ||
-                  currentWorkspaceTarget() !== workspace
-                )
-                  throw new Error(
-                    'The document or workspace changed. Try the action again.',
-                  )
-                if (
-                  !isAddonActivationCurrent(
-                    owner.addonId,
-                    owner.activationGeneration,
-                  )
-                )
-                  throw new Error(
-                    'This addon was disabled. Enable it in Settings → Addons to continue.',
-                  )
-                return invokeAddon(window, id, method, input)
-              }),
-            window,
-          )
+          return runFileOperation(event, async (window) => {
+            const current = getDocumentSource().snapshot().document
+            if (
+              current.tabId !== tabId ||
+              current.revision !== revision ||
+              currentWorkspaceTarget() !== workspace
+            )
+              throw new Error(
+                'The document or workspace changed. Try the action again.',
+              )
+            if (
+              !isAddonActivationCurrent(
+                owner.addonId,
+                owner.activationGeneration,
+              )
+            )
+              throw new Error(
+                'This addon was disabled. Enable it in Settings → Addons to continue.',
+              )
+            return invokeAddon(window, id, method, input)
+          })
         },
       )
       handle(
@@ -1723,9 +1744,10 @@ if (!app.requestSingleInstanceLock()) {
         ADDON_WINDOW_CHANNELS.invoke,
         (event, method: unknown, input: unknown) => {
           const { window, addonId } = addonWindowSender(event)
-          return lockFileOperation(window, () =>
-            invokeAddon(window, addonId, method, input),
-          )
+          return lockFileOperation(window, () => {
+            addonWindowSender(event)
+            return invokeAddon(window, addonId, method, input)
+          })
         },
       )
       handle(HOTKEY_CHANNELS.get, (event) => {
@@ -2201,37 +2223,35 @@ if (!app.requestSingleInstanceLock()) {
         runFileOperation(event, openDocument),
       )
       handle(DOCUMENT_CHANNELS.external, (event) =>
-        readAfterFileOperation(event, () =>
-          runFileOperation(event, async (window) => {
-            let document = null
-            const errors: string[] = []
+        runFileOperation(event, async (window) => {
+          let document = null
+          const errors: string[] = []
+          try {
+            const hadWorkspace = Boolean(getWorkspace())
+            await openStartupWorkspace(window, externalFiles.length > 0)
+            if (!hadWorkspace && getWorkspace()) document = getDocument()
+          } catch (error) {
+            errors.push(
+              error instanceof Error
+                ? error.message
+                : 'Could not open the startup workspace.',
+            )
+          }
+          for (const path of externalFiles.splice(0)) {
             try {
-              const hadWorkspace = Boolean(getWorkspace())
-              await openStartupWorkspace(window, externalFiles.length > 0)
-              if (!hadWorkspace && getWorkspace()) document = getDocument()
+              if (!isDocumentName(path))
+                throw new Error('Unsupported document format.')
+              const opened = await loadDocument(window, path)
+              if (!opened) break
+              document = opened
             } catch (error) {
               errors.push(
-                error instanceof Error
-                  ? error.message
-                  : 'Could not open the startup workspace.',
+                `${basename(path)}: ${error instanceof Error ? error.message : 'Could not open file.'}`,
               )
             }
-            for (const path of externalFiles.splice(0)) {
-              try {
-                if (!isDocumentName(path))
-                  throw new Error('Unsupported document format.')
-                const opened = await loadDocument(window, path)
-                if (!opened) break
-                document = opened
-              } catch (error) {
-                errors.push(
-                  `${basename(path)}: ${error instanceof Error ? error.message : 'Could not open file.'}`,
-                )
-              }
-            }
-            return { document, errors }
-          }),
-        ),
+          }
+          return { document, errors }
+        }),
       )
       handle(DOCUMENT_CHANNELS.navigate, (event, direction: unknown) =>
         runFileOperation(event, (window) =>

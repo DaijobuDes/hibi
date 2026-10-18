@@ -11,6 +11,7 @@ import { basename, dirname, join, relative, sep } from 'node:path'
 import { type BrowserWindow, dialog } from 'electron'
 import type { Importer, ImportRequest, ImportResult } from '../shared/imports'
 import { convertImport, getImporters } from './addons'
+import { runFileDialog } from './file-operation-dialog'
 import {
   readImportFolder,
   readImportZip,
@@ -48,13 +49,15 @@ export async function importIntoWorkspace(
     throw new Error(
       'Open a Hibi workspace before importing. You can create its manifest in Settings → Workspace.',
     )
-  const selected = await dialog.showOpenDialog(window, {
-    title: `Import from ${importer.name}`,
-    properties: [request.source === 'folder' ? 'openDirectory' : 'openFile'],
-    ...(request.source === 'zip'
-      ? { filters: [{ name: 'ZIP export', extensions: ['zip'] }] }
-      : {}),
-  })
+  const selected = await runFileDialog(() =>
+    dialog.showOpenDialog(window, {
+      title: `Import from ${importer.name}`,
+      properties: [request.source === 'folder' ? 'openDirectory' : 'openFile'],
+      ...(request.source === 'zip'
+        ? { filters: [{ name: 'ZIP export', extensions: ['zip'] }] }
+        : {}),
+    }),
+  )
   if (selected.canceled || !selected.filePaths[0]) return null
   const source = await realpath(selected.filePaths[0])
   if (request.source === 'folder' && isPathInside(source, root))

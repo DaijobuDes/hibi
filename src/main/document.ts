@@ -31,6 +31,7 @@ import { HISTORY_CHANNELS } from '../shared/history'
 import { type SourceSnapshot, SourceStore } from '../shared/source-buffer'
 import { SourceMaintenance } from '../shared/source-maintenance'
 import { documentExtensions, isDocumentName } from './document-types'
+import { runFileDialog } from './file-operation-dialog'
 import {
   readMarkdown,
   validateMarkdown,
@@ -684,20 +685,22 @@ export async function saveDocument(
     content = textOf(saving)
   if (!destination || saveAs) {
     if (automatic) return null
-    const result = await dialog.showSaveDialog(window, {
-      defaultPath: destination ?? defaultPath ?? untitledName,
-      filters: [
-        {
-          name: 'Documents',
-          extensions: [
-            ...new Set([
-              extname(destination ?? untitledName).slice(1) || 'md',
-              ...documentExtensions(),
-            ]),
-          ],
-        },
-      ],
-    })
+    const result = await runFileDialog(() =>
+      dialog.showSaveDialog(window, {
+        defaultPath: destination ?? defaultPath ?? untitledName,
+        filters: [
+          {
+            name: 'Documents',
+            extensions: [
+              ...new Set([
+                extname(destination ?? untitledName).slice(1) || 'md',
+                ...documentExtensions(),
+              ]),
+            ],
+          },
+        ],
+      }),
+    )
     if (result.canceled || !result.filePath) return null
     destination = result.filePath
   }
@@ -718,14 +721,16 @@ export async function saveDocument(
     previous = disk
     if (disk !== textOf(saved)) {
       if (automatic) return null
-      const choice = await dialog.showMessageBox(window, {
-        type: 'warning',
-        message: 'This file changed outside Hibi.',
-        detail: 'Replace the file with your current document?',
-        buttons: ['Replace', 'Cancel'],
-        defaultId: 1,
-        cancelId: 1,
-      })
+      const choice = await runFileDialog(() =>
+        dialog.showMessageBox(window, {
+          type: 'warning',
+          message: 'This file changed outside Hibi.',
+          detail: 'Replace the file with your current document?',
+          buttons: ['Replace', 'Cancel'],
+          defaultId: 1,
+          cancelId: 1,
+        }),
+      )
       if (choice.response !== 0) return null
     }
   }
@@ -849,14 +854,16 @@ export function restoreDocument(
 
 export async function confirmDiscard(window: BrowserWindow): Promise<boolean> {
   if (textOf(source.snapshot()) === textOf(saved) && !pendingPath) return true
-  const result = await dialog.showMessageBox(window, {
-    type: 'warning',
-    message: `Save changes to ${getDocument().name}?`,
-    detail: 'Your changes will be lost if you do not save them.',
-    buttons: ['Save', 'Don’t save', 'Cancel'],
-    defaultId: 0,
-    cancelId: 2,
-  })
+  const result = await runFileDialog(() =>
+    dialog.showMessageBox(window, {
+      type: 'warning',
+      message: `Save changes to ${getDocument().name}?`,
+      detail: 'Your changes will be lost if you do not save them.',
+      buttons: ['Save', 'Don’t save', 'Cancel'],
+      defaultId: 0,
+      cancelId: 2,
+    }),
+  )
   if (result.response === 2) return false
   if (result.response === 1) return true
   return (
@@ -998,10 +1005,12 @@ export async function openDocument(
   window: BrowserWindow,
 ): Promise<DocumentState | null> {
   const current = source.snapshot()
-  const result = await dialog.showOpenDialog(window, {
-    properties: ['openFile'],
-    filters: [{ name: 'Documents', extensions: documentExtensions() }],
-  })
+  const result = await runFileDialog(() =>
+    dialog.showOpenDialog(window, {
+      properties: ['openFile'],
+      filters: [{ name: 'Documents', extensions: documentExtensions() }],
+    }),
+  )
   const selected = result.filePaths[0]
   if (result.canceled || !selected) return null
   const chosen = await realpath(selected)

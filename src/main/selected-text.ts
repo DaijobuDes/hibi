@@ -11,6 +11,7 @@ import {
   type SelectedTextRead,
   type SelectedTextSelection,
 } from '../shared/selected-text.ts'
+import { runFileDialog } from './file-operation-dialog.ts'
 
 type FileOps = {
   lstat: typeof lstat
@@ -76,10 +77,12 @@ function sameFile(left: Fingerprint, right: Fingerprint): boolean {
 
 async function hostSelectFile(window: BrowserWindow): Promise<string | null> {
   const { dialog } = await import('electron')
-  const selected = await dialog.showOpenDialog(window, {
-    title: 'Choose a text file',
-    properties: ['openFile'],
-  })
+  const selected = await runFileDialog(() =>
+    dialog.showOpenDialog(window, {
+      title: 'Choose a text file',
+      properties: ['openFile'],
+    }),
+  )
   return selected.canceled ? null : (selected.filePaths[0] ?? null)
 }
 

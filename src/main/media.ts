@@ -20,6 +20,7 @@ import {
   saveDocument,
 } from './document'
 import { isDocumentName } from './document-types'
+import { runFileDialog } from './file-operation-dialog'
 import {
   imageMime,
   readDocumentImage,
@@ -124,11 +125,13 @@ export async function attachMedia(
   if (revision !== getDocument().revision)
     throw new Error('The document changed. Try attaching the file again.')
   if (values === null) {
-    const result = await dialog.showOpenDialog(window, {
-      title: 'Attach image or video',
-      properties: ['openFile', 'multiSelections'],
-      filters: [{ name: 'Images and videos', extensions }],
-    })
+    const result = await runFileDialog(() =>
+      dialog.showOpenDialog(window, {
+        title: 'Attach image or video',
+        properties: ['openFile', 'multiSelections'],
+        filters: [{ name: 'Images and videos', extensions }],
+      }),
+    )
     if (result.canceled) return null
     values = result.filePaths
   }
