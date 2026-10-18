@@ -40,6 +40,12 @@ export function DocumentTabs({
   const dragged = useRef<string | null>(null)
   const keyboardFocus = useRef<string | null>(null)
   const navigationFocus = useRef<string | null>(null)
+  const navigationFrame = useRef(0)
+  // A newer key press or click supersedes focus still waiting for a frame.
+  const cancelNavigationFocus = () => {
+    navigationFocus.current = null
+    cancelAnimationFrame(navigationFrame.current)
+  }
   const [drop, setDrop] = useState<{
     id: string
     side: 'before' | 'after'
@@ -141,7 +147,7 @@ export function DocumentTabs({
     ) {
       const id = navigationFocus.current
       navigationFocus.current = null
-      requestAnimationFrame(() => {
+      navigationFrame.current = requestAnimationFrame(() => {
         const focused = window.document.activeElement
         if (
           focused === window.document.body ||
@@ -216,6 +222,7 @@ export function DocumentTabs({
           event.preventDefault()
           const tab = ordered[next]
           if (tab) {
+            cancelNavigationFocus()
             navigationFocus.current = tab.id
             if (tab.addon) onSelectAddon(tab.id)
             else onSelect(tab.id)
@@ -321,6 +328,7 @@ export function DocumentTabs({
                   event.currentTarget.focus({ preventScroll: true })
               }}
               onClick={() => {
+                cancelNavigationFocus()
                 if (!busy && !selected) onSelect(tab.id)
               }}
             >
@@ -373,6 +381,7 @@ export function DocumentTabs({
               tabIndex={selected ? 0 : -1}
               data-tooltip={name}
               onClick={() => {
+                cancelNavigationFocus()
                 if (!busy && !selected) onSelectAddon(tab.id)
               }}
             >

@@ -87,6 +87,24 @@ function dependencyGraph(
   return { addons, order }
 }
 
+/** Whether an addon belongs to a cycle, including optional dependencies. */
+export function isAddonInDependencyCycle(
+  addons: ReadonlyMap<string, Manifest>,
+  id: string,
+): boolean {
+  const visited = new Set<string>()
+  const reachesOwner = (owner: string): boolean => {
+    for (const dependency of addons.get(owner)?.requires?.addons ?? []) {
+      if (dependency.id === id) return true
+      if (visited.has(dependency.id)) continue
+      visited.add(dependency.id)
+      if (reachesOwner(dependency.id)) return true
+    }
+    return false
+  }
+  return reachesOwner(id)
+}
+
 export function validateAddonRequirements(
   manifests: readonly Manifest[],
   options: { allowMissing?: boolean } = {},

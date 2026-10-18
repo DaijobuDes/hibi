@@ -58,7 +58,11 @@ test('editor command shares rich and source action menus with guarded selection'
         return from === to ? [] : [{
           label: 'Replace selection',
           edit: { from, to, insertText: 'bye' },
-        }];
+        }, ...(window.editorMenuExtraActions ? Array.from({ length: 19 }, (_, index) => ({
+          label: 'Extra action ' + (index + 1),
+          detail: 'Replaces the selection with bye.',
+          edit: { from, to, insertText: 'bye' },
+        })) : [])];
       });
     } });`,
   )
@@ -102,6 +106,39 @@ test('editor command shares rich and source action menus with guarded selection'
     element.editor.commands.setTextSelection({ from: 1, to: 6 }),
   )
   const menu = page.getByRole('menu', { name: 'Editor actions' })
+  // Hosted runners sometimes lose the menu before its first click; record why.
+  await page.evaluate(() => {
+    const log = []
+    window.editorMenuLog = log
+    const started = performance.now()
+    const record = (event) => {
+      if (log.length === 30) log.shift()
+      log.push([Math.round(performance.now() - started), event])
+    }
+    for (const event of ['blur', 'focus'])
+      window.addEventListener(event, () => record(`window ${event}`))
+    document
+      .querySelector('.rich-pane .tiptap')
+      .addEventListener('blur', () => record('editor blur'))
+    document.addEventListener(
+      'scroll',
+      (event) =>
+        record(
+          `scroll ${event.target === document ? 'document' : event.target.className}`,
+        ),
+      true,
+    )
+    for (const panel of document.querySelectorAll(
+      '[role="menu"][aria-label="Editor actions"]',
+    )) {
+      new MutationObserver(() =>
+        record(`menu items ${panel.children.length}`),
+      ).observe(panel, { childList: true })
+      panel.addEventListener('toggle', (event) =>
+        record(`menu ${event.newState}`),
+      )
+    }
+  })
   await rich.press('Shift+F10')
   await menu
     .getByRole('menuitem', { name: 'Inspect editor selection' })
@@ -119,7 +156,29 @@ test('editor command shares rich and source action menus with guarded selection'
   await rich.evaluate((element) =>
     element.dispatchEvent(new FocusEvent('focus')),
   )
-  await menu.getByRole('menuitem', { name: 'Inspect editor selection' }).click()
+  await menu
+    .getByRole('menuitem', { name: 'Inspect editor selection' })
+    .click()
+    .catch(async (error) => {
+      try {
+        console.error(
+          'editor menu click:',
+          JSON.stringify(
+            await page.evaluate(() => ({
+              log: window.editorMenuLog,
+              open: [
+                ...document.querySelectorAll(
+                  '[role="menu"][aria-label="Editor actions"]',
+                ),
+              ].map((panel) => panel.matches(':popover-open')),
+              active: document.activeElement?.className,
+              focused: document.hasFocus(),
+            })),
+          ),
+        )
+      } catch {}
+      throw error
+    })
   await page.waitForFunction(() => window.editorMenuProbeStarts === 1)
   await replaceRichText(page, rich, 'changed')
   await waitForAsync(
@@ -153,6 +212,35 @@ test('editor command shares rich and source action menus with guarded selection'
     richInvocation.document.documentId,
     richInvocation.view.documentId,
   )
+
+  // Reaching an item below a long menu's fold scrolls the menu, not its anchor.
+  await page.evaluate(() => {
+    window.editorMenuExtraActions = true
+  })
+  await rich.press('Shift+F10')
+  const lastAction = menu.getByRole('menuitem', { name: 'Extra action 19' })
+  await lastAction.waitFor({ state: 'attached' })
+  assert.ok(
+    await menu.evaluate(
+      (element) => element.scrollHeight > element.clientHeight,
+    ),
+  )
+  // The menu's own listener runs after the document's capture-phase handler.
+  await menu.evaluate((element) => {
+    window.editorMenuScrolled = new Promise((resolve) =>
+      element.addEventListener('scroll', resolve, { once: true }),
+    )
+  })
+  await rich.press('ArrowUp')
+  await page.evaluate(() => window.editorMenuScrolled)
+  assert.equal(await menu.isVisible(), true)
+  assert.equal(await lastAction.getAttribute('aria-current'), 'true')
+  // Scrolling the document still moves the menu's anchor and closes it.
+  await page.evaluate(() => document.dispatchEvent(new Event('scroll')))
+  await menu.waitFor({ state: 'hidden' })
+  await page.evaluate(() => {
+    window.editorMenuExtraActions = false
+  })
 
   await page.getByRole('button', { name: 'Source view', exact: true }).click()
   const source = page.getByRole('textbox', {
