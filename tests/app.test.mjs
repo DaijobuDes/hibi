@@ -107,6 +107,8 @@ test('desktop launch, isolation, offline reload, and recovery', {
         'readDocumentMedia',
         'openDroppedFile',
         'getInstalledAddons',
+        'getAddonTrustSettings',
+        'setAddonTrustSettings',
         'installAddon',
         'installAddonSelection',
         'cancelAddonInstall',
