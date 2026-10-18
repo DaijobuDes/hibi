@@ -128,12 +128,11 @@ export function addonTrustError(
   manifest: Pick<AddonManifest, 'id' | 'version'>,
 ): Error | undefined {
   const revoked = getAddonRevocation(manifest)
-  if (revoked)
-    return new Error(`This addon version has been revoked: ${revoked.reason}`)
+  if (revoked) return new Error(`Hibi revoked this version. ${revoked.reason}`)
   if (trust.status === 'invalid') return new Error(trust.reason)
   if (trust.status === 'unsigned' && !settings.allowUnsigned)
     return new Error(
-      'This addon is unsigned. Turn on "Allow unsigned addons" in Settings → Addons to install it.',
+      'Turn on "Allow unsigned addons" in Settings → Addon Manager → Security to install this package.',
     )
   return undefined
 }

@@ -8,7 +8,11 @@ import {
 } from '../shared/addon-trust.ts'
 import { type AddonInventory, addonPackageFiles } from './addon-inventory.ts'
 
-class SignatureError extends Error {}
+const signatureErrors = new WeakSet<Error>()
+function signatureError(error: Error): Error {
+  signatureErrors.add(error)
+  return error
+}
 
 const object = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value)
@@ -17,10 +21,10 @@ const date = (value: unknown) =>
 
 function base64(value: unknown): Buffer {
   if (typeof value !== 'string' || !value.length)
-    throw new SignatureError('The signature envelope is invalid.')
+    throw signatureError(new Error('The signature envelope is invalid.'))
   const bytes = Buffer.from(value, 'base64')
   if (bytes.toString('base64') !== value)
-    throw new SignatureError('The signature envelope is invalid.')
+    throw signatureError(new Error('The signature envelope is invalid.'))
   return bytes
 }
 
@@ -30,12 +34,15 @@ export function verifySignedEnvelope(
   keys: Readonly<Record<string, string>> = ADDON_TRUST_KEYS,
 ): { keyId: string; statement: unknown } {
   if (!object(envelope) || typeof envelope.keyId !== 'string')
-    throw new SignatureError('The signature envelope is invalid.')
+    throw signatureError(new Error('The signature envelope is invalid.'))
   const { keyId } = envelope
   if (!Object.hasOwn(keys, keyId))
-    throw new SignatureError('This package was signed with an unknown key.')
+    throw signatureError(
+      new Error('This package was signed with an unknown key.'),
+    )
   const raw = base64(keys[keyId])
-  if (raw.length !== 32) throw new SignatureError('The signing key is invalid.')
+  if (raw.length !== 32)
+    throw signatureError(new Error('The signing key is invalid.'))
   const key = createPublicKey({
     format: 'jwk',
     key: { kty: 'OKP', crv: 'Ed25519', x: raw.toString('base64url') },
@@ -43,7 +50,7 @@ export function verifySignedEnvelope(
   const bytes = base64(envelope.statement)
   const signature = base64(envelope.signature)
   if (signature.length !== 64 || !verify(null, bytes, key, signature))
-    throw new SignatureError("This package's signature is invalid.")
+    throw signatureError(new Error("This package's signature is invalid."))
   return {
     keyId,
     statement: JSON.parse(
@@ -91,8 +98,8 @@ export async function verifyAddonSignature(
       !date(statement.signedAt) ||
       !object(statement.files)
     )
-      throw new SignatureError(
-        'The signed addon details do not match this package.',
+      throw signatureError(
+        new Error('The signed addon details do not match this package.'),
       )
     const hashes = await addonFileHashes(inventory, folder)
     if (
@@ -103,15 +110,15 @@ export async function verifyAddonSignature(
           (statement.files as Record<string, unknown>)[path] !== hash,
       )
     )
-      throw new SignatureError(
-        "This package's signature does not match its files.",
+      throw signatureError(
+        new Error("This package's signature does not match its files."),
       )
     return { status: 'signed', keyId }
   } catch (error) {
     return {
       status: 'invalid',
       reason:
-        error instanceof SignatureError
+        error instanceof Error && signatureErrors.has(error)
           ? error.message
           : 'This package has an invalid signature file.',
     }
@@ -151,10 +158,10 @@ export function parseAddonRevocations(
             ))),
     )
   )
-    throw new SignatureError('The addon revocation list is invalid.')
+    throw signatureError(new Error('The addon revocation list is invalid.'))
   if ((statement.sequence as number) < lastSequence)
-    throw new SignatureError(
-      'The addon revocation list is older than the accepted list.',
+    throw signatureError(
+      new Error('The addon revocation list is older than the accepted list.'),
     )
   return statement as AddonRevocationStatement
 }
@@ -168,5 +175,7 @@ export function revokedAddon(
       entry.id === manifest.id &&
       (!entry.versions || entry.versions.includes(manifest.version)),
   )
-  return entry ? { reason: entry.reason } : undefined
+  if (!entry) return undefined
+  const text = entry.reason.trim().replace(/[.!?]+$/, '')
+  return { reason: `${text.charAt(0).toLocaleUpperCase()}${text.slice(1)}.` }
 }

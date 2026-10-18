@@ -2580,6 +2580,10 @@
   "3901114f50bd": [
     "src/renderer/src/main.tsx"
   ],
+  "66828c28a9fb": [
+    "src/main/addon-trust.ts",
+    "src/main/addons.ts"
+  ],
   "991db5668713": [
     "src/renderer/src/Introduction.tsx"
   ],
@@ -5439,6 +5443,12 @@
   "fbef75b3e0dc": [
     "src/main/addon-trust.ts"
   ],
+  "2f52ef8ba298": [
+    "src/main/addon-trust-crypto.ts"
+  ],
+  "5eac08ec7959": [
+    "src/main/addon-trust-crypto.ts"
+  ],
   "d8a1ff307289": [
     "src/main/addon-inventory.ts"
   ],
@@ -5716,6 +5726,15 @@
   "6dddc403e45f": [
     "src/addons/dictionary/index.tsx"
   ],
+  "c974f16a8663": [
+    "src/main/addon-trust-crypto.ts"
+  ],
+  "bfb72652e10f": [
+    "src/main/addon-trust-crypto.ts"
+  ],
+  "5307fb030e7f": [
+    "src/main/addon-trust-crypto.ts"
+  ],
   "75f8344e99c3": [
     "src/renderer/src/source-session.ts"
   ],
@@ -5908,9 +5927,6 @@
     "src/main/addons.ts",
     "src/main/dependencies.ts"
   ],
-  "c2391aa2be72": [
-    "src/main/addon-trust.ts"
-  ],
   "affa77434b63": [
     "src/renderer/src/addons.ts"
   ],
@@ -5976,10 +5992,6 @@
   ],
   "5eebb144c45a": [
     "src/shared/addon-manifest.ts"
-  ],
-  "6bd603bb836b": [
-    "src/main/addon-trust.ts",
-    "src/main/addons.ts"
   ],
   "2d715c5a75aa": [
     "src/main/addons.ts",
@@ -6164,6 +6176,15 @@
   "557e75befd2a": [
     "src/renderer/src/WorkspacesSidebar.tsx"
   ],
+  "726915b074e5": [
+    "src/main/addon-trust-crypto.ts"
+  ],
+  "996b983c9b03": [
+    "src/main/addon-trust-crypto.ts"
+  ],
+  "bc983aa77f08": [
+    "src/main/addon-trust-crypto.ts"
+  ],
   "7310f8dfe68a": [
     "src/renderer/src/main.tsx"
   ],
@@ -6343,6 +6364,9 @@
   ],
   "3d678d549c61": [
     "src/renderer/src/SettingsScreen.tsx"
+  ],
+  "cda1c84331ea": [
+    "src/main/addon-trust.ts"
   ],
   "7586b13894e7": [
     "src/addons/dictionary/CustomWords.tsx",

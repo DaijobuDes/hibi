@@ -244,7 +244,7 @@ test('network failures, oversized lists, rollback and equal-sequence changes ret
   await h.check()
   assert.equal(h.applied(), 1)
   assert.deepEqual(h.api.getAddonRevocation({ id: 'revoked', version: '1' }), {
-    reason: 'Revoked fixture',
+    reason: 'Revoked fixture.',
   })
   for (const value of [
     envelope(2),
@@ -271,7 +271,7 @@ test('network failures, oversized lists, rollback and equal-sequence changes ret
   })
   await h.api.loadAddonTrust()
   assert.deepEqual(h.api.getAddonRevocation({ id: 'revoked', version: '1' }), {
-    reason: 'Revoked fixture',
+    reason: 'Revoked fixture.',
   })
   assert.ok(h.errors.length >= 4)
 })

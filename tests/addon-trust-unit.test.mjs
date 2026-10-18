@@ -177,11 +177,25 @@ test('signing CLI uses installer inventory and can sign again', async (t) => {
   )
 })
 
+test('revocation reasons become complete sentences without changing signed entries', () => {
+  for (const reason of [
+    '  lowercase reason  ',
+    'lowercase reason!',
+    'Lowercase reason.',
+  ]) {
+    const list = revocations({ entries: [{ id: manifest.id, reason }] })
+    assert.deepEqual(revokedAddon(manifest, list), {
+      reason: 'Lowercase reason.',
+    })
+    assert.equal(list.entries[0].reason, reason)
+  }
+})
+
 test('revocations validate signatures and sequences and match exact versions', () => {
   const envelope = signEnvelope(revocations(), key)
   const list = parseAddonRevocations(envelope, key.keys, 1)
   assert.equal(list.sequence, 2)
-  assert.deepEqual(revokedAddon(manifest, list), { reason: 'Fixture revoked' })
+  assert.deepEqual(revokedAddon(manifest, list), { reason: 'Fixture revoked.' })
   assert.equal(revokedAddon({ ...manifest, version: '2.0.0' }, list), undefined)
   assert.equal(revokedAddon({ ...manifest, id: 'other' }, list), undefined)
   assert.equal(
@@ -189,7 +203,7 @@ test('revocations validate signatures and sequences and match exact versions', (
       { ...manifest, version: '2.0.0' },
       revocations({ entries: [{ id: manifest.id, reason: 'All versions' }] }),
     ).reason,
-    'All versions',
+    'All versions.',
   )
   assert.throws(() => parseAddonRevocations(envelope, key.keys, 3), /older/)
   assert.equal(parseAddonRevocations(envelope, key.keys, 2).sequence, 2)

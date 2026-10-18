@@ -220,7 +220,17 @@ export function getAddonStates(): AddonState[] {
   return addonStates(enabled)
 }
 
-function addonStates(preferences: Record<string, boolean>): AddonState[] {
+function addonStates(
+  preferences: Record<string, boolean>,
+  beforeRevocations = false,
+): AddonState[] {
+  const revoked = new Set(
+    beforeRevocations
+      ? []
+      : installedAddons()
+          .filter((addon) => addon.revoked)
+          .map((addon) => addon.manifest.id),
+  )
   const all = manifests()
   const states = all.map(({ id, defaultEnabled }) => ({
     id,
@@ -228,13 +238,14 @@ function addonStates(preferences: Record<string, boolean>): AddonState[] {
       ? { savedEnabled: preferences[id] }
       : {}),
     enabled:
-      id === 'markdown' ||
-      ((Object.hasOwn(preferences, id) ? preferences[id] : undefined) ??
-        addonDefaultEnabled(
-          id,
-          defaultEnabled,
-          !app.isPackaged && !!process.env.ELECTRON_RENDERER_URL,
-        )),
+      !revoked.has(id) &&
+      (id === 'markdown' ||
+        ((Object.hasOwn(preferences, id) ? preferences[id] : undefined) ??
+          addonDefaultEnabled(
+            id,
+            defaultEnabled,
+            !app.isPackaged && !!process.env.ELECTRON_RENDERER_URL,
+          ))),
   }))
   const { blocked } = resolveAddonDependencies(all, states)
   return states.map((state) => {
@@ -381,9 +392,7 @@ export async function enableAddon(
       )
       const revoked = addon && getAddonRevocation(addon.manifest)
       if (revoked)
-        throw new Error(
-          `This addon version has been revoked: ${revoked.reason}`,
-        )
+        throw new Error(`Hibi revoked this version. ${revoked.reason}`)
     }
     const closure = new Set([id, ...required])
     const modal = all.filter(
@@ -440,7 +449,8 @@ async function commitPreferences(
 ): Promise<AddonState[]> {
   for (const addon of installedAddons())
     if (addon.revoked) next[addon.manifest.id] = false
-  const before = getAddonStates()
+  // The list already masks revoked states; retain the previous preference for runtime cleanup.
+  const before = addonStates(enabled, true)
   const path = join(app.getPath('userData'), 'addons.json')
   await writeFile(`${path}.tmp`, JSON.stringify(next), { mode: 0o600 })
   await retryRename(() => rename(`${path}.tmp`, path))
