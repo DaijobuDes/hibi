@@ -10,7 +10,7 @@ import { checkTooltips } from './tooltips.mjs'
 let app, folder, page
 
 // Tooltips and dialogs share one harness window but have separate budgets.
-before(async () => {
+async function openHarness() {
   folder = await mkdtemp(join(tmpdir(), 'hibi-dialogs-'))
   const bundle = join(folder, 'bundle')
   await build({
@@ -56,11 +56,16 @@ before(async () => {
   page = await next
   page.setDefaultTimeout(5000)
   await page.waitForFunction(() => Boolean(window.dialogTest))
-})
-after(async () => {
-  await app?.close()
-  if (folder) await rm(folder, { recursive: true, force: true })
-})
+}
+// Hooks have no deadline by default; bound the harness build, launch and close.
+before(openHarness, { timeout: 45000 })
+after(
+  async () => {
+    await app?.close()
+    if (folder) await rm(folder, { recursive: true, force: true })
+  },
+  { timeout: 30000 },
+)
 
 test(
   'tooltips stay compact and dismiss stale anchors',
