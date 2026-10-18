@@ -32,6 +32,7 @@ import {
   loadDocument,
   selectDocumentTab,
 } from './document'
+import { runFileDialog } from './file-operation-dialog'
 import { readMarkdown } from './files'
 import {
   forgetWorkspace,
@@ -651,10 +652,12 @@ export function observeWorkspace(
 export async function openWorkspace(
   window: BrowserWindow,
 ): Promise<WorkspaceState | null> {
-  const result = await dialog.showOpenDialog(window, {
-    properties: ['openDirectory', 'createDirectory'],
-    title: 'Open workspace',
-  })
+  const result = await runFileDialog(() =>
+    dialog.showOpenDialog(window, {
+      properties: ['openDirectory', 'createDirectory'],
+      title: 'Open workspace',
+    }),
+  )
   const selected = result.filePaths[0]
   if (result.canceled || !selected) return null
   return loadWorkspace(selected)

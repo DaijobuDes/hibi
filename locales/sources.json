@@ -354,6 +354,7 @@
     "src/main/dependencies.ts"
   ],
   "46e7dbbc93e5": [
+    "src/main/index.ts",
     "src/renderer/src/main.tsx"
   ],
   "b3f05ba1d906": [

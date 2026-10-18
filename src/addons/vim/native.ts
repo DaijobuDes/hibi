@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
 import { app, BrowserWindow, dialog } from 'electron'
+import { runFileDialog } from '../../main/file-operation-dialog'
 import { readMarkdown, writeText } from '../../main/files'
 import type { NativeAddon } from '../api'
 import { parseVimConfig, type VimConfig } from './config'
@@ -56,8 +57,8 @@ export default {
       }
       const window = BrowserWindow.getFocusedWindow()
       const selection = await (window
-        ? dialog.showOpenDialog(window, options)
-        : dialog.showOpenDialog(options))
+        ? runFileDialog(() => dialog.showOpenDialog(window, options))
+        : runFileDialog(() => dialog.showOpenDialog(options)))
       const path = selection.filePaths[0]
       if (selection.canceled || !path) return null
       const result = await readConfig(path)
