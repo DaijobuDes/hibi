@@ -2,15 +2,16 @@ import assert from 'node:assert/strict'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import test from 'node:test'
+import test, { after, before } from 'node:test'
 import { build } from 'vite'
 import { electron } from './electron.mjs'
 import { checkTooltips } from './tooltips.mjs'
 
-test('shared dialogs validate input, trap focus, queue, and clean up by addon owner', {
-  timeout: 45000,
-}, async (t) => {
-  const folder = await mkdtemp(join(tmpdir(), 'hibi-dialogs-'))
+let app, folder, page
+
+// Tooltips and dialogs share one harness window but have separate budgets.
+before(async () => {
+  folder = await mkdtemp(join(tmpdir(), 'hibi-dialogs-'))
   const bundle = join(folder, 'bundle')
   await build({
     configFile: false,
@@ -33,12 +34,8 @@ test('shared dialogs validate input, trap focus, queue, and clean up by addon ow
     html,
     '<!doctype html><html lang="en"><head><link rel="stylesheet" href="harness.css"></head><body><script src="harness.js"></script></body></html>',
   )
-  const app = await electron.launch({
+  app = await electron.launch({
     args: [resolve('.'), `--user-data-dir=${join(folder, 'profile')}`],
-  })
-  t.after(async () => {
-    await app.close()
-    await rm(folder, { recursive: true, force: true })
   })
   await app.firstWindow()
   const next = app.waitForEvent('window')
@@ -56,14 +53,26 @@ test('shared dialogs validate input, trap focus, queue, and clean up by addon ow
     })
     void window.loadFile(path)
   }, html)
-  const page = await next
+  page = await next
   page.setDefaultTimeout(5000)
   await page.waitForFunction(() => Boolean(window.dialogTest))
+})
+after(async () => {
+  await app?.close()
+  if (folder) await rm(folder, { recursive: true, force: true })
+})
+
+test(
+  'tooltips stay compact and dismiss stale anchors',
+  { timeout: 45000 },
+  () => checkTooltips(page),
+)
+
+test('shared dialogs validate input, trap focus, queue, and clean up by addon owner', {
+  timeout: 45000,
+}, async () => {
   const prompt = page.getByRole('button', { name: /open built-in prompt/i })
   const target = page.getByRole('button', { name: /tooltip target/i })
-  await t.test('tooltips stay compact and dismiss stale anchors', () =>
-    checkTooltips(page),
-  )
   await prompt.focus()
   await page.keyboard.press('Tab')
   await target.focus()
