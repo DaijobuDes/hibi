@@ -9,6 +9,7 @@ import {
 } from 'node:fs/promises'
 import { basename, join, relative, sep } from 'node:path'
 import { app, dialog } from 'electron'
+import { runFileDialog } from '../../main/file-operation-dialog'
 import { writeMarkdown } from '../../main/files'
 import {
   getKnownWorkspaces,
@@ -142,10 +143,12 @@ export default {
   },
   methods: {
     async chooseWorkspace() {
-      const result = await dialog.showOpenDialog({
-        title: 'Choose quick note workspace',
-        properties: ['openDirectory'],
-      })
+      const result = await runFileDialog(() =>
+        dialog.showOpenDialog({
+          title: 'Choose quick note workspace',
+          properties: ['openDirectory'],
+        }),
+      )
       const chosen = result.filePaths[0]
       if (result.canceled || !chosen) return null
       const path = await realpath(chosen)

@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path'
 import { app, BrowserWindow, dialog } from 'electron'
 import { getAddonStates } from '../../main/addons'
 import { exportedAppearance } from '../../main/appearance'
+import { runFileDialog } from '../../main/file-operation-dialog'
 import { writeText } from '../../main/files'
 import { readDocumentImage } from '../../main/images'
 import type { NativeAddon } from '../api'
@@ -33,14 +34,18 @@ export default {
       }
       const window = BrowserWindow.getFocusedWindow()
       const result = await (window
-        ? dialog.showOpenDialog(window, {
-            ...options,
-            properties: [...options.properties],
-          })
-        : dialog.showOpenDialog({
-            ...options,
-            properties: [...options.properties],
-          }))
+        ? runFileDialog(() =>
+            dialog.showOpenDialog(window, {
+              ...options,
+              properties: [...options.properties],
+            }),
+          )
+        : runFileDialog(() =>
+            dialog.showOpenDialog({
+              ...options,
+              properties: [...options.properties],
+            }),
+          ))
       if (result.canceled || !result.filePaths[0]) return null
       const image = await readDocumentImage(result.filePaths[0], null)
       if (!image || image.length > 4 * 1024 * 1024)
@@ -105,10 +110,12 @@ export default {
           `${snapshot.name}.html`,
           snapshot.pages.length,
         )
-      const result = await dialog.showOpenDialog({
-        title: 'Choose export folder',
-        properties: ['openDirectory', 'createDirectory'],
-      })
+      const result = await runFileDialog(() =>
+        dialog.showOpenDialog({
+          title: 'Choose export folder',
+          properties: ['openDirectory', 'createDirectory'],
+        }),
+      )
       if (result.canceled || !result.filePaths[0]) return null
       const stem =
         (snapshot.name

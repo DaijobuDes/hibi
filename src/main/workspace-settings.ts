@@ -24,6 +24,7 @@ import {
   loadDocument,
   relocateDocument,
 } from './document'
+import { runFileDialog } from './file-operation-dialog'
 import {
   getWorkspace,
   loadWorkspace,
@@ -120,10 +121,12 @@ async function ensureManifest(path: string) {
   )
 }
 async function chooseFolder(window: BrowserWindow, title: string) {
-  const result = await dialog.showOpenDialog(window, {
-    title,
-    properties: ['openDirectory', 'createDirectory'],
-  })
+  const result = await runFileDialog(() =>
+    dialog.showOpenDialog(window, {
+      title,
+      properties: ['openDirectory', 'createDirectory'],
+    }),
+  )
   return result.canceled || !result.filePaths[0]
     ? null
     : realpath(result.filePaths[0])
@@ -245,13 +248,15 @@ export async function updateWorkspaceSettings(
         await rm(to, { recursive: true, force: true })
         throw error
       }
-      await dialog.showMessageBox(window, {
-        type: 'info',
-        message: 'Workspace copied to the new location.',
-        detail:
-          'The original folder was kept because the destination is on another disk.',
-        buttons: ['OK'],
-      })
+      await runFileDialog(() =>
+        dialog.showMessageBox(window, {
+          type: 'info',
+          message: 'Workspace copied to the new location.',
+          detail:
+            'The original folder was kept because the destination is on another disk.',
+          buttons: ['OK'],
+        }),
+      )
     }
     relocateDocument(from, to)
     if (workspaceRoot() === from) await loadWorkspace(to)

@@ -22,6 +22,7 @@ import {
   type HostSelectedIoSelection,
   type HostSelectedIoWrite,
 } from '../shared/host-selected-io.ts'
+import { runFileDialog } from './file-operation-dialog.ts'
 
 const MAX_GRANTS = 16
 const MAX_ACTIVE = 4
@@ -153,17 +154,19 @@ async function selectImportDialog(
   choice: HostImportChoice,
 ) {
   const { dialog } = await import('electron')
-  const result = await dialog.showOpenDialog(window, {
-    title: 'Import file',
-    properties: ['openFile'],
-    ...(choice.extensions?.length
-      ? {
-          filters: [
-            { name: 'Import files', extensions: [...choice.extensions] },
-          ],
-        }
-      : {}),
-  })
+  const result = await runFileDialog(() =>
+    dialog.showOpenDialog(window, {
+      title: 'Import file',
+      properties: ['openFile'],
+      ...(choice.extensions?.length
+        ? {
+            filters: [
+              { name: 'Import files', extensions: [...choice.extensions] },
+            ],
+          }
+        : {}),
+    }),
+  )
   return result.canceled ? null : (result.filePaths[0] ?? null)
 }
 
@@ -172,15 +175,19 @@ async function selectExportDialog(
   choice: HostExportChoice,
 ) {
   const { dialog } = await import('electron')
-  const result = await dialog.showSaveDialog(window, {
-    title: 'Export file',
-    defaultPath: choice.suggestedName,
-    ...(choice.extension
-      ? {
-          filters: [{ name: choice.extension, extensions: [choice.extension] }],
-        }
-      : {}),
-  })
+  const result = await runFileDialog(() =>
+    dialog.showSaveDialog(window, {
+      title: 'Export file',
+      defaultPath: choice.suggestedName,
+      ...(choice.extension
+        ? {
+            filters: [
+              { name: choice.extension, extensions: [choice.extension] },
+            ],
+          }
+        : {}),
+    }),
+  )
   return result.canceled ? null : (result.filePath ?? null)
 }
 

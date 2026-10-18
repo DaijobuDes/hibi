@@ -46,6 +46,7 @@ import {
   inventoryAddonDirectory,
 } from './addon-inventory'
 import { downloadRepository, repositoryUrl } from './addon-repository'
+import { runFileDialog } from './file-operation-dialog'
 
 type Package = InstalledAddon & { entry: string; hash: string; files: string[] }
 let installed: Package[] = []
@@ -333,10 +334,12 @@ export async function installPackage(
       )
       session.host = download.host
     } else {
-      const selection = await dialog.showOpenDialog(window, {
-        title: 'Choose an addon folder',
-        properties: ['openDirectory'],
-      })
+      const selection = await runFileDialog(() =>
+        dialog.showOpenDialog(window, {
+          title: 'Choose an addon folder',
+          properties: ['openDirectory'],
+        }),
+      )
       if (selection.canceled || !selection.filePaths[0]) return null
       const source = selection.filePaths[0]
       session.refresh = () => inventoryAddonDirectory(source, abort.signal)
@@ -356,17 +359,19 @@ export async function installPackage(
         throw new Error(candidate.review.reasons.join('\n'))
       }
       const data = candidate.data!
-      const verdict = await dialog.showMessageBox(window, {
-        type: data.manifest.kind === 'extension' ? 'warning' : 'question',
-        message: `Install ${data.manifest.name} ${data.manifest.version}?`,
-        detail: `${data.manifest.description}\n\nBy ${data.manifest.authors?.map((author) => author.displayName).join(', ')}${session.host ? `\n\nDownloaded from ${session.host}` : ''}${candidate.review.replaces ? `\n\nReplaces ${candidate.review.replaces.version} (${candidate.review.replaces.source}).` : ''}${data.manifest.network ? `\n\nConnects to: ${data.manifest.network.origins.join(', ')}` : ''}\n\n${data.manifest.kind === 'extension' ? 'Extensions can run code and read or edit documents in Hibi. Only install addons you trust. ' : ''}${candidate.review.replaces?.keepsSetting ? 'Its access is unchanged, so it keeps its current setting.' : 'This addon will stay disabled until you enable it.'}`,
-        buttons: [
-          'Cancel',
-          candidate.review.replaces ? 'Replace addon' : 'Install',
-        ],
-        defaultId: 0,
-        cancelId: 0,
-      })
+      const verdict = await runFileDialog(() =>
+        dialog.showMessageBox(window, {
+          type: data.manifest.kind === 'extension' ? 'warning' : 'question',
+          message: `Install ${data.manifest.name} ${data.manifest.version}?`,
+          detail: `${data.manifest.description}\n\nBy ${data.manifest.authors?.map((author) => author.displayName).join(', ')}${session.host ? `\n\nDownloaded from ${session.host}` : ''}${candidate.review.replaces ? `\n\nReplaces ${candidate.review.replaces.version} (${candidate.review.replaces.source}).` : ''}${data.manifest.network ? `\n\nConnects to: ${data.manifest.network.origins.join(', ')}` : ''}\n\n${data.manifest.kind === 'extension' ? 'Extensions can run code and read or edit documents in Hibi. Only install addons you trust. ' : ''}${candidate.review.replaces?.keepsSetting ? 'Its access is unchanged, so it keeps its current setting.' : 'This addon will stay disabled until you enable it.'}`,
+          buttons: [
+            'Cancel',
+            candidate.review.replaces ? 'Replace addon' : 'Install',
+          ],
+          defaultId: 0,
+          cancelId: 0,
+        }),
+      )
       if (verdict.response !== 1) return null
       await refreshInstallSession(session, builtins)
       await installDirectory(session, candidate, builtins, disable)
