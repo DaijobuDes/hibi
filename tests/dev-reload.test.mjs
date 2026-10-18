@@ -538,11 +538,16 @@ dialog.showMessageBox = (...args) => {
   phase('initial renderer readiness')
   try {
     // Cold intel startup reached app-render at 31.2 s without re-optimization.
-    // Bootstrap shares the scenario deadline; later UI waits still use 30 s.
+    // Reserve 20 s for live diagnostics and cleanup before the scenario aborts.
     await page.waitForFunction(
       () => performance.getEntriesByName('hibi:app-render').length > 0,
       undefined,
-      { timeout: Math.max(1, scenarioTimeout - (performance.now() - started)) },
+      {
+        timeout: Math.max(
+          1,
+          scenarioTimeout - 20000 - (performance.now() - started),
+        ),
+      },
     )
     mark('initial renderer bootstrapped')
     await page.locator('[data-status-id="typing-speed.wpm"]').waitFor()
@@ -1643,6 +1648,10 @@ dialog.showMessageBox = (...args) => {
     await connectRestartedPage(contractStarts)
     mark(
       'native contract stays pending after cancellation until guarded restart',
+    )
+    assert.equal(
+      await page.evaluate(() => window.hibi.queryAddon('ui-preview', 'probe')),
+      'owner-native-contract',
     )
 
     const localManifest = join(localFolder, 'hibi-addon.json')
