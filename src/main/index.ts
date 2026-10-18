@@ -907,7 +907,7 @@ function createWindow(): void {
     confirmingClose = true
     void (async () => {
       await flushRenderer()
-      await fileOperation?.catch(() => undefined)
+      while (fileOperation) await fileOperation.catch(() => undefined)
       if (
         quitting &&
         background.enabled &&

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
@@ -7,14 +7,16 @@ import { electron, waitForDocumentEditor } from './electron.mjs'
 
 async function setup(t) {
   const profile = await mkdtemp(join(tmpdir(), 'hibi-file-lock-'))
-  await mkdir(join(profile, 'workspace'))
   await writeFile(join(profile, 'addons.json'), '{"quick-note":true}')
   const app = await electron.launch({
     args: [resolve('.'), `--user-data-dir=${profile}`],
   })
+  const child = app.process()
   t.after(async () => {
-    await app.evaluate(() => globalThis.fileLockTest?.release?.())
-    await app.close()
+    if (child.exitCode === null && child.signalCode === null) {
+      await app.evaluate(() => globalThis.fileLockTest?.release?.())
+      await app.close()
+    }
     await rm(profile, { recursive: true, force: true })
   })
   const page = await app.firstWindow()
@@ -149,5 +151,78 @@ test('a failed core operation releases a queued quick-note draft write', {
     JSON.parse(await readFile(join(profile, 'quick-note-draft.json'), 'utf8'))
       .markdown,
     'kept after failure',
+  )
+})
+
+test('closing waits for the queued draft write after the active operation finishes', {
+  timeout: 30000,
+}, async (t) => {
+  const { app, profile } = await setup(t)
+  await app.evaluate(async ({ BrowserWindow, dialog, ipcMain }) => {
+    const state = globalThis.fileLockTest
+    const main = BrowserWindow.getAllWindows().find(
+      (window) => !window.webContents.getURL().endsWith('/addon-window.html'),
+    )
+    const first = Promise.withResolvers()
+    const entered = Promise.withResolvers()
+    const write = Promise.withResolvers()
+    const writing = Promise.withResolvers()
+    const flushed = Promise.withResolvers()
+    state.allowedClose = false
+    main.on('close', (event) => {
+      if (!event.defaultPrevented) state.allowedClose = true
+    })
+    ipcMain.on('document:flushed', (_event, token) => {
+      if (token !== 'ready') flushed.resolve()
+    })
+    state.release = () => {
+      first.resolve()
+      write.resolve()
+    }
+    state.releaseWrite = write.resolve
+    dialog.showOpenDialog = async () => {
+      entered.resolve()
+      await first.promise
+      return { canceled: true, filePaths: [] }
+    }
+    const fs = process.getBuiltinModule('node:fs/promises')
+    const writeFile = fs.writeFile
+    fs.writeFile = async (...args) => {
+      if (String(args[0]).endsWith('quick-note-draft.json.tmp')) {
+        fs.writeFile = writeFile
+        process.getBuiltinModule('node:module').syncBuiltinESMExports()
+        writing.resolve()
+        await write.promise
+      }
+      return writeFile(...args)
+    }
+    process.getBuiltinModule('node:module').syncBuiltinESMExports()
+    state.start('choose', 'addon-windows:invoke', true, 'chooseWorkspace')
+    await entered.promise
+    state.start('write', 'addon-windows:invoke', true, 'saveDraft', {
+      markdown: 'kept before closing',
+      destination: null,
+    })
+    main.close()
+    await flushed.promise
+    await new Promise(setImmediate)
+    first.resolve()
+    await writing.promise
+    await new Promise(setImmediate)
+  })
+  try {
+    assert.equal(
+      await app.evaluate(() => globalThis.fileLockTest.allowedClose),
+      false,
+      'closing must keep waiting while the queued draft write is held',
+    )
+  } finally {
+    await app.evaluate(() => globalThis.fileLockTest.releaseWrite())
+  }
+  await app.close()
+  assert.equal(
+    JSON.parse(await readFile(join(profile, 'quick-note-draft.json'), 'utf8'))
+      .markdown,
+    'kept before closing',
   )
 })
