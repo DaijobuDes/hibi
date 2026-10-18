@@ -802,6 +802,15 @@ async function serveAsset(request: Request): Promise<Response> {
   }
 }
 
+function showStartupError(window: BrowserWindow | null = mainWindow): void {
+  if (quitting || closing || window?.isDestroyed()) return
+  dialog.showErrorBox(
+    'Hibi could not start',
+    'Restart Hibi. If it still cannot start, reinstall it.',
+  )
+  app.quit()
+}
+
 let windowSetupReady = false
 const appendDocumentChange = createJournalReceiver(getDocumentSourceFor)
 function createWindow(): void {
@@ -1082,11 +1091,7 @@ function createWindow(): void {
     )
       return
     console.error('failed to load app:', error)
-    dialog.showErrorBox(
-      'Hibi could not start',
-      'Restart Hibi. If it still cannot start, reinstall it.',
-    )
-    app.quit()
+    showStartupError(window)
   })
 }
 
@@ -2363,10 +2368,6 @@ if (!app.requestSingleInstanceLock()) {
     })
     .catch((error: unknown) => {
       console.error('startup failed:', error)
-      dialog.showErrorBox(
-        'Hibi could not start',
-        'Restart Hibi. If it still cannot start, reinstall it.',
-      )
-      app.quit()
+      showStartupError()
     })
 }
