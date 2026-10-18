@@ -8,14 +8,68 @@ import test from 'node:test'
 import { setTimeout } from 'node:timers/promises'
 import { electron, stopElectronTree } from './electron.mjs'
 
+function recordStartupDialogs(
+  { app, BrowserWindow, dialog },
+  { modals, failures },
+) {
+  const fs = process.getBuiltinModule('node:fs')
+  const append = (path, value) =>
+    fs.appendFileSync(path, `${JSON.stringify(value)}\n`)
+  const original = console.error
+  console.error = (...args) => {
+    if (args[0] === 'failed to load app:' || args[0] === 'startup failed:')
+      append(failures, {
+        context: args[0],
+        message: args[1]?.message,
+        stack: args[1]?.stack,
+      })
+    original(...args)
+  }
+  for (const method of [
+    'showErrorBox',
+    'showMessageBoxSync',
+    'showOpenDialogSync',
+    'showSaveDialogSync',
+  ]) {
+    dialog[method] = (...args) => {
+      const options = args.at(-1)
+      append(modals, {
+        method,
+        title: method === 'showErrorBox' ? args[0] : options?.title,
+        content: method === 'showErrorBox' ? args[1] : options?.message,
+      })
+      return method === 'showMessageBoxSync' ? 1 : undefined
+    }
+  }
+  dialog.showMessageBox = async () => ({ response: 1 })
+  dialog.showOpenDialog = async () => ({ canceled: true, filePaths: [] })
+  dialog.showSaveDialog = async () => ({ canceled: true })
+  const quiet = (window) => {
+    if (window.isDestroyed()) return
+    window.setFocusable(false)
+    for (const method of ['show', 'showInactive', 'focus', 'setFocusable'])
+      window[method] = () => {}
+  }
+  for (const window of BrowserWindow.getAllWindows()) quiet(window)
+  app.on('browser-window-created', (_event, window) => quiet(window))
+  globalThis.startupDialogsInstalled = true
+}
+
 async function launch(t, env = {}) {
   const profile = await mkdtemp(join(tmpdir(), 'hibi-startup-quit-'))
   const modals = join(profile, 'modals.jsonl')
   const failures = join(profile, 'failures.jsonl')
   await writeFile(modals, '')
   await writeFile(failures, '')
+  const hook = join(profile, 'startup-hook.cjs')
+  await writeFile(
+    hook,
+    `(${recordStartupDialogs})(require('electron'), ${JSON.stringify({ modals, failures })})`,
+  )
   const app = await electron.launch({
-    args: [resolve('.'), `--user-data-dir=${profile}`],
+    args: ['--require', hook, resolve('.'), `--user-data-dir=${profile}`],
+    // This fixture records native dialog calls before the app starts.
+    diagnostics: false,
     env: {
       ...process.env,
       HIBI_TEST_ADDON_REVOCATIONS_URL: new URL(
@@ -33,50 +87,9 @@ async function launch(t, env = {}) {
     await closed
     await rm(profile, { recursive: true, force: true })
   })
-  await app.evaluate(
-    ({ app, BrowserWindow, dialog }, { modals, failures }) => {
-      const fs = process.getBuiltinModule('node:fs')
-      const append = (path, value) =>
-        fs.appendFileSync(path, `${JSON.stringify(value)}\n`)
-      const original = console.error
-      console.error = (...args) => {
-        if (args[0] === 'failed to load app:' || args[0] === 'startup failed:')
-          append(failures, {
-            context: args[0],
-            message: args[1]?.message,
-            stack: args[1]?.stack,
-          })
-        original(...args)
-      }
-      for (const method of [
-        'showErrorBox',
-        'showMessageBoxSync',
-        'showOpenDialogSync',
-        'showSaveDialogSync',
-      ]) {
-        dialog[method] = (...args) => {
-          const options = args.at(-1)
-          append(modals, {
-            method,
-            title: method === 'showErrorBox' ? args[0] : options?.title,
-            content: method === 'showErrorBox' ? args[1] : options?.message,
-          })
-          return method === 'showMessageBoxSync' ? 1 : undefined
-        }
-      }
-      dialog.showMessageBox = async () => ({ response: 1 })
-      dialog.showOpenDialog = async () => ({ canceled: true, filePaths: [] })
-      dialog.showSaveDialog = async () => ({ canceled: true })
-      const quiet = (window) => {
-        if (window.isDestroyed()) return
-        window.setFocusable(false)
-        for (const method of ['show', 'showInactive', 'focus', 'setFocusable'])
-          window[method] = () => {}
-      }
-      for (const window of BrowserWindow.getAllWindows()) quiet(window)
-      app.on('browser-window-created', (_event, window) => quiet(window))
-    },
-    { modals, failures },
+  assert.equal(
+    await app.evaluate(() => globalThis.startupDialogsInstalled),
+    true,
   )
   const records = async (path) =>
     (await readFile(path, 'utf8'))
@@ -129,7 +142,12 @@ test('a genuine startup navigation failure still shows the existing error', {
   timeout: 15000,
 }, async (t) => {
   const requested = Promise.withResolvers()
-  const server = createServer((request) => requested.resolve(request))
+  const server = createServer((request, response) => {
+    // Commit the page so shown-window launch can return while loadURL is pending.
+    response.writeHead(200, { 'Content-Type': 'text/html' })
+    response.write('<!doctype html><title>Pending startup</title>')
+    requested.resolve(request)
+  })
   server.listen(0, '127.0.0.1')
   await once(server, 'listening')
   t.after(async () => {
