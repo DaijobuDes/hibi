@@ -3113,7 +3113,7 @@ export function MarkdownEditor({
         matches.findIndex(
           (match) => match.from === selection.from && match.to === selection.to,
         ) + 1
-      // Keep the shown status when it is unchanged so typing does not re-render the editor.
+      // Keep the status object when matches and the current match are unchanged, so selection moves do not re-render the editor.
       setFindStatus((status) =>
         status.total === total &&
         status.current === current &&
