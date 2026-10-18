@@ -209,7 +209,8 @@ test('addon trust settings, install review marks, and revoked rows', {
         await row('unsigned').innerText(),
         /Unsigned.*Blocked package.*This addon is unsigned\./s,
       )
-      assert.doesNotMatch(await row('unsigned').innerText(), /Signed by Hibi/)
+      for (const name of ['unsigned', 'revoked'])
+        assert.doesNotMatch(await row(name).innerText(), /Signed by Hibi/)
       assert.match(
         await row('invalid').innerText(),
         /Invalid signature.*does not match its files/s,

@@ -197,7 +197,7 @@ function AddonInstallChooser({
                 {manifest && (
                   <p>{`${manifest.id} · v${manifest.version} · ${manifest.kind ?? 'extension'}`}</p>
                 )}
-                {candidate.trust?.status === 'signed' && (
+                {candidate.trust?.status === 'signed' && !candidate.revoked && (
                   <p className="addon-install-signed">
                     <BadgeCheck aria-hidden="true" size={14} />
                     Signed by Hibi
