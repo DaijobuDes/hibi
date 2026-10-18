@@ -643,6 +643,35 @@ export function updateDocument(value: unknown): void {
     source = makeSource(value, activeTab, current.version + 1)
 }
 
+function isOpenInOtherTab(destination: string) {
+  return getOpenDocuments().some(
+    (draft) => draft.tabId !== activeTab && draft.file === destination,
+  )
+}
+
+function missingFile(error: NodeJS.ErrnoException) {
+  if (error.code !== 'ENOENT') throw error
+  return null
+}
+
+async function recordSaveHistory(
+  window: BrowserWindow,
+  destination: string,
+  previous: string | null,
+  content: string,
+) {
+  try {
+    if (previous !== null) await recordVersion(destination, previous)
+    await recordVersion(destination, content)
+  } catch (error) {
+    console.error('local history failed:', error)
+    window.webContents.send(
+      HISTORY_CHANNELS.notice,
+      'File saved, but Hibi could not add it to version history.',
+    )
+  }
+}
+
 export async function saveDocument(
   window: BrowserWindow,
   saveAs = false,
@@ -679,22 +708,13 @@ export async function saveDocument(
       return join(await realpath(dirname(chosen)), basename(chosen))
     },
   )
-  if (
-    getOpenDocuments().some(
-      (draft) => draft.tabId !== activeTab && draft.file === destination,
-    )
-  )
+  if (isOpenInOtherTab(destination))
     throw new Error(
       'This file is open in another tab. Choose a different name.',
     )
   let previous: string | null = null
   if (destination === path) {
-    const disk = await readMarkdown(destination).catch(
-      (error: NodeJS.ErrnoException) => {
-        if (error.code !== 'ENOENT') throw error
-        return null
-      },
-    )
+    const disk = await readMarkdown(destination).catch(missingFile)
     previous = disk
     if (disk !== textOf(saved)) {
       if (automatic) return null
@@ -714,16 +734,7 @@ export async function saveDocument(
   pendingPath = null
   saved = saving
   refreshDirtyIndicator(window)
-  try {
-    if (previous !== null) await recordVersion(destination, previous)
-    await recordVersion(destination, content)
-  } catch (error) {
-    console.error('local history failed:', error)
-    window.webContents.send(
-      HISTORY_CHANNELS.notice,
-      'File saved, but Hibi could not add it to version history.',
-    )
-  }
+  await recordSaveHistory(window, destination, previous, content)
   return getDocument()
 }
 
@@ -756,12 +767,7 @@ export async function autosaveDocument(
   const destination = draft.path
   const saving = draft.source.snapshot()
   const content = textOf(saving)
-  const disk = await readMarkdown(destination).catch(
-    (error: NodeJS.ErrnoException) => {
-      if (error.code !== 'ENOENT') throw error
-      return null
-    },
-  )
+  const disk = await readMarkdown(destination).catch(missingFile)
   if (disk !== textOf(draft.saved))
     return { status: 'conflict', document: null }
   // The source and tab may change while disk I/O is pending.
@@ -785,16 +791,7 @@ export async function autosaveDocument(
   }
   storeTab()
   refreshDirtyIndicator(window)
-  try {
-    if (disk !== null) await recordVersion(destination, disk)
-    await recordVersion(destination, content)
-  } catch (error) {
-    console.error('local history failed:', error)
-    window.webContents.send(
-      HISTORY_CHANNELS.notice,
-      'File saved, but Hibi could not add it to version history.',
-    )
-  }
+  await recordSaveHistory(window, destination, disk, content)
   return { status: 'saved', document: getDocumentForTab(id) }
 }
 
@@ -947,20 +944,11 @@ export async function renameDocument(value: unknown): Promise<DocumentState> {
   if (!path) {
     if (pendingPath) {
       const destination = join(dirname(pendingPath), name)
-      if (
-        getOpenDocuments().some(
-          (draft) => draft.tabId !== activeTab && draft.file === destination,
-        )
-      )
+      if (isOpenInOtherTab(destination))
         throw new Error(
           'A file with that name is open. Choose a different name.',
         )
-      const exists = await lstat(destination).catch(
-        (error: NodeJS.ErrnoException) => {
-          if (error.code !== 'ENOENT') throw error
-          return null
-        },
-      )
+      const exists = await lstat(destination).catch(missingFile)
       if (exists)
         throw new Error(
           'A file with that name exists. Choose a different name.',
@@ -972,18 +960,9 @@ export async function renameDocument(value: unknown): Promise<DocumentState> {
   }
   const destination = join(dirname(path), name)
   if (destination === path) return getDocument()
-  if (
-    getOpenDocuments().some(
-      (draft) => draft.tabId !== activeTab && draft.file === destination,
-    )
-  )
+  if (isOpenInOtherTab(destination))
     throw new Error('A file with that name is open. Choose a different name.')
-  const existing = await lstat(destination).catch(
-    (error: NodeJS.ErrnoException) => {
-      if (error.code !== 'ENOENT') throw error
-      return null
-    },
-  )
+  const existing = await lstat(destination).catch(missingFile)
   if (existing) {
     if (!existing.isSymbolicLink() && (await realpath(destination)) === path) {
       await rename(path, destination)

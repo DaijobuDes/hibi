@@ -199,4 +199,23 @@ test('local history snapshots on save, previews, and restores without overwritin
   )
   assert.equal(savedVersions.length, 3)
   assert.equal(preview, 'original')
+
+  await t.test('history failure still saves and notifies', async () => {
+    await rm(join(profile, 'history'), { recursive: true })
+    await writeFile(join(profile, 'history'), 'blocked')
+    const content = 'saved without history'
+    await replaceRichText(page, rich, content)
+    await waitForAsync(
+      page,
+      async (content) => (await window.hibi.getDocument()).markdown === content,
+      content,
+    )
+    const saved = await page.evaluate(() => window.hibi.saveDocument(false))
+    assert.equal(saved.dirty, false)
+    assert.equal(saved.savedMarkdown, content)
+    assert.equal(await readFile(file, 'utf8'), content)
+    await page
+      .getByText('File saved, but Hibi could not add it to version history.')
+      .waitFor()
+  })
 })
