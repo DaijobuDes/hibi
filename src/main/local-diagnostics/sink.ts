@@ -345,6 +345,28 @@ export class LocalDiagnosticSink {
     this.segmentSize = header.length
   }
 
+  private async renameSmall(name: string, maximum: number) {
+    const verify = async () => {
+      const staged = await this.openOwned(
+        'incident-next.txt',
+        diagnosticLimits.summaryBytes,
+      )
+      await staged.close()
+      const target = await this.openOwned(name, maximum)
+      await target.close()
+      await this.checkDirectory()
+    }
+    await verify()
+    await retryRename(
+      () =>
+        this.fs.rename(
+          join(this.directory, 'incident-next.txt'),
+          join(this.directory, name),
+        ),
+      verify,
+    )
+  }
+
   private async writeSmall(
     name: string,
     fields: Record<string, unknown>,
@@ -426,19 +448,9 @@ export class LocalDiagnosticSink {
           fields,
           diagnosticLimits.summaryBytes,
         )
-        const target = await this.openOwned(
+        await this.renameSmall(
           'last-incident.txt',
           diagnosticLimits.summaryBytes,
-        )
-        await target.close()
-        await this.checkDirectory()
-        await retryRename(
-          () =>
-            this.fs.rename(
-              join(this.directory, 'incident-next.txt'),
-              join(this.directory, 'last-incident.txt'),
-            ),
-          () => this.checkDirectory(),
         )
       }
       const dropped = this.queue.takeDropped()
@@ -521,20 +533,7 @@ export class LocalDiagnosticSink {
         diagnosticLimits.summaryBytes,
         diagnosticLimits.markerBytes,
       )
-      const marker = await this.openOwned(
-        'run-state.txt',
-        diagnosticLimits.markerBytes,
-      )
-      await marker.close()
-      await this.checkDirectory()
-      await retryRename(
-        () =>
-          this.fs.rename(
-            join(this.directory, 'incident-next.txt'),
-            join(this.directory, 'run-state.txt'),
-          ),
-        () => this.checkDirectory(),
-      )
+      await this.renameSmall('run-state.txt', diagnosticLimits.markerBytes)
     } catch {
       await this.fail()
       return

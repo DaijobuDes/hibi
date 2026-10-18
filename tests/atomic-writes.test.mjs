@@ -36,6 +36,7 @@ async function runtime({
       ...fs,
       rename: async (source, destination) => {
         state.attempts++
+        await state.beforeRename?.()
         if (state.attempts <= failures)
           throw state.attempts === 1
             ? original
@@ -237,7 +238,7 @@ test('workspace atomic write rejects a staged pathname swapped during backoff', 
 async function credentialWriter(t, options) {
   const { module, state } = await runtime(options)
   const directory = await fs.mkdtemp(join(tmpdir(), 'hibi-credential-rename-'))
-  const owner = { addonId: 'example', activationGeneration: 1 }
+  let owner = { addonId: 'example', activationGeneration: 1 }
   const windowKey = {}
   const host = new module.exports.HostCredentials({
     directory,
@@ -245,7 +246,7 @@ async function credentialWriter(t, options) {
     currentOwner: () => owner,
     isWindowLive: () => true,
     storage: {
-      isAsyncEncryptionAvailable: async () => true,
+      isAsyncEncryptionAvailable: async () => state.available !== false,
       encryptStringAsync: async () => Buffer.from('ciphertext'),
       isEncryptionAvailable: () => true,
     },
@@ -259,6 +260,9 @@ async function credentialWriter(t, options) {
     state,
     directory,
     revoke: () => host.stopOwner(owner),
+    restart: () => {
+      owner = { ...owner, activationGeneration: owner.activationGeneration + 1 }
+    },
     stopWindow: () => host.stopWindow(windowKey),
     write: () =>
       host.store('example', windowKey, {
@@ -316,6 +320,55 @@ for (const action of ['revoke', 'stopWindow', 'dispose'])
     assert.deepEqual(writing.state.delays, [50])
   })
 
+for (const action of ['restart', 'unavailable'])
+  test(`credential retry rechecks ${action} without an abort`, async (t) => {
+    const writing = await credentialWriter(t)
+    writing.state.onDelay = () => {
+      if (action === 'restart') writing.restart()
+      else writing.state.available = false
+    }
+    const result = await writing.write()
+    assert.equal(result.ok, false)
+    assert.equal(
+      result.code,
+      action === 'restart' ? 'stale' : 'locked-or-unavailable',
+    )
+    assert.equal(result.committed, undefined)
+    assert.equal(writing.state.attempts, 1)
+    assert.deepEqual(writing.state.delays, [50])
+  })
+
+for (const succeeds of [true, false])
+  test(`credential abort awaits a windows native rename that succeeds: ${succeeds}`, async (t) => {
+    const writing = await credentialWriter(t, { failures: succeeds ? 0 : 1 })
+    let enter, release
+    const entered = new Promise((resolve) => {
+      enter = resolve
+    })
+    const gate = new Promise((resolve) => {
+      release = resolve
+    })
+    writing.state.beforeRename = async () => {
+      enter()
+      await gate
+    }
+    const pending = writing.write()
+    await entered
+    writing.revoke()
+    let settled = false
+    void pending.then(() => {
+      settled = true
+    })
+    await new Promise((resolve) => setImmediate(resolve))
+    assert.equal(settled, false)
+    release()
+    const result = await pending
+    assert.equal(result.ok, false)
+    assert.equal(result.code, 'stale')
+    assert.equal(result.committed, succeeds ? true : undefined)
+    assert.equal(writing.state.attempts, 1)
+  })
+
 async function diagnosticWriter(t, options) {
   const { module, state } = await runtime(options)
   const directory = await fs.mkdtemp(join(tmpdir(), 'hibi-diagnostic-rename-'))
@@ -341,6 +394,31 @@ async function diagnosticWriter(t, options) {
   })
   return { sink, state, directory: sink.location }
 }
+
+for (const changed of [
+  'incident-next.txt',
+  'last-incident.txt',
+  'run-state.txt',
+])
+  test(`diagnostic retry refuses an unowned ${changed} swapped during backoff`, async (t) => {
+    const { sink, state, directory } = await diagnosticWriter(t)
+    state.onDelay = () =>
+      fs.writeFile(join(directory, changed), 'PRIVATE_UNOWNED')
+    if (changed === 'run-state.txt') await sink.finish()
+    else {
+      sink.enqueue(
+        JSON.stringify({ code: 'RENDERER_ERROR', stackStatus: 'unavailable' }),
+      )
+      await sink.flush()
+    }
+    assert.equal(sink.status.state, 'failed')
+    assert.equal(state.attempts, 1)
+    assert.equal(
+      await fs.readFile(join(directory, changed), 'utf8'),
+      'PRIVATE_UNOWNED',
+    )
+    assert.doesNotMatch(sink.report(), /PRIVATE_UNOWNED/)
+  })
 
 for (const target of ['last-incident.txt', 'run-state.txt'])
   for (const failures of [1, Infinity])
