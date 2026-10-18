@@ -4,8 +4,9 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { electron, waitForDocumentEditor } from './electron.mjs'
+import { replaceRichText } from './keyboard.mjs'
 
-async function setup(t) {
+async function setup(t, keepAlive = false) {
   const profile = await mkdtemp(join(tmpdir(), 'hibi-file-lock-'))
   await writeFile(join(profile, 'addons.json'), '{"quick-note":true}')
   const app = await electron.launch({
@@ -14,7 +15,11 @@ async function setup(t) {
   const child = app.process()
   t.after(async () => {
     if (child.exitCode === null && child.signalCode === null) {
-      await app.evaluate(() => globalThis.fileLockTest?.release?.())
+      await app.evaluate(async ({ dialog }) => {
+        globalThis.fileLockTest?.release?.()
+        await new Promise(setImmediate)
+        dialog.showMessageBox = async () => ({ response: 1 })
+      })
       await app.close()
     }
     await rm(profile, { recursive: true, force: true })
@@ -22,8 +27,14 @@ async function setup(t) {
   const page = await app.firstWindow()
   await waitForDocumentEditor(app, page)
   const opened = app.waitForEvent('window')
-  await page.evaluate(() =>
-    window.hibi.openAddonWindow('quick-note', { id: 'capture', show: false }),
+  await page.evaluate(
+    (keepAlive) =>
+      window.hibi.openAddonWindow('quick-note', {
+        id: 'capture',
+        keepAlive,
+        show: false,
+      }),
+    keepAlive,
   )
   const capture = await opened
   await capture.locator('.tiptap[contenteditable="true"]').waitFor()
@@ -57,7 +68,7 @@ async function setup(t) {
       },
     }
   })
-  return { app, profile }
+  return { app, profile, page, capture }
 }
 
 test('core mutations and draft writes wait for a held quick-note draft read', {
@@ -174,7 +185,7 @@ test('a resolved Open dialog followed by failed file I/O releases a queued draft
   )
 })
 
-test('closing drains admitted draft writes and refuses queued main actions and new admissions', {
+test('closing drains capture writes and refuses queued and new main actions', {
   timeout: 30000,
 }, async (t) => {
   const { app, profile } = await setup(t)
@@ -249,9 +260,10 @@ test('closing drains admitted draft writes and refuses queued main actions and n
     main.close()
     await flushed.promise
     state.start('lateWrite', 'addon-windows:invoke', true, 'saveDraft', {
-      markdown: 'too late',
+      markdown: 'kept while closing',
       destination: null,
     })
+    state.start('lateMain', 'document:new', false)
     await new Promise(setImmediate)
     first.resolve()
     await writing.promise
@@ -263,11 +275,9 @@ test('closing drains admitted draft writes and refuses queued main actions and n
       await app.evaluate(() => globalThis.fileLockTest.allowedClose),
       false,
     )
-    assert.match(
-      await app.evaluate(
-        () => globalThis.fileLockTest.results.lateWrite?.error ?? '',
-      ),
-      /Another file operation is in progress/,
+    assert.equal(
+      await app.evaluate(() => globalThis.fileLockTest.results.lateWrite),
+      undefined,
     )
   } finally {
     result = await app.evaluate(() => globalThis.fileLockTest.finish())
@@ -277,13 +287,196 @@ test('closing drains admitted draft writes and refuses queued main actions and n
     result.results.open.error,
     /Another file operation is in progress/,
   )
+  assert.match(
+    result.results.lateMain.error,
+    /Another file operation is in progress/,
+  )
   assert.deepEqual(result.results.write, { value: { keptAs: null } })
+  assert.deepEqual(result.results.lateWrite, { value: { keptAs: null } })
   await app.close()
   assert.equal(
     JSON.parse(await readFile(join(profile, 'quick-note-draft.json'), 'utf8'))
       .markdown,
-    'kept before closing',
+    'kept while closing',
   )
+})
+
+test('a draft queued before its owner opens a dialog is refused when it opens', {
+  timeout: 30000,
+}, async (t) => {
+  const { app, profile } = await setup(t)
+  const path = join(profile, 'changed-outside.md')
+  await writeFile(path, 'original')
+  await app.evaluate(async ({ dialog }, path) => {
+    const state = globalThis.fileLockTest
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] })
+    state.start('open', 'document:open', false)
+    await state.pending.open
+    state.start('edit', 'document:update', false, 'unsaved change')
+    await state.pending.edit
+  }, path)
+  await writeFile(path, 'external change')
+  await app.evaluate(async ({ dialog }) => {
+    const state = globalThis.fileLockTest
+    const reading = Promise.withResolvers()
+    const readEntered = Promise.withResolvers()
+    const prompted = Promise.withResolvers()
+    const dialogEntered = Promise.withResolvers()
+    const fs = process.getBuiltinModule('node:fs/promises')
+    const realpath = fs.realpath
+    fs.realpath = async (...args) => {
+      if (String(args[0]).endsWith('changed-outside.md')) {
+        fs.realpath = realpath
+        process.getBuiltinModule('node:module').syncBuiltinESMExports()
+        readEntered.resolve()
+        await reading.promise
+      }
+      return realpath(...args)
+    }
+    process.getBuiltinModule('node:module').syncBuiltinESMExports()
+    dialog.showMessageBox = async () => {
+      dialogEntered.resolve()
+      await prompted.promise
+      return { response: 1 }
+    }
+    state.release = () => {
+      reading.resolve()
+      prompted.resolve()
+    }
+    state.showDialog = async () => {
+      reading.resolve()
+      await dialogEntered.promise
+      await new Promise(setImmediate)
+    }
+    state.start('save', 'document:save', false, false)
+    await readEntered.promise
+    state.start('write', 'addon-windows:invoke', true, 'saveDraft', {
+      markdown: 'queued before the prompt',
+      destination: null,
+    })
+    await new Promise(setImmediate)
+  })
+  try {
+    assert.equal(
+      await app.evaluate(() => globalThis.fileLockTest.results.write),
+      undefined,
+    )
+    await app.evaluate(() => globalThis.fileLockTest.showDialog())
+    assert.match(
+      await app.evaluate(
+        () => globalThis.fileLockTest.results.write?.error ?? '',
+      ),
+      /Another file operation is in progress/,
+    )
+  } finally {
+    await app.evaluate(async () => {
+      const state = globalThis.fileLockTest
+      state.release()
+      await Promise.all(Object.values(state.pending))
+    })
+  }
+})
+
+test('capture drafts still open and save after the macOS main window closes', {
+  timeout: 30000,
+  skip: process.platform !== 'darwin',
+}, async (t) => {
+  const { app, profile } = await setup(t)
+  await app.evaluate(async ({ BrowserWindow }) => {
+    const main = BrowserWindow.getAllWindows().find(
+      (window) => !window.webContents.getURL().endsWith('/addon-window.html'),
+    )
+    const closed = new Promise((done) => main.once('closed', done))
+    main.close()
+    await closed
+    const state = globalThis.fileLockTest
+    state.start('read', 'addon-windows:invoke', true, 'openDraft')
+    await state.pending.read
+    state.start('write', 'addon-windows:invoke', true, 'saveDraft', {
+      markdown: 'kept without a main window',
+      destination: null,
+    })
+    await state.pending.write
+  })
+  const state = await app.evaluate(({ BrowserWindow }) => ({
+    results: globalThis.fileLockTest.results,
+    windows: BrowserWindow.getAllWindows().map((window) =>
+      window.webContents.getURL(),
+    ),
+  }))
+  assert.equal(state.results.read.error, undefined)
+  assert.deepEqual(state.results.write, { value: { keptAs: null } })
+  assert.equal(state.windows.length, 1)
+  assert.match(state.windows[0], /addon-window\.html$/)
+  assert.equal(
+    JSON.parse(await readFile(join(profile, 'quick-note-draft.json'), 'utf8'))
+      .markdown,
+    'kept without a main window',
+  )
+})
+
+test('capture text typed during the quit confirmation is kept', {
+  timeout: 30000,
+}, async (t) => {
+  const { app, page, capture, profile } = await setup(t, true)
+  await replaceRichText(
+    page,
+    page.getByRole('textbox', { name: 'Document editor', exact: true }),
+    'unsaved main draft',
+  )
+  await app.evaluate(async ({ app, BrowserWindow, dialog, ipcMain }) => {
+    const state = globalThis.fileLockTest
+    const held = Promise.withResolvers()
+    const entered = Promise.withResolvers()
+    state.saved = Promise.withResolvers()
+    state.release = () => held.resolve({ response: 2 })
+    dialog.showMessageBox = async () => {
+      entered.resolve()
+      return held.promise
+    }
+    const channel = 'addon-windows:invoke'
+    const invoke = ipcMain._invokeHandlers.get(channel)
+    ipcMain._invokeHandlers.set(channel, async (...args) => {
+      try {
+        const value = await invoke(...args)
+        if (args[1] === 'saveDraft') state.saved.resolve({ value })
+        return value
+      } catch (error) {
+        if (args[1] === 'saveDraft')
+          state.saved.resolve({ error: error.message })
+        throw error
+      }
+    })
+    app.quit()
+    await entered.promise
+    BrowserWindow.getAllWindows()
+      .find((window) =>
+        window.webContents.getURL().endsWith('/addon-window.html'),
+      )
+      .showInactive()
+  })
+  try {
+    await replaceRichText(
+      capture,
+      capture.locator('.tiptap[contenteditable="true"]'),
+      'typed during quit',
+    )
+    assert.deepEqual(
+      await app.evaluate(() => globalThis.fileLockTest.saved.promise),
+      { value: { keptAs: null } },
+    )
+    assert.equal(
+      JSON.parse(await readFile(join(profile, 'quick-note-draft.json'), 'utf8'))
+        .markdown,
+      'typed during quit',
+    )
+  } finally {
+    await app.evaluate(async ({ dialog }) => {
+      globalThis.fileLockTest.release()
+      await new Promise(setImmediate)
+      dialog.showMessageBox = async () => ({ response: 1 })
+    })
+  }
 })
 
 test('held Open and quick-note folder dialogs refuse overlapping draft writes', {

@@ -148,6 +148,7 @@ import {
 import { isDocumentName } from './document-types'
 import { externalFileArguments } from './external-files'
 import {
+  fileOperationDialogOpened,
   fileOperationHasDialog,
   withinFileOperation,
 } from './file-operation-dialog'
@@ -501,6 +502,7 @@ function resetAddonSessions(): void {
 }
 
 let fileOperation: Promise<unknown> | null = null
+const pendingFileOperations = new Set<Promise<void>>()
 let closing = false
 let quitting = false
 let recordingHotkey = false
@@ -684,6 +686,7 @@ function runFileOperation<T>(
   event: IpcMainInvokeEvent,
   operation: (window: BrowserWindow) => Promise<T>,
 ) {
+  if (closing) throw fileOperationUnavailable()
   return lockFileOperation(trustedWindow(event), () => {
     if (closing) throw fileOperationUnavailable()
     return operation(trustedWindow(event))
@@ -694,16 +697,26 @@ async function lockFileOperation<T>(
   window: BrowserWindow,
   operation: (window: BrowserWindow) => Promise<T>,
 ) {
-  if (closing) throw fileOperationUnavailable()
-  while (fileOperation) {
-    if (fileOperationHasDialog()) throw fileOperationUnavailable()
-    await fileOperation.catch(() => undefined)
-  }
-  const pending = withinFileOperation(() => operation(window)).finally(() => {
-    fileOperation = null
+  let settle!: () => void
+  const completed = new Promise<void>((resolve) => {
+    settle = resolve
   })
-  fileOperation = pending
-  return pending
+  pendingFileOperations.add(completed)
+  try {
+    while (fileOperation) {
+      if (fileOperationHasDialog()) throw fileOperationUnavailable()
+      const running = fileOperation.catch(() => undefined)
+      await Promise.race([running, fileOperationDialogOpened() ?? running])
+    }
+    const pending = withinFileOperation(() => operation(window)).finally(() => {
+      fileOperation = null
+    })
+    fileOperation = pending
+    return await pending
+  } finally {
+    pendingFileOperations.delete(completed)
+    settle()
+  }
 }
 
 async function readAfterFileOperation<T>(
@@ -924,7 +937,8 @@ function createWindow(): void {
     closing = true
     void (async () => {
       await flushRenderer()
-      while (fileOperation) await fileOperation.catch(() => undefined)
+      while (pendingFileOperations.size)
+        await Promise.all(pendingFileOperations)
       if (
         quitting &&
         background.enabled &&
