@@ -170,6 +170,19 @@ export function createAddonStorage(
 ) {
   const namespaces = new Map<string, Namespace>()
   const listeners = new Set<(change: AddonStorageChange) => void>()
+  const encodedEntries = new WeakMap<Entry, string>()
+
+  function serialize(entries: Record<string, Entry>): string {
+    const fields = Object.entries(entries).map(([key, entry]) => {
+      let encoded = encodedEntries.get(entry)
+      if (encoded === undefined) {
+        encoded = JSON.stringify(entry)
+        encodedEntries.set(entry, encoded)
+      }
+      return `${JSON.stringify(key)}:${encoded}`
+    })
+    return `{"format":${FORMAT},"entries":{${fields.join(',')}}}`
+  }
 
   function namespaceKey(owner: string, scope: AddonStorageScope): string {
     return scope.kind === 'workspace'
@@ -342,7 +355,7 @@ export function createAddonStorage(
         )
         next[request.key] = { version: request.version, revision, value }
         if (file) {
-          const encoded = JSON.stringify({ format: FORMAT, entries: next })
+          const encoded = serialize(next)
           if (Buffer.byteLength(encoded) > FILE_LIMIT)
             throw new Error('This addon storage scope is full.')
           const beforeWrite = stale(request, generation)
