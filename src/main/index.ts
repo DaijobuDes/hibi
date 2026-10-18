@@ -674,17 +674,16 @@ function runFileOperation<T>(
   event: IpcMainInvokeEvent,
   operation: (window: BrowserWindow) => Promise<T>,
 ) {
-  return lockFileOperation(trustedWindow(event), operation)
+  return lockFileOperation(trustedWindow(event), () =>
+    operation(trustedWindow(event)),
+  )
 }
 
-function lockFileOperation<T>(
+async function lockFileOperation<T>(
   window: BrowserWindow,
   operation: (window: BrowserWindow) => Promise<T>,
 ) {
-  if (fileOperation)
-    throw new Error(
-      'Another file operation is in progress. Wait for it to finish, then try again.',
-    )
+  while (fileOperation) await fileOperation.catch(() => undefined)
   const pending = operation(window).finally(() => {
     fileOperation = null
   })
@@ -1697,9 +1696,10 @@ if (!app.requestSingleInstanceLock()) {
         ADDON_WINDOW_CHANNELS.invoke,
         (event, method: unknown, input: unknown) => {
           const { window, addonId } = addonWindowSender(event)
-          return lockFileOperation(window, () =>
-            invokeAddon(window, addonId, method, input),
-          )
+          return lockFileOperation(window, () => {
+            addonWindowSender(event)
+            return invokeAddon(window, addonId, method, input)
+          })
         },
       )
       handle(HOTKEY_CHANNELS.get, (event) => {
