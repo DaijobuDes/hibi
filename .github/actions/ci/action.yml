@@ -45,7 +45,7 @@ runs:
         restore-keys: |
           checks-v2-${{ runner.os }}-${{ runner.arch }}-${{ inputs.shard }}-${{ hashFiles('package-lock.json', '.nvmrc', 'scripts/ci.mjs') }}-${{ steps.image.outputs.version }}-${{ inputs.base }}-
           checks-v2-${{ runner.os }}-${{ runner.arch }}-${{ inputs.shard }}-${{ hashFiles('package-lock.json', '.nvmrc', 'scripts/ci.mjs') }}-${{ steps.image.outputs.version }}-
-    - run: npm ci
+    - run: node .github/actions/ci/install.mjs
       shell: bash
       env:
         electron_config_cache: ${{ github.workspace }}/.cache/electron
