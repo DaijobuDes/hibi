@@ -1,5 +1,142 @@
-import { spawnSync } from 'node:child_process'
+import { execFile, spawnSync } from 'node:child_process'
+import { createInterface } from 'node:readline'
+import { promisify } from 'node:util'
 import { _electron } from 'playwright'
+
+const execute = promisify(execFile)
+
+export async function snapshotElectronProcesses(pid) {
+  if (process.platform === 'win32') return
+  const options = {
+    encoding: 'utf8',
+    timeout: 2000,
+    killSignal: 'SIGKILL',
+    maxBuffer: 256 * 1024,
+  }
+  try {
+    const { stdout } = await execute(
+      'ps',
+      ['-axo', 'pid=,ppid=,pgid=,etime=,command='],
+      options,
+    )
+    const rows = stdout.split('\n').flatMap((line) => {
+      const match = line.match(/^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s+(.*)$/)
+      return match
+        ? [{ pid: +match[1], parent: +match[2], group: +match[3], line }]
+        : []
+    })
+    const ids = new Set([pid])
+    for (let size = 0; size !== ids.size; ) {
+      size = ids.size
+      for (const row of rows)
+        if (ids.has(row.parent) || row.group === pid) ids.add(row.pid)
+    }
+    const tree = rows.filter((row) => ids.has(row.pid)).slice(0, 20)
+    console.error(
+      `electron-shutdown-processes (pid ppid pgid elapsed command):\n${
+        tree.map((row) => row.line.trim().slice(0, 200)).join('\n') ||
+        'process group already exited'
+      }`,
+    )
+    if (!tree.length) return
+    const files = await execute(
+      'lsof',
+      ['-nP', '-a', '-p', tree.map((row) => row.pid).join(',')],
+      options,
+    ).catch((error) => {
+      if (!error.stdout) throw error
+      console.error(
+        `electron-shutdown-lsof incomplete: ${error.code ?? error.signal}`,
+      )
+      return { stdout: error.stdout }
+    })
+    console.error(
+      `electron-shutdown-pipes/sockets:\n${files.stdout
+        .split('\n')
+        .filter(
+          (line, index) =>
+            index === 0 || /\b(PIPE|FIFO|IPv4|IPv6|unix)\b/.test(line),
+        )
+        .slice(0, 25)
+        .join('\n')
+        .slice(0, 2000)}`,
+    )
+  } catch (error) {
+    console.error(
+      `electron-shutdown-snapshot unavailable: ${String(error.message).slice(0, 240)}`,
+    )
+  }
+}
+
+export function forwardElectronDiagnostics(stderr) {
+  const lines = createInterface({ input: stderr })
+  lines.on('line', (line) => {
+    if (/^electron-(native-modal|main-uncaught) /.test(line))
+      console.error(line.slice(0, 32768))
+  })
+  return lines
+}
+
+export function installElectronDiagnostics({ dialog }) {
+  process.on('uncaughtExceptionMonitor', (error) => {
+    try {
+      console.error(
+        'electron-main-uncaught',
+        JSON.stringify({ stack: error.stack ?? String(error) }),
+      )
+    } catch {}
+  })
+  for (const method of [
+    'showErrorBox',
+    'showMessageBoxSync',
+    'showOpenDialogSync',
+    'showSaveDialogSync',
+  ]) {
+    const original = dialog[method].bind(dialog)
+    dialog[method] = (...args) => {
+      try {
+        const options = args.at(-1)
+        console.error(
+          'electron-native-modal',
+          JSON.stringify({
+            method,
+            title: String(
+              method === 'showErrorBox' ? args[0] : (options?.title ?? ''),
+            ).slice(0, 200),
+            content: String(
+              method === 'showErrorBox' ? args[1] : (options?.message ?? ''),
+            ).slice(0, 800),
+            detail: String(options?.detail ?? '').slice(0, 800),
+          }),
+        )
+      } catch {}
+      return original(...args)
+    }
+  }
+}
+
+export function showElectronTestWindows({ app, BrowserWindow }) {
+  const closing = new WeakSet()
+  const show = (window) => {
+    if (closing.has(window) || window.isDestroyed()) return
+    if (window.webContents.getURL().startsWith('hibi-analysis:')) return
+    window.setFocusable(true)
+    window.show()
+    window.focus()
+  }
+  const watch = (window) => {
+    window.on('close', () => closing.add(window))
+    window.once('ready-to-show', () => show(window))
+  }
+  app.on('before-quit', () => {
+    for (const window of BrowserWindow.getAllWindows()) closing.add(window)
+  })
+  app.on('browser-window-created', (_event, window) => watch(window))
+  for (const window of BrowserWindow.getAllWindows()) {
+    watch(window)
+    show(window)
+  }
+}
 
 function drainElectronStdio(child) {
   for (const stream of child.stdio ?? [child.stdout, child.stderr])
@@ -95,8 +232,16 @@ export const electron = {
         : []
     const application = await _electron.launch({
       ...options,
+      env: {
+        HIBI_TEST_ADDON_REVOCATIONS_URL: new URL(
+          './fixtures/no-addon-revocations.json',
+          import.meta.url,
+        ).href,
+        ...(options.env ?? process.env),
+      },
       args: [...options.args, '--hibi-test', ...gpuArgs],
     })
+    forwardElectronDiagnostics(application.process().stderr)
     const close = application.close.bind(application)
     const quitTrace = {
       notInstalled: true,
@@ -160,6 +305,8 @@ export const electron = {
               }),
             )
           } catch {}
+          // Start while the processes still exist; the 20s kill never waits for it.
+          void snapshotElectronProcesses(child.pid).catch(() => {})
         }, 3000)
         diagnosticTimer.unref()
         const pendingClose = close()
@@ -185,6 +332,7 @@ export const electron = {
         clearTimeout(diagnosticTimer)
       }
     }
+    await application.evaluate(installElectronDiagnostics)
     if (showTestWindows) {
       // The inspector may already be closed; keep only validated stdout events.
       let detachQuitTrace
@@ -447,17 +595,8 @@ export const electron = {
             app.on(event, () => write(event))
           write('armed')
         } catch {}
-        const show = (window) => {
-          if (window.webContents.getURL().startsWith('hibi-analysis:')) return
-          window.setFocusable(true)
-          window.show()
-          window.focus()
-        }
-        app.on('browser-window-created', (_event, window) => {
-          window.once('ready-to-show', () => show(window))
-        })
-        for (const window of BrowserWindow.getAllWindows()) show(window)
       })
+      await application.evaluate(showElectronTestWindows)
       const reportSlowStart = async () => {
         try {
           let readinessTimer
