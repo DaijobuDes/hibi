@@ -226,10 +226,6 @@ test('addon trust settings, install review marks, and revoked rows', {
             .isDisabled(),
           true,
         )
-      assert.match(
-        await dialog.locator('.addon-install-note').innerText(),
-        /turn on Allow unsigned addons in Settings under Addon Manager → Security, then install them again/,
-      )
       await dialog.getByRole('button', { name: /^cancel$/i }).click()
       await dialog.waitFor({ state: 'hidden' })
     },

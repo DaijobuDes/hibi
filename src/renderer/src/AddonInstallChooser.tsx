@@ -125,12 +125,6 @@ function AddonInstallChooser({
     (candidate) =>
       candidate.status === 'installable' && !completed.has(candidate.key),
   )
-  const unsignedBlocked = session.candidates.some(
-    (candidate) =>
-      candidate.status === 'blocked' &&
-      candidate.trust?.status === 'unsigned' &&
-      !candidate.revoked,
-  )
   const keys = remaining
     .filter(
       (candidate) =>
@@ -288,12 +282,6 @@ function AddonInstallChooser({
           )
         })}
       </ul>
-      {unsignedBlocked && (
-        <p className="addon-install-note">
-          To install unsigned addons, turn on Allow unsigned addons in Settings
-          under Addon Manager → Security, then install them again.
-        </p>
-      )}
       {actions &&
         createPortal(
           <>

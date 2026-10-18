@@ -983,10 +983,6 @@ button.ui-button.update-download-button:disabled {
   gap: var(--space-1);
   color: var(--muted);
 }
-.addon-install-note {
-  margin: var(--space-4) 0 0;
-  font-size: var(--text-sm);
-}
 .addon-metadata {
   display: flex;
   flex-wrap: wrap;

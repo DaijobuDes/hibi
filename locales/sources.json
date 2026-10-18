@@ -6316,9 +6316,6 @@
   "1c59a85f5059": [
     "src/addons/quick-note/native.ts"
   ],
-  "1d9086a13ae7": [
-    "src/renderer/src/AddonInstallChooser.tsx"
-  ],
   "2b065c7c9ce4": [
     "src/renderer/src/Introduction.tsx"
   ],
