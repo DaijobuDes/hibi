@@ -269,8 +269,8 @@ test('signed remote revocations disable installed versions, forbid enabling and 
   // Enable through settings so the renderer actually starts the addon.
   await clickMenu(app, 'Settings')
   await page.getByRole('tab', { name: /^addon manager$/i }).click()
-  const toggle = page.locator('#addon-revoked-fixture')
-  await toggle.check()
+  // The controlled toggle updates after IPC; check() asserts too early.
+  await page.locator('#addon-revoked-fixture').click()
   await page.waitForFunction(() => window.trustFixtureStarts === 1)
   assert.equal(
     (await page.evaluate(() => window.hibi.getAddonStates())).find(
