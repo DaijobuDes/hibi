@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { type BigIntStats, constants } from 'node:fs'
 import { type FileHandle, lstat, open, realpath } from 'node:fs/promises'
 import { isAbsolute } from 'node:path'
-import type { BrowserWindow, WebContents } from 'electron'
+import type { BrowserWindow } from 'electron'
 import type { AddonOwner } from '../shared/foundation-contracts'
 import {
   SELECTED_TEXT_MAX_BYTES,
@@ -11,6 +11,11 @@ import {
   type SelectedTextRead,
   type SelectedTextSelection,
 } from '../shared/selected-text.ts'
+
+import {
+  type SelectedFileActivation,
+  SelectedFileLiveness,
+} from './selected-file-liveness.ts'
 
 type FileOps = {
   lstat: typeof lstat
@@ -21,15 +26,11 @@ type Fingerprint = Pick<
   BigIntStats,
   'dev' | 'ino' | 'size' | 'mtimeNs' | 'ctimeNs'
 >
-type Grant = {
-  owner: AddonOwner
-  session: WebContents
+type Grant = SelectedFileActivation & {
   path: string
   file: FileHandle
   fingerprint: Fingerprint
   expiresAt: number
-  serviceEpoch: number
-  ownerEpoch: number
   timer: ReturnType<typeof setTimeout>
 }
 
@@ -87,9 +88,7 @@ async function hostSelectFile(window: BrowserWindow): Promise<string | null> {
 export class SelectedTextService {
   private readonly grants = new Map<string, Grant>()
   private activeReads = 0
-  private serviceEpoch = 0
-  private readonly ownerEpochs = new Map<string, number>()
-  private readonly currentOwner: (addonId: string) => AddonOwner | null
+  private readonly liveness: SelectedFileLiveness
   private readonly selectFile: (window: BrowserWindow) => Promise<string | null>
   private readonly now: () => number
   private readonly fileOps: FileOps
@@ -102,7 +101,7 @@ export class SelectedTextService {
     now: () => number = () => performance.now(),
     fileOps: FileOps = files,
   ) {
-    this.currentOwner = currentOwner
+    this.liveness = new SelectedFileLiveness(currentOwner)
     this.selectFile = selectFile
     this.now = now
     this.fileOps = fileOps
@@ -112,19 +111,16 @@ export class SelectedTextService {
     window: BrowserWindow,
     addonId: unknown,
   ): Promise<SelectedTextSelection> {
-    const owner = this.owner(addonId)
-    const session = this.session(window)
-    if (!owner || !session)
+    const activation = this.liveness.capture(window, addonId)
+    if (!activation)
       return fail('disposed', 'Enable this addon before selecting a file.')
-    const serviceEpoch = this.serviceEpoch
-    const ownerEpoch = this.ownerEpochs.get(owner.addonId) ?? 0
     let path: string | null
     try {
       path = await this.selectFile(window)
     } catch {
       return fail('unsupported', 'Could not select a text file. Try again.')
     }
-    if (!this.live(window, owner, session, serviceEpoch, ownerEpoch))
+    if (!this.liveness.live(window, activation))
       return fail(
         'stale',
         'The addon or window changed. Select the file again.',
@@ -136,7 +132,7 @@ export class SelectedTextService {
     let file: FileHandle | null = null
     try {
       const fingerprint = await this.inspect(path)
-      if (!this.live(window, owner, session, serviceEpoch, ownerEpoch))
+      if (!this.liveness.live(window, activation))
         throw new SelectedTextError('stale', 'The addon or window changed.')
       file = await this.fileOps.open(
         path,
@@ -144,7 +140,7 @@ export class SelectedTextService {
           (constants.O_NOFOLLOW ?? 0) |
           (constants.O_NONBLOCK ?? 0),
       )
-      if (!this.live(window, owner, session, serviceEpoch, ownerEpoch))
+      if (!this.liveness.live(window, activation))
         throw new SelectedTextError('stale', 'The addon or window changed.')
       const opened = await file.stat({ bigint: true })
       if (!opened.isFile() || !sameFile(fingerprint, opened))
@@ -152,7 +148,7 @@ export class SelectedTextService {
       const current = await this.inspect(path)
       if (
         !sameFile(fingerprint, current) ||
-        !this.live(window, owner, session, serviceEpoch, ownerEpoch)
+        !this.liveness.live(window, activation)
       )
         throw new SelectedTextError('stale', 'The selected file changed.')
       this.expireOld()
@@ -162,14 +158,11 @@ export class SelectedTextService {
       const timer = setTimeout(() => this.expire(handle), SELECTED_TEXT_TTL_MS)
       timer.unref()
       this.grants.set(handle, {
-        owner,
-        session,
+        ...activation,
         path,
         file,
         fingerprint,
         expiresAt: this.now() + SELECTED_TEXT_TTL_MS,
-        serviceEpoch,
-        ownerEpoch,
         timer,
       })
       file = null
@@ -194,7 +187,7 @@ export class SelectedTextService {
     try {
       if (
         grant.owner.addonId !== addonId ||
-        grant.session !== this.session(window)
+        grant.session !== this.liveness.session(window)
       )
         return fail('permission-denied', 'This file selection is unavailable.')
       if (!this.grantLive(window, grant))
@@ -252,68 +245,18 @@ export class SelectedTextService {
   }
 
   revokeAddon(addonId: string): void {
-    this.ownerEpochs.set(addonId, (this.ownerEpochs.get(addonId) ?? 0) + 1)
+    this.liveness.revokeAddon(addonId)
     for (const [handle, grant] of this.grants)
       if (grant.owner.addonId === addonId) this.expire(handle)
   }
 
   clear(): void {
-    this.serviceEpoch += 1
-    this.ownerEpochs.clear()
+    this.liveness.clear()
     for (const handle of this.grants.keys()) this.expire(handle)
   }
 
-  private owner(addonId: unknown): AddonOwner | null {
-    if (typeof addonId !== 'string') return null
-    try {
-      const owner = this.currentOwner(addonId)
-      return owner?.addonId === addonId &&
-        Number.isSafeInteger(owner.activationGeneration) &&
-        owner.activationGeneration >= 0
-        ? { ...owner }
-        : null
-    } catch {
-      return null
-    }
-  }
-
-  private session(window: BrowserWindow): WebContents | null {
-    try {
-      if (window.isDestroyed()) return null
-      const session = window.webContents
-      return session.isDestroyed() ? null : session
-    } catch {
-      return null
-    }
-  }
-
-  private live(
-    window: BrowserWindow,
-    owner: AddonOwner,
-    session: WebContents,
-    serviceEpoch: number,
-    ownerEpoch: number,
-  ): boolean {
-    return (
-      this.serviceEpoch === serviceEpoch &&
-      (this.ownerEpochs.get(owner.addonId) ?? 0) === ownerEpoch &&
-      this.session(window) === session &&
-      this.owner(owner.addonId)?.activationGeneration ===
-        owner.activationGeneration
-    )
-  }
-
   private grantLive(window: BrowserWindow, grant: Grant): boolean {
-    return (
-      this.now() < grant.expiresAt &&
-      this.live(
-        window,
-        grant.owner,
-        grant.session,
-        grant.serviceEpoch,
-        grant.ownerEpoch,
-      )
-    )
+    return this.now() < grant.expiresAt && this.liveness.live(window, grant)
   }
 
   private async inspect(path: string): Promise<Fingerprint> {

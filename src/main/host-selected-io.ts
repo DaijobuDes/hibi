@@ -9,7 +9,7 @@ import {
   unlink,
 } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, join } from 'node:path'
-import type { BrowserWindow, WebContents } from 'electron'
+import type { BrowserWindow } from 'electron'
 import type { AddonOwner } from '../shared/foundation-contracts'
 import {
   HOST_SELECTED_IO_MAX_BYTES,
@@ -23,6 +23,11 @@ import {
   type HostSelectedIoWrite,
 } from '../shared/host-selected-io.ts'
 
+import {
+  type SelectedFileActivation,
+  SelectedFileLiveness,
+} from './selected-file-liveness.ts'
+
 const MAX_GRANTS = 16
 const MAX_ACTIVE = 4
 const CHUNK_BYTES = 64 * 1024
@@ -35,14 +40,10 @@ type FileOps = {
   unlink: typeof unlink
 }
 type Parent = { path: string; dev: bigint; ino: bigint }
-type GrantBase = {
-  owner: AddonOwner
-  session: WebContents
+type GrantBase = SelectedFileActivation & {
   parent: Parent
   path: string
   expiresAt: number
-  serviceEpoch: number
-  ownerEpoch: number
   timer: ReturnType<typeof setTimeout>
   busy: boolean
   reason: 'cancelled' | 'stale' | null
@@ -187,8 +188,6 @@ async function selectExportDialog(
 /** Main-process only; IPC must pass a trustedWindow and a main-owned activation resolver. */
 export class HostSelectedIoService {
   private readonly grants = new Map<string, Grant>()
-  private readonly ownerEpochs = new Map<string, number>()
-  private serviceEpoch = 0
   private active = 0
   private selecting = false
   private readonly selectImportFile: NonNullable<
@@ -200,13 +199,13 @@ export class HostSelectedIoService {
   private readonly now: () => number
   private readonly fs: FileOps
   private readonly isOpenDocument: (path: string) => boolean
-  private readonly currentOwner: (addonId: string) => AddonOwner | null
+  private readonly liveness: SelectedFileLiveness
 
   constructor(
     currentOwner: (addonId: string) => AddonOwner | null,
     options: HostSelectedIoOptions,
   ) {
-    this.currentOwner = currentOwner
+    this.liveness = new SelectedFileLiveness(currentOwner)
     this.selectImportFile = options.selectImport ?? selectImportDialog
     this.selectExportFile = options.selectExport ?? selectExportDialog
     this.now = options.now ?? (() => performance.now())
@@ -219,20 +218,17 @@ export class HostSelectedIoService {
     addonId: unknown,
     options: unknown = undefined,
   ): Promise<HostSelectedIoSelection> {
-    const owner = this.owner(addonId),
-      session = this.session(window)
-    if (!owner || !session)
+    const activation = this.liveness.capture(window, addonId)
+    if (!activation)
       return fail('disposed', 'Enable this addon before importing.')
     if (this.selecting)
       return fail('busy', 'Finish the current file selection first.')
     this.selecting = true
-    const serviceEpoch = this.serviceEpoch,
-      ownerEpoch = this.ownerEpochs.get(owner.addonId) ?? 0
     let file: FileHandle | null = null
     try {
       const choice = importChoice(options)
       const selected = await this.selectImportFile(window, choice)
-      if (!this.live(window, owner, session, serviceEpoch, ownerEpoch))
+      if (!this.liveness.live(window, activation))
         throw new IoFailure('stale', 'The addon or window changed.')
       if (selected === null) return ok(null)
       const { path, parent } = await this.selectedPath(selected)
@@ -251,14 +247,11 @@ export class HostSelectedIoService {
       if (!opened.isFile() || !sameFile(before, opened))
         throw new IoFailure('stale', 'The selected file changed.')
       await this.verifyFile(path, parent, before)
-      if (!this.live(window, owner, session, serviceEpoch, ownerEpoch))
+      if (!this.liveness.live(window, activation))
         throw new IoFailure('stale', 'The addon or window changed.')
       const handle = this.issue({
         action: 'import',
-        owner,
-        session,
-        serviceEpoch,
-        ownerEpoch,
+        ...activation,
         parent,
         path,
         file,
@@ -279,19 +272,16 @@ export class HostSelectedIoService {
     addonId: unknown,
     options: unknown,
   ): Promise<HostSelectedIoSelection> {
-    const owner = this.owner(addonId),
-      session = this.session(window)
-    if (!owner || !session)
+    const activation = this.liveness.capture(window, addonId)
+    if (!activation)
       return fail('disposed', 'Enable this addon before exporting.')
     if (this.selecting)
       return fail('busy', 'Finish the current file selection first.')
     this.selecting = true
-    const serviceEpoch = this.serviceEpoch,
-      ownerEpoch = this.ownerEpochs.get(owner.addonId) ?? 0
     try {
       const choice = exportChoice(options)
       const selected = await this.selectExportFile(window, choice)
-      if (!this.live(window, owner, session, serviceEpoch, ownerEpoch))
+      if (!this.liveness.live(window, activation))
         throw new IoFailure('stale', 'The addon or window changed.')
       if (selected === null) return ok(null)
       const { path, parent } = await this.selectedPath(selected)
@@ -299,14 +289,11 @@ export class HostSelectedIoService {
       if (this.isOpenDocument(path))
         throw new IoFailure('conflict', 'A document is open at that name.')
       await this.verifyParent(parent)
-      if (!this.live(window, owner, session, serviceEpoch, ownerEpoch))
+      if (!this.liveness.live(window, activation))
         throw new IoFailure('stale', 'The addon or window changed.')
       const handle = this.issue({
         action: 'export',
-        owner,
-        session,
-        serviceEpoch,
-        ownerEpoch,
+        ...activation,
         parent,
         path,
       })
@@ -454,70 +441,20 @@ export class HostSelectedIoService {
   }
 
   revokeAddon(addonId: string): void {
-    this.ownerEpochs.set(addonId, (this.ownerEpochs.get(addonId) ?? 0) + 1)
+    this.liveness.revokeAddon(addonId)
     for (const [handle, grant] of this.grants)
       if (grant.owner.addonId === addonId) void this.expire(handle, 'stale')
   }
 
   clear(): void {
-    this.serviceEpoch++
-    this.ownerEpochs.clear()
+    this.liveness.clear()
     for (const handle of this.grants.keys()) void this.expire(handle, 'stale')
-  }
-
-  private owner(addonId: unknown): AddonOwner | null {
-    if (typeof addonId !== 'string') return null
-    try {
-      const owner = this.currentOwner(addonId)
-      return owner?.addonId === addonId &&
-        Number.isSafeInteger(owner.activationGeneration) &&
-        owner.activationGeneration >= 0
-        ? { ...owner }
-        : null
-    } catch {
-      return null
-    }
-  }
-
-  private session(window: BrowserWindow): WebContents | null {
-    try {
-      if (window.isDestroyed()) return null
-      const session = window.webContents
-      return session.isDestroyed() ? null : session
-    } catch {
-      return null
-    }
-  }
-
-  private live(
-    window: BrowserWindow,
-    owner: AddonOwner,
-    session: WebContents,
-    serviceEpoch: number,
-    ownerEpoch: number,
-  ): boolean {
-    return (
-      this.serviceEpoch === serviceEpoch &&
-      (this.ownerEpochs.get(owner.addonId) ?? 0) === ownerEpoch &&
-      this.session(window) === session &&
-      this.owner(owner.addonId)?.activationGeneration ===
-        owner.activationGeneration
-    )
   }
 
   private assertLive(window: BrowserWindow, grant: Grant) {
     if (grant.reason)
       throw new IoFailure(grant.reason, 'The file selection ended.')
-    if (
-      this.now() >= grant.expiresAt ||
-      !this.live(
-        window,
-        grant.owner,
-        grant.session,
-        grant.serviceEpoch,
-        grant.ownerEpoch,
-      )
-    )
+    if (this.now() >= grant.expiresAt || !this.liveness.live(window, grant))
       throw new IoFailure('stale', 'The addon or file selection changed.')
   }
 
@@ -531,7 +468,7 @@ export class HostSelectedIoService {
     if (
       !grant ||
       grant.owner.addonId !== addonId ||
-      grant.session !== this.session(window)
+      grant.session !== this.liveness.session(window)
     )
       return null
     return grant
