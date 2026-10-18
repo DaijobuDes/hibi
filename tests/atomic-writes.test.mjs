@@ -459,6 +459,32 @@ for (const changed of [
   })
 
 for (const target of ['last-incident.txt', 'run-state.txt'])
+  test(`diagnostic ${target} preserves its destination when staging disappears during backoff`, async (t) => {
+    const { sink, state, directory } = await diagnosticWriter(t)
+    const file = join(directory, target)
+    if (target === 'last-incident.txt')
+      await fs.writeFile(
+        file,
+        JSON.stringify({
+          kind: 'hibi-local-diagnostics',
+          previous: 'retained',
+        }),
+      )
+    const initial = await fs.readFile(file, 'utf8')
+    state.onDelay = () => fs.unlink(join(directory, 'incident-next.txt'))
+    if (target === 'run-state.txt') await sink.finish()
+    else {
+      sink.enqueue(
+        JSON.stringify({ code: 'RENDERER_ERROR', stackStatus: 'unavailable' }),
+      )
+      await sink.flush()
+    }
+    assert.equal(sink.status.state, 'failed')
+    assert.equal(state.attempts, 1)
+    assert.equal(await fs.readFile(file, 'utf8'), initial)
+  })
+
+for (const target of ['last-incident.txt', 'run-state.txt'])
   for (const failures of [1, Infinity])
     test(`diagnostic ${target} handles bounded rename retries: ${failures}`, async (t) => {
       const { sink, state, directory } = await diagnosticWriter(t, { failures })

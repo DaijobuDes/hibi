@@ -351,7 +351,12 @@ export class LocalDiagnosticSink {
         'incident-next.txt',
         diagnosticLimits.summaryBytes,
       )
-      await staged.close()
+      try {
+        if (!(await staged.stat()).size)
+          throw new Error('missing diagnostic summary')
+      } finally {
+        await staged.close()
+      }
       const target = await this.openOwned(name, maximum)
       await target.close()
       await this.checkDirectory()
