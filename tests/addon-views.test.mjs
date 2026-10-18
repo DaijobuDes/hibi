@@ -12,6 +12,30 @@ import {
 } from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
 
+// Slow runners can paint once after several key presses, clicks and a close.
+function holdFrames(page) {
+  return page.evaluate(() => {
+    const frames = new Map()
+    let next = 0
+    const frame = window.requestAnimationFrame
+    const cancel = window.cancelAnimationFrame
+    window.requestAnimationFrame = (callback) => {
+      frames.set(--next, callback)
+      return next
+    }
+    window.cancelAnimationFrame = (id) =>
+      id < 0 ? frames.delete(id) : cancel(id)
+    window.releaseFrames = () => {
+      window.requestAnimationFrame = frame
+      window.cancelAnimationFrame = cancel
+      delete window.releaseFrames
+      frame((time) => {
+        for (const callback of frames.values()) callback(time)
+      })
+    }
+  })
+}
+
 test('accepted document navigation reveals documents and retains addon tab sessions', {
   timeout: 60000,
 }, async (t) => {
@@ -697,6 +721,7 @@ test('scoped views preserve sessions, pin documents, contain lazy failures, and 
   await addonTab.click()
   await tabContent.getByRole('button', { name: 'Count 1' }).waitFor()
   await addonTab.focus()
+  await holdFrames(page)
   await page.keyboard.press('ArrowLeft')
   await page
     .getByRole('tab', { name: 'Fixture tab', selected: false })
@@ -716,6 +741,27 @@ test('scoped views preserve sessions, pin documents, contain lazy failures, and 
   await clickMenu(app, 'Close tab')
   await addonTab.waitFor({ state: 'detached' })
   assert.equal(await editor.isVisible(), true)
+  await page.evaluate(() => window.releaseFrames())
+  await page.waitForFunction(() =>
+    document.activeElement?.matches('.tiptap, .cm-content'),
+  )
+  await page.evaluate(() => {
+    const f = window.viewsFixture
+    f.handles.tab = f.tab.open({ id: 'pointer' })
+  })
+  await addonTab.focus()
+  await holdFrames(page)
+  await page.keyboard.press('ArrowLeft')
+  await page
+    .locator(
+      '[role="tab"][id^="document-tab-"][aria-selected="true"][aria-disabled="false"]',
+    )
+    .waitFor()
+  await addonTab.click()
+  await page.getByRole('tab', { name: 'Fixture tab', selected: true }).waitFor()
+  await clickMenu(app, 'Close tab')
+  await addonTab.waitFor({ state: 'detached' })
+  await page.evaluate(() => window.releaseFrames())
   await page.waitForFunction(() =>
     document.activeElement?.matches('.tiptap, .cm-content'),
   )

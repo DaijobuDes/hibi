@@ -357,7 +357,8 @@ test('development watches main, renderer, preload, addons, and documentation gen
     configPath,
     fixtureConfig.replace(
       "server: { host: '127.0.0.1' }",
-      `server: { host: '127.0.0.1', fs: { allow: ${JSON.stringify([root, resolve('node_modules')])} } }`,
+      // Hosted runners start with no prebundled dependencies.
+      `server: { host: '127.0.0.1', fs: { allow: ${JSON.stringify([root, resolve('node_modules')])} } }, cacheDir: ${JSON.stringify(join(root, 'vite-cache'))}`,
     ),
   )
   const holdAddonPrepare = join(root, 'hold-addon-prepare')
@@ -531,6 +532,11 @@ dialog.showMessageBox = (...args) => {
     } catch {}
     throw error
   }
+  assert.doesNotMatch(
+    output,
+    /optimized dependencies changed/,
+    'cold start reloaded the window to bundle addon dependencies',
+  )
   assert.equal(
     await page.evaluate(
       async () =>
