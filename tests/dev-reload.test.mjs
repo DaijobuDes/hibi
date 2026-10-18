@@ -26,9 +26,17 @@ import {
 import { replaceRichText } from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
 
-test('development watches main, renderer, preload, addons, and documentation generation', {
-  timeout: 180000,
-}, async (t) => {
+const scenarioTimeout = 180000
+for (const scenario of ['renderer', 'main', 'catalog'])
+  test(
+    `development ${scenario} updates preserve documents and addon ownership`,
+    {
+      timeout: scenarioTimeout,
+    },
+    (t) => watchDevelopment(scenario, t),
+  )
+
+async function watchDevelopment(scenario, t) {
   const started = performance.now()
   let output = '',
     cachedDiagnostic = '',
@@ -168,6 +176,13 @@ test('development watches main, renderer, preload, addons, and documentation gen
   const previewFolder = join(root, 'src/addons/ui-preview')
   const originalImage =
     "<svg xmlns='http://www.w3.org/2000/svg' width='1' height='1'><rect width='1' height='1' fill='red'/></svg>"
+  if (scenario === 'catalog') {
+    const css = join(previewFolder, 'style.css')
+    await writeFile(
+      css,
+      `${await readFile(css, 'utf8')}\nbody { --preview-watch: coalesced; }\n`,
+    )
+  }
   const watchImage = join(previewFolder, 'watch.svg')
   await writeFile(watchImage, originalImage)
   const previewManifest = join(previewFolder, 'hibi-addon.json')
@@ -518,10 +533,24 @@ dialog.showMessageBox = (...args) => {
   await until(() => seenEndpoints.length > 0, 'dev app starts', 60000)
   phase('connect first devtools')
   browser = await chromium.connectOverCDP(seenEndpoints[0])
+  await until(() => browser.contexts()[0]?.pages()[0], 'dev app opens a page')
   let page = browser.contexts()[0].pages()[0]
   page.setDefaultTimeout(30000)
   phase('initial renderer readiness')
   try {
+    // Cold intel startup reached app-render at 31.2 s without re-optimization.
+    // Reserve 20 s for live diagnostics and cleanup before the scenario aborts.
+    await page.waitForFunction(
+      () => performance.getEntriesByName('hibi:app-render').length > 0,
+      undefined,
+      {
+        timeout: Math.max(
+          1,
+          scenarioTimeout - 20000 - (performance.now() - started),
+        ),
+      },
+    )
+    mark('initial renderer bootstrapped')
     await page.locator('[data-status-id="typing-speed.wpm"]').waitFor()
   } catch (error) {
     try {
@@ -532,6 +561,7 @@ dialog.showMessageBox = (...args) => {
     } catch {}
     throw error
   }
+  mark('initial addon ready')
   assert.doesNotMatch(
     output,
     /optimized dependencies changed/,
@@ -547,35 +577,18 @@ dialog.showMessageBox = (...args) => {
     true,
   )
   await waitForDocumentEditor(undefined, page)
+  mark('initial editor ready')
   await replaceRichText(
     page,
     page.getByRole('textbox', { name: 'Document editor', exact: true }),
     'unsaved watch draft',
   )
+  mark('initial draft typed')
   await waitForAsync(
     page,
     async () =>
       (await window.hibi.getDocument()).markdown === 'unsaved watch draft',
   )
-  await replace(
-    'src/renderer/src/Titlebar.tsx',
-    'aria-label="Editor view"',
-    'aria-label="Updated editor view"',
-  )
-  await page.getByRole('navigation', { name: 'Updated editor view' }).waitFor()
-  mark('renderer component updated')
-  const css = join(root, 'src/renderer/src/styles.css')
-  await writeFile(
-    css,
-    `${await readFile(css, 'utf8')}\nbody { --dev-watch-probe: updated; }\n`,
-  )
-  await page.waitForFunction(
-    () =>
-      getComputedStyle(document.body)
-        .getPropertyValue('--dev-watch-probe')
-        .trim() === 'updated',
-  )
-  mark('renderer stylesheet updated')
   let viteConnections = 0
   const viteEvents = []
   const onViteSocket = (socket) => {
@@ -652,1219 +665,1282 @@ dialog.showMessageBox = (...args) => {
       })),
     }
   }
-  const beforeAddons = await captureAddonState()
-  await page.waitForFunction(() =>
-    Boolean(
-      document.querySelector('style[data-addon-style="ui-preview.preview"]'),
-    ),
-  )
-  await page.evaluate(() => {
-    window.previewStyle = document.querySelector(
-      'style[data-addon-style="ui-preview.preview"]',
+  if (scenario === 'renderer') {
+    mark('renderer component edit starts')
+    await replace(
+      'src/renderer/src/Titlebar.tsx',
+      'aria-label="Editor view"',
+      'aria-label="Updated editor view"',
     )
-    window.localWatchProbe.state = 42
-    window.previewWatchProbe.state = 74
-  })
-  beforeAddons.local.state = 42
-  beforeAddons.preview.state = 74
-  const previewCss = join(previewFolder, 'style.css')
-  await addonUpdate('ui-preview', 'styles', async () => {
-    await writeFile(join(previewFolder, '4913'), 'ignored editor probe')
-    await writeFile(
-      previewCss,
-      `${await readFile(previewCss, 'utf8')}\nbody { --preview-watch: updated; }\n`,
-    )
-  })
-  await page.waitForFunction(
-    () =>
-      getComputedStyle(document.body)
-        .getPropertyValue('--preview-watch')
-        .trim() === 'updated',
-  )
-  assert.equal(
-    await page.evaluate(
-      () =>
-        window.previewStyle ===
-        document.querySelector('style[data-addon-style="ui-preview.preview"]'),
-    ),
-    true,
-  )
-  assert.deepEqual(await addonState(), beforeAddons)
-  for (const [file, property] of [
-    ['inline.css', '--local-inline'],
-    ['declared.css', '--local-declared'],
-  ]) {
-    await page.waitForFunction(
-      (property) =>
-        getComputedStyle(document.body).getPropertyValue(property).trim() ===
-        'original',
-      property,
-    )
-    await addonUpdate('dev-watch-local', 'styles', () =>
-      replace(`src/useraddons/dev-watch-local/${file}`, 'original', 'updated'),
-    )
-    await page.waitForFunction(
-      (property) =>
-        getComputedStyle(document.body).getPropertyValue(property).trim() ===
-        'updated',
-      property,
-    )
-    assert.deepEqual(await addonState(), beforeAddons)
-  }
-  await page.evaluate(() => window.useLocalWatchTheme())
-  await page.waitForFunction(
-    () =>
-      getComputedStyle(document.documentElement)
-        .getPropertyValue('--accent')
-        .trim() === '#88cccc',
-  )
-  await addonUpdate('dev-watch-local', 'styles', () =>
-    replace('src/useraddons/dev-watch-local/theme.json', '#88cccc', '#ff00ff'),
-  )
-  await page.waitForFunction(
-    () =>
-      getComputedStyle(document.documentElement)
-        .getPropertyValue('--accent')
-        .trim() === '#ff00ff',
-  )
-  assert.deepEqual(await addonState(), beforeAddons)
-  mark(
-    'inline css, declared sheets, and theme json update without addon restarts',
-  )
-
-  await addonUpdate('typing-speed', 'code', () =>
-    replace(
-      'src/addons/typing-speed/index.ts',
-      'This estimates how many words you type per minute.',
-      'Updated typing speed runtime.',
-    ),
-  )
-  await page.waitForFunction(() =>
-    document
-      .querySelector('[data-status-id="typing-speed.wpm"]')
-      ?.getAttribute('data-tooltip')
-      ?.startsWith('Updated typing speed runtime.'),
-  )
-  assert.equal(
-    (await page.evaluate(() => window.hibi.getDocument())).markdown,
-    'unsaved watch draft',
-  )
-  mark('addon runtime updated and draft retained')
-  assert.deepEqual(await addonState(), beforeAddons)
-  const editorDuringReload = page.getByRole('textbox', {
-    name: 'Document editor',
-    exact: true,
-  })
-  await editorDuringReload.focus()
-  await editorDuringReload.press('End')
-  for (let index = 0; index < 5; index++)
-    await editorDuringReload.press('Shift+ArrowLeft')
-  await page.waitForFunction(() => getSelection().toString() === 'draft')
-  await page.evaluate(() => {
-    window.holdLocalWatch = true
-  })
-  await writeFile(holdAddonPreflight, '')
-  const overlappingUpdate = addonUpdate('dev-watch-local', 'code', async () => {
-    try {
-      await replace(
-        'src/useraddons/dev-watch-local/helper.ts',
-        'local original',
-        'local updated',
-      )
-      await until(
-        () =>
-          access(addonPreflightPaused).then(
-            () => true,
-            () => false,
-          ),
-        'addon code preflight reaches barrier',
-      )
-      assert.deepEqual(await addonState(), beforeAddons)
-      await replace(
-        'src/useraddons/dev-watch-local/inline.css',
-        '--local-inline: updated',
-        '--local-inline: overlapped',
-      )
-      await until(
-        () =>
-          access(addonCssObserved).then(
-            () => true,
-            () => false,
-          ),
-        'same-addon css edit reaches watcher while code preflight is held',
-      )
-      await writeFile(releaseAddonPreflight, '')
-      await page.waitForFunction(() => Boolean(window.releaseLocalWatch))
-      phase('local rich addon start is paused')
-      await page.waitForFunction(
-        () =>
-          document
-            .querySelector('[role="textbox"][aria-label="Document editor"]')
-            ?.getAttribute('aria-readonly') === 'true',
-      )
-      phase('editor is read-only during local reload')
-      await page.keyboard.type('xyz')
-      assert.equal(
-        (await page.evaluate(() => window.hibi.getDocument())).markdown,
-        'unsaved watch draft',
-      )
-    } finally {
-      await writeFile(releaseAddonPreflight, '')
-      await rm(holdAddonPreflight, { force: true })
-      await page.evaluate(() => window.releaseLocalWatch?.())
-    }
-  })
-  await overlappingUpdate
-  await page.waitForFunction(
-    () =>
-      document
-        .querySelector('[role="textbox"][aria-label="Document editor"]')
-        ?.getAttribute('aria-readonly') === 'false' &&
-      getSelection().toString() === 'draft',
-  )
-  await page.waitForFunction(
-    () =>
-      getComputedStyle(document.body)
-        .getPropertyValue('--local-inline')
-        .trim() === 'overlapped',
-  )
-  mark(
-    'overlapping code and css reload one owner; editor stays read-only and selection survives',
-  )
-  assert.equal(
     await page
-      .locator('[data-status-id="dev-watch-local.probe"]')
-      .textContent(),
-    'Local updated',
-    JSON.stringify(await addonState()),
-  )
-  const afterHelper = {
-    ...beforeAddons,
-    local: {
-      ...beforeAddons.local,
-      starts: beforeAddons.local.starts + 1,
-      stops: beforeAddons.local.stops + 1,
-    },
-  }
-  assert.deepEqual(await addonState(), afterHelper)
-  const helper = join(localFolder, 'helper.ts')
-  const workingHelper = await readFile(helper, 'utf8')
-  await addonUpdate('ui-preview', 'styles', () =>
-    addonFailure(() =>
-      Promise.all([
-        writeFile(helper, 'export const label = ;'),
-        replace(
-          'src/addons/ui-preview/style.css',
-          '--preview-watch: updated',
-          '--preview-watch: coalesced',
-        ),
-      ]),
-    ),
-  )
-  await page.waitForFunction(
-    () =>
-      getComputedStyle(document.body)
-        .getPropertyValue('--preview-watch')
-        .trim() === 'coalesced',
-  )
-  assert.deepEqual(await addonState(), afterHelper)
-  await page.getByText(/^local updated$/i).waitFor()
-  await addonUpdate('dev-watch-local', 'code', () =>
-    writeFile(
-      helper,
-      workingHelper.replace('local updated', 'local recovered'),
-    ),
-  )
-  await page.getByText(/^local recovered$/i).waitFor()
-  assert.deepEqual(await addonState(), {
-    ...afterHelper,
-    local: {
-      ...afterHelper.local,
-      starts: afterHelper.local.starts + 1,
-      stops: afterHelper.local.stops + 1,
-    },
-  })
-  const afterRecovery = await addonState()
-  await addonFailure(() =>
-    writeFile(helper, "export const renamed = 'missing label'"),
-  )
-  assert.deepEqual(await addonState(), afterRecovery)
-  await page.getByText(/^local recovered$/i).waitFor()
-  await addonUpdate('dev-watch-local', 'code', () =>
-    writeFile(helper, workingHelper.replace('local updated', 'local linked')),
-  )
-  await page.getByText(/^local linked$/i).waitFor()
-  const afterLink = {
-    ...afterRecovery,
-    local: {
-      ...afterRecovery.local,
-      starts: afterRecovery.local.starts + 1,
-      stops: afterRecovery.local.stops + 1,
-    },
-  }
-  assert.deepEqual(await addonState(), afterLink)
-  await addonUpdate('dev-watch-local', 'code', () =>
-    replace(
-      'src/useraddons/dev-watch-local/data.json',
-      'local json original',
-      'local json updated',
-    ),
-  )
-  await page.waitForFunction(
-    () =>
-      document
-        .querySelector('[data-status-id="dev-watch-local.probe"]')
-        ?.getAttribute('data-tooltip') === 'local json updated',
-  )
-  assert.deepEqual(await addonState(), {
-    ...afterLink,
-    local: {
-      ...afterLink.local,
-      starts: afterLink.local.starts + 1,
-      stops: afterLink.local.stops + 1,
-    },
-  })
-  mark('imported local json dependency reloads only its owner')
-
-  const beforeSettingsRace = await addonState()
-  const localNoticeId = 'addon:dev-watch-local:watch-notice'
-  const originalLocalNotice = await page.evaluate(
-    (id) => window.hibi.getLicense(id),
-    localNoticeId,
-  )
-  assert.equal(originalLocalNotice, 'Original local watch notice.')
-  const raceManifestPath = join(localFolder, 'hibi-addon.json')
-  const pendingMetadata = JSON.parse(await readFile(raceManifestPath, 'utf8'))
-  pendingMetadata.description = 'Prepared local update probe'
-  pendingMetadata.licenses[0].text = 'Updated local watch notice.'
-  const localSettings = page.getByRole('tabpanel', {
-    name: /^local watch fixture$/i,
-  })
-  await writeFile(holdAddonPrepare, '')
-  try {
-    await Promise.all([
-      page.waitForEvent('console', {
-        predicate: (message) =>
-          message.type() === 'warning' &&
-          /addon dev-watch-local: Leave the Local watch fixture settings before reloading Local watch fixture/i.test(
-            message.text(),
-          ),
-      }),
-      (async () => {
-        await Promise.all([
-          replace(
-            'src/useraddons/dev-watch-local/helper.ts',
-            'local linked',
-            'local prepared',
-          ),
-          writeFile(raceManifestPath, JSON.stringify(pendingMetadata)),
-        ])
-        await until(
-          () =>
-            access(addonPreparePaused).then(
-              () => true,
-              () => false,
-            ),
-          'addon metadata preparation waits before renderer commit',
-        )
-        assert.equal(
-          await page.evaluate(
-            (id) => window.hibi.getLicense(id),
-            localNoticeId,
-          ),
-          originalLocalNotice,
-        )
-        await page
-          .getByRole('button', { name: /^settings$/i, exact: true })
-          .click()
-        await page.getByRole('tab', { name: /^local watch fixture$/i }).click()
-        await localSettings
-          .getByText('Local targeted update probe', { exact: true })
-          .waitFor()
-        await page
-          .getByRole('textbox', { name: 'Local settings draft', exact: true })
-          .fill('unsaved local settings draft')
-        await writeFile(releaseAddonPrepare, '')
-      })(),
-    ])
-    assert.equal(
-      await page
-        .getByRole('textbox', {
-          name: 'Local settings draft',
-          exact: true,
-        })
-        .inputValue(),
-      'unsaved local settings draft',
-    )
-    assert.deepEqual(await addonState(), beforeSettingsRace)
-    assert.equal(
-      await page.evaluate((id) => window.hibi.getLicense(id), localNoticeId),
-      originalLocalNotice,
-    )
-    await localSettings
-      .getByText('Local targeted update probe', { exact: true })
+      .getByRole('navigation', { name: 'Updated editor view' })
       .waitFor()
-  } finally {
-    await writeFile(releaseAddonPrepare, '')
-    await rm(holdAddonPrepare, { force: true })
-  }
-  await page.getByRole('button', { name: /^back to app$/i }).click()
-  await page
-    .getByRole('main', { name: /^settings$/i })
-    .waitFor({ state: 'hidden' })
-  await addonUpdate('dev-watch-local', 'code', () =>
-    replace(
-      'src/useraddons/dev-watch-local/inline.css',
-      '--local-inline: overlapped',
-      '--local-inline: settings-recovered',
-    ),
-  )
-  await page.getByText(/^local prepared$/i).waitFor()
-  await page.waitForFunction(
-    () =>
-      getComputedStyle(document.body)
-        .getPropertyValue('--local-inline')
-        .trim() === 'settings-recovered',
-  )
-  assert.deepEqual(await addonState(), {
-    ...beforeSettingsRace,
-    local: {
-      ...beforeSettingsRace.local,
-      starts: beforeSettingsRace.local.starts + 1,
-      stops: beforeSettingsRace.local.stops + 1,
-    },
-  })
-  await waitForAsync(
-    page,
-    async ({ id, text }) => (await window.hibi.getLicense(id)) === text,
-    { id: localNoticeId, text: pendingMetadata.licenses[0].text },
-  )
-  await page.getByRole('button', { name: /^settings$/i, exact: true }).click()
-  await page.getByRole('tab', { name: /^local watch fixture$/i }).click()
-  await localSettings
-    .getByText(pendingMetadata.description, { exact: true })
-    .waitFor()
-  await page.getByRole('button', { name: /^back to app$/i }).click()
-  await page
-    .getByRole('main', { name: /^settings$/i })
-    .waitFor({ state: 'hidden' })
-  mark(
-    'settings refusal preserves metadata and drafts; recovery publishes code and notices',
-  )
-
-  assert.equal(
-    viteConnections,
-    0,
-    `addon updates keep the Vite socket: ${viteEvents}`,
-  )
-  mark('local helper compile failure keeps old addon; recovery preserves draft')
-  const preload = join(root, 'src/preload/index.ts')
-  const preloadSource = await readFile(preload, 'utf8')
-  const preloadUrl = page.url()
-  const previousConnections = viteConnections
-  let heldNavigation
-  let releaseNavigation
-  const navigationGate = new Promise((resolve) => {
-    releaseNavigation = resolve
-  })
-  const holdFirstReload = async (route) => {
-    if (route.request().isNavigationRequest() && !heldNavigation) {
-      heldNavigation = route
-      await navigationGate
-    }
-    await route.continue()
-  }
-  await page.route(preloadUrl, holdFirstReload)
-  await writeFile(holdPreloadBuild, '')
-  try {
+    mark('renderer component updated')
+    const css = join(root, 'src/renderer/src/styles.css')
     await writeFile(
-      preload,
-      `${preloadSource}\ncontextBridge.exposeInMainWorld('devWatchProbe', 'previous')\n`,
+      css,
+      `${await readFile(css, 'utf8')}\nbody { --dev-watch-probe: updated; }\n`,
     )
-    await until(() => !!heldNavigation, 'first preload reload starts')
-    await writeFile(
-      preload,
-      `${preloadSource}\ncontextBridge.exposeInMainWorld('devWatchProbe', 'updated')\n`,
+    await page.waitForFunction(
+      () =>
+        getComputedStyle(document.body)
+          .getPropertyValue('--dev-watch-probe')
+          .trim() === 'updated',
     )
-    await until(async () => {
-      try {
-        await access(preloadBuildPaused)
-        return true
-      } catch {
-        return false
-      }
-    }, 'second preload build reaches output generation')
-    // Navigate while the next build has prepared its output but cannot write it.
-    const loaded = page.waitForEvent('domcontentloaded')
-    releaseNavigation()
-    await loaded
-    assert.deepEqual(
-      await page.evaluate(() => ({
-        bridge: typeof window.hibi,
-        probe: window.devWatchProbe,
-      })),
-      { bridge: 'object', probe: 'previous' },
-      'reloading during a preload rebuild keeps the previous bridge',
+    mark('renderer stylesheet updated')
+    const beforeAddons = await captureAddonState()
+    await page.waitForFunction(() =>
+      Boolean(
+        document.querySelector('style[data-addon-style="ui-preview.preview"]'),
+      ),
     )
-    await until(
-      () => viteConnections > previousConnections,
-      'vite websocket reconnects before the second preload build finishes',
-    )
-  } finally {
-    releaseNavigation()
-    await writeFile(releasePreloadBuild, '')
-    await page.unroute(preloadUrl, holdFirstReload)
-    page.off('websocket', onViteSocket)
-  }
-  await page
-    .waitForFunction(() => window.devWatchProbe === 'updated')
-    .catch((error) => {
-      assert.fail(
-        `preload did not update: ${error.message}\n${output.slice(-2500)}`,
+    await page.evaluate(() => {
+      window.previewStyle = document.querySelector(
+        'style[data-addon-style="ui-preview.preview"]',
+      )
+      window.localWatchProbe.state = 42
+      window.previewWatchProbe.state = 74
+    })
+    beforeAddons.local.state = 42
+    beforeAddons.preview.state = 74
+    const previewCss = join(previewFolder, 'style.css')
+    await addonUpdate('ui-preview', 'styles', async () => {
+      await writeFile(join(previewFolder, '4913'), 'ignored editor probe')
+      await writeFile(
+        previewCss,
+        `${await readFile(previewCss, 'utf8')}\nbody { --preview-watch: updated; }\n`,
       )
     })
-  assert.equal(
-    (await page.evaluate(() => window.hibi.getDocument())).markdown,
-    'unsaved watch draft',
-  )
-  const appUrl = page.url()
-  for (const target of [
-    'https://example.com/',
-    new URL('/other.html', appUrl).href,
-    `${appUrl}?other-page`,
-  ]) {
+    await page.waitForFunction(
+      () =>
+        getComputedStyle(document.body)
+          .getPropertyValue('--preview-watch')
+          .trim() === 'updated',
+    )
     assert.equal(
       await page.evaluate(
-        (url) =>
-          new Promise((done) => {
-            location.href = url
-            setTimeout(() => done(location.href), 100)
-          }),
-        target,
+        () =>
+          window.previewStyle ===
+          document.querySelector(
+            'style[data-addon-style="ui-preview.preview"]',
+          ),
       ),
-      appUrl,
+      true,
     )
-  }
-  mark('preload updated, draft retained, other navigation blocked')
-  await page.evaluate(() => window.hibi.setAddonEnabled('diagnostics', false))
-  await page.reload()
-  assert.equal(
-    await page.evaluate(
-      async () =>
-        (await window.hibi.getAddonStates()).find(
-          (entry) => entry.id === 'diagnostics',
-        ).enabled,
-    ),
-    false,
-  )
-  async function clearDraft(expected) {
-    phase(`clear draft: ${expected}`)
-    if (showTestWindows) {
-      await page.bringToFront()
-      await page.evaluate(() => window.focus())
+    assert.deepEqual(await addonState(), beforeAddons)
+    for (const [file, property] of [
+      ['inline.css', '--local-inline'],
+      ['declared.css', '--local-declared'],
+    ]) {
+      await page.waitForFunction(
+        (property) =>
+          getComputedStyle(document.body).getPropertyValue(property).trim() ===
+          'original',
+        property,
+      )
+      await addonUpdate('dev-watch-local', 'styles', () =>
+        replace(
+          `src/useraddons/dev-watch-local/${file}`,
+          'original',
+          'updated',
+        ),
+      )
+      await page.waitForFunction(
+        (property) =>
+          getComputedStyle(document.body).getPropertyValue(property).trim() ===
+          'updated',
+        property,
+      )
+      assert.deepEqual(await addonState(), beforeAddons)
+    }
+    await page.evaluate(() => window.useLocalWatchTheme())
+    await page.waitForFunction(
+      () =>
+        getComputedStyle(document.documentElement)
+          .getPropertyValue('--accent')
+          .trim() === '#88cccc',
+    )
+    await addonUpdate('dev-watch-local', 'styles', () =>
+      replace(
+        'src/useraddons/dev-watch-local/theme.json',
+        '#88cccc',
+        '#ff00ff',
+      ),
+    )
+    await page.waitForFunction(
+      () =>
+        getComputedStyle(document.documentElement)
+          .getPropertyValue('--accent')
+          .trim() === '#ff00ff',
+    )
+    assert.deepEqual(await addonState(), beforeAddons)
+    mark(
+      'inline css, declared sheets, and theme json update without addon restarts',
+    )
+
+    await addonUpdate('typing-speed', 'code', () =>
+      replace(
+        'src/addons/typing-speed/index.ts',
+        'This estimates how many words you type per minute.',
+        'Updated typing speed runtime.',
+      ),
+    )
+    await page.waitForFunction(() =>
+      document
+        .querySelector('[data-status-id="typing-speed.wpm"]')
+        ?.getAttribute('data-tooltip')
+        ?.startsWith('Updated typing speed runtime.'),
+    )
+    assert.equal(
+      (await page.evaluate(() => window.hibi.getDocument())).markdown,
+      'unsaved watch draft',
+    )
+    mark('addon runtime updated and draft retained')
+    assert.deepEqual(await addonState(), beforeAddons)
+    const editorDuringReload = page.getByRole('textbox', {
+      name: 'Document editor',
+      exact: true,
+    })
+    await editorDuringReload.focus()
+    await editorDuringReload.press('End')
+    for (let index = 0; index < 5; index++)
+      await editorDuringReload.press('Shift+ArrowLeft')
+    await page.waitForFunction(() => getSelection().toString() === 'draft')
+    await page.evaluate(() => {
+      window.holdLocalWatch = true
+    })
+    await writeFile(holdAddonPreflight, '')
+    const overlappingUpdate = addonUpdate(
+      'dev-watch-local',
+      'code',
+      async () => {
+        try {
+          await replace(
+            'src/useraddons/dev-watch-local/helper.ts',
+            'local original',
+            'local updated',
+          )
+          await until(
+            () =>
+              access(addonPreflightPaused).then(
+                () => true,
+                () => false,
+              ),
+            'addon code preflight reaches barrier',
+          )
+          assert.deepEqual(await addonState(), beforeAddons)
+          await replace(
+            'src/useraddons/dev-watch-local/inline.css',
+            '--local-inline: updated',
+            '--local-inline: overlapped',
+          )
+          await until(
+            () =>
+              access(addonCssObserved).then(
+                () => true,
+                () => false,
+              ),
+            'same-addon css edit reaches watcher while code preflight is held',
+          )
+          await writeFile(releaseAddonPreflight, '')
+          await page.waitForFunction(() => Boolean(window.releaseLocalWatch))
+          phase('local rich addon start is paused')
+          await page.waitForFunction(
+            () =>
+              document
+                .querySelector('[role="textbox"][aria-label="Document editor"]')
+                ?.getAttribute('aria-readonly') === 'true',
+          )
+          phase('editor is read-only during local reload')
+          await page.keyboard.type('xyz')
+          assert.equal(
+            (await page.evaluate(() => window.hibi.getDocument())).markdown,
+            'unsaved watch draft',
+          )
+        } finally {
+          await writeFile(releaseAddonPreflight, '')
+          await rm(holdAddonPreflight, { force: true })
+          await page.evaluate(() => window.releaseLocalWatch?.())
+        }
+      },
+    )
+    await overlappingUpdate
+    await page.waitForFunction(
+      () =>
+        document
+          .querySelector('[role="textbox"][aria-label="Document editor"]')
+          ?.getAttribute('aria-readonly') === 'false' &&
+        getSelection().toString() === 'draft',
+    )
+    await page.waitForFunction(
+      () =>
+        getComputedStyle(document.body)
+          .getPropertyValue('--local-inline')
+          .trim() === 'overlapped',
+    )
+    mark(
+      'overlapping code and css reload one owner; editor stays read-only and selection survives',
+    )
+    assert.equal(
+      await page
+        .locator('[data-status-id="dev-watch-local.probe"]')
+        .textContent(),
+      'Local updated',
+      JSON.stringify(await addonState()),
+    )
+    const afterHelper = {
+      ...beforeAddons,
+      local: {
+        ...beforeAddons.local,
+        starts: beforeAddons.local.starts + 1,
+        stops: beforeAddons.local.stops + 1,
+      },
+    }
+    assert.deepEqual(await addonState(), afterHelper)
+    const helper = join(localFolder, 'helper.ts')
+    const workingHelper = await readFile(helper, 'utf8')
+    await addonUpdate('ui-preview', 'styles', () =>
+      addonFailure(() =>
+        Promise.all([
+          writeFile(helper, 'export const label = ;'),
+          replace(
+            'src/addons/ui-preview/style.css',
+            '--preview-watch: updated',
+            '--preview-watch: coalesced',
+          ),
+        ]),
+      ),
+    )
+    await page.waitForFunction(
+      () =>
+        getComputedStyle(document.body)
+          .getPropertyValue('--preview-watch')
+          .trim() === 'coalesced',
+    )
+    assert.deepEqual(await addonState(), afterHelper)
+    await page.getByText(/^local updated$/i).waitFor()
+    await addonUpdate('dev-watch-local', 'code', () =>
+      writeFile(
+        helper,
+        workingHelper.replace('local updated', 'local recovered'),
+      ),
+    )
+    await page.getByText(/^local recovered$/i).waitFor()
+    assert.deepEqual(await addonState(), {
+      ...afterHelper,
+      local: {
+        ...afterHelper.local,
+        starts: afterHelper.local.starts + 1,
+        stops: afterHelper.local.stops + 1,
+      },
+    })
+    const afterRecovery = await addonState()
+    await addonFailure(() =>
+      writeFile(helper, "export const renamed = 'missing label'"),
+    )
+    assert.deepEqual(await addonState(), afterRecovery)
+    await page.getByText(/^local recovered$/i).waitFor()
+    await addonUpdate('dev-watch-local', 'code', () =>
+      writeFile(helper, workingHelper.replace('local updated', 'local linked')),
+    )
+    await page.getByText(/^local linked$/i).waitFor()
+    const afterLink = {
+      ...afterRecovery,
+      local: {
+        ...afterRecovery.local,
+        starts: afterRecovery.local.starts + 1,
+        stops: afterRecovery.local.stops + 1,
+      },
+    }
+    assert.deepEqual(await addonState(), afterLink)
+    await addonUpdate('dev-watch-local', 'code', () =>
+      replace(
+        'src/useraddons/dev-watch-local/data.json',
+        'local json original',
+        'local json updated',
+      ),
+    )
+    await page.waitForFunction(
+      () =>
+        document
+          .querySelector('[data-status-id="dev-watch-local.probe"]')
+          ?.getAttribute('data-tooltip') === 'local json updated',
+    )
+    assert.deepEqual(await addonState(), {
+      ...afterLink,
+      local: {
+        ...afterLink.local,
+        starts: afterLink.local.starts + 1,
+        stops: afterLink.local.stops + 1,
+      },
+    })
+    mark('imported local json dependency reloads only its owner')
+
+    const beforeSettingsRace = await addonState()
+    const localNoticeId = 'addon:dev-watch-local:watch-notice'
+    const originalLocalNotice = await page.evaluate(
+      (id) => window.hibi.getLicense(id),
+      localNoticeId,
+    )
+    assert.equal(originalLocalNotice, 'Original local watch notice.')
+    const raceManifestPath = join(localFolder, 'hibi-addon.json')
+    const pendingMetadata = JSON.parse(await readFile(raceManifestPath, 'utf8'))
+    pendingMetadata.description = 'Prepared local update probe'
+    pendingMetadata.licenses[0].text = 'Updated local watch notice.'
+    const localSettings = page.getByRole('tabpanel', {
+      name: /^local watch fixture$/i,
+    })
+    await writeFile(holdAddonPrepare, '')
+    try {
+      await Promise.all([
+        page.waitForEvent('console', {
+          predicate: (message) =>
+            message.type() === 'warning' &&
+            /addon dev-watch-local: Leave the Local watch fixture settings before reloading Local watch fixture/i.test(
+              message.text(),
+            ),
+        }),
+        (async () => {
+          await Promise.all([
+            replace(
+              'src/useraddons/dev-watch-local/helper.ts',
+              'local linked',
+              'local prepared',
+            ),
+            writeFile(raceManifestPath, JSON.stringify(pendingMetadata)),
+          ])
+          await until(
+            () =>
+              access(addonPreparePaused).then(
+                () => true,
+                () => false,
+              ),
+            'addon metadata preparation waits before renderer commit',
+          )
+          assert.equal(
+            await page.evaluate(
+              (id) => window.hibi.getLicense(id),
+              localNoticeId,
+            ),
+            originalLocalNotice,
+          )
+          await page
+            .getByRole('button', { name: /^settings$/i, exact: true })
+            .click()
+          await page
+            .getByRole('tab', { name: /^local watch fixture$/i })
+            .click()
+          await localSettings
+            .getByText('Local targeted update probe', { exact: true })
+            .waitFor()
+          await page
+            .getByRole('textbox', {
+              name: 'Local settings draft',
+              exact: true,
+            })
+            .fill('unsaved local settings draft')
+          await writeFile(releaseAddonPrepare, '')
+        })(),
+      ])
+      assert.equal(
+        await page
+          .getByRole('textbox', {
+            name: 'Local settings draft',
+            exact: true,
+          })
+          .inputValue(),
+        'unsaved local settings draft',
+      )
+      assert.deepEqual(await addonState(), beforeSettingsRace)
+      assert.equal(
+        await page.evaluate((id) => window.hibi.getLicense(id), localNoticeId),
+        originalLocalNotice,
+      )
+      await localSettings
+        .getByText('Local targeted update probe', { exact: true })
+        .waitFor()
+    } finally {
+      await writeFile(releaseAddonPrepare, '')
+      await rm(holdAddonPrepare, { force: true })
+    }
+    await page.getByRole('button', { name: /^back to app$/i }).click()
+    await page
+      .getByRole('main', { name: /^settings$/i })
+      .waitFor({ state: 'hidden' })
+    await addonUpdate('dev-watch-local', 'code', () =>
+      replace(
+        'src/useraddons/dev-watch-local/inline.css',
+        '--local-inline: overlapped',
+        '--local-inline: settings-recovered',
+      ),
+    )
+    await page.getByText(/^local prepared$/i).waitFor()
+    await page.waitForFunction(
+      () =>
+        getComputedStyle(document.body)
+          .getPropertyValue('--local-inline')
+          .trim() === 'settings-recovered',
+    )
+    assert.deepEqual(await addonState(), {
+      ...beforeSettingsRace,
+      local: {
+        ...beforeSettingsRace.local,
+        starts: beforeSettingsRace.local.starts + 1,
+        stops: beforeSettingsRace.local.stops + 1,
+      },
+    })
+    await waitForAsync(
+      page,
+      async ({ id, text }) => (await window.hibi.getLicense(id)) === text,
+      { id: localNoticeId, text: pendingMetadata.licenses[0].text },
+    )
+    await page.getByRole('button', { name: /^settings$/i, exact: true }).click()
+    await page.getByRole('tab', { name: /^local watch fixture$/i }).click()
+    await localSettings
+      .getByText(pendingMetadata.description, { exact: true })
+      .waitFor()
+    await page.getByRole('button', { name: /^back to app$/i }).click()
+    await page
+      .getByRole('main', { name: /^settings$/i })
+      .waitFor({ state: 'hidden' })
+    mark(
+      'settings refusal preserves metadata and drafts; recovery publishes code and notices',
+    )
+
+    assert.equal(
+      viteConnections,
+      0,
+      `addon updates keep the Vite socket: ${viteEvents}`,
+    )
+    mark(
+      'local helper compile failure keeps old addon; recovery preserves draft',
+    )
+    const preload = join(root, 'src/preload/index.ts')
+    const preloadSource = await readFile(preload, 'utf8')
+    const preloadUrl = page.url()
+    const previousConnections = viteConnections
+    let heldNavigation
+    let releaseNavigation
+    const navigationGate = new Promise((resolve) => {
+      releaseNavigation = resolve
+    })
+    const holdFirstReload = async (route) => {
+      if (route.request().isNavigationRequest() && !heldNavigation) {
+        heldNavigation = route
+        await navigationGate
+      }
+      await route.continue()
+    }
+    await page.route(preloadUrl, holdFirstReload)
+    await writeFile(holdPreloadBuild, '')
+    try {
+      await writeFile(
+        preload,
+        `${preloadSource}\ncontextBridge.exposeInMainWorld('devWatchProbe', 'previous')\n`,
+      )
+      await until(() => !!heldNavigation, 'first preload reload starts')
+      await writeFile(
+        preload,
+        `${preloadSource}\ncontextBridge.exposeInMainWorld('devWatchProbe', 'updated')\n`,
+      )
+      await until(async () => {
+        try {
+          await access(preloadBuildPaused)
+          return true
+        } catch {
+          return false
+        }
+      }, 'second preload build reaches output generation')
+      // Navigate while the next build has prepared its output but cannot write it.
+      const loaded = page.waitForEvent('domcontentloaded')
+      releaseNavigation()
+      await loaded
+      assert.deepEqual(
+        await page.evaluate(() => ({
+          bridge: typeof window.hibi,
+          probe: window.devWatchProbe,
+        })),
+        { bridge: 'object', probe: 'previous' },
+        'reloading during a preload rebuild keeps the previous bridge',
+      )
+      await until(
+        () => viteConnections > previousConnections,
+        'vite websocket reconnects before the second preload build finishes',
+      )
+    } finally {
+      releaseNavigation()
+      await writeFile(releasePreloadBuild, '')
+      await page.unroute(preloadUrl, holdFirstReload)
+      page.off('websocket', onViteSocket)
     }
     await page
-      .waitForFunction((expected) => {
-        const editor = document.querySelector(
-          '[role="textbox"][aria-label="Document editor"]',
+      .waitForFunction(() => window.devWatchProbe === 'updated')
+      .catch((error) => {
+        assert.fail(
+          `preload did not update: ${error.message}\n${output.slice(-2500)}`,
         )
-        const panel = editor?.closest('.editor-page')
-        return (
-          editor?.textContent === expected &&
-          editor.getAttribute('contenteditable') === 'true' &&
-          editor.getAttribute('aria-readonly') === 'false' &&
-          panel?.getAttribute('aria-busy') === 'false' &&
-          !panel.hasAttribute('inert')
-        )
-      }, expected)
-      .catch(async (error) => {
-        const state = await page.evaluate(async () => {
+      })
+    assert.equal(
+      (await page.evaluate(() => window.hibi.getDocument())).markdown,
+      'unsaved watch draft',
+    )
+    const appUrl = page.url()
+    for (const target of [
+      'https://example.com/',
+      new URL('/other.html', appUrl).href,
+      `${appUrl}?other-page`,
+    ]) {
+      assert.equal(
+        await page.evaluate(
+          (url) =>
+            new Promise((done) => {
+              location.href = url
+              setTimeout(() => done(location.href), 100)
+            }),
+          target,
+        ),
+        appUrl,
+      )
+    }
+    mark('preload updated, draft retained, other navigation blocked')
+  } else if (scenario === 'main') {
+    await page.evaluate(() => window.hibi.setAddonEnabled('diagnostics', false))
+    await page.reload()
+    assert.equal(
+      await page.evaluate(
+        async () =>
+          (await window.hibi.getAddonStates()).find(
+            (entry) => entry.id === 'diagnostics',
+          ).enabled,
+      ),
+      false,
+    )
+    async function clearDraft(expected) {
+      phase(`clear draft: ${expected}`)
+      if (showTestWindows) {
+        await page.bringToFront()
+        await page.evaluate(() => window.focus())
+      }
+      await page
+        .waitForFunction((expected) => {
           const editor = document.querySelector(
             '[role="textbox"][aria-label="Document editor"]',
           )
           const panel = editor?.closest('.editor-page')
+          return (
+            editor?.textContent === expected &&
+            editor.getAttribute('contenteditable') === 'true' &&
+            editor.getAttribute('aria-readonly') === 'false' &&
+            panel?.getAttribute('aria-busy') === 'false' &&
+            !panel.hasAttribute('inert')
+          )
+        }, expected)
+        .catch(async (error) => {
+          const state = await page.evaluate(async () => {
+            const editor = document.querySelector(
+              '[role="textbox"][aria-label="Document editor"]',
+            )
+            const panel = editor?.closest('.editor-page')
+            return {
+              native: await window.hibi.getDocument(),
+              editor: editor?.outerHTML.slice(0, 300),
+              busy: panel?.getAttribute('aria-busy'),
+              inert: panel?.hasAttribute('inert'),
+              windowFocused: document.hasFocus(),
+            }
+          })
+          assert.fail(
+            `draft editor never became ready: ${error.message}\n${JSON.stringify(state)}`,
+          )
+        })
+      await page.evaluate(() => {
+        const trace = {
+          nodes: new WeakMap(),
+          next: 0,
+          events: [],
+        }
+        window.__devReloadInputTrace = trace
+        for (const type of ['beforeinput', 'input'])
+          document.addEventListener(
+            type,
+            (event) => {
+              if (
+                !(event.target instanceof Element) ||
+                !event.target.closest('[aria-label="Document editor"]')
+              )
+                return
+              const record = {
+                type,
+                inputType: event.inputType,
+                prevented: event.defaultPrevented,
+              }
+              trace.events.push(record)
+              if (type === 'beforeinput')
+                queueMicrotask(() => {
+                  record.prevented = event.defaultPrevented
+                })
+            },
+            true,
+          )
+      })
+      const inspect = () =>
+        page.evaluate(async () => {
+          const editor = document.querySelector(
+            '[role="textbox"][aria-label="Document editor"]',
+          )
+          const panel = editor?.closest('.editor-page')
+          const trace = window.__devReloadInputTrace
+          if (editor && trace && !trace.nodes.has(editor))
+            trace.nodes.set(editor, ++trace.next)
+          const native = await window.hibi.getDocument()
           return {
-            native: await window.hibi.getDocument(),
-            editor: editor?.outerHTML.slice(0, 300),
-            busy: panel?.getAttribute('aria-busy'),
-            inert: panel?.hasAttribute('inert'),
+            pageEpoch: performance.timeOrigin,
+            editorNode: editor && trace?.nodes.get(editor),
             windowFocused: document.hasFocus(),
+            activeElement: document.activeElement?.getAttribute('aria-label'),
+            native: {
+              markdown: native.markdown,
+              contentVersion: native.contentVersion,
+              dirty: native.dirty,
+            },
+            editor: {
+              text: editor?.textContent,
+              html: editor?.innerHTML,
+              contenteditable: editor?.getAttribute('contenteditable'),
+              readonly: editor?.getAttribute('aria-readonly'),
+              connected: editor?.isConnected,
+            },
+            panel: {
+              busy: panel?.getAttribute('aria-busy'),
+              inert: panel?.hasAttribute('inert'),
+            },
+            sourceReady: document
+              .querySelector('.editor-panes')
+              ?.getAttribute('data-source-ready'),
+            notices: [...document.querySelectorAll('.document-notice')].map(
+              (notice) => notice.textContent,
+            ),
+            events: trace?.events.slice(-8) ?? [],
           }
         })
-        assert.fail(
-          `draft editor never became ready: ${error.message}\n${JSON.stringify(state)}`,
-        )
+      const before = await inspect()
+      const editor = page.getByRole('textbox', {
+        name: 'Document editor',
+        exact: true,
       })
-    await page.evaluate(() => {
-      const trace = {
-        nodes: new WeakMap(),
-        next: 0,
-        events: [],
+      await editor.focus()
+      await page
+        .waitForFunction(
+          (needsWindowFocus) =>
+            (!needsWindowFocus || document.hasFocus()) &&
+            document.activeElement?.closest('[aria-label="Document editor"]'),
+          showTestWindows,
+          { timeout: 5000 },
+        )
+        .catch(async (error) => {
+          assert.fail(
+            `draft editor never received focus: ${error.message}\n${JSON.stringify(await inspect())}`,
+          )
+        })
+      // Send an editor keystroke: fill('') can skip deletion after a dev reload.
+      await editor.press('ControlOrMeta+A')
+      await editor.press('Backspace')
+      const afterInput = await inspect()
+      await page.evaluate(() => window.hibi.flushDocumentChanges())
+      const afterFlush = await inspect()
+      try {
+        await waitForAsync(page, async () => {
+          const document = await window.hibi.getDocument()
+          return (
+            document.markdown === '' &&
+            !document.dirty &&
+            document.tabs.every((tab) => !tab.dirty)
+          )
+        })
+      } catch (error) {
+        const state = await inspect()
+        assert.fail(
+          `draft did not clear: ${error.message}\n${JSON.stringify({ before, afterInput, afterFlush, state })}`,
+        )
       }
-      window.__devReloadInputTrace = trace
-      for (const type of ['beforeinput', 'input'])
-        document.addEventListener(
-          type,
-          (event) => {
-            if (
-              !(event.target instanceof Element) ||
-              !event.target.closest('[aria-label="Document editor"]')
-            )
-              return
-            const record = {
-              type,
-              inputType: event.inputType,
-              prevented: event.defaultPrevented,
-            }
-            trace.events.push(record)
-            if (type === 'beforeinput')
-              queueMicrotask(() => {
-                record.prevented = event.defaultPrevented
-              })
-          },
-          true,
-        )
-    })
-    const inspect = () =>
-      page.evaluate(async () => {
-        const editor = document.querySelector(
-          '[role="textbox"][aria-label="Document editor"]',
-        )
-        const panel = editor?.closest('.editor-page')
-        const trace = window.__devReloadInputTrace
-        if (editor && trace && !trace.nodes.has(editor))
-          trace.nodes.set(editor, ++trace.next)
-        const native = await window.hibi.getDocument()
-        return {
-          pageEpoch: performance.timeOrigin,
-          editorNode: editor && trace?.nodes.get(editor),
-          windowFocused: document.hasFocus(),
-          activeElement: document.activeElement?.getAttribute('aria-label'),
-          native: {
-            markdown: native.markdown,
-            contentVersion: native.contentVersion,
-            dirty: native.dirty,
-          },
-          editor: {
-            text: editor?.textContent,
-            html: editor?.innerHTML,
-            contenteditable: editor?.getAttribute('contenteditable'),
-            readonly: editor?.getAttribute('aria-readonly'),
-            connected: editor?.isConnected,
-          },
-          panel: {
-            busy: panel?.getAttribute('aria-busy'),
-            inert: panel?.hasAttribute('inert'),
-          },
-          sourceReady: document
-            .querySelector('.editor-panes')
-            ?.getAttribute('data-source-ready'),
-          notices: [...document.querySelectorAll('.document-notice')].map(
-            (notice) => notice.textContent,
-          ),
-          events: trace?.events.slice(-8) ?? [],
-        }
-      })
-    const before = await inspect()
-    const editor = page.getByRole('textbox', {
-      name: 'Document editor',
-      exact: true,
-    })
-    await editor.focus()
-    await page
-      .waitForFunction(
-        (needsWindowFocus) =>
-          (!needsWindowFocus || document.hasFocus()) &&
-          document.activeElement?.closest('[aria-label="Document editor"]'),
-        showTestWindows,
-        { timeout: 5000 },
-      )
-      .catch(async (error) => {
-        assert.fail(
-          `draft editor never received focus: ${error.message}\n${JSON.stringify(await inspect())}`,
-        )
-      })
-    // Send an editor keystroke: fill('') can skip deletion after a dev reload.
-    await editor.press('ControlOrMeta+A')
-    await editor.press('Backspace')
-    const afterInput = await inspect()
-    await page.evaluate(() => window.hibi.flushDocumentChanges())
-    const afterFlush = await inspect()
-    try {
-      await waitForAsync(page, async () => {
-        const document = await window.hibi.getDocument()
-        return (
-          document.markdown === '' &&
-          !document.dirty &&
-          document.tabs.every((tab) => !tab.dirty)
-        )
-      })
-    } catch (error) {
-      const state = await inspect()
-      assert.fail(
-        `draft did not clear: ${error.message}\n${JSON.stringify({ before, afterInput, afterFlush, state })}`,
-      )
     }
-  }
-  // Main rebuild restarts Electron; close the draft without a discard prompt.
-  await clearDraft('unsaved watch draft')
-  async function connectRestartedPage(previousStarts) {
-    await until(
-      () => seenEndpoints.length > previousStarts,
-      'main process restarts after rebuild',
-      60000,
-    ).catch(() => {
-      assert.fail(
-        `main process did not restart; ${seenEndpoints.length} devtools endpoints seen\n${output.slice(-2500)}`,
+    // Main rebuild restarts Electron; close the draft without a discard prompt.
+    await clearDraft('unsaved watch draft')
+    async function connectRestartedPage(previousStarts) {
+      await until(
+        () => seenEndpoints.length > previousStarts,
+        'main process restarts after rebuild',
+        60000,
+      ).catch(() => {
+        assert.fail(
+          `main process did not restart; ${seenEndpoints.length} devtools endpoints seen\n${output.slice(-2500)}`,
+        )
+      })
+      let lastCdpError
+      await until(
+        async () => {
+          try {
+            browser = await chromium.connectOverCDP(seenEndpoints.at(-1), {
+              timeout: 1000,
+            })
+            return true
+          } catch (error) {
+            lastCdpError = error
+            return false
+          }
+        },
+        'restarted devtools is available',
+        15000,
+      ).catch(() => {
+        assert.fail(
+          `restarted devtools is unavailable: ${lastCdpError instanceof Error ? lastCdpError.message : String(lastCdpError)}\n${output.slice(-1000)}`,
+        )
+      })
+      await until(
+        () => browser.contexts()[0]?.pages()[0],
+        'restarted app opens a page',
       )
-    })
-    let lastCdpError
-    await until(
-      async () => {
-        try {
-          browser = await chromium.connectOverCDP(seenEndpoints.at(-1), {
-            timeout: 1000,
-          })
-          return true
-        } catch (error) {
-          lastCdpError = error
-          return false
-        }
-      },
-      'restarted devtools is available',
-      15000,
-    ).catch(() => {
-      assert.fail(
-        `restarted devtools is unavailable: ${lastCdpError instanceof Error ? lastCdpError.message : String(lastCdpError)}\n${output.slice(-1000)}`,
+      page = browser.contexts()[0].pages()[0]
+      await page.waitForFunction(() => Boolean(window.hibi))
+    }
+    const readFixtureDocumentation = () =>
+      page.evaluate(() =>
+        Promise.all([
+          window.hibi.getAddonDocumentation('ui-preview', 'README.md'),
+          window.hibi.getAddonDocumentation('ui-preview', 'watch.svg'),
+        ]),
       )
-    })
-    await until(
-      () => browser.contexts()[0]?.pages()[0],
-      'restarted app opens a page',
+    const originalReadme = await readFile(
+      join(previewFolder, 'README.md'),
+      'utf8',
     )
-    page = browser.contexts()[0].pages()[0]
-    await page.waitForFunction(() => Boolean(window.hibi))
-  }
-  const readFixtureDocumentation = () =>
-    page.evaluate(() =>
-      Promise.all([
-        window.hibi.getAddonDocumentation('ui-preview', 'README.md'),
-        window.hibi.getAddonDocumentation('ui-preview', 'watch.svg'),
-      ]),
-    )
-  const originalReadme = await readFile(
-    join(previewFolder, 'README.md'),
-    'utf8',
-  )
-  const beforeDocumentation = await readFixtureDocumentation()
-  assert.equal(beforeDocumentation[0].content, originalReadme)
-  const updatedReadme = `${originalReadme}\nUpdated addon documentation probe.\n`
-  const updatedImage = originalImage.replace("fill='red'", "fill='blue'")
-  const initialStarts = seenEndpoints.length
-  mainInvalidations.clear()
-  await writeFile(holdMainBuild, '')
-  await writeFile(holdMainChanges, '')
-  try {
-    await replace(
-      'src/main/imports.ts',
-      "instructions: '',",
-      "instructions: 'Updated folder importer.',",
-    )
+    const beforeDocumentation = await readFixtureDocumentation()
+    assert.equal(beforeDocumentation[0].content, originalReadme)
+    const updatedReadme = `${originalReadme}\nUpdated addon documentation probe.\n`
+    const updatedImage = originalImage.replace("fill='red'", "fill='blue'")
+    const initialStarts = seenEndpoints.length
+    mainInvalidations.clear()
+    await writeFile(holdMainBuild, '')
+    await writeFile(holdMainChanges, '')
+    try {
+      await replace(
+        'src/main/imports.ts',
+        "instructions: '',",
+        "instructions: 'Updated folder importer.',",
+      )
+      await until(
+        () =>
+          access(mainChangesPaused).then(
+            () => true,
+            () => false,
+          ),
+        'main watchChange pauses before buildStart',
+      )
+      phase(
+        `main watchChange paused: ${(await readFile(mainChangesPaused, 'utf8')).slice(root.length + 1)}`,
+      )
+      await Promise.all([
+        writeFile(join(previewFolder, 'README.md'), updatedReadme),
+        writeFile(watchImage, updatedImage),
+      ])
+      await until(
+        () =>
+          [join(previewFolder, 'README.md'), watchImage].every((file) =>
+            mainInvalidations.has(file.split(sep).join('/')),
+          ),
+        'main watcher observes addon README.md and watch.svg before rebuild',
+      )
+    } finally {
+      await writeFile(releaseMainChanges, '')
+      await rm(holdMainChanges, { force: true })
+    }
     await until(
       () =>
-        access(mainChangesPaused).then(
+        access(mainBuildPaused).then(
           () => true,
           () => false,
         ),
-      'main watchChange pauses before buildStart',
+      'main rebuild writes output before restart',
+      60000,
     )
-    phase(
-      `main watchChange paused: ${(await readFile(mainChangesPaused, 'utf8')).slice(root.length + 1)}`,
-    )
-    await Promise.all([
-      writeFile(join(previewFolder, 'README.md'), updatedReadme),
-      writeFile(watchImage, updatedImage),
-    ])
-    await until(
-      () =>
-        [join(previewFolder, 'README.md'), watchImage].every((file) =>
-          mainInvalidations.has(file.split(sep).join('/')),
-        ),
-      'main watcher observes addon README.md and watch.svg before rebuild',
-    )
-  } finally {
-    await writeFile(releaseMainChanges, '')
-    await rm(holdMainChanges, { force: true })
-  }
-  await until(
-    () =>
-      access(mainBuildPaused).then(
-        () => true,
-        () => false,
-      ),
-    'main rebuild writes output before restart',
-    60000,
-  )
-  assert.equal(
-    (await page.evaluate(() => window.hibi.listImporters())).find(
-      (importer) => importer.id === 'folder',
-    ).instructions,
-    '',
-    'running main process still loads its original importer chunk',
-  )
-  assert.deepEqual(
-    await readFixtureDocumentation(),
-    beforeDocumentation,
-    'running main keeps original documentation and image until restart',
-  )
-  await writeFile(releaseMainBuild, '')
-  await connectRestartedPage(initialStarts)
-  const afterDocumentation = await readFixtureDocumentation()
-  assert.equal(afterDocumentation[0].content, updatedReadme)
-  assert.notEqual(afterDocumentation[1].content, beforeDocumentation[1].content)
-  const imageData = afterDocumentation[1].content
-  const imageBody = imageData.slice(imageData.indexOf(',') + 1)
-  assert.equal(
-    imageData.startsWith('data:image/svg+xml;base64,')
-      ? Buffer.from(imageBody, 'base64').toString('utf8')
-      : decodeURIComponent(imageBody),
-    updatedImage,
-  )
-  assert.equal(
-    (await page.evaluate(() => window.hibi.listImporters())).find(
-      (importer) => importer.id === 'folder',
-    ).instructions,
-    'Updated folder importer.',
-  )
-  mark(
-    'guarded main restart refreshes importer, addon readme, and imported image',
-  )
-
-  await waitForDocumentEditor(undefined, page)
-  await replaceRichText(
-    page,
-    page.getByRole('textbox', { name: 'Document editor', exact: true }),
-    'draft protected from restart',
-  )
-  await waitForAsync(page, async () => {
-    const document = await window.hibi.getDocument()
-    return (
-      document.markdown === 'draft protected from restart' &&
-      document.dirty &&
-      document.tabs.some((tab) => tab.dirty)
-    )
-  })
-  const beforeNativeFailure = await captureAddonState()
-  await writeFile(
-    join(previewFolder, 'host-label.ts'),
-    'export const nativeCompileFailure = ;',
-  )
-  await until(
-    () => output.includes('nativeCompileFailure = ;'),
-    'native helper compile fails',
-    60000,
-  )
-  assert.deepEqual(await addonState(), beforeNativeFailure)
-  const canceledStarts = seenEndpoints.length
-  await writeFile(cancelNextClose, '')
-  await writeFile(
-    join(previewFolder, 'host-label.ts'),
-    'export const valid = true',
-  )
-  await until(
-    () =>
-      access(closePromptCanceled).then(
-        () => true,
-        () => false,
-      ),
-    'save prompt canceled on dev restart',
-    60000,
-  )
-  await until(
-    () => output.includes('electron restart canceled; keeping current app'),
-    'watcher acknowledges canceled restart',
-    60000,
-  )
-  assert.deepEqual(await addonState(), beforeNativeFailure)
-  assert.equal(seenEndpoints.length, canceledStarts)
-  assert.deepEqual(
-    await page.evaluate(async () => {
-      const draft = await window.hibi.getDocument()
-      return {
-        markdown: draft.markdown,
-        dirty: draft.dirty,
-        dirtyTab: draft.tabs.some((tab) => tab.dirty),
-      }
-    }),
-    { markdown: 'draft protected from restart', dirty: true, dirtyTab: true },
-  )
-  assert.equal(
-    (await page.evaluate(() => window.hibi.listImporters())).find(
-      (importer) => importer.id === 'folder',
-    ).instructions,
-    'Updated folder importer.',
-  )
-  mark('native addon restart cancellation keeps running app and dirty draft')
-
-  await clearDraft('draft protected from restart')
-  await replace(
-    'src/addons/ui-preview/host.ts',
-    "'owner-native'",
-    "'owner-native-updated'",
-  )
-  await connectRestartedPage(canceledStarts)
-  assert.equal(
-    (await page.evaluate(() => window.hibi.listImporters())).find(
-      (importer) => importer.id === 'folder',
-    ).instructions,
-    'Updated folder importer.',
-  )
-  mark('native addon clean rebuild restarts after earlier cancellation')
-
-  await waitForDocumentEditor(undefined, page)
-  await replaceRichText(
-    page,
-    page.getByRole('textbox', { name: 'Document editor', exact: true }),
-    'draft protected from contract restart',
-  )
-  await waitForAsync(page, async () => {
-    const document = await window.hibi.getDocument()
-    return (
-      document.markdown === 'draft protected from contract restart' &&
-      document.dirty
-    )
-  })
-  const beforeContract = await captureAddonState()
-  const contractStarts = seenEndpoints.length
-  const canceledRestarts = output.split(
-    'electron restart canceled; keeping current app',
-  ).length
-  await rm(closePromptCanceled)
-  await writeFile(cancelNextClose, '')
-  await writeFile(
-    join(previewFolder, 'host-next.ts'),
-    (await readFile(join(previewFolder, 'host.ts'), 'utf8')).replace(
-      'owner-native-updated',
-      'owner-native-contract',
-    ),
-  )
-  await replace(
-    'src/addons/ui-preview/hibi-addon.json',
-    '"entry": "host.ts"',
-    '"entry": "host-next.ts"',
-  )
-  await until(
-    () =>
-      output.split('electron restart canceled; keeping current app').length >
-      canceledRestarts,
-    'native contract restart is canceled',
-    60000,
-  )
-  await Promise.all([
-    page.waitForEvent('console', {
-      predicate: (message) =>
-        message.type() === 'warning' &&
-        message
-          .text()
-          .includes('Addon contract changes are waiting for restart'),
-    }),
-    (async () => {
-      const manifest = JSON.parse(await readFile(previewManifest, 'utf8'))
-      manifest.description = 'Pending native contract'
-      await writeFile(previewManifest, JSON.stringify(manifest, null, 2))
-    })(),
-  ])
-  assert.deepEqual(await addonState(), beforeContract)
-  await clearDraft('draft protected from contract restart')
-  await replace(
-    'src/addons/ui-preview/host-next.ts',
-    'export default',
-    '\nexport default',
-  )
-  await connectRestartedPage(contractStarts)
-  mark('native contract stays pending after cancellation until guarded restart')
-
-  const localManifest = join(localFolder, 'hibi-addon.json')
-  const localMetadata = JSON.parse(await readFile(localManifest, 'utf8'))
-  const { addonDevelopmentManifestContract } = await import(
-    pathToFileURL(join(root, 'src/shared/addon-development.ts')).href
-  )
-  const bridgeManifest = await page.evaluate(async () => {
-    const { addons } = await import('/src/addon-registry.ts')
-    return {
-      ...addons.find(({ manifest }) => manifest.id === 'dev-watch-local')
-        .manifest,
-      entry: 'index.js',
-    }
-  })
-  const bridgeContract = (manifest) =>
-    JSON.stringify([
-      null,
-      null,
-      addonDevelopmentManifestContract(manifest, false),
-    ])
-  const beforeForgedContract = await captureAddonState()
-  for (const fields of [
-    { network: { origins: ['https://example.com'] } },
-    { requires: { addons: [{ id: 'typing-speed' }] } },
-    { defaultEnabled: false },
-  ]) {
-    const manifest = { ...bridgeManifest, ...fields }
-    for (const contract of [
-      bridgeContract(bridgeManifest),
-      bridgeContract(manifest),
-    ]) {
-      await assert.rejects(
-        page.evaluate(
-          ({ manifest, contract }) =>
-            window.hibi.updateDevelopmentAddon(manifest, contract),
-          { manifest, contract },
-        ),
-        /Addon contract changes are waiting for restart/,
-      )
-    }
-    assert.deepEqual(await addonState(), beforeForgedContract)
-  }
-  assert.equal(
-    (await page.evaluate(() => window.hibi.getAddonStates())).find(
-      (entry) => entry.id === 'dev-watch-local',
-    ).enabled,
-    true,
-  )
-  Object.assign(localMetadata, {
-    network: { origins: ['https://example.com'] },
-    requires: { addons: [{ id: 'typing-speed' }] },
-  })
-  for (const enabled of [false, true]) {
-    localMetadata.defaultEnabled = enabled
-    const starts = seenEndpoints.length
-    const epoch = await page.evaluate(() => performance.timeOrigin)
-    await writeFile(localManifest, JSON.stringify(localMetadata))
-    await connectRestartedPage(starts)
-    assert.notEqual(await page.evaluate(() => performance.timeOrigin), epoch)
-    await waitForAsync(
-      page,
-      async (enabled) => {
-        const state = (await window.hibi.getAddonStates()).find(
-          (entry) => entry.id === 'dev-watch-local',
-        )
-        return state.enabled === enabled && state.savedEnabled === undefined
-      },
-      enabled,
+    assert.equal(
+      (await page.evaluate(() => window.hibi.listImporters())).find(
+        (importer) => importer.id === 'folder',
+      ).instructions,
+      '',
+      'running main process still loads its original importer chunk',
     )
     assert.deepEqual(
+      await readFixtureDocumentation(),
+      beforeDocumentation,
+      'running main keeps original documentation and image until restart',
+    )
+    await writeFile(releaseMainBuild, '')
+    await connectRestartedPage(initialStarts)
+    const afterDocumentation = await readFixtureDocumentation()
+    assert.equal(afterDocumentation[0].content, updatedReadme)
+    assert.notEqual(
+      afterDocumentation[1].content,
+      beforeDocumentation[1].content,
+    )
+    const imageData = afterDocumentation[1].content
+    const imageBody = imageData.slice(imageData.indexOf(',') + 1)
+    assert.equal(
+      imageData.startsWith('data:image/svg+xml;base64,')
+        ? Buffer.from(imageBody, 'base64').toString('utf8')
+        : decodeURIComponent(imageBody),
+      updatedImage,
+    )
+    assert.equal(
+      (await page.evaluate(() => window.hibi.listImporters())).find(
+        (importer) => importer.id === 'folder',
+      ).instructions,
+      'Updated folder importer.',
+    )
+    mark(
+      'guarded main restart refreshes importer, addon readme, and imported image',
+    )
+
+    await waitForDocumentEditor(undefined, page)
+    await replaceRichText(
+      page,
+      page.getByRole('textbox', { name: 'Document editor', exact: true }),
+      'draft protected from restart',
+    )
+    await waitForAsync(page, async () => {
+      const document = await window.hibi.getDocument()
+      return (
+        document.markdown === 'draft protected from restart' &&
+        document.dirty &&
+        document.tabs.some((tab) => tab.dirty)
+      )
+    })
+    const beforeNativeFailure = await captureAddonState()
+    await writeFile(
+      join(previewFolder, 'host-label.ts'),
+      'export const nativeCompileFailure = ;',
+    )
+    await until(
+      () => output.includes('nativeCompileFailure = ;'),
+      'native helper compile fails',
+      60000,
+    )
+    assert.deepEqual(await addonState(), beforeNativeFailure)
+    const canceledStarts = seenEndpoints.length
+    await writeFile(cancelNextClose, '')
+    await writeFile(
+      join(previewFolder, 'host-label.ts'),
+      'export const valid = true',
+    )
+    await until(
+      () =>
+        access(closePromptCanceled).then(
+          () => true,
+          () => false,
+        ),
+      'save prompt canceled on dev restart',
+      60000,
+    )
+    await until(
+      () => output.includes('electron restart canceled; keeping current app'),
+      'watcher acknowledges canceled restart',
+      60000,
+    )
+    assert.deepEqual(await addonState(), beforeNativeFailure)
+    assert.equal(seenEndpoints.length, canceledStarts)
+    assert.deepEqual(
       await page.evaluate(async () => {
-        const { addons } = await import('/src/addon-registry.ts')
-        const { defaultEnabled, network, requires } = addons.find(
-          ({ manifest }) => manifest.id === 'dev-watch-local',
-        ).manifest
-        return { defaultEnabled, network, requires }
+        const draft = await window.hibi.getDocument()
+        return {
+          markdown: draft.markdown,
+          dirty: draft.dirty,
+          dirtyTab: draft.tabs.some((tab) => tab.dirty),
+        }
       }),
       {
-        defaultEnabled: enabled,
-        network: localMetadata.network,
-        requires: localMetadata.requires,
+        markdown: 'draft protected from restart',
+        dirty: true,
+        dirtyTab: true,
       },
     )
-    await page.locator('[data-status-id="typing-speed.wpm"]').waitFor()
-    await page.locator('[data-status-id="dev-watch-local.probe"]').waitFor({
-      state: enabled ? 'visible' : 'detached',
-    })
     assert.equal(
-      await page.evaluate(() => window.localWatchProbe?.starts ?? 0),
-      Number(enabled),
+      (await page.evaluate(() => window.hibi.listImporters())).find(
+        (importer) => importer.id === 'folder',
+      ).instructions,
+      'Updated folder importer.',
     )
-  }
-  assert.equal(
-    Object.hasOwn(
-      JSON.parse(await readFile(join(profile, 'addons.json'), 'utf8')),
-      'dev-watch-local',
-    ),
-    false,
-  )
-  mark(
-    'manifest contracts require guarded restart; forged bridge contracts are refused',
-  )
+    mark('native addon restart cancellation keeps running app and dirty draft')
 
-  const beforeMetadata = await captureAddonState()
-  await addonUpdate('ui-preview', 'code', () =>
-    replace(
+    await clearDraft('draft protected from restart')
+    await replace(
+      'src/addons/ui-preview/host.ts',
+      "'owner-native'",
+      "'owner-native-updated'",
+    )
+    await connectRestartedPage(canceledStarts)
+    assert.equal(
+      (await page.evaluate(() => window.hibi.listImporters())).find(
+        (importer) => importer.id === 'folder',
+      ).instructions,
+      'Updated folder importer.',
+    )
+    mark('native addon clean rebuild restarts after earlier cancellation')
+
+    await waitForDocumentEditor(undefined, page)
+    await replaceRichText(
+      page,
+      page.getByRole('textbox', { name: 'Document editor', exact: true }),
+      'draft protected from contract restart',
+    )
+    await waitForAsync(page, async () => {
+      const document = await window.hibi.getDocument()
+      return (
+        document.markdown === 'draft protected from contract restart' &&
+        document.dirty
+      )
+    })
+    const beforeContract = await captureAddonState()
+    const contractStarts = seenEndpoints.length
+    const canceledRestarts = output.split(
+      'electron restart canceled; keeping current app',
+    ).length
+    await rm(closePromptCanceled)
+    await writeFile(cancelNextClose, '')
+    await writeFile(
+      join(previewFolder, 'host-next.ts'),
+      (await readFile(join(previewFolder, 'host.ts'), 'utf8')).replace(
+        'owner-native-updated',
+        'owner-native-contract',
+      ),
+    )
+    await replace(
       'src/addons/ui-preview/hibi-addon.json',
-      '"name": "UI preview"',
-      '"name": "Updated UI preview"',
-    ),
-  )
-  assert.deepEqual(await addonState(), {
-    ...beforeMetadata,
-    preview: {
-      ...beforeMetadata.preview,
-      starts: beforeMetadata.preview.starts + 1,
-      stops: beforeMetadata.preview.stops + 1,
-    },
-  })
-  async function checkRendererMetadata(expectedName) {
-    await page.getByRole('button', { name: /^settings$/i, exact: true }).click()
-    const settings = page.getByRole('main', { name: /^settings$/i })
-    await settings.waitFor()
-    await settings.getByRole('tab', { name: /^addon manager$/i }).click()
-    await settings
-      .getByRole('checkbox', { name: expectedName, exact: true })
-      .waitFor()
-    await settings.getByRole('button', { name: /^back to app$/i }).click()
-    await settings.waitFor({ state: 'hidden' })
-  }
-  await checkRendererMetadata('Updated UI preview')
-  const beforeSecondMetadata = await addonState()
-  await addonUpdate('ui-preview', 'code', () =>
-    replace(
-      'src/addons/ui-preview/hibi-addon.json',
-      '"name": "Updated UI preview"',
-      '"name": "Latest UI preview"',
-    ),
-  )
-  assert.deepEqual(await addonState(), {
-    ...beforeSecondMetadata,
-    preview: {
-      ...beforeSecondMetadata.preview,
-      starts: beforeSecondMetadata.preview.starts + 1,
-      stops: beforeSecondMetadata.preview.stops + 1,
-    },
-  })
-  await checkRendererMetadata('Latest UI preview')
-  const opened = page.context().waitForEvent('page')
-  await page.evaluate(() =>
-    window.hibi.openAddonWindow('ui-preview', { id: 'preview' }),
-  )
-  const owner = await opened
-  await owner.waitForFunction(() => Boolean(window.hibiAddonWindow))
-  assert.equal(
-    (await owner.evaluate(() => window.hibiAddonWindow.context())).title,
-    'Latest UI preview',
-  )
-  await owner.getByRole('button', { name: 'Close', exact: true }).waitFor()
-  assert.deepEqual(
-    await owner.evaluate(async () => {
-      const probe = window.catalogWindowProbe
+      '"entry": "host.ts"',
+      '"entry": "host-next.ts"',
+    )
+    await until(
+      () =>
+        output.split('electron restart canceled; keeping current app').length >
+        canceledRestarts,
+      'native contract restart is canceled',
+      60000,
+    )
+    await Promise.all([
+      page.waitForEvent('console', {
+        predicate: (message) =>
+          message.type() === 'warning' &&
+          message
+            .text()
+            .includes('Addon contract changes are waiting for restart'),
+      }),
+      (async () => {
+        const manifest = JSON.parse(await readFile(previewManifest, 'utf8'))
+        manifest.description = 'Pending native contract'
+        await writeFile(previewManifest, JSON.stringify(manifest, null, 2))
+      })(),
+    ])
+    assert.deepEqual(await addonState(), beforeContract)
+    await clearDraft('draft protected from contract restart')
+    await replace(
+      'src/addons/ui-preview/host-next.ts',
+      'export default',
+      '\nexport default',
+    )
+    await connectRestartedPage(contractStarts)
+    mark(
+      'native contract stays pending after cancellation until guarded restart',
+    )
+    assert.equal(
+      await page.evaluate(() => window.hibi.queryAddon('ui-preview', 'probe')),
+      'owner-native-contract',
+    )
+
+    const localManifest = join(localFolder, 'hibi-addon.json')
+    const localMetadata = JSON.parse(await readFile(localManifest, 'utf8'))
+    const { addonDevelopmentManifestContract } = await import(
+      pathToFileURL(join(root, 'src/shared/addon-development.ts')).href
+    )
+    const bridgeManifest = await page.evaluate(async () => {
+      const { addons } = await import('/src/addon-registry.ts')
       return {
-        ...probe,
-        closed: await probe.closed,
-        native: await probe.native,
+        ...addons.find(({ manifest }) => manifest.id === 'dev-watch-local')
+          .manifest,
+        entry: 'index.js',
       }
-    }),
-    {
-      sealed: true,
-      desktop: 'undefined',
-      closed: true,
-      factories: 1,
-      starts: 0,
-      native: 'owner-native-contract',
-    },
-  )
-  const beforeRefusal = await captureAddonState()
-  const ownerEpoch = await owner.evaluate(() => performance.timeOrigin)
-  const beforeRefusedCss = await page.evaluate(() =>
-    getComputedStyle(document.body).getPropertyValue('--preview-watch').trim(),
-  )
-  await Promise.all([
-    page.waitForEvent('console', {
-      predicate: (message) =>
-        message.type() === 'warning' &&
-        /addon ui-preview: Close the Latest UI preview windows before reloading Latest UI preview/i.test(
-          message.text(),
-        ),
-    }),
-    replace(
-      'src/addons/ui-preview/window.tsx',
-      'if (lifecycle) lifecycle.starts++',
-      'if (lifecycle) { lifecycle.starts++; lifecycle.updated = true }',
-    ),
-    replace(
-      'src/addons/ui-preview/style.css',
-      '--preview-watch: coalesced',
-      '--preview-watch: refused',
-    ),
-  ])
-  assert.equal(
+    })
+    const bridgeContract = (manifest) =>
+      JSON.stringify([
+        null,
+        null,
+        addonDevelopmentManifestContract(manifest, false),
+      ])
+    const beforeForgedContract = await captureAddonState()
+    for (const fields of [
+      { network: { origins: ['https://example.com'] } },
+      { requires: { addons: [{ id: 'typing-speed' }] } },
+      { defaultEnabled: false },
+    ]) {
+      const manifest = { ...bridgeManifest, ...fields }
+      for (const contract of [
+        bridgeContract(bridgeManifest),
+        bridgeContract(manifest),
+      ]) {
+        await assert.rejects(
+          page.evaluate(
+            ({ manifest, contract }) =>
+              window.hibi.updateDevelopmentAddon(manifest, contract),
+            { manifest, contract },
+          ),
+          /Addon contract changes are waiting for restart/,
+        )
+      }
+      assert.deepEqual(await addonState(), beforeForgedContract)
+    }
+    assert.equal(
+      (await page.evaluate(() => window.hibi.getAddonStates())).find(
+        (entry) => entry.id === 'dev-watch-local',
+      ).enabled,
+      true,
+    )
+    Object.assign(localMetadata, {
+      network: { origins: ['https://example.com'] },
+      requires: { addons: [{ id: 'typing-speed' }] },
+    })
+    for (const enabled of [false, true]) {
+      localMetadata.defaultEnabled = enabled
+      const starts = seenEndpoints.length
+      const epoch = await page.evaluate(() => performance.timeOrigin)
+      await writeFile(localManifest, JSON.stringify(localMetadata))
+      await connectRestartedPage(starts)
+      assert.notEqual(await page.evaluate(() => performance.timeOrigin), epoch)
+      await waitForAsync(
+        page,
+        async (enabled) => {
+          const state = (await window.hibi.getAddonStates()).find(
+            (entry) => entry.id === 'dev-watch-local',
+          )
+          return state.enabled === enabled && state.savedEnabled === undefined
+        },
+        enabled,
+      )
+      assert.deepEqual(
+        await page.evaluate(async () => {
+          const { addons } = await import('/src/addon-registry.ts')
+          const { defaultEnabled, network, requires } = addons.find(
+            ({ manifest }) => manifest.id === 'dev-watch-local',
+          ).manifest
+          return { defaultEnabled, network, requires }
+        }),
+        {
+          defaultEnabled: enabled,
+          network: localMetadata.network,
+          requires: localMetadata.requires,
+        },
+      )
+      await page.locator('[data-status-id="typing-speed.wpm"]').waitFor()
+      await page.locator('[data-status-id="dev-watch-local.probe"]').waitFor({
+        state: enabled ? 'visible' : 'detached',
+      })
+      assert.equal(
+        await page.evaluate(() => window.localWatchProbe?.starts ?? 0),
+        Number(enabled),
+      )
+    }
+    assert.equal(
+      Object.hasOwn(
+        JSON.parse(await readFile(join(profile, 'addons.json'), 'utf8')),
+        'dev-watch-local',
+      ),
+      false,
+    )
+    mark(
+      'manifest contracts require guarded restart; forged bridge contracts are refused',
+    )
+  } else {
+    const beforeMetadata = await captureAddonState()
+    await addonUpdate('ui-preview', 'code', () =>
+      replace(
+        'src/addons/ui-preview/hibi-addon.json',
+        '"name": "UI preview"',
+        '"name": "Updated UI preview"',
+      ),
+    )
+    assert.deepEqual(await addonState(), {
+      ...beforeMetadata,
+      preview: {
+        ...beforeMetadata.preview,
+        starts: beforeMetadata.preview.starts + 1,
+        stops: beforeMetadata.preview.stops + 1,
+      },
+    })
+    async function checkRendererMetadata(expectedName) {
+      await page
+        .getByRole('button', { name: /^settings$/i, exact: true })
+        .click()
+      const settings = page.getByRole('main', { name: /^settings$/i })
+      await settings.waitFor()
+      await settings.getByRole('tab', { name: /^addon manager$/i }).click()
+      await settings
+        .getByRole('checkbox', { name: expectedName, exact: true })
+        .waitFor()
+      await settings.getByRole('button', { name: /^back to app$/i }).click()
+      await settings.waitFor({ state: 'hidden' })
+    }
+    await checkRendererMetadata('Updated UI preview')
+    const beforeSecondMetadata = await addonState()
+    await addonUpdate('ui-preview', 'code', () =>
+      replace(
+        'src/addons/ui-preview/hibi-addon.json',
+        '"name": "Updated UI preview"',
+        '"name": "Latest UI preview"',
+      ),
+    )
+    assert.deepEqual(await addonState(), {
+      ...beforeSecondMetadata,
+      preview: {
+        ...beforeSecondMetadata.preview,
+        starts: beforeSecondMetadata.preview.starts + 1,
+        stops: beforeSecondMetadata.preview.stops + 1,
+      },
+    })
+    await checkRendererMetadata('Latest UI preview')
+    const opened = page.context().waitForEvent('page')
     await page.evaluate(() =>
+      window.hibi.openAddonWindow('ui-preview', { id: 'preview' }),
+    )
+    const owner = await opened
+    await owner.waitForFunction(() => Boolean(window.hibiAddonWindow))
+    assert.equal(
+      (await owner.evaluate(() => window.hibiAddonWindow.context())).title,
+      'Latest UI preview',
+    )
+    await owner.getByRole('button', { name: 'Close', exact: true }).waitFor()
+    assert.deepEqual(
+      await owner.evaluate(async () => {
+        const probe = window.catalogWindowProbe
+        return {
+          ...probe,
+          closed: await probe.closed,
+          native: await probe.native,
+        }
+      }),
+      {
+        sealed: true,
+        desktop: 'undefined',
+        closed: true,
+        factories: 1,
+        starts: 0,
+        native: 'owner-native',
+      },
+    )
+    const beforeRefusal = await captureAddonState()
+    const ownerEpoch = await owner.evaluate(() => performance.timeOrigin)
+    const beforeRefusedCss = await page.evaluate(() =>
       getComputedStyle(document.body)
         .getPropertyValue('--preview-watch')
         .trim(),
-    ),
-    beforeRefusedCss,
-  )
-  assert.deepEqual(await addonState(), beforeRefusal)
-  assert.equal(await owner.evaluate(() => performance.timeOrigin), ownerEpoch)
-  assert.equal(
-    await owner.evaluate(() => window.catalogWindowProbe.factories),
-    1,
-  )
-  await owner.getByRole('button', { name: 'Close', exact: true }).waitFor()
-  await owner.close()
-  await addonUpdate('ui-preview', 'code', () =>
-    replace(
-      'src/addons/ui-preview/style.css',
-      '--preview-watch: refused',
-      '--preview-watch: recovered',
-    ),
-  )
-  await page.waitForFunction(
-    () =>
-      getComputedStyle(document.body)
-        .getPropertyValue('--preview-watch')
-        .trim() === 'recovered',
-  )
-  assert.deepEqual(await addonState(), {
-    ...beforeRefusal,
-    preview: {
-      ...beforeRefusal.preview,
-      starts: beforeRefusal.preview.starts + 1,
-      stops: beforeRefusal.preview.stops + 1,
-      updated: true,
-    },
-  })
-  mark(
-    'open owner refuses code; later css edit recovers pending code and styles',
-  )
+    )
+    await Promise.all([
+      page.waitForEvent('console', {
+        predicate: (message) =>
+          message.type() === 'warning' &&
+          /addon ui-preview: Close the Latest UI preview windows before reloading Latest UI preview/i.test(
+            message.text(),
+          ),
+      }),
+      replace(
+        'src/addons/ui-preview/window.tsx',
+        'if (lifecycle) lifecycle.starts++',
+        'if (lifecycle) { lifecycle.starts++; lifecycle.updated = true }',
+      ),
+      replace(
+        'src/addons/ui-preview/style.css',
+        '--preview-watch: coalesced',
+        '--preview-watch: refused',
+      ),
+    ])
+    assert.equal(
+      await page.evaluate(() =>
+        getComputedStyle(document.body)
+          .getPropertyValue('--preview-watch')
+          .trim(),
+      ),
+      beforeRefusedCss,
+    )
+    assert.deepEqual(await addonState(), beforeRefusal)
+    assert.equal(await owner.evaluate(() => performance.timeOrigin), ownerEpoch)
+    assert.equal(
+      await owner.evaluate(() => window.catalogWindowProbe.factories),
+      1,
+    )
+    await owner.getByRole('button', { name: 'Close', exact: true }).waitFor()
+    await owner.close()
+    await addonUpdate('ui-preview', 'code', () =>
+      replace(
+        'src/addons/ui-preview/style.css',
+        '--preview-watch: refused',
+        '--preview-watch: recovered',
+      ),
+    )
+    await page.waitForFunction(
+      () =>
+        getComputedStyle(document.body)
+          .getPropertyValue('--preview-watch')
+          .trim() === 'recovered',
+    )
+    assert.deepEqual(await addonState(), {
+      ...beforeRefusal,
+      preview: {
+        ...beforeRefusal.preview,
+        starts: beforeRefusal.preview.starts + 1,
+        stops: beforeRefusal.preview.stops + 1,
+        updated: true,
+      },
+    })
+    mark(
+      'open owner refuses code; later css edit recovers pending code and styles',
+    )
 
-  const noticeId = 'addon:typst:typst-assets'
-  phase('read original notice')
-  const originalNotice = await page.evaluate(
-    (id) => window.hibi.getLicense(id),
-    noticeId,
-  )
-  const beforeNotice = await captureAddonState()
-  const noticePath = join(root, 'src/addons/typst/hibi-addon.json')
-  const noticeManifest = JSON.parse(await readFile(noticePath, 'utf8'))
-  assert.equal(noticeManifest.licenses[0].text, originalNotice)
-  noticeManifest.licenses[0].text = `Catalog notice probe.\n${originalNotice}`
-  await writeFile(noticePath, JSON.stringify(noticeManifest, null, 2))
-  await waitForAsync(
-    page,
-    async ({ id, text }) => (await window.hibi.getLicense(id)) === text,
-    { id: noticeId, text: noticeManifest.licenses[0].text },
-  )
-  assert.deepEqual(await addonState(), beforeNotice)
-  assert.equal(
-    await page.evaluate((id) => window.hibi.getLicense(id), noticeId),
-    `Catalog notice probe.\n${originalNotice}`,
-  )
-  mark('canonical json notice updates lazy catalog details')
+    const noticeId = 'addon:typst:typst-assets'
+    phase('read original notice')
+    const originalNotice = await page.evaluate(
+      (id) => window.hibi.getLicense(id),
+      noticeId,
+    )
+    const beforeNotice = await captureAddonState()
+    const noticePath = join(root, 'src/addons/typst/hibi-addon.json')
+    const noticeManifest = JSON.parse(await readFile(noticePath, 'utf8'))
+    assert.equal(noticeManifest.licenses[0].text, originalNotice)
+    noticeManifest.licenses[0].text = `Catalog notice probe.\n${originalNotice}`
+    await writeFile(noticePath, JSON.stringify(noticeManifest, null, 2))
+    await waitForAsync(
+      page,
+      async ({ id, text }) => (await window.hibi.getLicense(id)) === text,
+      { id: noticeId, text: noticeManifest.licenses[0].text },
+    )
+    assert.deepEqual(await addonState(), beforeNotice)
+    assert.equal(
+      await page.evaluate((id) => window.hibi.getLicense(id), noticeId),
+      `Catalog notice probe.\n${originalNotice}`,
+    )
+    mark('canonical json notice updates lazy catalog details')
 
-  await replace('scripts/addon-reference.mjs', '[Source]', '[Updated source]')
-  await until(
-    async () =>
-      (
-        await readFile(
-          join(root, 'docs/development/addon-api-reference/Sidebar.md'),
-          'utf8',
-        )
-      ).includes('[Updated source]'),
-    'documentation generator reloads',
-  )
-  mark('documentation generator updated')
+    await replace('scripts/addon-reference.mjs', '[Source]', '[Updated source]')
+    await until(
+      async () =>
+        (
+          await readFile(
+            join(root, 'docs/development/addon-api-reference/Sidebar.md'),
+            'utf8',
+          )
+        ).includes('[Updated source]'),
+      'documentation generator reloads',
+    )
+    mark('documentation generator updated')
+  }
   refreshDiagnostic()
   completed = true
-})
+}
 
 test('production output omits the addon development bridge and watcher', async () => {
   await assert.rejects(access(resolve('out/.addon-restart')), {

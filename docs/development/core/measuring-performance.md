@@ -41,6 +41,8 @@ Use `npm run bench:input` to measure document-changing ProseMirror transactions 
 
 Set `HIBI_INPUT_ANALYSIS=1` to add a two-second CPU load in an isolated analyzer while measuring typing. The script installs a temporary benchmark-only addon in each disposable profile. Default runs and CodSpeed keep the normal core/default-addon workload.
 
+Each sample also reports renderer main-thread time per keystroke (`mainThreadPerKey`: task, script, layout and style recalculation from the Chrome performance metrics), formatting checks per keystroke (`canPerKey`) and the time spent in outermost `can()` and `isActive()` calls, including chained command checks (`formatCheckMsPerKey`). These per-keystroke values cover the whole typing loop, so they include checks that run after dispatch, such as toolbar refreshes on the next frame. Set `HIBI_INPUT_FIND=a` to open find with that query before typing, `HIBI_INPUT_ARROWS=1` to also move the selection 20 times with ArrowLeft and report `arrowMainThreadPerKey`, and `HIBI_INPUT_AT=code` to type at the end of the first code block. `HIBI_BENCH_ADDONS=math,typst` enables addons in each profile, and `HIBI_BENCH_EMULATE_FOCUS=1` makes hidden windows behave as focused without showing them.
+
 ## Input-to-frame tracing
 
 Use the native trace harness to separate input queue delay, editor updates, deferred parsing and frame work:

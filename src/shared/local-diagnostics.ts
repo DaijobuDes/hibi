@@ -1,5 +1,4 @@
 // Local diagnostics never accept free-form metadata or document identifiers.
-export const DIAGNOSTIC_SCHEMA = 1
 export const DIAGNOSTIC_CHANNEL = 'hibi:local-diagnostics'
 export type DiagnosticProfile = 'release' | 'debug'
 export const diagnosticPolicies = {

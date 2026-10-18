@@ -1,5 +1,12 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rename,
+  rm,
+  writeFile,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -291,6 +298,195 @@ test('workspace switch during an asynchronous write leaves its old target untouc
     ),
     { code: 'ENOENT' },
   )
+})
+
+test('persistent writes preserve exact serialized bytes for changed and retained entries', async (t) => {
+  const { directory } = await temporaryStorage(t)
+  await mkdir(join(directory, 'global'), { recursive: true })
+  const file = join(directory, 'global', 'documentation.json')
+  const entries = {
+    retained: {
+      value: { text: 'quotes " and\nlines 🌱' },
+      revision: 3,
+      version: 1,
+      extra: ['kept'],
+    },
+  }
+  await writeFile(file, JSON.stringify({ format: 1, entries }))
+  const storage = testStorage(directory)
+  const request = {
+    owner: 'documentation',
+    scope: { kind: 'global' },
+    key: 'tick',
+    version: 1,
+  }
+  let revision = 0
+  for (const value of [
+    null,
+    'escaped\ttext',
+    { nested: [true, false, 1.5, 'é'] },
+  ]) {
+    const result = await storage.write({
+      ...request,
+      baseRevision: revision,
+      value,
+    })
+    assert.equal(result.status, 'saved')
+    revision++
+    entries.tick = { version: 1, revision, value }
+    assert.equal(
+      await readFile(file, 'utf8'),
+      JSON.stringify({ format: 1, entries }),
+    )
+  }
+})
+
+test('external and failed writes cannot suppress the next persistent serialization', async (t) => {
+  const { directory, storage } = await temporaryStorage(t)
+  const file = join(directory, 'global', 'documentation.json')
+  const request = {
+    owner: 'documentation',
+    scope: { kind: 'global' },
+    key: 'tick',
+    version: 1,
+  }
+  await storage.write({ ...request, baseRevision: 0, value: 'initial' })
+  await writeFile(file, 'external bytes')
+  assert.equal(
+    (
+      await storage.write({
+        ...request,
+        baseRevision: 1,
+        value: 'after external',
+      })
+    ).status,
+    'saved',
+  )
+  const stable = await readFile(file, 'utf8')
+  await rename(file, `${file}.saved`)
+  await mkdir(file)
+  await assert.rejects(
+    storage.write({ ...request, baseRevision: 2, value: 'failed' }),
+  )
+  await rm(file, { recursive: true })
+  await rename(`${file}.saved`, file)
+  assert.equal(await readFile(file, 'utf8'), stable)
+  assert.equal(
+    (
+      await storage.write({
+        ...request,
+        baseRevision: 2,
+        value: 'after failure',
+      })
+    ).status,
+    'saved',
+  )
+  assert.equal(
+    await readFile(file, 'utf8'),
+    JSON.stringify({
+      format: 1,
+      entries: { tick: { version: 1, revision: 3, value: 'after failure' } },
+    }),
+  )
+})
+
+for (const reason of ['revoke', 'uninstall'])
+  test(`persistent publication rejects ${reason} after staging and preserves its prior bytes`, async (t) => {
+    const { directory } = await temporaryStorage(t)
+    let current = 0,
+      checks = 0,
+      interrupt = false
+    const storage = createAddonStorage(
+      directory,
+      () => true,
+      (_owner, generation) => {
+        if (interrupt && ++checks === 4)
+          current = reason === 'revoke' ? 1 : null
+        return generation === current
+      },
+    )
+    const request = {
+      owner: 'documentation',
+      scope: { kind: 'global' },
+      key: 'tick',
+      version: 1,
+    }
+    await storage.write({ ...request, baseRevision: 0, value: 'initial' }, 0)
+    const file = join(directory, 'global', 'documentation.json')
+    const initial = await readFile(file, 'utf8')
+    interrupt = true
+    const result = await storage.write(
+      { ...request, baseRevision: 1, value: 'revoked' },
+      0,
+    )
+    assert.deepEqual(result, {
+      status: 'unavailable',
+      reason: 'stale-activation',
+    })
+    assert.equal(checks, 4)
+    assert.equal(await readFile(file, 'utf8'), initial)
+    interrupt = false
+    current = 1
+    assert.equal(
+      (
+        await storage.write(
+          { ...request, baseRevision: 1, value: 'next activation' },
+          1,
+        )
+      ).status,
+      'saved',
+    )
+    assert.equal(
+      await readFile(file, 'utf8'),
+      JSON.stringify({
+        format: 1,
+        entries: {
+          tick: { version: 1, revision: 2, value: 'next activation' },
+        },
+      }),
+    )
+  })
+
+test('full namespace rejection leaves serialized entries usable by the next write', async (t) => {
+  const { directory, storage } = await temporaryStorage(t)
+  const request = {
+    owner: 'documentation',
+    scope: { kind: 'global' },
+    version: 1,
+    baseRevision: 0,
+  }
+  for (const [key, size] of [
+    ['first', 8],
+    ['second', 7],
+  ])
+    assert.equal(
+      (
+        await storage.write({
+          ...request,
+          key,
+          value: 'x'.repeat(size * 1024 * 1024),
+        })
+      ).status,
+      'saved',
+    )
+  const file = join(directory, 'global', 'documentation.json')
+  const initial = await readFile(file, 'utf8')
+  await assert.rejects(
+    storage.write({
+      ...request,
+      key: 'third',
+      value: 'x'.repeat(2 * 1024 * 1024),
+    }),
+    /scope is full/,
+  )
+  assert.equal(await readFile(file, 'utf8'), initial)
+  assert.equal(
+    (await storage.write({ ...request, key: 'third', value: 'small' })).status,
+    'saved',
+  )
+  const parsed = JSON.parse(initial)
+  parsed.entries.third = { version: 1, revision: 1, value: 'small' }
+  assert.equal(await readFile(file, 'utf8'), JSON.stringify(parsed))
 })
 
 test('a maximum stored revision refuses another write without damaging its file', async (t) => {
