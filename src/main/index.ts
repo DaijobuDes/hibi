@@ -666,6 +666,35 @@ function fileOwner(owner: unknown) {
   const generation = getAddonActivationGeneration(owner)
   return generation === null ? null : { id: owner, generation }
 }
+function readAddonFile<T>(
+  event: IpcMainInvokeEvent,
+  owner: unknown,
+  read: () => Promise<T>,
+) {
+  const activation = fileOwner(owner)
+  if (!activation) return addonFileUnavailable()
+  return readAfterFileOperation(event, async () => {
+    const result = await read()
+    return isAddonActivationCurrent(activation.id, activation.generation)
+      ? result
+      : addonFileUnavailable()
+  })
+}
+
+function mutateAddonFile<T>(
+  event: IpcMainInvokeEvent,
+  owner: unknown,
+  mutate: (isCurrent: () => boolean) => Promise<T>,
+) {
+  const activation = fileOwner(owner)
+  if (!activation) return addonFileUnavailable()
+  return runFileOperation(event, () =>
+    mutate(() =>
+      isAddonActivationCurrent(activation.id, activation.generation),
+    ),
+  )
+}
+
 function storageGeneration(request: unknown): number {
   if (!request || typeof request !== 'object' || Array.isArray(request))
     throw new Error('Invalid addon storage request.')
@@ -1915,41 +1944,17 @@ if (!app.requestSingleInstanceLock()) {
       )
       handle(
         WORKSPACE_CHANNELS.readText,
-        (event, owner: unknown, target: unknown, path: unknown) => {
-          const activation = fileOwner(owner)
-          if (!activation) return addonFileUnavailable()
-          return readAfterFileOperation(event, async () => {
-            const result = await readWorkspaceText(
-              target as WorkspaceTarget,
-              path,
-            )
-            return isAddonActivationCurrent(
-              activation.id,
-              activation.generation,
-            )
-              ? result
-              : addonFileUnavailable()
-          })
-        },
+        (event, owner: unknown, target: unknown, path: unknown) =>
+          readAddonFile(event, owner, () =>
+            readWorkspaceText(target as WorkspaceTarget, path),
+          ),
       )
       handle(
         WORKSPACE_CHANNELS.readBinary,
-        (event, owner: unknown, target: unknown, path: unknown) => {
-          const activation = fileOwner(owner)
-          if (!activation) return addonFileUnavailable()
-          return readAfterFileOperation(event, async () => {
-            const result = await readWorkspaceBinary(
-              target as WorkspaceTarget,
-              path,
-            )
-            return isAddonActivationCurrent(
-              activation.id,
-              activation.generation,
-            )
-              ? result
-              : addonFileUnavailable()
-          })
-        },
+        (event, owner: unknown, target: unknown, path: unknown) =>
+          readAddonFile(event, owner, () =>
+            readWorkspaceBinary(target as WorkspaceTarget, path),
+          ),
       )
       handle(
         WORKSPACE_CHANNELS.createText,
@@ -1959,15 +1964,15 @@ if (!app.requestSingleInstanceLock()) {
           target: unknown,
           path: unknown,
           markdown: unknown,
-        ) => {
-          const activation = fileOwner(owner)
-          if (!activation) return addonFileUnavailable()
-          return runFileOperation(event, () =>
-            createWorkspaceText(target as WorkspaceTarget, path, markdown, () =>
-              isAddonActivationCurrent(activation.id, activation.generation),
+        ) =>
+          mutateAddonFile(event, owner, (isCurrent) =>
+            createWorkspaceText(
+              target as WorkspaceTarget,
+              path,
+              markdown,
+              isCurrent,
             ),
-          )
-        },
+          ),
       )
       handle(
         WORKSPACE_CHANNELS.createBinary,
@@ -1977,15 +1982,15 @@ if (!app.requestSingleInstanceLock()) {
           target: unknown,
           path: unknown,
           bytes: unknown,
-        ) => {
-          const activation = fileOwner(owner)
-          if (!activation) return addonFileUnavailable()
-          return runFileOperation(event, () =>
-            createWorkspaceBinary(target as WorkspaceTarget, path, bytes, () =>
-              isAddonActivationCurrent(activation.id, activation.generation),
+        ) =>
+          mutateAddonFile(event, owner, (isCurrent) =>
+            createWorkspaceBinary(
+              target as WorkspaceTarget,
+              path,
+              bytes,
+              isCurrent,
             ),
-          )
-        },
+          ),
       )
       handle(
         WORKSPACE_CHANNELS.updateText,
@@ -1997,21 +2002,17 @@ if (!app.requestSingleInstanceLock()) {
           expectedVersion: unknown,
           markdown: unknown,
           options: unknown,
-        ) => {
-          const activation = fileOwner(owner)
-          if (!activation) return addonFileUnavailable()
-          return runFileOperation(event, () =>
+        ) =>
+          mutateAddonFile(event, owner, (isCurrent) =>
             updateWorkspaceText(
               target as WorkspaceTarget,
               path,
               expectedVersion,
               markdown,
               options,
-              () =>
-                isAddonActivationCurrent(activation.id, activation.generation),
+              isCurrent,
             ),
-          )
-        },
+          ),
       )
       handle(
         WORKSPACE_CHANNELS.renameFile,
@@ -2022,20 +2023,16 @@ if (!app.requestSingleInstanceLock()) {
           sourcePath: unknown,
           destinationPath: unknown,
           expectedVersion: unknown,
-        ) => {
-          const activation = fileOwner(owner)
-          if (!activation) return addonFileUnavailable()
-          return runFileOperation(event, () =>
+        ) =>
+          mutateAddonFile(event, owner, (isCurrent) =>
             renameWorkspaceFile(
               target as WorkspaceTarget,
               sourcePath,
               destinationPath,
               expectedVersion,
-              () =>
-                isAddonActivationCurrent(activation.id, activation.generation),
+              isCurrent,
             ),
-          )
-        },
+          ),
       )
       handle(
         WORKSPACE_CHANNELS.trashFile,
@@ -2045,20 +2042,16 @@ if (!app.requestSingleInstanceLock()) {
           target: unknown,
           path: unknown,
           expectedVersion: unknown,
-        ) => {
-          const activation = fileOwner(owner)
-          if (!activation) return addonFileUnavailable()
-          return runFileOperation(event, () =>
+        ) =>
+          mutateAddonFile(event, owner, (isCurrent) =>
             trashWorkspaceFile(
               target as WorkspaceTarget,
               path,
               expectedVersion,
               (file) => shell.trashItem(file),
-              () =>
-                isAddonActivationCurrent(activation.id, activation.generation),
+              isCurrent,
             ),
-          )
-        },
+          ),
       )
       handle(WORKSPACE_CHANNELS.index, (event, verifyAll: unknown) =>
         readAfterFileOperation(event, () => indexWorkspace(verifyAll === true)),
