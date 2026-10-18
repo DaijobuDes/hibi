@@ -5,20 +5,21 @@ import { tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import test from 'node:test'
 import { build } from 'esbuild'
+import { waitForAsync } from './poll.mjs'
 
 const bundles = new Map()
-async function writer(
-  t,
-  kind,
-  { platform = 'win32', code = 'EPERM', failures = 1 } = {},
-) {
+async function runtime({
+  platform = 'win32',
+  code = 'EPERM',
+  failures = 1,
+} = {}) {
   if (!bundles.has(platform))
     bundles.set(
       platform,
       build({
         stdin: {
           contents:
-            "export { writeText } from './src/main/files.ts'; export { createAddonStorage } from './src/main/addon-storage.ts'; export { replaceExistingText } from './src/main/workspace-atomic-update.ts'; export { writeWorkspaceText, WORKSPACE_MANIFEST } from './src/main/workspace-metadata.ts'",
+            "export { writeText } from './src/main/files.ts'; export { createAddonStorage } from './src/main/addon-storage.ts'; export { replaceExistingText } from './src/main/workspace-atomic-update.ts'; export { writeWorkspaceText, WORKSPACE_MANIFEST } from './src/main/workspace-metadata.ts'; export { HostCredentials } from './src/main/host-credentials.ts'; export { LocalDiagnosticSink } from './src/main/local-diagnostics/sink.ts'",
           resolveDir: resolve('.'),
         },
         bundle: true,
@@ -36,6 +37,7 @@ async function writer(
       ...fs,
       rename: async (source, destination) => {
         state.attempts++
+        await state.beforeRename?.()
         if (state.attempts <= failures)
           throw state.attempts === 1
             ? original
@@ -44,9 +46,10 @@ async function writer(
       },
     },
     'node:timers/promises': {
-      setTimeout: async (milliseconds) => {
+      setTimeout: async (milliseconds, _value, options) => {
         state.delays.push(milliseconds)
-        await state.onDelay?.()
+        await state.onDelay?.(options?.signal)
+        options?.signal?.throwIfAborted()
       },
     },
   }
@@ -57,6 +60,11 @@ async function writer(
     module,
     module.exports,
   )
+  return { module, state, original }
+}
+
+async function writer(t, kind, options) {
+  const { module, state, original } = await runtime(options)
   const root = await fs.mkdtemp(join(tmpdir(), 'hibi-atomic-rename-'))
   t.after(() => fs.rm(root, { recursive: true, force: true }))
   const file =
@@ -227,3 +235,291 @@ test('workspace atomic write rejects a staged pathname swapped during backoff', 
   assert.equal(await fs.readFile(writing.file, 'utf8'), writing.initial)
   assert.equal(await fs.readFile(saved, 'utf8'), 'replacement')
 })
+
+async function credentialWriter(t, options) {
+  const { module, state } = await runtime(options)
+  const directory = await fs.mkdtemp(join(tmpdir(), 'hibi-credential-rename-'))
+  let owner = { addonId: 'example', activationGeneration: 1 }
+  const windowKey = {}
+  const host = new module.exports.HostCredentials({
+    directory,
+    platform: 'darwin',
+    currentOwner: () => owner,
+    isWindowLive: () => true,
+    storage: {
+      isAsyncEncryptionAvailable: async () => state.available !== false,
+      encryptStringAsync: async () => Buffer.from('ciphertext'),
+      isEncryptionAvailable: () => true,
+    },
+  })
+  t.after(async () => {
+    host.dispose()
+    await fs.rm(directory, { recursive: true, force: true })
+  })
+  return {
+    host,
+    state,
+    directory,
+    revoke: () => host.stopOwner(owner),
+    restart: () => {
+      owner = { ...owner, activationGeneration: owner.activationGeneration + 1 }
+    },
+    stopWindow: () => host.stopWindow(windowKey),
+    write: () =>
+      host.store('example', windowKey, {
+        key: 'token',
+        secret: 'synthetic-secret',
+        mode: 'persistent',
+      }),
+  }
+}
+
+for (const failures of [1, 5, Infinity])
+  test(`credential rename keeps the six-attempt retry budget: ${failures}`, async (t) => {
+    const writing = await credentialWriter(t, { failures })
+    const result = await writing.write()
+    assert.equal(result.ok, Number.isFinite(failures))
+    if (!result.ok) assert.equal(result.code, 'io-error')
+    assert.equal(writing.state.attempts, Math.min(failures + 1, 6))
+    assert.deepEqual(
+      writing.state.delays,
+      [50, 100, 200, 400, 800].slice(0, failures),
+    )
+    const entries = await fs.readdir(writing.directory)
+    assert.equal(entries.length, Number.isFinite(failures) ? 1 : 0)
+    if (entries.length)
+      assert.doesNotMatch(
+        await fs.readFile(join(writing.directory, entries[0]), 'utf8'),
+        /synthetic-secret/,
+      )
+  })
+
+for (const action of ['revoke', 'stopWindow', 'dispose'])
+  test(`credential ${action} cancels retry backoff without another native rename`, async (t) => {
+    const writing = await credentialWriter(t)
+    let cancelled = false
+    writing.state.onDelay = (signal) =>
+      new Promise((_resolve, reject) => {
+        assert.ok(signal)
+        signal.addEventListener(
+          'abort',
+          () => {
+            cancelled = true
+            reject(signal.reason)
+          },
+          { once: true },
+        )
+        if (action === 'dispose') writing.host.dispose()
+        else writing[action]()
+      })
+    const result = await writing.write()
+    assert.equal(result.ok, false)
+    assert.equal(result.code, 'stale')
+    assert.equal(result.committed, undefined)
+    assert.equal(cancelled, true)
+    assert.equal(writing.state.attempts, 1)
+    assert.deepEqual(writing.state.delays, [50])
+    await waitForAsync(
+      { evaluate: (predicate) => predicate() },
+      async () => (await fs.readdir(writing.directory)).length === 0,
+      undefined,
+      { timeout: 2000 },
+    )
+    assert.deepEqual(await fs.readdir(writing.directory), [])
+  })
+
+for (const action of ['restart', 'unavailable'])
+  test(`credential retry rechecks ${action} without an abort`, async (t) => {
+    const writing = await credentialWriter(t)
+    writing.state.onDelay = () => {
+      if (action === 'restart') writing.restart()
+      else writing.state.available = false
+    }
+    const result = await writing.write()
+    assert.equal(result.ok, false)
+    assert.equal(
+      result.code,
+      action === 'restart' ? 'stale' : 'locked-or-unavailable',
+    )
+    assert.equal(result.committed, undefined)
+    assert.equal(writing.state.attempts, 1)
+    assert.deepEqual(writing.state.delays, [50])
+  })
+
+for (const succeeds of [true, false])
+  test(`credential abort awaits a windows native rename that succeeds: ${succeeds}`, async (t) => {
+    const writing = await credentialWriter(t, { failures: succeeds ? 0 : 1 })
+    let enter, release
+    const entered = new Promise((resolve) => {
+      enter = resolve
+    })
+    const gate = new Promise((resolve) => {
+      release = resolve
+    })
+    writing.state.beforeRename = async () => {
+      enter()
+      await gate
+    }
+    const pending = writing.write()
+    await entered
+    writing.revoke()
+    let settled = false
+    void pending.then(() => {
+      settled = true
+    })
+    await new Promise((resolve) => setImmediate(resolve))
+    assert.equal(settled, false)
+    release()
+    const result = await pending
+    assert.equal(result.ok, false)
+    assert.equal(result.code, 'stale')
+    assert.equal(result.committed, succeeds ? true : undefined)
+    assert.equal(writing.state.attempts, 1)
+  })
+
+async function diagnosticWriter(t, options) {
+  const { module, state } = await runtime(options)
+  const directory = await fs.mkdtemp(join(tmpdir(), 'hibi-diagnostic-rename-'))
+  const sink = new module.exports.LocalDiagnosticSink({
+    userData: directory,
+    profile: 'release',
+    identity: {
+      app: '0.1.0',
+      build: 'unknown',
+      electron: '44.3.0',
+      chrome: '152.0.0',
+      node: '24.11.0',
+      v8: '15.0',
+      platform: 'win32',
+      arch: 'x64',
+      packaged: false,
+    },
+  })
+  await sink.ready
+  t.after(async () => {
+    await sink.finish()
+    await fs.rm(directory, { recursive: true, force: true })
+  })
+  return { sink, state, directory: sink.location }
+}
+
+test('diagnostic first rename refuses an unowned incident destination', async (t) => {
+  const { sink, state, directory } = await diagnosticWriter(t)
+  const file = join(directory, 'last-incident.txt')
+  const initial = 'PRIVATE_UNOWNED'
+  await fs.writeFile(file, initial)
+  sink.enqueue(
+    JSON.stringify({ code: 'RENDERER_ERROR', stackStatus: 'unavailable' }),
+  )
+  await sink.flush()
+  assert.equal(sink.status.state, 'failed')
+  assert.equal(state.attempts, 0)
+  assert.equal(await fs.readFile(file, 'utf8'), initial)
+})
+
+test('diagnostic first rename enforces the smaller run marker limit', async (t) => {
+  const { sink, state, directory } = await diagnosticWriter(t)
+  const file = join(directory, 'run-state.txt')
+  const initial = JSON.stringify({
+    kind: 'hibi-local-diagnostics',
+    padding: 'x'.repeat(5000),
+  })
+  assert.ok(Buffer.byteLength(initial) > 4096)
+  assert.ok(Buffer.byteLength(initial) < 65536)
+  await fs.writeFile(file, initial)
+  await sink.finish()
+  assert.equal(sink.status.state, 'failed')
+  assert.equal(state.attempts, 0)
+  assert.equal(await fs.readFile(file, 'utf8'), initial)
+})
+
+for (const changed of [
+  'incident-next.txt',
+  'last-incident.txt',
+  'run-state.txt',
+])
+  test(`diagnostic retry refuses an unowned ${changed} swapped during backoff`, async (t) => {
+    const { sink, state, directory } = await diagnosticWriter(t)
+    state.onDelay = () =>
+      fs.writeFile(join(directory, changed), 'PRIVATE_UNOWNED')
+    if (changed === 'run-state.txt') await sink.finish()
+    else {
+      sink.enqueue(
+        JSON.stringify({ code: 'RENDERER_ERROR', stackStatus: 'unavailable' }),
+      )
+      await sink.flush()
+    }
+    assert.equal(sink.status.state, 'failed')
+    assert.equal(state.attempts, 1)
+    assert.equal(
+      await fs.readFile(join(directory, changed), 'utf8'),
+      'PRIVATE_UNOWNED',
+    )
+    assert.doesNotMatch(sink.report(), /PRIVATE_UNOWNED/)
+  })
+
+for (const target of ['last-incident.txt', 'run-state.txt'])
+  test(`diagnostic ${target} preserves its destination when staging disappears during backoff`, async (t) => {
+    const { sink, state, directory } = await diagnosticWriter(t)
+    const file = join(directory, target)
+    if (target === 'last-incident.txt')
+      await fs.writeFile(
+        file,
+        JSON.stringify({
+          kind: 'hibi-local-diagnostics',
+          previous: 'retained',
+        }),
+      )
+    const initial = await fs.readFile(file, 'utf8')
+    state.onDelay = () => fs.unlink(join(directory, 'incident-next.txt'))
+    if (target === 'run-state.txt') await sink.finish()
+    else {
+      sink.enqueue(
+        JSON.stringify({ code: 'RENDERER_ERROR', stackStatus: 'unavailable' }),
+      )
+      await sink.flush()
+    }
+    assert.equal(sink.status.state, 'failed')
+    assert.equal(state.attempts, 1)
+    assert.equal(await fs.readFile(file, 'utf8'), initial)
+  })
+
+for (const target of ['last-incident.txt', 'run-state.txt'])
+  for (const failures of [1, Infinity])
+    test(`diagnostic ${target} handles bounded rename retries: ${failures}`, async (t) => {
+      const { sink, state, directory } = await diagnosticWriter(t, { failures })
+      if (target === 'last-incident.txt') {
+        sink.enqueue(
+          JSON.stringify({
+            code: 'RENDERER_ERROR',
+            stackStatus: 'unavailable',
+          }),
+        )
+        await sink.flush()
+      } else await sink.finish()
+      assert.equal(state.attempts, Math.min(failures + 1, 6))
+      assert.deepEqual(
+        state.delays,
+        [50, 100, 200, 400, 800].slice(0, failures),
+      )
+      const bytes = await fs.readFile(join(directory, target), 'utf8')
+      if (Number.isFinite(failures)) {
+        assert.equal(
+          sink.status.state,
+          target === 'run-state.txt' ? 'closed' : 'ready',
+        )
+        if (target === 'run-state.txt')
+          assert.equal(JSON.parse(bytes).state, 'clean')
+        else assert.match(bytes, /RENDERER_ERROR/)
+      } else {
+        assert.equal(sink.status.state, 'failed')
+        assert.equal(sink.status.failures, 1)
+        assert.doesNotMatch(
+          sink.report(),
+          /first rename failure|later rename failure/,
+        )
+        if (target === 'run-state.txt')
+          assert.equal(JSON.parse(bytes).state, 'active')
+        else assert.equal(bytes, '')
+      }
+    })

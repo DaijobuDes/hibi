@@ -72,12 +72,72 @@ test('native source IME survives split preview catch-up and keeps one undo group
   await app.evaluate(({ dialog }, path) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] })
   }, file)
+  // Hosted Windows failures of the wait below found the renderer unresponsive.
+  // An enabled debugger lets a late pause interrupt a busy script for a stack.
+  const debug = await page.context().newCDPSession(page)
+  await debug.send('Debugger.enable')
   await clickMenu(app, 'Open…')
-  await page.waitForFunction(
-    () =>
-      document.querySelector('.tiptap')?.editor?.state.doc.lastChild
-        ?.textContent === 'omega',
-  )
+  await page
+    .waitForFunction(
+      () =>
+        document.querySelector('.tiptap')?.editor?.state.doc.lastChild
+          ?.textContent === 'omega',
+    )
+    .catch(async (error) => {
+      const bounded = (request) =>
+        Promise.race([
+          request().catch((cause) => ({ failed: String(cause).slice(0, 120) })),
+          new Promise((resolve) =>
+            setTimeout(() => resolve({ unavailable: true }), 2000).unref(),
+          ),
+        ])
+      // Cumulative cpu seconds tell a busy renderer from a blocked one.
+      const cpu = () =>
+        app.evaluate(({ app, BrowserWindow }) => {
+          const pid =
+            BrowserWindow.getAllWindows()[0].webContents.getOSProcessId()
+          const metric = app.getAppMetrics().find((entry) => entry.pid === pid)
+          return [Math.round(performance.now()), metric?.cpu.cumulativeCPUUsage]
+        })
+      try {
+        const before = await cpu()
+        const paused = new Promise((resolve) =>
+          debug.once('Debugger.paused', resolve),
+        )
+        const stack = await bounded(async () => {
+          await debug.send('Debugger.pause')
+          const { callFrames } = await paused
+          return callFrames
+            .slice(0, 10)
+            .map(
+              ({ functionName, url, location }) =>
+                `${functionName || '(anonymous)'} ${url.split('/').pop()}:${location.lineNumber + 1}:${location.columnNumber + 1}`,
+            )
+        })
+        await debug.detach().catch(() => {})
+        console.error(
+          'ime open:',
+          JSON.stringify({
+            cpu: [before, await cpu()],
+            stack,
+            dom: await bounded(() =>
+              page.evaluate(() => ({
+                lastChild:
+                  document.querySelector('.tiptap')?.editor?.state.doc.lastChild
+                    ?.textContent,
+                busy: document.querySelector('.app')?.getAttribute('aria-busy'),
+                dialogs: document.querySelectorAll('dialog[open]').length,
+                toasts: [...document.querySelectorAll('.toast-copy')]
+                  .slice(0, 3)
+                  .map((toast) => toast.textContent?.slice(0, 120)),
+              })),
+            ),
+          }),
+        )
+      } catch {}
+      throw error
+    })
+  await debug.detach()
   await page.getByRole('button', { name: /^side-by-side$/i }).click()
   const source = page.getByRole('textbox', {
     name: 'Markdown editor',

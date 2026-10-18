@@ -98,15 +98,23 @@ export function loadFlavor(id?: string): FlavorChoice {
     return automaticFlavor
   }
 }
+// A registration that is not chosen leaves the previous selection, so editors keep their schema.
+const selections = new Map<string, readonly RegisteredFlavor[]>()
 export function selectedFlavors(
   choice: FlavorChoice,
   available: readonly RegisteredFlavor[],
-) {
-  return available.filter((flavor) =>
+): readonly RegisteredFlavor[] {
+  const selected = available.filter((flavor) =>
     flavor.kind === 'dialect'
       ? choice.dialect === 'auto' || choice.dialect === flavor.id
       : choice.syntax === 'auto' || choice.syntax.includes(flavor.id),
   )
+  const key = selected.map((flavor) => flavor.id).join(',')
+  const previous = selections.get(key)
+  if (previous?.every((flavor, index) => flavor === selected[index]))
+    return previous
+  selections.set(key, selected)
+  return selected
 }
 export function flavorMatches(flavor: MarkdownFlavor, source: string) {
   try {

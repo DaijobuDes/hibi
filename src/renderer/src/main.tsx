@@ -462,16 +462,7 @@ function App() {
         : loadFlavor(document?.id),
     [flavorOverride, document?.id],
   )
-  const flavorIds = selectedFlavors(flavorChoice, availableFlavors)
-    .map((flavor) => flavor.id)
-    .join(',')
-  const chosenFlavors = useMemo(
-    () =>
-      availableFlavors.filter((flavor) =>
-        flavorIds.split(',').includes(flavor.id),
-      ),
-    [flavorIds, availableFlavors],
-  )
+  const chosenFlavors = selectedFlavors(flavorChoice, availableFlavors)
   const splitFlavors = useMemo(() => {
     if (!splitLeftId || !splitRightId) return null
     const forTab = (id: string) => {
@@ -1388,6 +1379,7 @@ function App() {
       startBusy()
       setSavingTab(saving ? (currentDocument.current?.tabId ?? null) : null)
       setError('')
+      let refresh: Promise<WorkspaceState | null> | undefined
       try {
         const next = await (command === 'new'
           ? window.hibi.newDocument()
@@ -1402,7 +1394,10 @@ function App() {
               command === 'new' || command === 'open',
             )
           if (command === 'new' || command === 'open') showDocument()
-          setWorkspace(await window.hibi.getWorkspace())
+          // After a save the refresh only updates the file tree, so it doesn't
+          // hold the window busy. Requesting it first keeps later replies after it.
+          if (saving) refresh = window.hibi.getWorkspace()
+          else setWorkspace(await window.hibi.getWorkspace())
         }
         return Boolean(next)
       } catch (error) {
@@ -1416,6 +1411,9 @@ function App() {
         if (source) flushSync(endBusy)
         else endBusy()
         setSavingTab(null)
+        refresh?.then(setWorkspace, (error: unknown) =>
+          setError(error instanceof Error ? error.message : String(error)),
+        )
         if (source)
           requestAnimationFrame(() => {
             const active = window.document.activeElement

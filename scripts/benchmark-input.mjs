@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { performance } from 'node:perf_hooks'
+import { pressShortcut } from '../tests/keyboard.mjs'
 import {
   benchmarkDocuments,
   launchBenchmarkApp,
@@ -16,6 +17,31 @@ if (!Number.isInteger(runs) || runs < 1 || runs > 50)
   throw new Error('Use 1–50 runs.')
 const foreground = process.env.HIBI_BENCH_FOREGROUND === '1'
 const analysisLoad = process.env.HIBI_INPUT_ANALYSIS === '1'
+const emulateFocus = process.env.HIBI_BENCH_EMULATE_FOCUS === '1'
+const findQuery = process.env.HIBI_INPUT_FIND ?? ''
+const arrows = process.env.HIBI_INPUT_ARROWS === '1'
+const enabledAddons = (process.env.HIBI_BENCH_ADDONS ?? '')
+  .split(',')
+  .filter(Boolean)
+const mainThreadMetrics = [
+  'TaskDuration',
+  'ScriptDuration',
+  'LayoutDuration',
+  'RecalcStyleDuration',
+]
+const readMetrics = async (session) =>
+  Object.fromEntries(
+    (await session.send('Performance.getMetrics')).metrics
+      .filter(({ name }) => mainThreadMetrics.includes(name))
+      .map(({ name, value }) => [name, value]),
+  )
+const perKey = (before, after, keys) =>
+  Object.fromEntries(
+    mainThreadMetrics.map((name) => [
+      name,
+      ((after[name] - before[name]) * 1000) / keys,
+    ]),
+  )
 const directory = await mkdtemp(join(tmpdir(), 'hibi-input-bench-'))
 const allFixtures = [
   { name: 'blank.md', title: '', source: '' },
@@ -37,6 +63,13 @@ try {
     for (let run = 0; run < runs; run++) {
       const profile = join(directory, `${fixture.name}-${run}`)
       await mkdir(profile)
+      if (enabledAddons.length)
+        await writeFile(
+          join(profile, 'addons.json'),
+          JSON.stringify(
+            Object.fromEntries(enabledAddons.map((id) => [id, true])),
+          ),
+        )
       if (analysisLoad) {
         const addon = join(profile, 'installed-addons', 'analysis-load')
         await mkdir(addon, { recursive: true })
@@ -86,6 +119,12 @@ try {
             window.show()
             window.focus()
           })
+        const session = await page.context().newCDPSession(page)
+        await session.send('Performance.enable')
+        if (emulateFocus)
+          await session.send('Emulation.setFocusEmulationEnabled', {
+            enabled: true,
+          })
         await waitForEditor(page)
         if (foreground)
           await page.waitForFunction(() => document.hasFocus(), undefined, {
@@ -126,15 +165,49 @@ try {
             transactions: [],
             can: 0,
             serializations: 0,
+            formatCheckMs: 0,
             lastInput: null,
           }
           window.__hibiInputMeasurements = measurements
           const can = editor.can.bind(editor),
+            isActive = editor.isActive.bind(editor),
             serialize = editor.getMarkdown.bind(editor)
+          let depth = 0
+          // Outermost formatting checks only, so nested isActive calls are not counted twice.
+          const timed = (check) => {
+            if (depth) return check()
+            depth++
+            const start = performance.now()
+            try {
+              return check()
+            } finally {
+              depth--
+              measurements.formatCheckMs += performance.now() - start
+            }
+          }
+          // Chained capability checks run when each command is called, after can() returns.
+          const timedCommands = (commands) => {
+            const proxy = new Proxy(commands, {
+              get(target, property) {
+                const value = target[property]
+                if (typeof value !== 'function') return value
+                return (...args) => {
+                  const result = timed(() => value(...args))
+                  return result === target
+                    ? proxy
+                    : property === 'chain'
+                      ? timedCommands(result)
+                      : result
+                }
+              },
+            })
+            return proxy
+          }
           editor.can = (...args) => {
             measurements.can++
-            return can(...args)
+            return timedCommands(timed(() => can(...args)))
           }
+          editor.isActive = (...args) => timed(() => isActive(...args))
           editor.getMarkdown = (...args) => {
             measurements.serializations++
             return serialize(...args)
@@ -179,7 +252,37 @@ try {
           name: 'Document editor',
           exact: true,
         })
+        if (findQuery) {
+          await pressShortcut(
+            app,
+            process.platform === 'darwin' ? 'Meta+f' : 'Control+f',
+          )
+          await page
+            .getByRole('textbox', { name: 'Find in document', exact: true })
+            .fill(findQuery)
+          await page.waitForFunction(() =>
+            /\/[1-9]/.test(
+              document.querySelector('.find-count')?.textContent ?? '',
+            ),
+          )
+        }
+        if (process.env.HIBI_INPUT_AT === 'code')
+          await page.evaluate(() => {
+            const editor = document.querySelector('.tiptap').editor
+            let position = null
+            editor.state.doc.descendants((node, offset) => {
+              if (position === null && node.type.name === 'codeBlock')
+                position = offset + node.nodeSize - 1
+              return position === null
+            })
+            editor.commands.focus(position)
+          })
         const driver = []
+        const typingStart = await readMetrics(session)
+        const formatStart = await page.evaluate(() => ({
+          ...window.__hibiInputMeasurements,
+          transactions: undefined,
+        }))
         for (let key = 0; key < 20; key++) {
           const previous = await input.textContent()
           const start = performance.now()
@@ -189,7 +292,38 @@ try {
         const measured = await page.evaluate(
           () => window.__hibiInputMeasurements,
         )
-        samples.push({ fixture: fixture.name, run, driver, ...measured })
+        const sample = {
+          fixture: fixture.name,
+          run,
+          driver,
+          mainThreadPerKey: perKey(typingStart, await readMetrics(session), 20),
+          ...measured,
+          canPerKey: (measured.can - formatStart.can) / 20,
+          formatCheckMsPerKey:
+            (measured.formatCheckMs - formatStart.formatCheckMs) / 20,
+        }
+        if (arrows) {
+          const arrowStart = await readMetrics(session)
+          for (let key = 0; key < 20; key++) {
+            const head = await page.evaluate(
+              () =>
+                document.querySelector('.tiptap').editor.state.selection.head,
+            )
+            await input.press('ArrowLeft')
+            await page.waitForFunction(
+              (head) =>
+                document.querySelector('.tiptap').editor.state.selection
+                  .head !== head,
+              head,
+            )
+          }
+          sample.arrowMainThreadPerKey = perKey(
+            arrowStart,
+            await readMetrics(session),
+            20,
+          )
+        }
+        samples.push(sample)
         if (analysisLoad) {
           const result = await page.evaluate(() => window.__hibiAnalysisRun)
           if (!['stale', 'complete'].includes(result.status))
@@ -208,6 +342,9 @@ try {
         arch: process.arch,
         foreground,
         analysisLoad,
+        emulateFocus,
+        findQuery,
+        enabledAddons,
         endpoints: {
           driver:
             process.env.HIBI_BENCH_INSERT_TEXT === '1'
@@ -250,6 +387,34 @@ try {
             canChecksPerTransaction:
               transactions.reduce((sum, sample) => sum + sample.canChecks, 0) /
               transactions.length,
+            canPerKeyMedian: percentile(
+              group.map((sample) => sample.canPerKey),
+              0.5,
+            ),
+            formatCheckMsPerKeyMedian: percentile(
+              group.map((sample) => sample.formatCheckMsPerKey),
+              0.5,
+            ),
+            mainThreadPerKeyMedian: Object.fromEntries(
+              mainThreadMetrics.map((name) => [
+                name,
+                percentile(
+                  group.map((sample) => sample.mainThreadPerKey[name]),
+                  0.5,
+                ),
+              ]),
+            ),
+            arrowMainThreadPerKeyMedian: arrows
+              ? Object.fromEntries(
+                  mainThreadMetrics.map((name) => [
+                    name,
+                    percentile(
+                      group.map((sample) => sample.arrowMainThreadPerKey[name]),
+                      0.5,
+                    ),
+                  ]),
+                )
+              : null,
             serializationsPerTransaction:
               transactions.reduce(
                 (sum, sample) => sum + sample.serializations,

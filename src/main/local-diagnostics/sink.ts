@@ -13,6 +13,8 @@ import {
 } from '../../shared/local-diagnostics.ts'
 import { DiagnosticQueue } from '../../shared/local-diagnostics-budget.ts'
 
+import { retryRename } from '../atomic-rename.ts'
+
 const kind = 'hibi-local-diagnostics'
 const ownedNames = [
   'segment-0.log',
@@ -343,6 +345,33 @@ export class LocalDiagnosticSink {
     this.segmentSize = header.length
   }
 
+  private async renameSmall(name: string, maximum: number) {
+    const verify = async () => {
+      const staged = await this.openOwned(
+        'incident-next.txt',
+        diagnosticLimits.summaryBytes,
+      )
+      try {
+        if (!(await staged.stat()).size)
+          throw new Error('missing diagnostic summary')
+      } finally {
+        await staged.close()
+      }
+      const target = await this.openOwned(name, maximum)
+      await target.close()
+      await this.checkDirectory()
+    }
+    await verify()
+    await retryRename(
+      () =>
+        this.fs.rename(
+          join(this.directory, 'incident-next.txt'),
+          join(this.directory, name),
+        ),
+      verify,
+    )
+  }
+
   private async writeSmall(
     name: string,
     fields: Record<string, unknown>,
@@ -424,15 +453,9 @@ export class LocalDiagnosticSink {
           fields,
           diagnosticLimits.summaryBytes,
         )
-        const target = await this.openOwned(
+        await this.renameSmall(
           'last-incident.txt',
           diagnosticLimits.summaryBytes,
-        )
-        await target.close()
-        await this.checkDirectory()
-        await this.fs.rename(
-          join(this.directory, 'incident-next.txt'),
-          join(this.directory, 'last-incident.txt'),
         )
       }
       const dropped = this.queue.takeDropped()
@@ -515,16 +538,7 @@ export class LocalDiagnosticSink {
         diagnosticLimits.summaryBytes,
         diagnosticLimits.markerBytes,
       )
-      const marker = await this.openOwned(
-        'run-state.txt',
-        diagnosticLimits.markerBytes,
-      )
-      await marker.close()
-      await this.checkDirectory()
-      await this.fs.rename(
-        join(this.directory, 'incident-next.txt'),
-        join(this.directory, 'run-state.txt'),
-      )
+      await this.renameSmall('run-state.txt', diagnosticLimits.markerBytes)
     } catch {
       await this.fail()
       return

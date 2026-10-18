@@ -7054,6 +7054,9 @@
   "7d982ed61dc3": [
     "src/ui/colorschemes.ts"
   ],
+  "5f27581eb0a2": [
+    "src/main/local-diagnostics/sink.ts"
+  ],
   "cd76a6f31d3f": [
     "src/renderer/src/main.tsx"
   ],

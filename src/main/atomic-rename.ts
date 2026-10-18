@@ -4,9 +4,11 @@ import { setTimeout as delay } from 'node:timers/promises'
 export async function retryRename<T>(
   rename: () => Promise<T>,
   beforeRetry?: () => void | Promise<void>,
+  signal?: AbortSignal,
 ): Promise<T> {
   let originalError: unknown
   for (let attempt = 0; ; attempt++) {
+    signal?.throwIfAborted()
     try {
       return await rename()
     } catch (error) {
@@ -19,7 +21,7 @@ export async function retryRename<T>(
         throw error
       if (attempt === 0) originalError = error
       if (attempt === 5) throw originalError
-      await delay(50 * 2 ** attempt)
+      await delay(50 * 2 ** attempt, undefined, { signal })
       if (beforeRetry) await beforeRetry()
     }
   }
