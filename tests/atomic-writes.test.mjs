@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import test from 'node:test'
 import { build } from 'esbuild'
+import { waitForAsync } from './poll.mjs'
 
 const bundles = new Map()
 async function runtime({
@@ -298,7 +299,7 @@ for (const action of ['revoke', 'stopWindow', 'dispose'])
     const writing = await credentialWriter(t)
     let cancelled = false
     writing.state.onDelay = (signal) =>
-      new Promise((resolve, reject) => {
+      new Promise((_resolve, reject) => {
         assert.ok(signal)
         signal.addEventListener(
           'abort',
@@ -318,6 +319,13 @@ for (const action of ['revoke', 'stopWindow', 'dispose'])
     assert.equal(cancelled, true)
     assert.equal(writing.state.attempts, 1)
     assert.deepEqual(writing.state.delays, [50])
+    await waitForAsync(
+      { evaluate: (predicate) => predicate() },
+      async () => (await fs.readdir(writing.directory)).length === 0,
+      undefined,
+      { timeout: 2000 },
+    )
+    assert.deepEqual(await fs.readdir(writing.directory), [])
   })
 
 for (const action of ['restart', 'unavailable'])
@@ -394,6 +402,36 @@ async function diagnosticWriter(t, options) {
   })
   return { sink, state, directory: sink.location }
 }
+
+test('diagnostic first rename refuses an unowned incident destination', async (t) => {
+  const { sink, state, directory } = await diagnosticWriter(t)
+  const file = join(directory, 'last-incident.txt')
+  const initial = 'PRIVATE_UNOWNED'
+  await fs.writeFile(file, initial)
+  sink.enqueue(
+    JSON.stringify({ code: 'RENDERER_ERROR', stackStatus: 'unavailable' }),
+  )
+  await sink.flush()
+  assert.equal(sink.status.state, 'failed')
+  assert.equal(state.attempts, 0)
+  assert.equal(await fs.readFile(file, 'utf8'), initial)
+})
+
+test('diagnostic first rename enforces the smaller run marker limit', async (t) => {
+  const { sink, state, directory } = await diagnosticWriter(t)
+  const file = join(directory, 'run-state.txt')
+  const initial = JSON.stringify({
+    kind: 'hibi-local-diagnostics',
+    padding: 'x'.repeat(5000),
+  })
+  assert.ok(Buffer.byteLength(initial) > 4096)
+  assert.ok(Buffer.byteLength(initial) < 65536)
+  await fs.writeFile(file, initial)
+  await sink.finish()
+  assert.equal(sink.status.state, 'failed')
+  assert.equal(state.attempts, 0)
+  assert.equal(await fs.readFile(file, 'utf8'), initial)
+})
 
 for (const changed of [
   'incident-next.txt',
