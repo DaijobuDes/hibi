@@ -13,6 +13,8 @@ import {
 } from '../../shared/local-diagnostics.ts'
 import { DiagnosticQueue } from '../../shared/local-diagnostics-budget.ts'
 
+import { retryRename } from '../atomic-rename.ts'
+
 const kind = 'hibi-local-diagnostics'
 const ownedNames = [
   'segment-0.log',
@@ -430,9 +432,13 @@ export class LocalDiagnosticSink {
         )
         await target.close()
         await this.checkDirectory()
-        await this.fs.rename(
-          join(this.directory, 'incident-next.txt'),
-          join(this.directory, 'last-incident.txt'),
+        await retryRename(
+          () =>
+            this.fs.rename(
+              join(this.directory, 'incident-next.txt'),
+              join(this.directory, 'last-incident.txt'),
+            ),
+          () => this.checkDirectory(),
         )
       }
       const dropped = this.queue.takeDropped()
@@ -521,9 +527,13 @@ export class LocalDiagnosticSink {
       )
       await marker.close()
       await this.checkDirectory()
-      await this.fs.rename(
-        join(this.directory, 'incident-next.txt'),
-        join(this.directory, 'run-state.txt'),
+      await retryRename(
+        () =>
+          this.fs.rename(
+            join(this.directory, 'incident-next.txt'),
+            join(this.directory, 'run-state.txt'),
+          ),
+        () => this.checkDirectory(),
       )
     } catch {
       await this.fail()
