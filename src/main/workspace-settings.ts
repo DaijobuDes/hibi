@@ -8,7 +8,7 @@ import {
   rm,
   writeFile,
 } from 'node:fs/promises'
-import { basename, isAbsolute, join, relative, sep } from 'node:path'
+import { basename, isAbsolute, join } from 'node:path'
 import { app, type BrowserWindow, dialog } from 'electron'
 import {
   WORKSPACE_ENTRY_LIMITS,
@@ -16,6 +16,7 @@ import {
   type WorkspaceSettings,
   type WorkspaceSettingsAction,
 } from '../shared/workspace-settings'
+import { retryRename } from './atomic-rename'
 import {
   getDocument,
   getDocumentPath,
@@ -37,6 +38,7 @@ import {
   workspaceMetadata,
   writeWorkspaceText,
 } from './workspace-metadata'
+import { isPathInside } from './workspace-paths'
 
 const defaults: WorkspacePreferences = {
   enabled: false,
@@ -83,7 +85,7 @@ export async function workspaceEntryLimit() {
 }
 async function savePreferences(value: WorkspacePreferences) {
   await writeFile(`${location()}.tmp`, JSON.stringify(value), { mode: 0o600 })
-  await rename(`${location()}.tmp`, location())
+  await retryRename(() => rename(`${location()}.tmp`, location()))
 }
 export async function getWorkspaceSettings(): Promise<WorkspaceSettings> {
   const currentPath = workspaceRoot()
@@ -212,11 +214,7 @@ export async function updateWorkspaceSettings(
     if (!parent) return getWorkspaceSettings()
     const from = await realpath(prefs.path),
       to = join(parent, basename(from))
-    const child = relative(from, to)
-    if (
-      !child ||
-      (!isAbsolute(child) && child !== '..' && !child.startsWith(`..${sep}`))
-    )
+    if (isPathInside(from, to))
       throw new Error('Choose a folder outside the current workspace.')
     if (
       await lstat(to).then(

@@ -18,7 +18,12 @@ import test from 'node:test'
 import { setTimeout as delay } from 'node:timers/promises'
 import { pathToFileURL } from 'node:url'
 import { chromium } from 'playwright'
-import { showTestWindows, startupDiagnostics } from './electron.mjs'
+import {
+  showTestWindows,
+  startupDiagnostics,
+  waitForDocumentEditor,
+} from './electron.mjs'
+import { replaceRichText } from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
 
 test('development watches main, renderer, preload, addons, and documentation generation', {
@@ -352,7 +357,8 @@ test('development watches main, renderer, preload, addons, and documentation gen
     configPath,
     fixtureConfig.replace(
       "server: { host: '127.0.0.1' }",
-      `server: { host: '127.0.0.1', fs: { allow: ${JSON.stringify([root, resolve('node_modules')])} } }`,
+      // Hosted runners start with no prebundled dependencies.
+      `server: { host: '127.0.0.1', fs: { allow: ${JSON.stringify([root, resolve('node_modules')])} } }, cacheDir: ${JSON.stringify(join(root, 'vite-cache'))}`,
     ),
   )
   const holdAddonPrepare = join(root, 'hold-addon-prepare')
@@ -526,6 +532,11 @@ dialog.showMessageBox = (...args) => {
     } catch {}
     throw error
   }
+  assert.doesNotMatch(
+    output,
+    /optimized dependencies changed/,
+    'cold start reloaded the window to bundle addon dependencies',
+  )
   assert.equal(
     await page.evaluate(
       async () =>
@@ -535,9 +546,12 @@ dialog.showMessageBox = (...args) => {
     ),
     true,
   )
-  await page
-    .getByRole('textbox', { name: 'Document editor', exact: true })
-    .fill('unsaved watch draft')
+  await waitForDocumentEditor(undefined, page)
+  await replaceRichText(
+    page,
+    page.getByRole('textbox', { name: 'Document editor', exact: true }),
+    'unsaved watch draft',
+  )
   await waitForAsync(
     page,
     async () =>
@@ -1426,9 +1440,12 @@ dialog.showMessageBox = (...args) => {
     'guarded main restart refreshes importer, addon readme, and imported image',
   )
 
-  await page
-    .getByRole('textbox', { name: 'Document editor', exact: true })
-    .fill('draft protected from restart')
+  await waitForDocumentEditor(undefined, page)
+  await replaceRichText(
+    page,
+    page.getByRole('textbox', { name: 'Document editor', exact: true }),
+    'draft protected from restart',
+  )
   await waitForAsync(page, async () => {
     const document = await window.hibi.getDocument()
     return (
@@ -1504,9 +1521,12 @@ dialog.showMessageBox = (...args) => {
   )
   mark('native addon clean rebuild restarts after earlier cancellation')
 
-  await page
-    .getByRole('textbox', { name: 'Document editor', exact: true })
-    .fill('draft protected from contract restart')
+  await waitForDocumentEditor(undefined, page)
+  await replaceRichText(
+    page,
+    page.getByRole('textbox', { name: 'Document editor', exact: true }),
+    'draft protected from contract restart',
+  )
   await waitForAsync(page, async () => {
     const document = await window.hibi.getDocument()
     return (
