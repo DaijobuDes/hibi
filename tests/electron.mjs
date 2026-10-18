@@ -224,7 +224,7 @@ export const showTestWindows =
   (process.env.GITHUB_ACTIONS === 'true' && !!process.env.GITHUB_RUN_ID) ||
   process.env.HIBI_TEST_SHOW_WINDOWS === '1'
 export const electron = {
-  async launch(options) {
+  async launch({ diagnostics = true, ...options }) {
     // Cold Xvfb runners can lose the default GPU process before first paint.
     const gpuArgs =
       showTestWindows && process.platform === 'linux'
@@ -332,7 +332,7 @@ export const electron = {
         clearTimeout(diagnosticTimer)
       }
     }
-    await application.evaluate(installElectronDiagnostics)
+    if (diagnostics) await application.evaluate(installElectronDiagnostics)
     if (showTestWindows) {
       // The inspector may already be closed; keep only validated stdout events.
       let detachQuitTrace
