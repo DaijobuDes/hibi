@@ -40,13 +40,7 @@ const report = {
     encoding: 'utf8',
   }).trim(),
   runtime: null,
-  buildSha256: createHash('sha256')
-    .update(
-      await readFile(
-        entry.endsWith('.js') ? entry : join(entry, 'out/main/index.js'),
-      ),
-    )
-    .digest('hex'),
+  buildSha256: null,
   measurement:
     'Trusted invocations through the main index.ts handle wrapper and workspace:changed-v2 sends. Byte values are v8.serialize structured-clone payload estimates, not Electron wire bytes. Other handlers, rejected senders, and outgoing channels are excluded.',
   operations: [],
@@ -69,6 +63,13 @@ function difference(after, before) {
 
 let app
 try {
+  report.buildSha256 = createHash('sha256')
+    .update(
+      await readFile(
+        entry.endsWith('.js') ? entry : join(entry, 'out/main/index.js'),
+      ),
+    )
+    .digest('hex')
   await mkdir(workspace)
   await mkdir(addon, { recursive: true })
   await writeFile(join(workspace, 'existing.md'), source)
