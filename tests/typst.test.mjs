@@ -199,6 +199,10 @@ test('typst documents and markdown blocks preview locally, export, and preserve 
   assert.equal(await page.locator('.typst-preview .document-notice').count(), 0)
   await pressShortcut(app, `${mod}+s`)
   await waitForAsync(page, async () => !(await window.hibi.getDocument()).dirty)
+  // Main reports the file clean before the window has its save reply.
+  await page.waitForFunction(
+    () => document.querySelector('.app')?.getAttribute('aria-busy') === 'false',
+  )
   assert.equal(await readFile(join(notes, 'report.typ'), 'utf8'), updated)
   async function choose(name) {
     await pressShortcut(app, `${mod}+k`)

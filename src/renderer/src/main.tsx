@@ -487,7 +487,6 @@ function App() {
   }, [splitLeftId, splitRightId, availableFlavors, flavorOverride])
   const [resetEditor, setResetEditor] = useState(0)
   const busyRef = useRef(false)
-  const busyWaiters = useRef<(() => void)[]>([])
   const [busy, setBusy] = useState(false)
   // Saving blocks other file operations but leaves the saved tab's editors writable.
   const [savingTab, setSavingTab] = useState<string | null>(null)
@@ -498,8 +497,6 @@ function App() {
   function endBusy() {
     busyRef.current = focusUnsafe.current
     setBusy(focusUnsafe.current)
-    if (!busyRef.current)
-      for (const resume of busyWaiters.current.splice(0)) resume()
   }
   useEffect(() => {
     const side = focusSplitSide.current
@@ -924,12 +921,7 @@ function App() {
         openFile: (path, owner) => openFile(path, owner),
       },
       invoke: async (id, method, input) => {
-        // Queue behind a save or open that is finishing, for the same document
-        // only. Focus recovery waits for the user, so it still refuses.
-        const tabId = currentDocument.current?.tabId
-        while (busyRef.current && !focusUnsafe.current)
-          await new Promise<void>((resume) => busyWaiters.current.push(resume))
-        if (busyRef.current || currentDocument.current?.tabId !== tabId)
+        if (busyRef.current)
           throw new Error(
             'Another action is still running. Try again in a moment.',
           )
@@ -1396,6 +1388,7 @@ function App() {
       startBusy()
       setSavingTab(saving ? (currentDocument.current?.tabId ?? null) : null)
       setError('')
+      let refresh: Promise<WorkspaceState | null> | undefined
       try {
         const next = await (command === 'new'
           ? window.hibi.newDocument()
@@ -1410,7 +1403,10 @@ function App() {
               command === 'new' || command === 'open',
             )
           if (command === 'new' || command === 'open') showDocument()
-          setWorkspace(await window.hibi.getWorkspace())
+          // After a save the refresh only updates the file tree, so it doesn't
+          // hold the window busy. Requesting it first keeps later replies after it.
+          if (saving) refresh = window.hibi.getWorkspace()
+          else setWorkspace(await window.hibi.getWorkspace())
         }
         return Boolean(next)
       } catch (error) {
@@ -1424,6 +1420,9 @@ function App() {
         if (source) flushSync(endBusy)
         else endBusy()
         setSavingTab(null)
+        refresh?.then(setWorkspace, (error: unknown) =>
+          setError(error instanceof Error ? error.message : String(error)),
+        )
         if (source)
           requestAnimationFrame(() => {
             const active = window.document.activeElement

@@ -192,7 +192,7 @@ test('a save leaves other split panes read-only until it finishes', {
   assert.match(await readFile(a, 'utf8'), /edited/)
 })
 
-test('addon actions wait for a save to finish instead of refusing', {
+test('a save ends busy before its workspace refresh, so addon actions run', {
   timeout: 45000,
 }, async (t) => {
   const profile = await mkdtemp(join(tmpdir(), 'hibi-save-addon-'))
@@ -202,7 +202,7 @@ test('addon actions wait for a save to finish instead of refusing', {
   })
   t.after(async () => {
     await app.evaluate(({ dialog }) => {
-      globalThis.releaseSave?.()
+      globalThis.releaseWorkspace?.()
       dialog.showMessageBox = async () => ({ response: 1 })
     })
     await app.close()
@@ -225,22 +225,30 @@ test('addon actions wait for a save to finish instead of refusing', {
     page.getByRole('textbox', { name: /document editor/i }),
     'saved first',
   )
-  // Main has written the file but still holds the reply, as when it records
-  // version history; the window stays busy until the reply arrives.
+  // Hold every workspace read until released, and record whether an addon
+  // action reaches main meanwhile.
   await app.evaluate(({ ipcMain }) => {
-    const save = ipcMain._invokeHandlers.get('document:save')
-    ipcMain._invokeHandlers.set('document:save', async (...args) => {
-      ipcMain._invokeHandlers.set('document:save', save)
-      const released = new Promise((resolve) => {
-        globalThis.releaseSave = resolve
-      })
-      const saved = await save(...args)
-      await released
-      return saved
+    const held = new Promise((resolve) => {
+      globalThis.releaseWorkspace = resolve
+    })
+    globalThis.workspaceHeld = true
+    globalThis.invokedWhileHeld = false
+    const get = ipcMain._invokeHandlers.get('workspace:get')
+    ipcMain._invokeHandlers.set('workspace:get', async (...args) => {
+      await held
+      return get(...args)
+    })
+    const invoke = ipcMain._invokeHandlers.get('addons:invoke')
+    ipcMain._invokeHandlers.set('addons:invoke', (...args) => {
+      if (globalThis.workspaceHeld) globalThis.invokedWhileHeld = true
+      return invoke(...args)
     })
   })
   await pressShortcut(app, `${mod}+s`)
   await waitForAsync(page, async () => !(await window.hibi.getDocument()).dirty)
+  await page.waitForFunction(
+    () => document.querySelector('.app')?.getAttribute('aria-busy') === 'false',
+  )
   const stopToasts = await recordToasts(page)
   await pressShortcut(app, `${mod}+k`)
   const palette = page.getByRole('dialog', { name: /command palette/i })
@@ -250,8 +258,11 @@ test('addon actions wait for a save to finish instead of refusing', {
     .filter({ has: page.getByText(uiName('New Typst document', true)) })
     .first()
     .click()
-  await palette.waitFor({ state: 'hidden' })
-  await app.evaluate(() => globalThis.releaseSave())
+  await waitForAsync(app, () => globalThis.invokedWhileHeld)
+  await app.evaluate(() => {
+    globalThis.workspaceHeld = false
+    globalThis.releaseWorkspace()
+  })
   await waitForAsync(
     page,
     async () => (await window.hibi.getDocument()).name === 'untitled.typ',
