@@ -109,6 +109,7 @@ test('desktop launch, isolation, offline reload, and recovery', {
         'getInstalledAddons',
         'getAddonTrustSettings',
         'setAddonTrustSettings',
+        'onAddonTrustChanged',
         'installAddon',
         'installAddonSelection',
         'cancelAddonInstall',

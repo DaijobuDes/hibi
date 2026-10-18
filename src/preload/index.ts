@@ -345,6 +345,12 @@ if (process.isMainFrame) {
     getAddonTrustSettings: () => ipcRenderer.invoke(ADDON_TRUST_CHANNELS.get),
     setAddonTrustSettings: (changes) =>
       ipcRenderer.invoke(ADDON_TRUST_CHANNELS.set, changes),
+    onAddonTrustChanged: (callback) => {
+      const listener = () => callback()
+      ipcRenderer.on(ADDON_TRUST_CHANNELS.changed, listener)
+      return () =>
+        ipcRenderer.removeListener(ADDON_TRUST_CHANNELS.changed, listener)
+    },
     getInstalledAddonResources: (id) =>
       ipcRenderer.invoke(SIDELOAD_CHANNELS.resources, id),
     installAddon: (url, openSettings) =>

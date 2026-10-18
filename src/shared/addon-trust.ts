@@ -63,4 +63,6 @@ export type AddonTrustSettings = {
 export const ADDON_TRUST_CHANNELS = {
   get: 'addons:trust-settings',
   set: 'addons:trust-settings-set',
+  /** Main -> renderer: revocations or trust settings changed; refetch addon states and installs. */
+  changed: 'addons:trust-changed',
 } as const

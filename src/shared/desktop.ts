@@ -225,6 +225,8 @@ export type DesktopApi = {
   setAddonTrustSettings: (
     changes: Partial<import('./addon-trust').AddonTrustSettings>,
   ) => Promise<import('./addon-trust').AddonTrustSettings>
+  /** Revocations or trust settings changed in the main process; refetch addon states and installed addons. */
+  onAddonTrustChanged: (callback: () => void) => () => void
   /** Declared stylesheets and themes read again from an installed addon's files. */
   getInstalledAddonResources: (
     id: string,
