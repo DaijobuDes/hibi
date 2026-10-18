@@ -110,7 +110,7 @@ The signature covers the exact decoded statement bytes, without reformatting JSO
 
 ## Revoked addons
 
-Hibi checks `https://hibi.garden/addons/revocations.json` shortly after startup and at most once every 24 hours while running. The request sends no cookies or credentials. **Check for revoked addons** controls these network checks. An accepted list stays in the local profile and applies offline, including when network checks are off.
+Hibi checks `https://www.hibi.garden/addons/revocations.json` shortly after startup and at most once every 24 hours while running. The request sends no cookies or credentials. **Check for revoked addons** controls these network checks. An accepted list stays in the local profile and applies offline, including when network checks are off.
 
 A revoked installed addon is disabled through the usual runtime cleanup, and its required consumers stop as well. Its reason appears in the installed addon list. Revoked versions cannot be installed or enabled. A list can name particular versions or revoke every version of an addon. Install a signed replacement that is not revoked to recover. If a later list removes a revocation, the addon stays disabled until you enable it.
 

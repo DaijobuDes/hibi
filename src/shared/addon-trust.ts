@@ -6,9 +6,9 @@ export const ADDON_TRUST_KEYS: Readonly<Record<string, string>> = {
 /** Signature file shipped next to hibi-addon.json; excluded from the signed file list. */
 export const ADDON_SIGNATURE_FILE = 'hibi-addon.sig.json'
 
-/** Signed revocation list, checked at most once a day while enabled. */
+/** Signed revocation list, checked at most once a day while enabled. The apex domain redirects to www and redirects are refused. */
 export const ADDON_REVOCATIONS_URL =
-  'https://hibi.garden/addons/revocations.json'
+  'https://www.hibi.garden/addons/revocations.json'
 
 /**
  * Envelope for both signature files. `statement` is base64 of the exact UTF-8 JSON

@@ -32,7 +32,7 @@ node scripts/addon-signing.mjs revocations /path/to/list.json \
   --key ~/.hibi-signing/hibi-addon-root.key --out /path/to/revocations.json
 ```
 
-Publish the signed envelope as `public/addons/revocations.json` in the `hibigarden/site` repository so it is served at `https://hibi.garden/addons/revocations.json`. Keep the envelope under 256 KiB. Publish only the signed envelope; keep the private key outside the site repository. Removing an entry also requires a higher sequence, and does not automatically enable disabled addons.
+Publish the signed envelope as `public/addons/revocations.json` in the `hibigarden/site` repository so it is served at `https://www.hibi.garden/addons/revocations.json`. Keep the envelope under 256 KiB. Publish only the signed envelope; keep the private key outside the site repository. Removing an entry also requires a higher sequence, and does not automatically enable disabled addons.
 
 Network checks start after startup, use a 15-second timeout, and run no more than once per 24 hours in a running app. A missing or invalid remote list retains the last accepted signed list. There is no expiry, so a network attacker can delay newer lists; signatures and monotonic sequence numbers prevent accepting forged lists or rolling back an already accepted sequence.
 
