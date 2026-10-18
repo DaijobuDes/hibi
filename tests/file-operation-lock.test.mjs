@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { electron, waitForDocumentEditor } from './electron.mjs'
-import { replaceRichText } from './keyboard.mjs'
+import { clickMenu, replaceRichText } from './keyboard.mjs'
 
 async function setup(t, keepAlive = false) {
   const profile = await mkdtemp(join(tmpdir(), 'hibi-file-lock-'))
@@ -26,6 +26,22 @@ async function setup(t, keepAlive = false) {
   })
   const page = await app.firstWindow()
   await waitForDocumentEditor(app, page)
+  // The editor reports its initial value and schedules an empty draft write.
+  // Drain that real writer before injecting draft requests from the test.
+  await app.evaluate(({ ipcMain }) => {
+    const channel = 'addon-windows:invoke'
+    const invoke = ipcMain._invokeHandlers.get(channel)
+    const saved = Promise.withResolvers()
+    globalThis.initialDraftSaved = saved.promise
+    ipcMain._invokeHandlers.set(channel, (...args) => {
+      const pending = invoke(...args)
+      if (args[1] === 'saveDraft') {
+        ipcMain._invokeHandlers.set(channel, invoke)
+        pending.then(saved.resolve, saved.reject)
+      }
+      return pending
+    })
+  })
   const opened = app.waitForEvent('window')
   await page.evaluate(
     (keepAlive) =>
@@ -38,6 +54,9 @@ async function setup(t, keepAlive = false) {
   )
   const capture = await opened
   await capture.locator('.tiptap[contenteditable="true"]').waitFor()
+  assert.deepEqual(await app.evaluate(() => globalThis.initialDraftSaved), {
+    keptAs: null,
+  })
   await app.evaluate(({ BrowserWindow, ipcMain, dialog }) => {
     dialog.showOpenDialog = async () => ({ canceled: true, filePaths: [] })
     const windows = BrowserWindow.getAllWindows()
@@ -437,13 +456,14 @@ test('capture text typed during the quit confirmation is kept', {
     const channel = 'addon-windows:invoke'
     const invoke = ipcMain._invokeHandlers.get(channel)
     ipcMain._invokeHandlers.set(channel, async (...args) => {
+      const typedDraft =
+        args[1] === 'saveDraft' && args[2]?.markdown === 'typed during quit'
       try {
         const value = await invoke(...args)
-        if (args[1] === 'saveDraft') state.saved.resolve({ value })
+        if (typedDraft) state.saved.resolve({ value })
         return value
       } catch (error) {
-        if (args[1] === 'saveDraft')
-          state.saved.resolve({ error: error.message })
+        if (typedDraft) state.saved.resolve({ error: error.message })
         throw error
       }
     })
@@ -477,6 +497,12 @@ test('capture text typed during the quit confirmation is kept', {
       dialog.showMessageBox = async () => ({ response: 1 })
     })
   }
+  await app.close()
+  assert.equal(
+    JSON.parse(await readFile(join(profile, 'quick-note-draft.json'), 'utf8'))
+      .markdown,
+    'typed during quit',
+  )
 })
 
 test('held Open and quick-note folder dialogs refuse overlapping draft writes', {
@@ -521,4 +547,61 @@ test('held Open and quick-note folder dialogs refuse overlapping draft writes', 
       })
     }
   }
+})
+
+test('opening and quitting an untouched capture preserves the previous draft', {
+  timeout: 30000,
+}, async (t) => {
+  const profile = await mkdtemp(join(tmpdir(), 'hibi-capture-mount-'))
+  const markdown = 'draft from the previous session'
+  const draftPath = join(profile, 'quick-note-draft.json')
+  await writeFile(join(profile, 'addons.json'), '{"quick-note":true}')
+  await writeFile(draftPath, JSON.stringify({ markdown }))
+  const app = await electron.launch({
+    args: [resolve('.'), `--user-data-dir=${profile}`],
+  })
+  const child = app.process()
+  t.after(async () => {
+    if (child.exitCode === null && child.signalCode === null) await app.close()
+    await rm(profile, { recursive: true, force: true })
+  })
+  const page = await app.firstWindow()
+  await waitForDocumentEditor(app, page)
+  await app.evaluate(({ ipcMain }) => {
+    const channel = 'addon-windows:invoke'
+    const invoke = ipcMain._invokeHandlers.get(channel)
+    const saved = Promise.withResolvers()
+    globalThis.captureMount = { events: [], saved: saved.promise }
+    ipcMain._invokeHandlers.set(channel, async (...args) => {
+      const method = args[1]
+      if (!['openDraft', 'saveDraft'].includes(method)) return invoke(...args)
+      const events = globalThis.captureMount.events
+      events.push([method, 'start', args[2]?.markdown ?? null])
+      const value = await invoke(...args)
+      events.push([method, 'done', value])
+      if (method === 'saveDraft') saved.resolve({ input: args[2], value })
+      return value
+    })
+  })
+  const opened = app.waitForEvent('window')
+  await clickMenu(app, 'Command palette')
+  await page
+    .getByRole('combobox', { name: /search commands/i })
+    .fill('Quick note: capture')
+  await page.getByRole('option', { name: /Quick note: capture/i }).click()
+  const capture = await opened
+  const editor = capture.locator('.tiptap[contenteditable="true"]')
+  await editor.waitFor()
+  assert.equal(await editor.textContent(), markdown)
+  const saved = await app.evaluate(() => globalThis.captureMount.saved)
+  assert.deepEqual(saved, { input: { markdown }, value: { keptAs: null } })
+  const events = await app.evaluate(() => globalThis.captureMount.events)
+  t.diagnostic(`capture mount: ${JSON.stringify(events)}`)
+  assert.deepEqual(events.slice(0, 2), [
+    ['openDraft', 'start', null],
+    ['openDraft', 'done', { status: 'ready', draft: { markdown } }],
+  ])
+  assert.deepEqual(events[2], ['saveDraft', 'start', markdown])
+  await app.close()
+  assert.equal(JSON.parse(await readFile(draftPath, 'utf8')).markdown, markdown)
 })
