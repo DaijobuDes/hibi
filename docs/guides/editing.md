@@ -70,6 +70,8 @@ Press `Cmd/Ctrl+K` to search commands and settings. Use arrow keys and Enter to 
 
 Use **File → Save** (`Cmd/Ctrl+S`) or **Save as** (`Cmd/Ctrl+Shift+S`). New notes need a location before [autosave](settings.md#autosave) can work. If another app changes a file, Hibi asks before replacing it.
 
+You can keep typing while saving. If you save again before the current save finishes, Hibi saves your latest edits afterward.
+
 On Windows, Hibi briefly retries saving if another program temporarily locks the file. If the lock persists, the save fails and your edits stay unsaved.
 
 Empty paragraphs are saved as blank lines without nonbreaking-space placeholders. Consecutive empty lines collapse to normal paragraph spacing in exported HTML.

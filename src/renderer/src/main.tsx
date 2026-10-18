@@ -487,6 +487,9 @@ function App() {
   }, [splitLeftId, splitRightId, availableFlavors, flavorOverride])
   const [resetEditor, setResetEditor] = useState(0)
   const busyRef = useRef(false)
+  const savingCommand = useRef<Promise<boolean> | null>(null)
+  const pendingSave = useRef<Promise<boolean> | null>(null)
+  const saveCancellation = useRef({ canceled: false })
   const [busy, setBusy] = useState(false)
   // Saving blocks other file operations but leaves the saved tab's editors writable.
   const [savingTab, setSavingTab] = useState<string | null>(null)
@@ -1372,12 +1375,12 @@ function App() {
   }, [documentLoaded, dialogs, setError])
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: recovery reads live refs while this command handler must stay stable across renders.
-  const runCommand = useCallback(
+  const performCommand = useCallback(
     async (command: DocumentCommand) => {
-      if (busyRef.current || dialogs.isOpen()) return false
       if (command === 'undo' || command === 'redo')
         return Boolean(documentRuntime.session()?.[command]())
       const saving = command === 'save' || command === 'saveAs'
+      if (saving) saveCancellation.current = { canceled: false }
       const token = saving ? documentRuntime.beginSave() : null
       const expectedId = saving ? currentDocument.current?.id : undefined
       const source =
@@ -1395,6 +1398,7 @@ function App() {
           : command === 'open'
             ? window.hibi.openDocument()
             : window.hibi.saveDocument(command === 'saveAs'))
+        if (saving) saveCancellation.current.canceled = !next
         if (next) {
           if (saving && token) acknowledgeSave(next, token, expectedId)
           else
@@ -1437,6 +1441,36 @@ function App() {
       }
     },
     [dialogs, acknowledgeSave, setError],
+  )
+
+  const runCommand = useCallback(
+    function runCommand(command: DocumentCommand): Promise<boolean> {
+      if (command === 'save' && savingCommand.current) {
+        const cancellation = saveCancellation.current
+        // Typing remains available during a save; later requests save its latest edits.
+        pendingSave.current ??= savingCommand.current
+          .catch(() => false)
+          .then(() => {
+            pendingSave.current = null
+            if (cancellation.canceled) return false
+            const document = documentRuntime.get()
+            if (document?.canAutosave && !document.dirty) return true
+            return runCommand('save')
+          })
+        return pendingSave.current
+      }
+      if (busyRef.current || dialogs.isOpen()) return Promise.resolve(false)
+      const operation = performCommand(command)
+      if (command === 'save' || command === 'saveAs') {
+        savingCommand.current = operation
+        const finished = () => {
+          savingCommand.current = null
+        }
+        void operation.then(finished, finished)
+      }
+      return operation
+    },
+    [performCommand, dialogs],
   )
 
   async function openFolder(recentId?: string): Promise<WorkspaceState | null> {
