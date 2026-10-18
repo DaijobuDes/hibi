@@ -582,17 +582,21 @@ export function useFormattingToolbar(
   }, [attachFiles, active])
   useLayoutEffect(() => {
     let frame = 0
+    // Capability checks run after the frame paints, so typed text is not delayed by them.
+    const afterPaint = new MessageChannel()
+    afterPaint.port1.onmessage = () => {
+      frame = 0
+      refresh.current()
+    }
     const update = () => {
       if (frame) return
-      frame = requestAnimationFrame(() => {
-        frame = 0
-        refresh.current()
-      })
+      frame = requestAnimationFrame(() => afterPaint.port2.postMessage(null))
     }
     editor?.on('transaction', update)
     update()
     return () => {
       cancelAnimationFrame(frame)
+      afterPaint.port1.close()
       editor?.off('transaction', update)
     }
   }, [editor])
