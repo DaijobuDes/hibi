@@ -11,13 +11,13 @@ const [index, addons] = await Promise.all([
 // Exercise the registered IPC handler and its actual lock/authorization code,
 // without starting Electron or loading native addons.
 const source = [
-  'let fileOperation = null; let mainWindow = window;',
+  'let fileOperation = null; let closing = false; let mainWindow = window;',
   index.slice(
     index.indexOf('function trustedWindow('),
     index.indexOf('const addonFileUnavailable'),
   ),
   index.slice(
-    index.indexOf('function runFileOperation<'),
+    index.indexOf('const fileOperationUnavailable'),
     index.indexOf('async function serveAsset('),
   ),
   addons
@@ -59,6 +59,10 @@ function harness() {
   const noop = () => null
   const bindings = {
     window,
+    pendingFileOperations: new Set(),
+    fileOperationHasDialog: () => false,
+    fileOperationDialogOpened: noop,
+    withinFileOperation: async (operation) => operation(),
     rendererUrl: frame.url,
     isTrustedRendererUrl: (url, expected) => url === expected,
     handle: (_channel, invoke) => {
