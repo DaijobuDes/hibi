@@ -12,15 +12,22 @@ import {
   validId,
 } from '../shared/addon-manifest'
 import { MAX_ADDON_MANIFEST_BYTES } from '../shared/addon-package'
+import { ADDON_SIGNATURE_FILE, type AddonTrust } from '../shared/addon-trust'
 import type { AddonInstallCandidate, InstalledAddon } from '../shared/sideload'
 import {
   type AddonInventory,
   addonCandidatePaths,
   addonPackageFiles,
 } from './addon-inventory'
+import {
+  addonTrustError,
+  addonTrustKeys,
+  getAddonRevocation,
+} from './addon-trust'
+import { verifyAddonSignature } from './addon-trust-crypto'
 
 export type InstallCandidate = {
-  review: AddonInstallCandidate
+  review: AddonInstallCandidate & { trust: AddonTrust }
   folder: string
   id?: string
   data?: ReturnType<typeof admitInstalledAddon>
@@ -101,6 +108,18 @@ export async function inspectAddonCandidates(
         folder: folder || '.',
         status: 'invalid',
         reasons: [],
+        trust: inventory.entries.some(
+          (entry) =>
+            entry.path ===
+            (folder
+              ? `${folder}/${ADDON_SIGNATURE_FILE}`
+              : ADDON_SIGNATURE_FILE),
+        )
+          ? {
+              status: 'invalid',
+              reason: 'This package has an invalid signature file.',
+            }
+          : { status: 'unsigned' },
       },
     }
     candidates.push(candidate)
@@ -120,6 +139,14 @@ export async function inspectAddonCandidates(
       const data = parseAddonManifest(value)
       candidate.review.manifest = data.manifest
       const files = addonPackageFiles(inventory, folder)
+      candidate.review.trust = await verifyAddonSignature(
+        inventory,
+        folder,
+        data.manifest,
+        addonTrustKeys(),
+      )
+      const revoked = getAddonRevocation(data.manifest)
+      if (revoked) candidate.review.revoked = revoked
       const required = [
         data.entry,
         data.manifest.analysis?.entry,
@@ -193,6 +220,11 @@ export async function inspectAddonCandidates(
     } catch (error) {
       block(candidate, error instanceof Error ? error.message : String(error))
     }
+    const trustError = addonTrustError(
+      candidate.review.trust,
+      candidate.review.manifest!,
+    )
+    if (trustError) block(candidate, trustError.message)
     const previous = installed.find(
       (addon) => addon.manifest.id === candidate.review.manifest!.id,
     )

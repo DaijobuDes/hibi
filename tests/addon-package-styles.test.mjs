@@ -168,6 +168,12 @@ test('package stylesheets and themes install, attach in order, and leave with th
     dialog.showMessageBox = async () => ({ response: 1 })
   })
   const page = await app.firstWindow()
+  await page.evaluate(() =>
+    window.hibi.setAddonTrustSettings({
+      allowUnsigned: true,
+      checkRevocations: false,
+    }),
+  )
   page.setDefaultTimeout(7000)
   await page.getByRole('textbox', { name: /document editor/i }).waitFor()
   const install = async (id) => {

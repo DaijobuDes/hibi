@@ -130,6 +130,24 @@ test('malformed envelopes, JSON, encoding and signatures are invalid', async (t)
   assert.equal((await f.verify()).status, 'invalid')
 })
 
+test('inventory errors never expose filesystem paths in trust reasons', async (t) => {
+  const f = await fixture(t)
+  const inventory = await inventoryAddonDirectory(f.folder)
+  const trust = await verifyAddonSignature(
+    {
+      entries: inventory.entries,
+      read: async () => {
+        throw new Error('EACCES /private/secret/package')
+      },
+    },
+    '',
+    manifest,
+    key.keys,
+  )
+  assert.equal(trust.status, 'invalid')
+  assert.equal(trust.reason, 'This package has an invalid signature file.')
+})
+
 test('signing CLI uses installer inventory and can sign again', async (t) => {
   const f = await fixture(t)
   const pemPath = join(f.folder, '.throwaway-key.pem')

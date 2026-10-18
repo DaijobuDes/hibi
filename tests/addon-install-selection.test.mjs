@@ -13,7 +13,8 @@ const { outputFiles } = await build({
   stdin: {
     contents: `export * from './src/main/sideload.ts'
       export * from './src/main/addon-install-candidates.ts'
-      export * from './src/main/addon-inventory.ts'`,
+      export * from './src/main/addon-inventory.ts'
+      export * from './src/main/addon-trust.ts'`,
     resolveDir: fileURLToPath(new URL('../', import.meta.url)),
   },
   bundle: true,
@@ -70,6 +71,7 @@ async function fixture(t) {
   let hook
   let rename = fs.rename
   const desktop = {
+    BrowserWindow: { getAllWindows: () => [] },
     app: {
       getPath: (name) => (name === 'userData' ? profile : temporary),
     },
@@ -107,6 +109,10 @@ async function fixture(t) {
     module.exports,
   )
   const api = module.exports
+  await api.setAddonTrustSettings({
+    allowUnsigned: true,
+    checkRevocations: false,
+  })
   const sessions = []
   const kept = []
   const disable = async (id, keep) => {

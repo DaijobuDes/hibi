@@ -46,6 +46,12 @@ import {
   inventoryAddonDirectory,
 } from './addon-inventory'
 import { downloadRepository, repositoryUrl } from './addon-repository'
+import {
+  addonTrustError,
+  addonTrustKeys,
+  getAddonRevocation,
+} from './addon-trust'
+import { verifyAddonSignature } from './addon-trust-crypto'
 
 type Package = InstalledAddon & { entry: string; hash: string; files: string[] }
 let installed: Package[] = []
@@ -118,13 +124,18 @@ function descriptor(data: Omit<Package, 'url'>): Package {
   }
 }
 export function installedAddons(): InstalledAddon[] {
-  return installed.map(({ manifest, url, themes, styles, source }) => ({
-    manifest,
-    url,
-    themes,
-    ...(styles ? { styles } : {}),
-    source: source ?? 'local',
-  }))
+  return installed.map(({ manifest, url, themes, styles, source, trust }) => {
+    const revoked = getAddonRevocation(manifest)
+    return {
+      manifest,
+      url,
+      themes,
+      ...(styles ? { styles } : {}),
+      source: source ?? 'local',
+      trust: trust ?? 'unsigned',
+      ...(revoked ? { revoked } : {}),
+    }
+  })
 }
 /** An installed addon's declared stylesheets and themes, read again from its files and validated as at load. */
 export async function installedResources(
@@ -214,6 +225,7 @@ export async function loadInstalledAddons(
           hash: record.hash,
           files: record.files,
           source: record.source === 'third-party' ? 'third-party' : 'local',
+          trust: record.trust === 'signed' ? 'signed' : 'unsigned',
         }),
       )
     } catch (error) {
@@ -413,6 +425,10 @@ async function refreshInstallSession(
         ? updated.review.reasons
         : ['The addon files changed during installation. Try again.']
     } else {
+      candidate.review.trust = updated.review.trust
+      delete candidate.review.revoked
+      if (updated.review.revoked)
+        candidate.review.revoked = updated.review.revoked
       candidate.review.status = 'installable'
       candidate.review.reasons = []
     }
@@ -532,12 +548,22 @@ async function installDirectory(
     const copied = await readManifest(staging, compiledIds, 'install', files)
     if (JSON.stringify(copied) !== JSON.stringify(data))
       throw new Error('The addon files changed during installation. Try again.')
+    const trust = await verifyAddonSignature(
+      await inventoryAddonDirectory(staging),
+      '',
+      copied.manifest,
+      addonTrustKeys(),
+    )
+    const trustError = addonTrustError(trust, copied.manifest)
+    if (trustError) throw trustError
+    if (trust.status === 'invalid') throw new Error(trust.reason)
     await writeFile(
       join(staging, '.hibi-install.json'),
       JSON.stringify({
         hash: fingerprint,
         files,
         source: session.source,
+        trust: trust.status,
         resources: true,
       }),
       { mode: 0o600 },
@@ -562,6 +588,8 @@ async function installDirectory(
       !!previous && sameAddonAccess(previous.manifest, data.manifest),
     )
     session.abort.signal.throwIfAborted()
+    const currentError = addonTrustError(trust, copied.manifest)
+    if (currentError) throw currentError
     if (exists) {
       await rename(destination, backup)
       backedUp = true
@@ -576,6 +604,7 @@ async function installDirectory(
         hash: fingerprint,
         files,
         source: session.source,
+        trust: trust.status,
       }),
     ]
     if (backedUp)

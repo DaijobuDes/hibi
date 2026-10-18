@@ -235,6 +235,9 @@
   "53cd6750229b": [
     "src/main/addon-inventory.ts"
   ],
+  "41d272ed9f56": [
+    "src/main/addon-trust.ts"
+  ],
   "afbe92392457": [
     "src/renderer/src/settings-categories.ts"
   ],
@@ -1205,6 +1208,9 @@
   ],
   "fa5bf6b3b3a8": [
     "src/addons/typst/compiler.ts"
+  ],
+  "33b7ed2bf96e": [
+    "src/main/addon-trust.ts"
   ],
   "7c822b51dee0": [
     "src/main/file-associations.ts"
@@ -5430,6 +5436,9 @@
   "7da468d62980": [
     "src/main/addons.ts"
   ],
+  "fbef75b3e0dc": [
+    "src/main/addon-trust.ts"
+  ],
   "d8a1ff307289": [
     "src/main/addon-inventory.ts"
   ],
@@ -5447,6 +5456,9 @@
   ],
   "9a02a116c1fb": [
     "src/shared/addon-manifest.ts"
+  ],
+  "b3c7cc74d456": [
+    "src/main/addon-trust.ts"
   ],
   "9ef1a5d6d2b1": [
     "src/shared/addon-manifest.ts"
@@ -5471,6 +5483,9 @@
   ],
   "72498ff535eb": [
     "src/addons/dictionary/index.tsx"
+  ],
+  "8a4ff1954358": [
+    "src/main/addon-trust.ts"
   ],
   "2ea18168d79b": [
     "src/renderer/src/addons.ts"
@@ -5893,6 +5908,9 @@
     "src/main/addons.ts",
     "src/main/dependencies.ts"
   ],
+  "c2391aa2be72": [
+    "src/main/addon-trust.ts"
+  ],
   "affa77434b63": [
     "src/renderer/src/addons.ts"
   ],
@@ -5958,6 +5976,10 @@
   ],
   "5eebb144c45a": [
     "src/shared/addon-manifest.ts"
+  ],
+  "6bd603bb836b": [
+    "src/main/addon-trust.ts",
+    "src/main/addons.ts"
   ],
   "2d715c5a75aa": [
     "src/main/addons.ts",
