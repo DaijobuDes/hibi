@@ -462,16 +462,7 @@ function App() {
         : loadFlavor(document?.id),
     [flavorOverride, document?.id],
   )
-  const flavorIds = selectedFlavors(flavorChoice, availableFlavors)
-    .map((flavor) => flavor.id)
-    .join(',')
-  const chosenFlavors = useMemo(
-    () =>
-      availableFlavors.filter((flavor) =>
-        flavorIds.split(',').includes(flavor.id),
-      ),
-    [flavorIds, availableFlavors],
-  )
+  const chosenFlavors = selectedFlavors(flavorChoice, availableFlavors)
   const splitFlavors = useMemo(() => {
     if (!splitLeftId || !splitRightId) return null
     const forTab = (id: string) => {

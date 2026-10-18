@@ -585,5 +585,35 @@ test('rich editor survives document-only syntax and rebuilds for flavor changes'
     )
     await remember()
   }
+  await clickMenu(app, 'Command palette')
+  const palette = page.getByRole('dialog', { name: 'Command palette' })
+  await palette
+    .getByRole('combobox', { name: /search commands/i })
+    .fill('Use plain Markdown flavor')
+  await palette
+    .getByRole('option', { name: /Use plain Markdown flavor/i })
+    .press('Enter')
+  await page.waitForFunction(() => window.richEditor.isDestroyed)
+  await waitForDocumentEditor(app, page)
+  await remember()
+  await page.evaluate(async () => {
+    window.syntaxProbe.registerFlavor({
+      id: 'unchosen',
+      name: 'Unchosen',
+      kind: 'syntax',
+      description: 'Flavor outside the explicit choice',
+      detect: () => false,
+    })
+    // Two frames cover the store update, the render and the editor effects.
+    for (let frame = 0; frame < 2; frame++)
+      await new Promise((resolve) => requestAnimationFrame(resolve))
+    await new Promise((resolve) => setTimeout(resolve))
+  })
+  assert.equal(
+    await page.evaluate(() => window.richEditor.isDestroyed),
+    false,
+    'a flavor outside the explicit choice keeps the rich editor',
+  )
+  assert.equal(await editor.textContent(), 'Keep this draft.')
   assert.deepEqual(errors, [])
 })
