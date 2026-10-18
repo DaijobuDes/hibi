@@ -1,10 +1,15 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { electron, waitForDocumentEditor } from './electron.mjs'
-import { clickMenu, replaceRichText, replaceSourceText } from './keyboard.mjs'
+import {
+  clickMenu,
+  pressShortcut,
+  replaceRichText,
+  replaceSourceText,
+} from './keyboard.mjs'
 
 test('empty entry, three views, and lossless source switching', {
   timeout: 30000,
@@ -205,4 +210,61 @@ test('empty entry, three views, and lossless source switching', {
     (await page.evaluate(() => window.hibi.getDocument())).markdown,
     sourceBefore,
   )
+})
+
+test('rich find status follows matches and selection while typing', {
+  timeout: 30000,
+}, async (t) => {
+  const profile = await mkdtemp(join(tmpdir(), 'hibi-find-status-'))
+  const file = join(profile, 'find.md')
+  await writeFile(file, 'alpha beta alpha\n')
+  const app = await electron.launch({
+    args: [resolve('.'), `--user-data-dir=${profile}`, file],
+  })
+  t.after(async () => {
+    await app.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => ({ response: 1 })
+    })
+    await app.close()
+    await rm(profile, { recursive: true, force: true })
+  })
+  const page = await app.firstWindow()
+  await waitForDocumentEditor(app, page)
+  const count = (text) =>
+    page.waitForFunction(
+      (text) => document.querySelector('.find-count')?.textContent === text,
+      text,
+    )
+  const edit = (change) =>
+    page.evaluate((change) => {
+      const editor = document.querySelector('.tiptap').editor
+      const text = editor.state.doc.textContent
+      const at = (index) => index + 1
+      if (change === 'beta')
+        editor.commands.setTextSelection(at(text.indexOf('beta')))
+      else if (change === 'append')
+        editor.commands.insertContentAt(at(text.length), ' alpha')
+      else if (change === 'last')
+        editor.commands.setTextSelection({
+          from: at(text.lastIndexOf('alpha')),
+          to: at(text.lastIndexOf('alpha') + 5),
+        })
+      else editor.commands.insertContentAt(at(text.indexOf('beta')), 'x')
+    }, change)
+  await pressShortcut(
+    app,
+    process.platform === 'darwin' ? 'Meta+f' : 'Control+f',
+  )
+  await page
+    .getByRole('textbox', { name: 'Find in document', exact: true })
+    .fill('alpha')
+  await count('1/2')
+  await edit('beta')
+  await count('0/2')
+  await edit('append')
+  await count('0/3')
+  await edit('last')
+  await count('3/3')
+  await edit('type')
+  await count('0/3')
 })
