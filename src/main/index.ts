@@ -26,6 +26,7 @@ import {
   type AddonHotkeyRegistration,
 } from '../shared/addon-hotkeys'
 import { ADDON_STORAGE_CHANNELS } from '../shared/addon-storage'
+import { ADDON_TRUST_CHANNELS } from '../shared/addon-trust'
 import { ADDON_WINDOW_CHANNELS } from '../shared/addon-windows'
 import { ANALYSIS_CHANNELS } from '../shared/analysis'
 import { BACKGROUND_CHANNELS, QUICK_NOTE_COMMAND } from '../shared/background'
@@ -74,6 +75,11 @@ import { WORKSPACE_SETTINGS_CHANNELS } from '../shared/workspace-settings'
 import { AddonHotkeys } from './addon-hotkeys'
 import { createAddonStorage } from './addon-storage'
 import {
+  getAddonTrustSettings,
+  setAddonTrustSettings,
+  startAddonRevocations,
+} from './addon-trust'
+import {
   addonWindowOwners,
   addonWindowSender,
   closeAddonWindow,
@@ -86,6 +92,7 @@ import {
   sendAddonWindowStates,
 } from './addon-windows'
 import {
+  applyAddonRevocations,
   currentAddonOwner,
   enableAddon,
   getAddonActivationGeneration,
@@ -1588,6 +1595,25 @@ if (!app.requestSingleInstanceLock()) {
           if (typeof owner === 'string') analysisService.cancel(owner)
         },
         Promise.resolve(),
+      )
+      void addonsReady
+        .then(() => startAddonRevocations(applyAddonRevocations))
+        .catch(console.error)
+      handle(
+        ADDON_TRUST_CHANNELS.get,
+        (event) => {
+          trustedWindow(event)
+          return getAddonTrustSettings()
+        },
+        addonsReady,
+      )
+      handle(
+        ADDON_TRUST_CHANNELS.set,
+        (event, value: unknown) => {
+          trustedWindow(event)
+          return setAddonTrustSettings(value)
+        },
+        addonsReady,
       )
       handle(SIDELOAD_CHANNELS.list, (event) => {
         trustedWindow(event)

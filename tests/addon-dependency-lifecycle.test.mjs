@@ -110,6 +110,12 @@ test('required addons confirm together, share versioned exports, and leave consu
     }
   })
   const page = await app.firstWindow()
+  await page.evaluate(() =>
+    window.hibi.setAddonTrustSettings({
+      allowUnsigned: true,
+      checkRevocations: false,
+    }),
+  )
   await waitForDocumentEditor(app, page)
   for (const { id } of fixtures) {
     await app.evaluate(

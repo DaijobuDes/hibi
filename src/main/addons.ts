@@ -18,6 +18,7 @@ import {
 import { parseDependencies } from '../shared/dependencies'
 import { validDocumentExtensions } from '../shared/document-types'
 import type { AddonId, AddonOwner } from '../shared/foundation-contracts'
+import { getAddonRevocation, loadAddonTrust } from './addon-trust'
 import { exportedAppearance } from './appearance'
 import { retryRename } from './atomic-rename'
 import {
@@ -140,6 +141,7 @@ export async function readAddonDocumentation(id: unknown, path: unknown) {
 }
 
 export async function loadAddons(): Promise<void> {
+  await loadAddonTrust()
   validateAddonRequirements(bundledManifests)
   const [notices, stored] = await Promise.all([
     loadInstalledAddons(bundledManifests),
@@ -196,6 +198,16 @@ export async function loadAddons(): Promise<void> {
       'Multiple modal addons were enabled. They were disabled to keep regular editing mode safe.',
     )
   }
+  await applyAddonRevocations()
+}
+
+/** Disable through the normal path so dependents and runtime owners retire cleanly. */
+export async function applyAddonRevocations(): Promise<void> {
+  const revoked = installedAddons().filter((addon) => addon.revoked)
+  if (!revoked.length) return
+  const next = { ...enabled }
+  for (const addon of revoked) next[addon.manifest.id] = false
+  await savePreferences(next)
 }
 
 export function getAddonStartupNotices() {
@@ -209,7 +221,17 @@ export function getAddonStates(): AddonState[] {
   return addonStates(enabled)
 }
 
-function addonStates(preferences: Record<string, boolean>): AddonState[] {
+function addonStates(
+  preferences: Record<string, boolean>,
+  beforeRevocations = false,
+): AddonState[] {
+  const revoked = new Set(
+    beforeRevocations
+      ? []
+      : installedAddons()
+          .filter((addon) => addon.revoked)
+          .map((addon) => addon.manifest.id),
+  )
   const all = manifests()
   const states = all.map(({ id, defaultEnabled }) => ({
     id,
@@ -217,13 +239,14 @@ function addonStates(preferences: Record<string, boolean>): AddonState[] {
       ? { savedEnabled: preferences[id] }
       : {}),
     enabled:
-      id === 'markdown' ||
-      ((Object.hasOwn(preferences, id) ? preferences[id] : undefined) ??
-        addonDefaultEnabled(
-          id,
-          defaultEnabled,
-          !app.isPackaged && !!process.env.ELECTRON_RENDERER_URL,
-        )),
+      !revoked.has(id) &&
+      (id === 'markdown' ||
+        ((Object.hasOwn(preferences, id) ? preferences[id] : undefined) ??
+          addonDefaultEnabled(
+            id,
+            defaultEnabled,
+            !app.isPackaged && !!process.env.ELECTRON_RENDERER_URL,
+          ))),
   }))
   const { blocked } = resolveAddonDependencies(all, states)
   return states.map((state) => {
@@ -364,6 +387,14 @@ export async function enableAddon(
       throw new Error(
         `This addon requires missing addons: ${missing.join(', ')}.`,
       )
+    for (const owner of [id, ...required]) {
+      const addon = installedAddons().find(
+        (addon) => addon.manifest.id === owner,
+      )
+      const revoked = addon && getAddonRevocation(addon.manifest)
+      if (revoked)
+        throw new Error(`Hibi revoked this version. ${revoked.reason}`)
+    }
     const closure = new Set([id, ...required])
     const modal = all.filter(
       (manifest) =>
@@ -404,10 +435,23 @@ export async function enableAddon(
   return savePreferences(next)
 }
 
-async function savePreferences(
+let savingPreferences = Promise.resolve()
+function savePreferences(next: Record<string, boolean>): Promise<AddonState[]> {
+  const operation = savingPreferences.then(() => commitPreferences(next))
+  savingPreferences = operation.then(
+    () => {},
+    () => {},
+  )
+  return operation
+}
+
+async function commitPreferences(
   next: Record<string, boolean>,
 ): Promise<AddonState[]> {
-  const before = getAddonStates()
+  for (const addon of installedAddons())
+    if (addon.revoked) next[addon.manifest.id] = false
+  // The list already masks revoked states; retain the previous preference for runtime cleanup.
+  const before = addonStates(enabled, true)
   const path = join(app.getPath('userData'), 'addons.json')
   await writeFile(`${path}.tmp`, JSON.stringify(next), { mode: 0o600 })
   await retryRename(() => rename(`${path}.tmp`, path))
@@ -506,7 +550,14 @@ export async function installAddon(
   url?: unknown,
   openSettings?: unknown,
 ) {
-  return installPackage(window, bundledManifests, replacing(openSettings), url)
+  const result = await installPackage(
+    window,
+    bundledManifests,
+    replacing(openSettings),
+    url,
+  )
+  await applyAddonRevocations()
+  return result
 }
 
 export async function installAddonSelection(
@@ -515,13 +566,15 @@ export async function installAddonSelection(
   keys: unknown,
   openSettings?: unknown,
 ) {
-  return installPackageSelection(
+  const result = await installPackageSelection(
     window,
     id,
     keys,
     bundledManifests,
     replacing(openSettings),
   )
+  await applyAddonRevocations()
+  return result
 }
 
 /** Current declared stylesheets and themes of an installed addon, read again from its files. */

@@ -41,6 +41,10 @@ async function fixture(root, manifest, installed = false) {
 async function host(t, builtins = [details('markdown')]) {
   const root = await mkdtemp(join(tmpdir(), 'hibi-addon-main-'))
   t.after(() => rm(root, { recursive: true, force: true }))
+  await writeFile(
+    join(root, 'addon-trust-settings.json'),
+    JSON.stringify({ allowUnsigned: true, checkRevocations: false }),
+  )
   const modules = Object.fromEntries(
     builtins.map((manifest) => [
       `../addons/${manifest.id}/manifest.ts`,
@@ -61,6 +65,7 @@ async function host(t, builtins = [details('markdown')]) {
         '../addons/' + manifest.id + '/native.ts', async () => state.natives[manifest.id],
       ]));
       export const app = {getPath:()=>state.root,isPackaged:true};
+      export const BrowserWindow = {getAllWindows:()=>[]};
       export const dialog = {
         showOpenDialog:async()=>({canceled:!state.source,filePaths:state.source?[state.source]:[]}),
         showMessageBox:async(_window,options)=>{state.reviews.push(options);return {response:1}}

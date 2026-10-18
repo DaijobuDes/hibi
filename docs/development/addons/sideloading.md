@@ -69,6 +69,67 @@ Keep `hibi-addon.json` within 64 KiB, including full license notices. Each top-l
 
 Packages installed before Hibi accepted stylesheets and theme files keep ignoring those fields and native/importer/window declarations without granting privileges. Reinstall such a package to use its stylesheets and themes.
 
+## Signatures and unsigned packages
+
+New installs and replacements require a valid Hibi signature by default. Ask Hibi's maintainers to review your source and compiled package for signing. Sign the finished package before publishing it, and keep the signature beside `hibi-addon.json`. Rebuilding, editing the readme, or adding or removing a package file requires a new signature. See [maintainer signing instructions](signing.md).
+
+For packages you trust that have not been signed, turn on **Allow unsigned addons** in **Settings → Addon Manager → Security**, then install again. This permits unsigned packages, including replacements. It never permits a broken signature or a revoked version. Existing unsigned installations keep working when this setting is off. Built-in addons and the source development watcher do not need package signatures.
+
+A signature identifies the signing key and confirms the package's contents. Installed extensions still run trusted code with access to documents through the addon APIs. Signing does not isolate an addon or grant it native privileges.
+
+### Signature file format
+
+`hibi-addon.sig.json` is a JSON envelope with three string fields:
+
+```json
+{
+  "keyId": "1b43eadedb48d51d",
+  "statement": "<base64 of signed UTF-8 JSON bytes>",
+  "signature": "<base64 Ed25519 signature>"
+}
+```
+
+The decoded package statement has this shape:
+
+```json
+{
+  "type": "hibi-addon-signature",
+  "version": 1,
+  "id": "hello",
+  "addonVersion": "1.0.0",
+  "files": {
+    "README.md": "<lowercase SHA-256 hex>",
+    "hibi-addon.json": "<lowercase SHA-256 hex>",
+    "index.js": "<lowercase SHA-256 hex>"
+  },
+  "signedAt": "2026-10-18T00:00:00.000Z"
+}
+```
+
+The signature covers the exact decoded statement bytes, without reformatting JSON. Paths use `/` and are relative to the package root. The file map must exactly match every file that Hibi installs, except the root signature file itself and the excluded paths described below. Unknown signing keys, malformed statements, manifest ID or version mismatches, missing files, added files, and different hashes block installation.
+
+## Revoked addons
+
+Hibi checks `https://www.hibi.garden/addons/revocations.json` shortly after startup and at most once every 24 hours while running. The request sends no cookies or credentials. **Check for revoked addons** controls these network checks. An accepted list stays in the local profile and applies offline, including when network checks are off.
+
+A revoked installed addon is disabled through the usual runtime cleanup, and its required consumers stop as well. Its reason appears in the installed addon list. Revoked versions cannot be installed or enabled. A list can name particular versions or revoke every version of an addon. Install a signed replacement that is not revoked to recover. If a later list removes a revocation, the addon stays disabled until you enable it.
+
+Revocation lists use the same signed envelope as packages. Their decoded statement has this shape:
+
+```json
+{
+  "type": "hibi-addon-revocations",
+  "version": 1,
+  "sequence": 2,
+  "issuedAt": "2026-10-18T00:00:00.000Z",
+  "entries": [
+    { "id": "hello", "versions": ["1.0.0"], "reason": "A security issue was found." }
+  ]
+}
+```
+
+Omit `versions` to revoke every version. Each published change needs a higher sequence number. Older lists and different contents with an already accepted sequence are ignored. Failed downloads, HTTP errors, invalid signatures, and lists larger than 256 KiB retain the last accepted list without a notification.
+
 ## Add stylesheets and themes
 
 An extension can list up to 16 CSS files in `styles` and up to 20 color schemes in `themes`. Paths are relative to the package folder.

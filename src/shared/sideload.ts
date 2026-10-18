@@ -1,4 +1,5 @@
 import type { AddonManifest } from '../addons/api'
+import type { AddonRevocation, AddonTrust } from './addon-trust'
 import type { ColorschemeInput } from './colorschemes'
 
 export type InstalledAddon = {
@@ -10,6 +11,10 @@ export type InstalledAddon = {
   styles?: string[]
   /** Installation provenance supplied by the host, never the addon manifest. */
   source?: 'local' | 'third-party'
+  /** Signature status recorded at install. Missing for installs that predate signing: treat as unsigned. */
+  trust?: Exclude<AddonTrust['status'], 'invalid'>
+  /** Set while the addon is on the signed revocation list; it stays disabled. */
+  revoked?: AddonRevocation
 }
 export type AddonDocument = {
   path: string
@@ -28,6 +33,10 @@ export type AddonInstallCandidate = {
     /** Unchanged access: the replacement keeps its enabled setting and reloads in place. */
     keepsSetting?: true
   }
+  /** Signature check of this package. Unsigned packages are blocked unless unsigned installs are allowed. */
+  trust?: AddonTrust
+  /** This version is revoked; the candidate is blocked. */
+  revoked?: AddonRevocation
 }
 export type AddonInstallSession = {
   id: string

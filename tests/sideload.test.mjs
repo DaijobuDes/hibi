@@ -122,6 +122,12 @@ test('sideloads reviewed packages disabled, discovers their settings/themes/comm
     }
   }, extension)
   const page = await app.firstWindow()
+  await page.evaluate(() =>
+    window.hibi.setAddonTrustSettings({
+      allowUnsigned: true,
+      checkRevocations: false,
+    }),
+  )
   page.setDefaultTimeout(7000)
   const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
   const choose = async (query) => {

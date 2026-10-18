@@ -229,6 +229,12 @@ test('generated addon installs, enables, runs, disables, and re-enables', {
       dialog.showMessageBox = async () => ({ response: 1 })
     }, installable)
     const page = await app.firstWindow()
+    await page.evaluate(() =>
+      window.hibi.setAddonTrustSettings({
+        allowUnsigned: true,
+        checkRevocations: false,
+      }),
+    )
     await waitForDocumentEditor(app, page)
     await clickMenu(app, 'Command palette')
     await page

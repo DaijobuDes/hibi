@@ -1,3 +1,4 @@
+import { BadgeCheck } from 'lucide-react'
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type {
@@ -190,6 +191,17 @@ function AddonInstallChooser({
                 {manifest && (
                   <p>{`${manifest.id} · v${manifest.version} · ${manifest.kind ?? 'extension'}`}</p>
                 )}
+                {candidate.trust?.status === 'signed' && !candidate.revoked && (
+                  <p className="addon-install-signed">
+                    <BadgeCheck aria-hidden="true" size={14} />
+                    Signed by Hibi
+                  </p>
+                )}
+                {candidate.trust?.status === 'unsigned' && (
+                  <p className="addon-metadata">
+                    <span>Unsigned</span>
+                  </p>
+                )}
                 <p>{`Folder: ${candidate.folder}`}</p>
                 <p>
                   {session.source === 'local'
@@ -237,9 +249,13 @@ function AddonInstallChooser({
                 )}
                 {candidate.status !== 'installable' && (
                   <p>
-                    {candidate.status === 'invalid'
-                      ? 'Invalid package'
-                      : 'Blocked package'}
+                    {candidate.revoked
+                      ? 'Revoked package'
+                      : candidate.trust?.status === 'invalid'
+                        ? 'Invalid signature'
+                        : candidate.status === 'invalid'
+                          ? 'Invalid package'
+                          : 'Blocked package'}
                   </p>
                 )}
                 {!!unavailable.length && candidate.status === 'installable' && (

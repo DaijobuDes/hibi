@@ -219,6 +219,14 @@ export type DesktopApi = {
     workspace?: WorkspaceState | null
   } | null>
   getInstalledAddons: () => Promise<import('./sideload').InstalledAddon[]>
+  getAddonTrustSettings: () => Promise<
+    import('./addon-trust').AddonTrustSettings
+  >
+  setAddonTrustSettings: (
+    changes: Partial<import('./addon-trust').AddonTrustSettings>,
+  ) => Promise<import('./addon-trust').AddonTrustSettings>
+  /** Revocations or trust settings changed in the main process; refetch addon states and installed addons. */
+  onAddonTrustChanged: (callback: () => void) => () => void
   /** Declared stylesheets and themes read again from an installed addon's files. */
   getInstalledAddonResources: (
     id: string,

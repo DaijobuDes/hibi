@@ -437,6 +437,12 @@ test('proof addon installs and composes captured edits, queries, providers, and 
     env: { ...process.env, NODE_EXTRA_CA_CERTS: cert },
   })
   const page = await app.firstWindow()
+  await page.evaluate(() =>
+    window.hibi.setAddonTrustSettings({
+      allowUnsigned: true,
+      checkRevocations: false,
+    }),
+  )
   page.setDefaultTimeout(10000)
   await app.evaluate(({ dialog }, source) => {
     dialog.showOpenDialog = async () => ({

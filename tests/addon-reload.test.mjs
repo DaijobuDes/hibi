@@ -431,6 +431,12 @@ test('a reviewed replacement stays enabled and reloads in place unless its acces
     }
   })
   const page = await app.firstWindow()
+  await page.evaluate(() =>
+    window.hibi.setAddonTrustSettings({
+      allowUnsigned: true,
+      checkRevocations: false,
+    }),
+  )
   await waitForDocumentEditor(app, page)
   await page.waitForFunction(() => window.consumerSaw === 1)
   const install = async (source) => {

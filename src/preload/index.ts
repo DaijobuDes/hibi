@@ -3,6 +3,7 @@ import { ADDON_CHANNELS } from '../addons/api'
 import { ABOUT_CHANNELS } from '../shared/about'
 import { ADDON_HOTKEY_CHANNELS } from '../shared/addon-hotkeys'
 import { ADDON_STORAGE_CHANNELS } from '../shared/addon-storage'
+import { ADDON_TRUST_CHANNELS } from '../shared/addon-trust'
 import { ADDON_WINDOW_CHANNELS } from '../shared/addon-windows'
 import { ANALYSIS_CHANNELS } from '../shared/analysis'
 import { BACKGROUND_CHANNELS } from '../shared/background'
@@ -318,6 +319,16 @@ if (process.isMainFrame) {
     openDroppedFile: (file) =>
       ipcRenderer.invoke(MEDIA_CHANNELS.open, webUtils.getPathForFile(file)),
     getInstalledAddons: () => ipcRenderer.invoke(SIDELOAD_CHANNELS.list),
+    getAddonTrustSettings: () => ipcRenderer.invoke(ADDON_TRUST_CHANNELS.get),
+    setAddonTrustSettings: (changes) =>
+      ipcRenderer.invoke(ADDON_TRUST_CHANNELS.set, changes),
+    onAddonTrustChanged: (callback) => {
+      const listener = () => callback()
+      ipcRenderer.on(ADDON_TRUST_CHANNELS.changed, listener)
+      return () => {
+        ipcRenderer.removeListener(ADDON_TRUST_CHANNELS.changed, listener)
+      }
+    },
     getInstalledAddonResources: (id) =>
       ipcRenderer.invoke(SIDELOAD_CHANNELS.resources, id),
     installAddon: (url, openSettings) =>
