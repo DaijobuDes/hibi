@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import {
   lstat,
   mkdir,
@@ -17,6 +17,10 @@ import {
   validateAddonRequirements,
 } from '../shared/addon-dependencies'
 import {
+  type AddonDirectoryEntry,
+  directoryManifestMatches,
+} from '../shared/addon-directory'
+import {
   admitInstalledAddon,
   parseAddonManifest,
   validId,
@@ -27,6 +31,7 @@ import {
   MAX_ADDON_MANIFEST_BYTES,
   validAddonPath as validPath,
 } from '../shared/addon-package'
+import { ADDON_SIGNATURE_FILE } from '../shared/addon-trust'
 import type {
   AddonInstallResult,
   AddonInstallSession,
@@ -44,6 +49,7 @@ import {
   copyAddonPackage,
   inventoryAddonArchive,
   inventoryAddonDirectory,
+  withAddonFile,
 } from './addon-inventory'
 import { downloadRepository, repositoryUrl } from './addon-repository'
 import {
@@ -269,6 +275,8 @@ type InstallSession = {
   candidates: InstallCandidate[]
   source: 'local' | 'third-party'
   host?: string
+  /** Hibi garden installs must keep their detached Hibi signature. */
+  signed?: true
   active: boolean
   timer: ReturnType<typeof setTimeout>
   closed: () => void
@@ -300,6 +308,8 @@ export async function installPackage(
   builtins: readonly AddonManifest[],
   disable: (id: string, keep: boolean) => Promise<() => Promise<void>>,
   url?: unknown,
+  expected?: AddonDirectoryEntry,
+  signature?: Buffer,
 ): Promise<AddonInstallSession | null> {
   const previous = installSessions.get(window.id)
   if (previous) await disposeInstallSession(previous)
@@ -327,12 +337,22 @@ export async function installPackage(
     if (window.isDestroyed()) throw new Error('Addon installation canceled.')
     if (url !== undefined) {
       const { downloadAddon } = await import('./addon-download')
-      let download = repositoryUrl(url)
-        ? await downloadRepository(url, temporary, undefined, abort.signal)
-        : await downloadAddon(url, abort.signal)
+      let download =
+        !expected?.download && repositoryUrl(url)
+          ? await downloadRepository(url, temporary, undefined, abort.signal)
+          : await downloadAddon(url, abort.signal)
       if (
-        download.zip.length < 4 ||
-        download.zip.readUInt32LE(0) !== 0x04034b50
+        expected?.download &&
+        (download.zip.length !== expected.download.size ||
+          createHash('sha256').update(download.zip).digest('hex') !==
+            expected.download.sha256)
+      )
+        throw new Error(
+          'The downloaded addon does not match its Hibi garden listing. Refresh the directory and try again.',
+        )
+      if (
+        !expected?.download &&
+        (download.zip.length < 4 || download.zip.readUInt32LE(0) !== 0x04034b50)
       )
         download = await downloadRepository(
           url,
@@ -362,6 +382,56 @@ export async function installPackage(
       builtins,
       installed,
     )
+    if (expected) {
+      session.candidates = session.candidates.filter(
+        (candidate) => candidate.review.manifest?.id === expected.id,
+      )
+      const candidate = session.candidates[0]
+      // Admission upgrades legacy API manifests; bind against the publisher's original metadata.
+      const manifest: AddonManifest | undefined =
+        candidate?.review.manifest &&
+        JSON.parse(
+          (
+            await session.inventory.read(
+              candidate.folder
+                ? `${candidate.folder}/hibi-addon.json`
+                : 'hibi-addon.json',
+            )
+          ).toString('utf8'),
+        )
+      if (
+        !candidate ||
+        session.candidates.length !== 1 ||
+        !manifest ||
+        !directoryManifestMatches(expected, manifest)
+      )
+        throw new Error(
+          'The downloaded addon does not match its Hibi garden listing. Refresh the directory and try again.',
+        )
+      // The detached signature replaces any packaged one; the usual review must still verify it.
+      if (!signature)
+        throw new Error(
+          'Could not download the Hibi signature for this addon. Refresh the directory and try again.',
+        )
+      session.inventory = withAddonFile(
+        session.inventory,
+        candidate.folder
+          ? `${candidate.folder}/${ADDON_SIGNATURE_FILE}`
+          : ADDON_SIGNATURE_FILE,
+        signature,
+      )
+      session.candidates = (
+        await inspectAddonCandidates(session.inventory, builtins, installed)
+      ).filter((item) => item.folder === candidate.folder)
+      const trust = session.candidates[0]?.review.trust
+      if (trust?.status !== 'signed')
+        throw new Error(
+          trust?.status === 'invalid'
+            ? trust.reason
+            : "This addon's Hibi signature is missing.",
+        )
+      session.signed = true
+    }
     abort.signal.throwIfAborted()
     if (session.candidates.length === 1) {
       const candidate = session.candidates[0]!
@@ -375,7 +445,7 @@ export async function installPackage(
         dialog.showMessageBox(window, {
           type: data.manifest.kind === 'extension' ? 'warning' : 'question',
           message: `Install ${data.manifest.name} ${data.manifest.version}?`,
-          detail: `${data.manifest.description}\n\nBy ${data.manifest.authors?.map((author) => author.displayName).join(', ')}${session.host ? `\n\nDownloaded from ${session.host}` : ''}${candidate.review.replaces ? `\n\nReplaces ${candidate.review.replaces.version} (${candidate.review.replaces.source}).` : ''}${data.manifest.network ? `\n\nConnects to: ${data.manifest.network.origins.join(', ')}` : ''}\n\n${data.manifest.kind === 'extension' ? 'Extensions can run code and read or edit documents in Hibi. Only install addons you trust. ' : ''}${candidate.review.replaces?.keepsSetting ? 'Its access is unchanged, so it keeps its current setting.' : 'This addon will stay disabled until you enable it.'}`,
+          detail: `${data.manifest.description}\n\n${candidate.review.trust.status === 'signed' ? 'Signed by Hibi.' : 'Unsigned. Hibi cannot confirm who made this addon.'}\n\nBy ${data.manifest.authors?.map((author) => author.displayName).join(', ')}${session.host ? `\n\nDownloaded from ${session.host}` : ''}${candidate.review.replaces ? `\n\nReplaces ${candidate.review.replaces.version} (${candidate.review.replaces.source}).` : ''}${data.manifest.network ? `\n\nConnects to: ${data.manifest.network.origins.join(', ')}` : ''}\n\n${data.manifest.kind === 'extension' ? 'Extensions can run code and read or edit documents in Hibi. Only install addons you trust. ' : ''}${candidate.review.replaces?.keepsSetting ? 'Its access is unchanged, so it keeps its current setting.' : 'This addon will stay disabled until you enable it.'}`,
           buttons: [
             'Cancel',
             candidate.review.replaces ? 'Replace addon' : 'Install',
@@ -562,6 +632,8 @@ async function installDirectory(
     const trustError = addonTrustError(trust, copied.manifest)
     if (trustError) throw trustError
     if (trust.status === 'invalid') throw new Error(trust.reason)
+    if (session.signed && trust.status !== 'signed')
+      throw new Error("This addon's Hibi signature is missing.")
     await writeFile(
       join(staging, '.hibi-install.json'),
       JSON.stringify({

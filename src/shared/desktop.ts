@@ -223,7 +223,7 @@ export type DesktopApi = {
     import('./addon-trust').AddonTrustSettings
   >
   setAddonTrustSettings: (
-    changes: Partial<import('./addon-trust').AddonTrustSettings>,
+    changes: import('./addon-trust').AddonTrustSettings,
   ) => Promise<import('./addon-trust').AddonTrustSettings>
   /** Revocations or trust settings changed in the main process; refetch addon states and installed addons. */
   onAddonTrustChanged: (callback: () => void) => () => void
@@ -236,6 +236,16 @@ export type DesktopApi = {
     url?: string,
     openSettings?: readonly string[],
   ) => Promise<import('./sideload').AddonInstallSession | null>
+  getAddonDirectory: (
+    refresh?: boolean,
+  ) => Promise<import('./addon-directory').AddonDirectory>
+  installDirectoryAddon: (
+    id: string,
+    openSettings?: readonly string[],
+  ) => Promise<import('./sideload').AddonInstallSession | null>
+  onAddonGardenRequest: (
+    callback: (request: import('./addon-directory').AddonGardenRequest) => void,
+  ) => () => void
   installAddonSelection: (
     sessionId: string,
     candidateKeys: string[],
