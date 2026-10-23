@@ -311,6 +311,7 @@ test('nested workspace editing, addon lifecycle, and offline static export', {
   assert.equal(await site.evaluate(() => typeof window.hibi), 'undefined')
   assert.equal(await site.locator('[contenteditable="true"]').count(), 0)
   assert.equal(await site.locator('.view-switch').count(), 0)
+  await site.emulateMedia({ reducedMotion: 'no-preference' })
   for (const viewportWidth of [1000, 480]) {
     await site.setViewportSize({ width: viewportWidth, height: 720 })
     if (viewportWidth <= 700) {
@@ -328,21 +329,35 @@ test('nested workspace editing, addon lifecycle, and offline static export', {
     }
     for (const opening of [false, true]) {
       const samples = await site.evaluate(async () => {
-        document.querySelector('[aria-label="toggle navigation" i]').click()
-        const samples = []
-        const start = performance.now()
-        const moving = () =>
-          ['.sidebar', '.site-content'].some(
-            (selector) =>
-              document.querySelector(selector).getAnimations().length,
+        const sidebar = document.querySelector('.sidebar')
+        const content = document.querySelector('.site-content')
+        // Capture at commit before a slow frame can finish both transitions.
+        const animations = await new Promise((resolve) => {
+          const observer = new MutationObserver(() => {
+            observer.disconnect()
+            const animations = [sidebar, content].flatMap((element) =>
+              element.getAnimations(),
+            )
+            for (const animation of animations) animation.pause()
+            resolve(animations)
+          })
+          observer.observe(document.querySelector('.documentation-site'), {
+            attributeFilter: ['data-sidebar'],
+          })
+          document.querySelector('[aria-label="toggle navigation" i]').click()
+        })
+        const slide = animations.find(
+          (animation) =>
+            animation.effect?.target === sidebar &&
+            animation.transitionProperty === 'transform',
+        )
+        if (!slide)
+          throw new Error(
+            'Exported sidebar did not create a transform transition.',
           )
-        // Slow runners can start the transition late; sample until it ends.
-        while (performance.now() - start < 320 || moving()) {
-          await new Promise(requestAnimationFrame)
-          const sidebar = document.querySelector('.sidebar')
-          const content = document.querySelector('.site-content')
+        const sample = () => {
           const bounds = sidebar.getBoundingClientRect()
-          samples.push({
+          return {
             x: bounds.x,
             right: bounds.right,
             width: sidebar.offsetWidth,
@@ -352,8 +367,15 @@ test('nested workspace editing, addon lifecycle, and offline static export', {
             contentX: content.getBoundingClientRect().x,
             contentWidth: content.offsetWidth,
             visibility: getComputedStyle(sidebar).visibility,
-          })
+          }
         }
+        const samples = []
+        for (const time of [0, Number(slide.effect.getTiming().duration) / 2]) {
+          for (const animation of animations) animation.currentTime = time
+          samples.push(sample())
+        }
+        for (const animation of animations) animation.finish()
+        samples.push(sample())
         return samples
       })
       assert.ok(samples.some(({ x }) => x > -255 && x < -1))
@@ -430,24 +452,42 @@ test('nested workspace editing, addon lifecycle, and offline static export', {
   const selection = await site
     .getByRole('treeitem', { name: /^installation$/i, exact: true })
     .evaluate(async (button) => {
-      button.click()
-      const frames = []
-      const start = performance.now()
-      while (
-        performance.now() - start < 230 ||
-        document.querySelector('.sidebar-selection').getAnimations().length
-      ) {
-        await new Promise(requestAnimationFrame)
+      const marker = document.querySelector('.sidebar-selection')
+      const transition = await new Promise((resolve) => {
+        const observer = new MutationObserver(() => {
+          observer.disconnect()
+          const animation = marker
+            .getAnimations()
+            .find((entry) => entry.transitionProperty === 'transform')
+          animation?.pause()
+          resolve(animation)
+        })
+        observer.observe(marker, { attributeFilter: ['style'] })
+        button.click()
+      })
+      if (!transition)
+        throw new Error(
+          'Exported selection did not create a transform transition.',
+        )
+      const sample = () => {
         const selected = document.querySelector(
           '[role="treeitem"][aria-selected="true"]',
         )
-        frames.push({
-          top: document
-            .querySelector('.sidebar-selection')
-            .getBoundingClientRect().top,
+        return {
+          top: marker.getBoundingClientRect().top,
           background: getComputedStyle(selected).backgroundColor,
-        })
+        }
       }
+      const frames = []
+      for (const time of [
+        0,
+        Number(transition.effect.getTiming().duration) / 2,
+      ]) {
+        transition.currentTime = time
+        frames.push(sample())
+      }
+      transition.finish()
+      frames.push(sample())
       return {
         frames,
         target: document
