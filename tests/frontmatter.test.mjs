@@ -300,17 +300,11 @@ test('frontmatter fields preserve comments, types, nested YAML and body edits', 
       .querySelector('.source-pane .cm-content')
       ?.textContent.includes('draft: true'),
   )
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
   const heights = await properties
     .getByRole('button', { name: /^properties/i })
     .evaluate(async (button) => {
       const body = document.querySelector('.frontmatter-disclosure')
-      const result = [body.getBoundingClientRect().height]
-      button.click()
-      const start = performance.now()
-      while (performance.now() - start < 210) {
-        await new Promise(requestAnimationFrame)
-        result.push(body.getBoundingClientRect().height)
-      }
       await Promise.all(
         body
           .getAnimations({ subtree: true })
@@ -319,12 +313,34 @@ test('frontmatter fields preserve comments, types, nested YAML and body edits', 
           )
           .map((animation) => animation.finished.catch(() => {})),
       )
-      await new Promise(requestAnimationFrame)
-      result.push(body.getBoundingClientRect().height)
-      return result
+      const expanded = body.getBoundingClientRect().height
+      // Capture at React's commit: a busy renderer can skip the whole transition.
+      const transition = await new Promise((resolve) => {
+        const observer = new MutationObserver(() => {
+          observer.disconnect()
+          const animation = body
+            .getAnimations()
+            .find((entry) => entry.transitionProperty === 'grid-template-rows')
+          animation?.pause()
+          if (animation)
+            animation.currentTime =
+              Number(animation.effect.getTiming().duration) / 2
+          resolve(animation)
+        })
+        observer.observe(body, { attributeFilter: ['data-open'] })
+        button.click()
+      })
+      if (!transition)
+        throw new Error(
+          'Frontmatter collapse did not create a grid transition.',
+        )
+      const middle = body.getBoundingClientRect().height
+      transition.finish()
+      return [expanded, middle, body.getBoundingClientRect().height]
     })
-  assert.ok(heights.some((height) => height > 0 && height < heights[0]))
-  assert.equal(heights.at(-1), 0)
+  assert.ok(heights[0] > 0)
+  assert.ok(heights[1] > 0 && heights[1] < heights[0])
+  assert.equal(heights[2], 0)
   await clickMenu(app, 'Save')
   await page
     .getByRole('status', { name: /unsaved changes/i })

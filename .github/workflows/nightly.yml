@@ -154,7 +154,7 @@ jobs:
             .cache/electron-builder
           key: electron-${{ runner.os }}-${{ runner.arch }}-${{ steps.electron.outputs.version }}
           restore-keys: electron-${{ runner.os }}-${{ runner.arch }}-
-      - run: npm ci
+      - run: node .github/actions/ci/install.mjs
       - name: Compile application
         id: compile
         run: npm run build

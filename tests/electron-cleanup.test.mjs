@@ -213,7 +213,7 @@ test('shutdown snapshots limit the tree and pipes, including descendants outside
     '44 43 77 00:01 renderer',
     '43 42 77 00:02 gpu',
     '42 1 42 00:03 electron',
-    '9 1 9 00:04 unrelated',
+    `9 1 9 00:04 unrelated ${'x'.repeat(300000)}`,
     ...Array.from(
       { length: 30 },
       (_, i) => `${100 + i} 1 42 00:05 utility ${'x'.repeat(300)}`,
@@ -221,7 +221,12 @@ test('shutdown snapshots limit the tree and pipes, including descendants outside
   ]
   const fixture = await snapshotFixture(
     t,
-    `console.log(${JSON.stringify(rows.join('\n'))})`,
+    `const rows = ${JSON.stringify(rows)}
+const ids = process.argv[2] === '-p' ? new Set(process.argv[3].split(',')) : null
+console.log(rows
+  .filter(row => !ids || ids.has(row.split(' ')[0]))
+  .map(row => process.argv.at(-1) === 'pid=,ppid=,pgid=' ? row.split(' ').slice(0, 3).join(' ') : row)
+  .join('\\n'))`,
     `require('node:fs').writeFileSync(__filename + '.args', JSON.stringify(process.argv.slice(2)))
 console.log('COMMAND PID USER FD TYPE NAME')
 console.log('held 44 x 1w PIPE inherited-output')
@@ -255,12 +260,35 @@ for (let i = 0; i < 100; i++) console.log('held 44 x 5r PIPE ' + 'x'.repeat(200)
   assert.ok(args[3].split(',').includes('44'))
 })
 
+for (const exited of [false, true])
+  test(`shutdown snapshot handles ${exited ? 'exited processes' : 'partial ps output'}`, {
+    skip: process.platform === 'win32',
+  }, async (t) => {
+    const fixture = await snapshotFixture(
+      t,
+      `if (process.argv.at(-1) === 'pid=,ppid=,pgid=') console.log('42 1 42')
+else {
+  ${exited ? '' : "console.log('42 1 42 00:01 electron')"}
+  process.exit(1)
+}`,
+      "console.log('held 42 x 1w PIPE inherited-output')",
+    )
+    await snapshotElectronProcesses(42)
+    assert.doesNotMatch(fixture.messages.join('\n'), /snapshot unavailable/)
+    if (exited)
+      assert.match(fixture.messages[0], /process group already exited/)
+    else {
+      assert.match(fixture.messages[0], /42 1 42 00:01 electron/)
+      assert.match(fixture.messages[1], /PIPE inherited-output/)
+    }
+  })
+
 test('partial lsof output is retained when some processes have already exited', {
   skip: process.platform === 'win32',
 }, async (t) => {
   const fixture = await snapshotFixture(
     t,
-    "console.log('42 1 42 00:01 electron')",
+    "console.log(process.argv.at(-1) === 'pid=,ppid=,pgid=' ? '42 1 42' : '42 1 42 00:01 electron')",
     "console.log('COMMAND PID FD TYPE NAME'); console.log('held 42 1w PIPE inherited-output'); process.exit(1)",
   )
   await snapshotElectronProcesses(42)
@@ -274,7 +302,9 @@ for (const missing of ['ps', 'lsof']) {
   }, async (t) => {
     const fixture = await snapshotFixture(
       t,
-      missing === 'ps' ? undefined : "console.log('42 1 42 00:01 electron')",
+      missing === 'ps'
+        ? undefined
+        : "console.log(process.argv.at(-1) === 'pid=,ppid=,pgid=' ? '42 1 42' : '42 1 42 00:01 electron')",
     )
     await snapshotElectronProcesses(42)
     assert.match(fixture.messages.at(-1), /snapshot unavailable:.*ENOENT/)

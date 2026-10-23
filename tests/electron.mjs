@@ -16,13 +16,13 @@ export async function snapshotElectronProcesses(pid) {
   try {
     const { stdout } = await execute(
       'ps',
-      ['-axo', 'pid=,ppid=,pgid=,etime=,command='],
+      ['-axo', 'pid=,ppid=,pgid='],
       options,
     )
     const rows = stdout.split('\n').flatMap((line) => {
-      const match = line.match(/^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s+(.*)$/)
+      const match = line.match(/^\s*(\d+)\s+(\d+)\s+(\d+)\s*$/)
       return match
-        ? [{ pid: +match[1], parent: +match[2], group: +match[3], line }]
+        ? [{ pid: +match[1], parent: +match[2], group: +match[3] }]
         : []
     })
     const ids = new Set([pid])
@@ -32,16 +32,32 @@ export async function snapshotElectronProcesses(pid) {
         if (ids.has(row.parent) || row.group === pid) ids.add(row.pid)
     }
     const tree = rows.filter((row) => ids.has(row.pid)).slice(0, 20)
+    if (!tree.length) {
+      console.error('electron-shutdown-processes: process group already exited')
+      return
+    }
+    const processIds = tree.map((row) => row.pid).join(',')
+    const processes = await execute(
+      'ps',
+      ['-p', processIds, '-o', 'pid=,ppid=,pgid=,etime=,command='],
+      options,
+    ).catch((error) => {
+      if (error.code !== 1 && !error.stdout) throw error
+      return { stdout: error.stdout ?? '' }
+    })
     console.error(
       `electron-shutdown-processes (pid ppid pgid elapsed command):\n${
-        tree.map((row) => row.line.trim().slice(0, 200)).join('\n') ||
-        'process group already exited'
+        processes.stdout
+          .trim()
+          .split('\n')
+          .map((line) => line.trim().slice(0, 200))
+          .join('\n') || 'process group already exited'
       }`,
     )
-    if (!tree.length) return
+    if (!processes.stdout.trim()) return
     const files = await execute(
       'lsof',
-      ['-nP', '-a', '-p', tree.map((row) => row.pid).join(',')],
+      ['-nP', '-a', '-p', processIds],
       options,
     ).catch((error) => {
       if (!error.stdout) throw error

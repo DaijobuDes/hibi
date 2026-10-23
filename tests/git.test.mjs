@@ -79,7 +79,7 @@ test('git addon stages, commits, switches, pulls and pushes only to a disposable
   const page = await app.firstWindow()
   page.setDefaultTimeout(7000)
   const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
-  await page.getByRole('textbox', { name: /document editor/i }).waitFor()
+  await waitForDocumentEditor(app, page, { timeout: 30000 })
   await pressShortcut(app, `${mod}+Shift+o`)
   await page.getByRole('button', { name: /new workspace file/i }).waitFor()
   await pressShortcut(app, `${mod}+o`)

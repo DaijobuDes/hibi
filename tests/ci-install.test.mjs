@@ -82,6 +82,53 @@ test('successful installs and ordinary failures settle once with their exit code
   }
 })
 
+test('dependency download failures retry once and preserve the final exit code', async (t) => {
+  for (const message of ['TypeError: fetch failed', 'npm error code EAI_AGAIN'])
+    for (const repeated of [false, true]) {
+      const install = fixture(
+        t,
+        `if (attempt === 1 || ${repeated}) {
+  process.stderr.write(${JSON.stringify(message.slice(0, 12))})
+  setTimeout(() => {
+    console.log('checking cached files')
+    setTimeout(() => {
+      console.error(${JSON.stringify(message.slice(12))})
+      process.exit(23)
+    }, 10)
+  }, 10)
+}`,
+      )
+      assert.equal(await install.run(), repeated ? 23 : 0)
+      assert.equal(install.attempts().length, 2)
+      assert.match(
+        install.messages.join('\n'),
+        /download failed; retrying once/,
+      )
+    }
+})
+
+test('a download failure followed by a hang still stops after two attempts', async (t) => {
+  const install = fixture(
+    t,
+    `if (attempt === 1) {
+  console.error('TypeError: fetch failed')
+  process.exit(23)
+}
+setInterval(() => {}, 1000)`,
+  )
+  assert.equal(await install.run(), 124)
+  assert.equal(install.attempts().length, 2)
+  await gone(install.attempts()[1])
+  assert.match(install.messages.at(-1), /hung on its final attempt/)
+})
+
+test('a recovered download warning does not retry a successful install', async (t) => {
+  const install = fixture(t, "console.error('npm warn EAI_AGAIN recovered')")
+  assert.equal(await install.run(), 0)
+  assert.equal(install.attempts().length, 1)
+  assert.deepEqual(install.messages, [])
+})
+
 test('a missing install command fails without retrying', async (t) => {
   const messages = []
   t.mock.method(console, 'error', (message) => messages.push(message))
@@ -127,7 +174,7 @@ test('two hung installs stop with 124 after exactly one retry', async (t) => {
   assert.equal(await install.run(), 124)
   assert.equal(install.attempts().length, 2)
   for (const pid of install.attempts()) await gone(pid)
-  assert.match(install.messages.at(-1), /hung on both attempts/)
+  assert.match(install.messages.at(-1), /hung on its final attempt/)
 })
 
 test('a descendant retaining output after npm exits still times out and is killed', {

@@ -11,21 +11,21 @@ const diagnosticOptions = {
 
 async function snapshot(pid) {
   if (process.platform === 'win32') return
+  // Unrelated command lines can exceed the diagnostic buffer on busy machines.
   const { stdout } = await execute(
     'ps',
-    ['-axo', 'pid=,ppid=,pgid=,etime=,command='],
+    ['-axo', 'pid=,ppid=,pgid='],
     diagnosticOptions,
   )
   const rows = stdout
     .split('\n')
     .map((line) => {
-      const match = line.match(/^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s+(.*)$/)
+      const match = line.match(/^\s*(\d+)\s+(\d+)\s+(\d+)\s*$/)
       return (
         match && {
           pid: Number(match[1]),
           parent: Number(match[2]),
           group: Number(match[3]),
-          line: line.trim(),
         }
       )
     })
@@ -37,18 +37,27 @@ async function snapshot(pid) {
       if (ids.has(row.parent) || row.group === pid) ids.add(row.pid)
   }
   const tree = rows.filter((row) => ids.has(row.pid)).slice(0, 20)
-  console.error(
-    `npm ci hang processes (pid ppid pgid elapsed command):\n${
-      tree
-        .map((row) => row.line.slice(0, 200))
-        .join('\n')
-        .slice(0, 2000) || 'process already exited'
-    }`,
+  if (!tree.length) {
+    console.error('npm ci hang processes: process already exited')
+    return
+  }
+  const processIds = tree.map((row) => row.pid).join(',')
+  const processes = await execute(
+    'ps',
+    ['-p', processIds, '-o', 'pid=,ppid=,pgid=,etime=,command='],
+    diagnosticOptions,
   )
-  if (!tree.length) return
+  console.error(
+    `npm ci hang processes (pid ppid pgid elapsed command):\n${processes.stdout
+      .trim()
+      .split('\n')
+      .map((line) => line.trim().slice(0, 200))
+      .join('\n')
+      .slice(0, 2000)}`,
+  )
   const files = await execute(
     'lsof',
-    ['-nP', '-a', '-p', tree.map((row) => row.pid).join(',')],
+    ['-nP', '-a', '-p', processIds],
     diagnosticOptions,
   )
   console.error(
@@ -76,6 +85,20 @@ export async function installDependencies({
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
     })
+    let downloadFailed = false
+    const inspect = (stream) => {
+      let outputTail = ''
+      stream?.on('data', (chunk) => {
+        const output = outputTail + chunk
+        downloadFailed ||=
+          /TypeError: fetch failed|\b(?:EAI_AGAIN|ENOTFOUND|ECONNRESET|ETIMEDOUT)\b/.test(
+            output,
+          )
+        outputTail = output.slice(-128)
+      })
+    }
+    inspect(child.stdout)
+    inspect(child.stderr)
     child.stdout?.pipe(process.stdout, { end: false })
     child.stderr?.pipe(process.stderr, { end: false })
     let timedOut = false,
@@ -151,11 +174,17 @@ export async function installDependencies({
       process.off('SIGTERM', terminate)
     }
     if (canceled) return canceled
-    if (!timedOut) return code
+    if (!timedOut) {
+      if (code === 0 || !downloadFailed || attempt === 2) return code
+      console.error(
+        'npm ci dependency download failed; retrying once with the existing caches.',
+      )
+      continue
+    }
     if (attempt === 1)
       console.error('npm ci hung; retrying once with the existing caches.')
   }
-  console.error('npm ci hung on both attempts; installation stopped.')
+  console.error('npm ci hung on its final attempt; installation stopped.')
   return 124
 }
 
