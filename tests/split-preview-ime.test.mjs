@@ -76,19 +76,38 @@ test('native source IME survives split preview catch-up and keeps one undo group
   // An enabled debugger lets a late pause interrupt a busy script for a stack.
   const debug = await page.context().newCDPSession(page)
   await debug.send('Debugger.enable')
+  await page.evaluate(() => {
+    window.imeOpen = { startedAt: performance.now() }
+    const observer = new MutationObserver(() => {
+      if (
+        document.querySelector('.tiptap')?.editor?.state.doc.lastChild
+          ?.textContent === 'omega'
+      ) {
+        window.imeOpen.readyAt = performance.now()
+        observer.disconnect()
+      }
+    })
+    observer.observe(document.body, {
+      childList: true,
+      characterData: true,
+      subtree: true,
+    })
+  })
   await clickMenu(app, 'Open…')
   await page
-    .waitForFunction(
-      () =>
+    .waitForFunction(() => {
+      if (window.imeOpen) window.imeOpen.waitStartedAt ??= performance.now()
+      return (
         document.querySelector('.tiptap')?.editor?.state.doc.lastChild
-          ?.textContent === 'omega',
-    )
+          ?.textContent === 'omega'
+      )
+    })
     .catch(async (error) => {
-      const bounded = (request) =>
+      const bounded = (request, timeout = 2000) =>
         Promise.race([
           request().catch((cause) => ({ failed: String(cause).slice(0, 120) })),
           new Promise((resolve) =>
-            setTimeout(() => resolve({ unavailable: true }), 2000).unref(),
+            setTimeout(() => resolve({ unavailable: true }), timeout).unref(),
           ),
         ])
       // Cumulative cpu seconds tell a busy renderer from a blocked one.
@@ -100,6 +119,16 @@ test('native source IME survives split preview catch-up and keeps one undo group
           return [Math.round(performance.now()), metric?.cpu.cumulativeCPUUsage]
         })
       try {
+        const frame = await bounded(
+          () =>
+            page.evaluate(
+              () =>
+                new Promise((resolve) =>
+                  requestAnimationFrame(() => resolve(true)),
+                ),
+            ),
+          500,
+        )
         const before = await cpu()
         const paused = new Promise((resolve) =>
           debug.once('Debugger.paused', resolve),
@@ -119,6 +148,7 @@ test('native source IME survives split preview catch-up and keeps one undo group
           'ime open:',
           JSON.stringify({
             cpu: [before, await cpu()],
+            frame,
             stack,
             dom: await bounded(() =>
               page.evaluate(() => ({
@@ -126,6 +156,8 @@ test('native source IME survives split preview catch-up and keeps one undo group
                   document.querySelector('.tiptap')?.editor?.state.doc.lastChild
                     ?.textContent,
                 busy: document.querySelector('.app')?.getAttribute('aria-busy'),
+                visibility: document.visibilityState,
+                open: window.imeOpen,
                 dialogs: document.querySelectorAll('dialog[open]').length,
                 toasts: [...document.querySelectorAll('.toast-copy')]
                   .slice(0, 3)

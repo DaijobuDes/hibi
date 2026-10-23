@@ -133,12 +133,15 @@ export function installElectronDiagnostics({ dialog }) {
 
 export function showElectronTestWindows({ app, BrowserWindow }) {
   const closing = new WeakSet()
+  const revealed = new WeakSet()
   const show = (window) => {
-    if (closing.has(window) || window.isDestroyed()) return
+    if (closing.has(window) || window.isDestroyed() || revealed.has(window))
+      return
     if (window.webContents.getURL().startsWith('hibi-analysis:')) return
     window.setFocusable(true)
     window.show()
     window.focus()
+    revealed.add(window)
   }
   const watch = (window) => {
     window.on('close', () => closing.add(window))

@@ -93,6 +93,24 @@ child.unref()
   assert.doesNotMatch(messages[0], new RegExp(`^\\s*${process.pid}\\s`, 'm'))
 })
 
+test('existing test windows are not raised again after a delayed first paint', () => {
+  const calls = []
+  const window = Object.assign(new EventEmitter(), {
+    isDestroyed: () => false,
+    webContents: { getURL: () => 'app://hibi/' },
+    setFocusable: () => calls.push('focusable'),
+    show: () => calls.push('show'),
+    focus: () => calls.push('focus'),
+  })
+  showElectronTestWindows({
+    app: new EventEmitter(),
+    BrowserWindow: { getAllWindows: () => [window] },
+  })
+  assert.deepEqual(calls, ['focusable', 'show', 'focus'])
+  window.emit('ready-to-show')
+  assert.deepEqual(calls, ['focusable', 'show', 'focus'])
+})
+
 test('late ready-to-show skips windows that are closing, destroyed or quitting', async () => {
   const app = new EventEmitter()
   const windows = []
