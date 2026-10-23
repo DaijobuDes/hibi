@@ -32,14 +32,48 @@ async function until(check) {
 }
 
 async function addonPage(app, id) {
-  for (const page of app.windows())
-    if (
-      page.url() === windowUrl &&
-      (await page.evaluate(() => window.hibiAddonWindow.context())).id === id
-    )
-      return page
+  for (const page of app.windows()) {
+    if (page.isClosed() || page.url() !== windowUrl) continue
+    try {
+      if (
+        (await page.evaluate(() => window.hibiAddonWindow.context())).id === id
+      )
+        return page
+    } catch (error) {
+      if (!page.isClosed()) throw error
+    }
+  }
   return null
 }
+
+test('addon window lookup skips a page closed during its context read', async () => {
+  let closed = false
+  const closing = {
+    url: () => windowUrl,
+    isClosed: () => closed,
+    evaluate: async () => {
+      closed = true
+      throw new Error('Target page, context or browser has been closed')
+    },
+  }
+  const kept = {
+    url: () => windowUrl,
+    isClosed: () => false,
+    evaluate: async () => ({ id: 'kept' }),
+  }
+  assert.equal(
+    await addonPage({ windows: () => [closing, kept] }, 'kept'),
+    kept,
+  )
+  const error = new Error('Unexpected context failure')
+  const broken = {
+    ...kept,
+    evaluate: async () => {
+      throw error
+    },
+  }
+  await assert.rejects(addonPage({ windows: () => [broken] }, 'kept'), error)
+})
 
 test('addon windows open once per id and close with their addon', {
   timeout: 45000,
