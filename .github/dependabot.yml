@@ -5,7 +5,7 @@ updates:
     schedule:
       interval: weekly
     ignore:
-      # electron-vite 5 requires Vite 7; review its upgrade separately.
+      # Review the Vite 8 and React plugin 6 migration separately.
       - dependency-name: vite
         versions: ['>=8']
       - dependency-name: '@vitejs/plugin-react'
