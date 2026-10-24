@@ -30,6 +30,18 @@ async function openNote(root, profile, apps) {
 
 /** Drag from just inside a cell border, so the resize handle is under the pointer. */
 async function drag(page, cell, axis, distance) {
+  await cell.evaluate((element) =>
+    Promise.all(
+      element.ownerDocument
+        .getAnimations()
+        .filter(
+          (animation) =>
+            animation.effect?.target?.contains(element) &&
+            Number.isFinite(animation.effect.getComputedTiming().iterations),
+        )
+        .map((animation) => animation.finished.catch(() => {})),
+    ),
+  )
   const box = await cell.boundingBox()
   const x = axis === 'column' ? box.x + box.width - 2 : box.x + box.width / 2
   const y = axis === 'row' ? box.y + box.height - 2 : box.y + box.height / 2

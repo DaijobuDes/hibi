@@ -142,6 +142,7 @@ test('flavors auto-detect, persist overrides, render/edit math, and export it of
     .locator('.rich-pane .hibi-token-keyword')
     .filter({ hasText: /const/i })
     .waitFor()
+  await waitForDocumentEditor(app, page)
   await page.locator('[data-type="inline-math"]').click()
   const dialog = page.getByRole('dialog', { name: /^math$/i, exact: true })
   await dialog.getByLabel(/^latex$/i, { exact: true }).fill('x^3')
