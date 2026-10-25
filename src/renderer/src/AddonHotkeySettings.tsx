@@ -131,71 +131,73 @@ export function AddonHotkeySettings({
     ) : null
 
   return (
-    <div className="settings-group hotkey-list">
+    <>
       <h2>Addon commands</h2>
-      {visible.map((binding) => (
-        <HotkeyRow
-          key={binding.id}
-          label={binding.label}
-          detail={binding.id}
-          shortcut={binding.shortcut}
-          platform={platform}
-          recorder={recorder}
-          recording={recording === binding.id}
-          pending={pending === binding.id}
-          candidate={candidate}
-          invalid={invalid}
-          recorderDisabled={
-            saving ||
-            disabled ||
-            !!pending ||
-            (!!recording && recording !== binding.id)
-          }
-          actionsDisabled={saving}
-          editDisabled={saving || disabled || !!pending || !!recording}
-          canReset={binding.overridden}
-          onStart={async () => {
-            if (recording || starting.current || !activeRef.current) return
-            starting.current = true
-            const started = generation.current
-            setPending(binding.id)
-            setError('')
-            onRecordingChange(true)
-            try {
-              await window.hibi.setHotkeyRecording(true)
-              if (!activeRef.current || generation.current !== started) {
-                await window.hibi.setHotkeyRecording(false)
-                onRecordingChange(false)
-                return
-              }
-              setCandidate('')
-              setRecording(binding.id)
-            } catch {
-              onRecordingChange(false)
-              setError('Could not record a shortcut. Try again.')
-            } finally {
-              starting.current = false
-              setPending(null)
+      <div className="settings-group hotkey-list">
+        {visible.map((binding) => (
+          <HotkeyRow
+            key={binding.id}
+            label={binding.label}
+            detail={binding.id}
+            shortcut={binding.shortcut}
+            platform={platform}
+            recorder={recorder}
+            recording={recording === binding.id}
+            pending={pending === binding.id}
+            candidate={candidate}
+            invalid={invalid}
+            recorderDisabled={
+              saving ||
+              disabled ||
+              !!pending ||
+              (!!recording && recording !== binding.id)
             }
-          }}
-          onCandidate={setCandidate}
-          onSave={() => void save(binding.id, candidate)}
-          onCancel={cancel}
-          onReset={() => void reset(binding.id)}
-          onClear={() => void save(binding.id, '')}
-        >
-          {!recording && binding.conflictWith && (
-            <p className="hotkey-feedback" role="status">
-              Already used by {binding.conflictWith.label}.
-            </p>
-          )}
-        </HotkeyRow>
-      ))}
-      {error && (
-        <p className="hotkey-feedback" role="alert">
-          {error}
-        </p>
-      )}
-    </div>
+            actionsDisabled={saving}
+            editDisabled={saving || disabled || !!pending || !!recording}
+            canReset={binding.overridden}
+            onStart={async () => {
+              if (recording || starting.current || !activeRef.current) return
+              starting.current = true
+              const started = generation.current
+              setPending(binding.id)
+              setError('')
+              onRecordingChange(true)
+              try {
+                await window.hibi.setHotkeyRecording(true)
+                if (!activeRef.current || generation.current !== started) {
+                  await window.hibi.setHotkeyRecording(false)
+                  onRecordingChange(false)
+                  return
+                }
+                setCandidate('')
+                setRecording(binding.id)
+              } catch {
+                onRecordingChange(false)
+                setError('Could not record a shortcut. Try again.')
+              } finally {
+                starting.current = false
+                setPending(null)
+              }
+            }}
+            onCandidate={setCandidate}
+            onSave={() => void save(binding.id, candidate)}
+            onCancel={cancel}
+            onReset={() => void reset(binding.id)}
+            onClear={() => void save(binding.id, '')}
+          >
+            {!recording && binding.conflictWith && (
+              <p className="hotkey-feedback" role="status">
+                Already used by {binding.conflictWith.label}.
+              </p>
+            )}
+          </HotkeyRow>
+        ))}
+        {error && (
+          <p className="hotkey-feedback" role="alert">
+            {error}
+          </p>
+        )}
+      </div>
+    </>
   )
 }
