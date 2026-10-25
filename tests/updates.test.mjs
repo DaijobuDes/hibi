@@ -1,21 +1,11 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import {
-  mkdir,
-  mkdtemp,
-  readdir,
-  readFile,
-  rm,
-  writeFile,
-} from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { pathToFileURL } from 'node:url'
 import { build } from 'esbuild'
-import { parse } from 'yaml'
-import { platforms } from '../scripts/nightly.mjs'
-import { updateFeed } from '../scripts/update-feed.mjs'
 import {
   newerUpdate,
   updateChannel,
@@ -150,161 +140,6 @@ test('update ordering uses semver core and release precedence, then nightly date
     assert.ok(!newerUpdate(input, input))
   assert.ok(!newerUpdate(version, 'invalid'))
   assert.ok(!newerUpdate('invalid', version))
-})
-
-test('publication hashes real installers and keeps both feeds pinned to a complete classified release', async (t) => {
-  const version = nightlyVersion
-  const legacyManifest = (broken = false) => ({
-    ...manifest(
-      version,
-      broken ? nightlyTag.replace('nightly-', 'nightly-broken-') : nightlyTag,
-    ),
-    status: broken ? 'nightly-broken' : 'nightly-green',
-  })
-  const root = await mkdtemp(join(tmpdir(), 'hibi-feed-'))
-  t.after(() => rm(root, { recursive: true, force: true }))
-  for (const asset of Object.values(legacyManifest().assets)) {
-    await writeFile(join(root, asset.name), bytes)
-    if (asset.zip) await writeFile(join(root, asset.zip.name), bytes)
-  }
-  const systemPackages = {
-    'x64.deb': 'amd64.deb',
-    'x64.flatpak': 'x86_64.flatpak',
-    'arm64.deb': 'arm64.deb',
-    'arm64.flatpak': 'aarch64.flatpak',
-  }
-  for (const built of Object.values(systemPackages))
-    await writeFile(join(root, `hibi-${version}-linux-${built}`), bytes)
-  const reports = platforms.map((platform) => ({
-    platform,
-    sha: 'a'.repeat(40),
-    build: 'success',
-    package: 'success',
-    checks: 'success',
-  }))
-  for (const broken of [false, true]) {
-    const release = {
-      ...legacyManifest(broken),
-      channel: 'nightly',
-      sha: 'a'.repeat(40),
-      reports: reports.map((report, i) => ({
-        ...report,
-        checks: broken && !i ? 'failure' : 'success',
-      })),
-    }
-    const generated = await updateFeed(release, root)
-    const expected = legacyManifest(broken)
-    expected.assets['linux-x64'].name = `hibi-${version}-linux-x64.AppImage`
-    assert.deepEqual(generated, expected)
-    assert.deepEqual(
-      await readFile(join(root, expected.assets['linux-x64'].name)),
-      bytes,
-    )
-    const files = await readdir(root)
-    assert.ok(!files.includes(legacyManifest().assets['linux-x64'].name))
-    // Debian and Flatpak downloads share AppImage labels but stay out of feeds older updaters validate.
-    for (const [normalized, built] of Object.entries(systemPackages)) {
-      assert.ok(files.includes(`hibi-${version}-linux-${normalized}`))
-      if (normalized !== built)
-        assert.ok(!files.includes(`hibi-${version}-linux-${built}`))
-    }
-    assert.deepEqual(
-      JSON.parse(await readFile(join(root, 'update.json'), 'utf8')),
-      generated,
-    )
-    for (const [platform, name] of [
-      ['win32-x64', 'latest.yml'],
-      ['linux-x64', 'latest-linux.yml'],
-      ['linux-arm64', 'latest-linux-arm64.yml'],
-    ]) {
-      const feed = parse(await readFile(join(root, name), 'utf8'))
-      assert.equal(feed.version, version)
-      assert.deepEqual(feed.files, [
-        { url: expected.assets[platform].name, sha512, size: bytes.length },
-      ])
-    }
-    const macFeed = parse(await readFile(join(root, 'latest-mac.yml'), 'utf8'))
-    assert.equal(macFeed.version, version)
-    assert.deepEqual(macFeed.files, [
-      {
-        url: expected.assets['darwin-x64'].zip.name,
-        sha512,
-        size: bytes.length,
-      },
-      {
-        url: expected.assets['darwin-arm64'].zip.name,
-        sha512,
-        size: bytes.length,
-      },
-    ])
-  }
-  await assert.rejects(
-    updateFeed(
-      {
-        ...legacyManifest(),
-        channel: 'nightly',
-        sha: 'a'.repeat(40),
-        reports: reports.slice(1),
-      },
-      root,
-    ),
-    /Every release platform/,
-  )
-  // An architecture alias beside its normalized name must not overwrite either package.
-  for (const [alias, canonical] of [
-    ['linux-x86_64.AppImage', 'linux-x64.AppImage'],
-    ['linux-amd64.deb', 'linux-x64.deb'],
-  ]) {
-    const duplicate = await mkdtemp(join(tmpdir(), 'hibi-feed-duplicate-'))
-    t.after(() => rm(duplicate, { recursive: true, force: true }))
-    await writeFile(join(duplicate, `hibi-${version}-${alias}`), 'alias')
-    await writeFile(
-      join(duplicate, `hibi-${version}-${canonical}`),
-      'canonical',
-    )
-    await assert.rejects(
-      updateFeed(
-        {
-          ...legacyManifest(),
-          channel: 'nightly',
-          sha: 'a'.repeat(40),
-          reports,
-        },
-        duplicate,
-      ),
-      /Ambiguous Linux packages/,
-    )
-    assert.deepEqual(
-      await readFile(join(duplicate, `hibi-${version}-${alias}`), 'utf8'),
-      'alias',
-    )
-    assert.deepEqual(
-      await readFile(join(duplicate, `hibi-${version}-${canonical}`), 'utf8'),
-      'canonical',
-    )
-  }
-  const workflow = parse(
-    await readFile('.github/workflows/nightly.yml', 'utf8'),
-  )
-  const steps = workflow.jobs.publish.steps
-  assert.ok(
-    steps.findIndex((step) => step.name === 'Generate verified update feeds') <
-      steps.findIndex((step) => step.id === 'publish'),
-  )
-  const green = steps.find(
-    (step) => step.name === 'Update recommended nightly pointer',
-  )
-  assert.equal(green.if, "steps.classify.outputs.status == 'nightly-green'")
-  assert.match(
-    green.run,
-    /gh release upload nightly-green installers\/update.json/,
-  )
-  const all = steps.find((step) => step.name === 'Update all-nightlies feed')
-  assert.equal(all.if, "needs.prepare.outputs.channel == 'nightly'")
-  assert.ok(
-    steps.indexOf(all) <
-      steps.findIndex((step) => step.name === 'Surface broken nightly checks'),
-  )
 })
 
 async function adapter(

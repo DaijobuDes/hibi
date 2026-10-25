@@ -1,6 +1,11 @@
 import { execFileSync } from 'node:child_process'
-import { appendFileSync, readFileSync, statSync, writeFileSync } from 'node:fs'
-import { basename, resolve } from 'node:path'
+import {
+  appendFileSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs'
+import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 export const platforms = [
@@ -11,11 +16,21 @@ export const platforms = [
   'macos-x64',
 ]
 
+const semver = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/
+
+const compareVersions = (left, right) => {
+  const a = left.split('.').map(BigInt)
+  const b = right.split('.').map(BigInt)
+  for (let i = 0; i < a.length; i++)
+    if (a[i] !== b[i]) return a[i] > b[i] ? 1 : -1
+  return 0
+}
+
 export function nightly(
   cwd = '.',
   date = new Date(),
-  stableTag = '',
-  run = '',
+  bump = 'patch',
+  run = '0.0',
 ) {
   const git = (...args) =>
     execFileSync('git', args, {
@@ -23,15 +38,40 @@ export function nightly(
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
     }).trim()
+  if (!['patch', 'minor'].includes(bump))
+    throw new Error('Choose a patch or minor version bump')
+  if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(run))
+    throw new Error('Invalid workflow run identity')
   const sha = git('rev-parse', 'HEAD')
+  const version = JSON.parse(
+    readFileSync(resolve(cwd, 'package.json'), 'utf8'),
+  ).version
+  if (!semver.test(version))
+    throw new Error('package.json must have a plain semver version')
+  const latest = git('tag', '--list', 'v*')
+    .split('\n')
+    .filter((tag) => semver.test(tag.slice(1)))
+    .sort((a, b) => compareVersions(b.slice(1), a.slice(1)))[0]
+  let betaVersion = version
+  if (latest) {
+    const [major, minor, patch] = latest.slice(1).split('.').map(BigInt)
+    const next =
+      bump === 'minor'
+        ? `${major}.${minor + 1n}.0`
+        : `${major}.${minor}.${patch + 1n}`
+    if (compareVersions(next, betaVersion) > 0) betaVersion = next
+  }
+  const changed =
+    !latest || git('rev-list', '--count', `${latest}..HEAD`) !== '0'
   const tags = git('tag', '--merged', 'HEAD')
     .split('\n')
     .filter(
       (tag) =>
-        /^v\d+\.\d+\.\d+$/.test(tag) ||
-        (!stableTag && /^nightly-(?:broken-)?\d{4}-/.test(tag)),
+        (semver.test(tag.slice(1)) && tag.startsWith('v')) ||
+        /^nightly-(?:broken-)?\d{4}-\d{2}-\d{2}-[a-f0-9]{7}(?:-\d+-\d+)?$/.test(
+          tag,
+        ),
     )
-    .filter((tag) => tag !== stableTag)
   const previous = tags.length
     ? git(
         'describe',
@@ -42,29 +82,13 @@ export function nightly(
       )
     : undefined
   const day = date.toISOString().slice(0, 10)
-  const version = JSON.parse(
-    readFileSync(resolve(cwd, 'package.json'), 'utf8'),
-  ).version
-  const base = version.split('-')[0]
-  if (
-    stableTag &&
-    (!/^v\d+\.\d+\.\d+$/.test(stableTag) || stableTag !== `v${version}`)
-  )
-    throw new Error(
-      'Stable tags must match the non-prerelease package.json version',
-    )
-  if (run && !/^\d+\.\d+$/.test(run))
-    throw new Error('Invalid workflow run identity')
   return {
     sha,
     previous,
-    channel: stableTag ? 'stable' : 'nightly',
-    tag:
-      stableTag ||
-      `nightly-${day}-${sha.slice(0, 7)}${run ? `-${run.replace('.', '-')}` : ''}`,
-    version: stableTag
-      ? version
-      : `${base}-nightly.${day.replaceAll('-', '')}.g${sha.slice(0, 7)}${run ? `.${run}` : ''}`,
+    betaVersion,
+    changed,
+    nightlyTag: `nightly-${day}-${sha.slice(0, 7)}-${run.replace('.', '-')}`,
+    nightlyVersion: `${betaVersion}-nightly.${day.replaceAll('-', '')}.g${sha.slice(0, 7)}.${run}`,
     commits: git(
       'log',
       '--format=%H%x09%s',
@@ -95,7 +119,36 @@ export function checksFromShards(platform, sha, reports) {
     : 'failure'
 }
 
-export function classifyRelease(release, reports) {
+export function decideRelease(release, shards) {
+  if (shards.length !== platforms.length * 4)
+    throw new Error('Every release check shard must report before deciding')
+  const checks = platforms.map((platform) => ({
+    platform,
+    sha: release.sha,
+    checks: checksFromShards(
+      platform,
+      release.sha,
+      shards.filter((report) => report.platform === platform),
+    ),
+  }))
+  const beta =
+    release.changed && checks.every((report) => report.checks === 'success')
+  return {
+    ...release,
+    channel: beta ? 'beta' : 'nightly',
+    tag: beta ? `v${release.betaVersion}` : release.nightlyTag,
+    version: beta ? release.betaVersion : release.nightlyVersion,
+    checks,
+    shards,
+  }
+}
+
+export function classifyRelease(release, reports, shards = release.shards) {
+  const decision = decideRelease(release, shards)
+  if (
+    ['channel', 'tag', 'version'].some((key) => release[key] !== decision[key])
+  )
+    throw new Error('Publication must match the checked release decision')
   if (
     reports.length !== platforms.length ||
     platforms.some(
@@ -115,43 +168,24 @@ export function classifyRelease(release, reports) {
     )
   )
     throw new Error('Cannot publish incomplete or mismatched packages')
-  const green = reports.every((report) => report.checks === 'success')
   if (
-    !['nightly', 'stable'].includes(release.channel) ||
-    (release.channel === 'stable' && !green)
-  )
-    throw new Error(
-      'Stable releases require the full required suite to pass on every platform',
+    reports.some(
+      (report) =>
+        report.version !== release.version ||
+        report.tag !== release.tag ||
+        report.channel !== release.channel ||
+        report.checks !==
+          decision.checks.find(
+            (checked) => checked.platform === report.platform,
+          ).checks,
     )
-  const status =
-    release.channel === 'stable'
-      ? 'stable'
-      : green
-        ? 'nightly-green'
-        : 'nightly-broken'
-  return {
-    ...release,
-    status,
-    reports,
-    tag:
-      status === 'nightly-broken'
-        ? release.tag.replace(/^nightly-/, 'nightly-broken-')
-        : release.tag,
-  }
+  )
+    throw new Error('Packaged release does not match the checked decision')
+  return { ...decision, reports }
 }
 
-export function recommendedNightly(release, repository) {
-  if (
-    release.status !== 'nightly-green' ||
-    classifyRelease(release, release.reports).status !== 'nightly-green'
-  )
-    throw new Error('Only fully checked green nightlies can be recommended')
-  return {
-    tag: release.tag,
-    sha: release.sha,
-    version: release.version,
-    url: `https://github.com/${repository}/releases/tag/${release.tag}`,
-  }
+export function releaseChannels(release) {
+  return release.channel === 'beta' ? ['beta', 'nightly'] : ['nightly']
 }
 
 function releaseAssets(release, repository, checksums) {
@@ -171,69 +205,29 @@ function releaseAssets(release, repository, checksums) {
     })
 }
 
-/** Mirror complete green installers before removing superseded rolling downloads. */
-export function syncRecommendedAssets(
-  release,
-  repository,
-  directory,
-  gh = (...args) => execFileSync('gh', args, { encoding: 'utf8' }),
-) {
-  recommendedNightly(release, repository)
-  const checksums = readFileSync(resolve(directory, 'SHA256SUMS.txt'), 'utf8')
-  releaseNotes(release, repository, checksums)
-  const names = releaseAssets(release, repository, checksums).map(
-    ({ name }) => name,
-  )
-  const files = names.map((name) => {
-    if (
-      basename(name) !== name ||
-      !name.startsWith(`hibi-${release.version}-`) ||
-      !statSync(resolve(directory, name)).isFile()
-    )
-      throw new Error('Invalid recommended nightly installer')
-    return resolve(directory, name)
-  })
-  const run = (...args) => gh('release', ...args, '--repo', repository)
-  const { assets } = JSON.parse(
-    run('view', 'nightly-green', '--json', 'assets'),
-  )
-  run('upload', 'nightly-green', ...files, '--clobber')
-  run(
-    'upload',
-    'nightly-green',
-    resolve(directory, 'SHA256SUMS.txt'),
-    '--clobber',
-  )
-  for (const { name } of assets)
-    if (name.startsWith('hibi-') && !names.includes(name))
-      run('delete-asset', 'nightly-green', name, '--yes')
-}
-
 export function nightlyWebhook(release, repository, checksums) {
-  if (!['nightly-green', 'nightly-broken'].includes(release.status))
-    throw new Error('Only classified nightlies can be announced')
-  const green = release.status === 'nightly-green'
+  classifyRelease(release, release.reports)
+  const beta = release.channel === 'beta'
   const role = '1550309423166267432'
   return {
-    content: `<@&${role}> new nightly released: **${release.tag}**`,
+    content: `<@&${role}> new ${release.channel} released: **${release.tag}**`,
     allowed_mentions: { parse: [], roles: [role] },
     embeds: [
       {
         title: '🦋',
         description: [
-          `this nightly is built from [${release.sha.slice(0, 7)}](https://github.com/${repository}/commit/${release.sha}).`,
-          'as usual with all nightlies, please understand that you know what you are doing.',
+          `this ${release.channel} is built from [${release.sha.slice(0, 7)}](https://github.com/${repository}/commit/${release.sha}).`,
           '',
           '**download links**',
           ...releaseAssets(release, repository, checksums).map(
             (asset) => `[${asset.name}](${asset.url})`,
           ),
         ].join('\n'),
-        color: green ? 9568176 : 16748945,
+        color: beta ? 9568176 : 9807270,
         footer: {
-          text: green
-            ? '🟢 this nightly is tagged green and has passed all checks.'
-            : '🔴 this nightly is tagged red.\n⚠️ this nightly has not passed all checks.',
+          text: beta
+            ? 'this beta passed all checks on every platform.'
+            : 'back up your notes before installing. nightlies are bleeding edge and may be broken.',
         },
       },
     ],
@@ -284,17 +278,10 @@ export function releaseNotes(release, repository, checksums) {
       return `- ${title} ([${sha.slice(0, 7)}](${url}/commit/${sha}))`
     })
   return [
-    `this ${release.channel === 'stable' ? 'release' : 'nightly'} was built from sha \`${release.sha.slice(0, 7)}\`.`,
+    `this ${release.channel} was built from sha \`${release.sha.slice(0, 7)}\`.`,
     '',
-    `**${release.status}**`,
+    `**${release.channel}**`,
     '',
-    ...(release.status === 'nightly-broken'
-      ? [
-          '> [!WARNING]',
-          '> Required checks failed. This build is for debugging and dogfooding only. It is not the recommended nightly.',
-          '',
-        ]
-      : []),
     ...(release.channel === 'nightly'
       ? ['**:warning: always back up before using a nightly!**', '']
       : []),
@@ -338,18 +325,36 @@ if (
   process.argv[1] &&
   import.meta.url === pathToFileURL(resolve(process.argv[1])).href
 ) {
+  const readRelease = () => JSON.parse(readFileSync('release.json', 'utf8'))
+  const readShards = () =>
+    readdirSync('check-shards')
+      .filter((name) => name.endsWith('.json'))
+      .map((name) =>
+        JSON.parse(readFileSync(resolve('check-shards', name), 'utf8')),
+      )
+  const saveRelease = (release, keys) => {
+    writeFileSync('release.json', JSON.stringify(release, null, 2))
+    appendFileSync(
+      process.env.GITHUB_OUTPUT,
+      keys.map((key) => `${key}=${release[key]}\n`).join(''),
+    )
+  }
   if (process.argv[2] === 'prepare') {
-    const run = process.env.GITHUB_RUN_NUMBER
-      ? `${process.env.GITHUB_RUN_NUMBER}.${process.env.GITHUB_RUN_ATTEMPT}`
-      : ''
-    const release = nightly('.', new Date(), process.env.STABLE_TAG ?? '', run)
+    const run = `${process.env.GITHUB_RUN_NUMBER ?? '0'}.${process.env.GITHUB_RUN_ATTEMPT ?? '0'}`
+    const bump =
+      process.env.GITHUB_EVENT_NAME === 'workflow_dispatch'
+        ? process.env.BUMP || 'patch'
+        : 'patch'
+    const release = nightly('.', new Date(), bump, run)
     if (process.env.GITHUB_RUN_ID)
       release.runUrl = `https://github.com/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`
-    writeFileSync('release.json', JSON.stringify(release, null, 2))
-    const values = ['sha', 'tag', 'version', 'channel']
-      .map((key) => `${key}=${release[key]}`)
-      .join('\n')
-    appendFileSync(process.env.GITHUB_OUTPUT, `${values}\n`)
+    saveRelease(release, ['sha'])
+  } else if (process.argv[2] === 'decide') {
+    saveRelease(decideRelease(readRelease(), readShards()), [
+      'channel',
+      'tag',
+      'version',
+    ])
   } else if (process.argv[2] === 'check-shards') {
     const [platform, sha, ...files] = process.argv.slice(3)
     const result = checksFromShards(
@@ -359,51 +364,40 @@ if (
     )
     appendFileSync(process.env.GITHUB_OUTPUT, `result=${result}\n`)
   } else if (process.argv[2] === 'classify') {
-    const release = classifyRelease(
-      JSON.parse(readFileSync('release.json', 'utf8')),
-      platforms.map((platform) =>
-        JSON.parse(readFileSync(`installers/checks-${platform}.json`, 'utf8')),
+    saveRelease(
+      classifyRelease(
+        readRelease(),
+        platforms.map((platform) =>
+          JSON.parse(
+            readFileSync(`installers/checks-${platform}.json`, 'utf8'),
+          ),
+        ),
+        readShards(),
       ),
-    )
-    writeFileSync('release.json', JSON.stringify(release, null, 2))
-    appendFileSync(
-      process.env.GITHUB_OUTPUT,
-      `tag=${release.tag}\nstatus=${release.status}\n`,
+      ['channel', 'tag', 'version'],
     )
   } else if (process.argv[2] === 'notes') {
-    const release = JSON.parse(readFileSync('release.json', 'utf8'))
-    const checksums = readFileSync('installers/SHA256SUMS.txt', 'utf8')
     process.stdout.write(
-      releaseNotes(release, process.env.GITHUB_REPOSITORY, checksums),
-    )
-  } else if (process.argv[2] === 'notify') {
-    await sendNightlyWebhook(
-      process.env.NIGHTLIES_WEBHOOK_URL,
-      nightlyWebhook(
-        JSON.parse(readFileSync('release.json', 'utf8')),
+      releaseNotes(
+        readRelease(),
         process.env.GITHUB_REPOSITORY,
         readFileSync('installers/SHA256SUMS.txt', 'utf8'),
       ),
     )
-  } else if (process.argv[2] === 'recommend-assets') {
-    syncRecommendedAssets(
-      JSON.parse(readFileSync('release.json', 'utf8')),
-      process.env.GITHUB_REPOSITORY,
-      'installers',
-    )
-  } else if (process.argv[2] === 'recommend') {
-    const pointer = recommendedNightly(
-      JSON.parse(readFileSync('release.json', 'utf8')),
-      process.env.GITHUB_REPOSITORY,
-    )
-    writeFileSync('recommended-nightly.json', JSON.stringify(pointer, null, 2))
-    writeFileSync(
-      'recommended-notes.md',
-      `# Latest recommended nightly\n\n[Download ${pointer.version}](${pointer.url}). All required checks passed on every release platform.\n\nSource commit: \`${pointer.sha}\`.\n\nThis rolling pointer changes only after a green nightly is published. Broken nightlies remain separate debug releases.\n`,
-    )
+  } else if (process.argv[2] === 'notify') {
+    if (process.env.NIGHTLIES_WEBHOOK_URL)
+      await sendNightlyWebhook(
+        process.env.NIGHTLIES_WEBHOOK_URL,
+        nightlyWebhook(
+          readRelease(),
+          process.env.GITHUB_REPOSITORY,
+          readFileSync('installers/SHA256SUMS.txt', 'utf8'),
+        ),
+      )
+    else await sendNightlyWebhook('', {})
   } else {
     throw new Error(
-      'Usage: node scripts/nightly.mjs prepare|check-shards|classify|notes|notify|recommend|recommend-assets',
+      'Usage: node scripts/nightly.mjs prepare|decide|check-shards|classify|notes|notify',
     )
   }
 }

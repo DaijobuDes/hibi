@@ -2,31 +2,47 @@
 
 Hibi uses GPL-3.0-only. Packaged applications include the root `LICENSE.md`.
 
-## Nightly builds
+## Beta and nightly builds
 
-The `nightly and releases` workflow runs from `main` daily at 18:00 UTC (02:00 Manila time), subject to GitHub scheduling delays. To run it manually, choose Actions → nightly and releases → Run workflow. Unchanged revisions still build. See the [release policy](../../development/core/releases.md) for green, broken, and stable publication rules.
+Hibi has two update channels: **Beta (stable)** is the default, and **Nightly (bleeding edge)** follows every published build, including betas. Back up your notes before installing a nightly. The [release policy](../../development/core/releases.md) is maintained in `hibigarden/docs`.
 
-Each nightly gets a `nightly-YYYY-MM-DD-<commit>-<run>-<attempt>` tag and prerelease version, with `nightly-broken-` used when required checks fail. Its changelog links commits since the previous reachable dated release tag. Rolling recommendation tags are excluded. The first nightly includes all history if no earlier release exists. Release notes do not create a source commit.
+The `nightly and releases` workflow runs on `main` daily at 18:00 UTC (02:00 Manila time), subject to GitHub scheduling delays. Manual runs accept `bump: patch` (the default) or `bump: minor`. Scheduled runs always use patch. The `clean` option bypasses download caches; compilation and the full required checks run either way. Version tags do not trigger releases. The `releases` concurrency group serializes the entire workflow so version selection cannot race another release run.
 
-Five jobs compile the app, run all required lint, documentation, copy, and test checks, then package:
+The workflow fixes one source commit and passes through five stages:
 
-- Linux x64: AppImage, Debian package, and Flatpak bundle.
-- Linux arm64: AppImage, Debian package, and Flatpak bundle, built on `ubuntu-24.04-arm`.
+1. **Prepare** finds the numerically highest plain `v<semver>` tag and computes the next patch version, or the next minor `.0` for a manual minor bump. The plain version in `package.json` is a floor. With a floor of `0.2.0`, the first beta is `v0.2.0`; after `v0.2.9`, patch produces `v0.2.10` and minor produces `v0.3.0`. It also prepares a dated nightly identity and a commit changelog.
+2. **Checks** run the full required suite in four isolated shards on each of five platforms. Every shard records its platform, source commit, shard number, and result. Missing, duplicate, or mismatched reports stop the release.
+3. **Decide** aggregates all 20 shard reports and outputs `channel`, `tag`, and `version`. Every check must pass for a beta, and HEAD must contain commits since the latest version tag. An unchanged HEAD or any failed, skipped, or cancelled check selects a nightly.
+4. **Build** compiles and packages each platform with that decided version. The version is embedded before signing. Package reports record the source commit, channel, tag, version, build result, checks, and package result.
+5. **Publish** independently reads all shard reports again and compares the decision with every package report. Any identity or result mismatch refuses publication. All five builds and packages must succeed. A beta becomes a full GitHub release marked latest; a nightly remains a prerelease with `latest=false`. An existing published immutable release keeps its assets and is not announced again; a rerun still repairs its channel feeds.
+
+Platforms and installers are:
+
+- Linux x64 and native Linux arm64 (`ubuntu-24.04-arm`): AppImage, Debian package, and Flatpak bundle.
 - Windows x64: NSIS installer.
-- macOS Apple Silicon: DMG and ZIP.
-- macOS Intel: DMG and ZIP.
+- macOS Apple Silicon and Intel: signed, notarized DMG and ZIP.
 
-Publication waits for all platform packages. Nightly check failures are recorded before packaging continues. Complete packages with failing checks publish as `nightly-broken` for debugging, with warnings, platform results, and links to logs. Compilation or packaging failures prevent release publication. The prerelease contains installers, build metadata, and `SHA256SUMS.txt`; temporary Actions artifacts expire after one day. Failed uploads leave a draft for retry. Runs are serialized and the source commit is fixed before builds start.
+Nightlies use tag `nightly-<yyyy-mm-dd>-<sha7>-<run>-<attempt>` and version `<next-beta-base>-nightly.<yyyymmdd>.g<sha7>.<run>.<attempt>`. For example, after `v0.2.0`, a nightly can be `0.2.1-nightly.20261025.gabcdef0.12.2`. Check failures do not change this format. Unchanged revisions still receive a new nightly. Failed checks remain visible as a failed workflow after publication and notification; compilation or packaging failures prevent publication entirely.
 
-Only an all-platform `nightly-green` result can update the rolling `nightly-green` tag and its `recommended-nightly.json` asset. The rolling release also includes the verified installers and their `SHA256SUMS.txt`. Superseded rolling installers are removed only after the complete new installer set and checksums upload successfully; dated releases keep their original assets. Dated release tags never move. Promotion refuses to move the pointer backward to an older commit. Consumers must follow the recommendation instead of treating the newest prerelease as safe.
+Each immutable release contains installers, `SHA256SUMS.txt`, `release.json`, `feed.json`, and the `latest*.yml` metadata used by electron-updater. Notes contain per-platform check and package results, the logs link, downloads, checksums, and commits since the previous reachable dated or versioned release. Rolling channel tags are excluded from changelog baselines. The first release includes all history when no earlier release exists. Failed uploads leave a draft for retry; temporary Actions artifacts expire after one day.
 
-Notes start with the short source SHA, status, platform results, a backup warning, and direct installer links. Every download, including ZIP files, gets a linked SHA256 entry. Changes follow the downloads.
+## Update feeds and the bridge
 
-Packages use `com.ryanaque.hibi`, the icons in `electron-builder.yml`, and the regular app's data profile. Save and back up documents before installing. Windows packages are unsigned. macOS packages use Developer ID signing and notarization so installed apps can replace themselves from signed ZIP updates.
+The rolling `beta` and `nightly` releases are prereleases with `latest=false`. They carry `feed.json` at `releases/download/beta/feed.json` and `releases/download/nightly/feed.json`. A beta advances both feeds; a nightly advances only nightly. Beta promotion checks that the old rolling commit is an ancestor of the new commit and preserves the previous feed otherwise. Installers remain on immutable releases; rolling releases do not mirror them.
 
-The workflow uses the repository token; only publication has `contents: write`. Release publication requires no extra secret. Set the Actions secret `NIGHTLIES_WEBHOOK_URL` to enable Discord announcements. Test changelogs and announcements with `node --test tests/nightly.test.mjs` and check workflow syntax with `actionlint`.
+The feed contains `tag`, `version`, and `assets`. Each platform asset has `name`, `sha512`, and `size`; macOS assets also include a `zip` object with those fields. Windows NSIS, Linux AppImage, and macOS ZIP updates use electron-updater. Debian and Flatpak packages remain manual downloads. Linux architecture aliases are normalized to `linux-x64` and `linux-arm64`, and conflicting names stop publication. The immutable release keeps `latest.yml`, `latest-linux.yml`, `latest-linux-arm64.yml`, and `latest-mac.yml` with hashes matching the feed.
 
-Release builds use download caches only. Both nightly and stable channels always compile and run the full suite; a manual `clean` run bypasses download caches too. Stable `v<version>` tags must match `package.json` and require every check to pass before packaging and publication. `npm run dist` also runs the complete checks before creating local distribution packages. Regular pull request and push checks may still use incremental selection.
+The main process fetches the chosen channel's `feed.json`, validates the immutable tag/version pair and installer names, and pins downloads to that release. Beta accepts only a `v<semver>` tag with the matching plain version. Nightly also accepts dated nightly entries. Update ordering compares the version core first, then puts a plain release above its prereleases, then orders nightlies by date and numeric run/attempt rather than commit hash. Existing preferences migrate once on read: `nightly-green` becomes `beta`, `nightly` stays `nightly`, and missing or invalid values become `beta`. Download verification, restart confirmation, and unsaved-document handling remain in the main process.
+
+The rollout requires two merged changes in order. First ship the updater bridge with package floor `0.2.0` while retaining the old workflow and scripts. Run that old workflow once to publish an all-platform passing `0.2.0-nightly.<date>.g<sha7>.<run>.<attempt>` build through the existing feeds. That build can be accepted by old installed updaters and contains the new updater. After the workflow change merges, the beta feed can deliver `v0.2.0` to bridged apps. The legacy `nightly-green/update.json`, `nightly-green/recommended-nightly.json`, and `nightly/update.json` remain frozen at the bridge. The new workflow never writes them.
+
+## Signing, notifications, and validation
+
+Packages use `com.ryanaque.hibi`, the icons in `electron-builder.yml`, and the regular app's data profile. Windows packages are unsigned. macOS packages use Developer ID signing and notarization; signed ZIP metadata supports in-app replacement. `npm run dist` runs the complete checks before creating local installers. Release builds use download caches only; cached builds and previous test results never certify a release.
+
+Only the publish job has `contents: write`; publication needs no extra token. Set `NIGHTLIES_WEBHOOK_URL` to enable Discord announcements after successful immutable publication and feed updates. Both mention role `1550309423166267432` and use the butterfly embed. Betas use color `9568176` and state that every platform passed. Nightlies use neutral color `9807270` and remind readers to back up because they are bleeding edge and may be broken. Both include the source commit and direct installer links. The request uses an explicit mention allowlist, `wait=true`, and a 30-second timeout. An unset secret skips delivery. Notification failures do not undo publication.
+
+Run `node --test --test-concurrency=1 tests/nightly.test.mjs tests/update-feed.test.mjs tests/updates.test.mjs` after building the app. The updater file includes the focused Electron settings test; run only one Electron suite at a time. Check workflow syntax with `actionlint .github/workflows/nightly.yml`.
 
 ## Website addon catalog
 
