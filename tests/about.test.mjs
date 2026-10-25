@@ -17,6 +17,9 @@ import { collectLicenses } from '../scripts/licenses.ts'
 import { electron } from './electron.mjs'
 import { clickMenu } from './keyboard.mjs'
 
+const { version: appVersion } = JSON.parse(
+  await readFile('package.json', 'utf8'),
+)
 const { rollup } = createRequire(import.meta.resolve('vite'))('rollup')
 
 test('main builds keep fresh licenses, bundled production workers and dev externals', {
@@ -337,7 +340,7 @@ test('licenses open on their own settings page and dialogs stay readable', {
     'true',
   )
   const panel = page.getByRole('tabpanel', { name: /^about$/i, exact: true })
-  await panel.getByText(/^version 0\.1\.0$/i, { exact: true }).waitFor()
+  await panel.getByText(`Version ${appVersion}`, { exact: true }).waitFor()
   assert.equal(await panel.locator('.license-row').count(), 0)
   await app.evaluate(({ shell }) => {
     shell.openExternal = async (url) => {

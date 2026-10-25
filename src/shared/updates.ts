@@ -9,7 +9,7 @@ export const UPDATE_CHANNELS = {
   changed: 'updates:changed',
 } as const
 
-export type UpdateChannel = 'nightly-green' | 'nightly'
+export type UpdateChannel = 'beta' | 'nightly'
 export type UpdateCheckFrequency = 1 | 6 | 12 | 24
 export type UpdateState = {
   channel: UpdateChannel
@@ -24,7 +24,6 @@ export type UpdateState = {
     | 'error'
   supported: boolean
   version?: string | undefined
-  broken?: boolean | undefined
   progress?: number | undefined
   message: string
 }
@@ -32,14 +31,13 @@ type UpdateAsset = { name: string; sha512: string; size: number }
 export type UpdateRelease = {
   tag: string
   version: string
-  status: 'nightly-green' | 'nightly-broken'
   assets: Record<string, UpdateAsset & { zip?: UpdateAsset }>
 }
 export const UPDATE_URL =
   'https://github.com/schmayterling/hibi/releases/download/'
 
 export function updateChannel(input: unknown): UpdateChannel {
-  if (input !== 'nightly-green' && input !== 'nightly')
+  if (input !== 'beta' && input !== 'nightly')
     throw new Error('Choose a valid update channel.')
   return input
 }
@@ -50,25 +48,36 @@ export function updateCheckFrequency(input: unknown): UpdateCheckFrequency {
   return input
 }
 
+const versionCore = '(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)'
+const nightlyVersion = new RegExp(
+  `^(${versionCore})-nightly\\.(\\d{8})\\.g([a-f0-9]{7})\\.((?:0|[1-9]\\d*))\\.((?:0|[1-9]\\d*))$`,
+)
+
 export function updateRelease(
   input: unknown,
   channel: UpdateChannel,
 ): UpdateRelease {
   const release = input as UpdateRelease
+  const beta =
+    typeof release?.version === 'string' &&
+    new RegExp(`^${versionCore}$`).test(release.version) &&
+    release.tag === `v${release.version}`
+  const nightly =
+    typeof release?.version === 'string'
+      ? nightlyVersion.exec(release.version)
+      : null
+  const nightlyTag =
+    nightly &&
+    `nightly-${nightly[2]?.replace(/^(\d{4})(\d{2})(\d{2})$/, '$1-$2-$3')}-${nightly[3]}-${nightly[4]}-${nightly[5]}`
   if (
     !release ||
-    !/^nightly-(?:broken-)?\d{4}-\d{2}-\d{2}-[a-f0-9]{7}-\d+-\d+$/.test(
-      release.tag,
+    !(
+      beta ||
+      (channel === 'nightly' && nightly && release.tag === nightlyTag)
     ) ||
-    !/^\d+\.\d+\.\d+-nightly\.\d{8}\.g[a-f0-9]{7}\.\d+\.\d+$/.test(
-      release.version,
-    ) ||
-    !['nightly-green', 'nightly-broken'].includes(release.status) ||
-    release.tag.startsWith('nightly-broken-') !==
-      (release.status === 'nightly-broken') ||
-    (channel === 'nightly-green' && release.status !== 'nightly-green') ||
     !release.assets ||
-    typeof release.assets !== 'object'
+    typeof release.assets !== 'object' ||
+    Array.isArray(release.assets)
   )
     throw new Error('The update feed is invalid. Try again later.')
   for (const [platform, asset] of Object.entries(release.assets)) {
@@ -98,14 +107,19 @@ export function updateRelease(
   return release
 }
 
-// Nightly run numbers order builds; commit hashes do not.
+// Semver core and release precedence, then nightly date/run/attempt (never hashes).
 export function newerUpdate(next: string, current: string): boolean {
+  const pattern = new RegExp(
+    `^(${versionCore})(?:-nightly\\.(\\d{8})\\.g?[a-f0-9]{7}(?:\\.((?:0|[1-9]\\d*))\\.((?:0|[1-9]\\d*)))?)?$`,
+  )
   const parts = (version: string) => {
-    const match =
-      /^(\d+)\.(\d+)\.(\d+)(?:-nightly\.(\d{8})\.g?[a-f0-9]{7}(?:\.(\d+)\.(\d+))?)?$/.exec(
-        version,
-      )
-    return match?.slice(1).map((part) => Number(part ?? 0))
+    const match = pattern.exec(version)
+    if (!match?.[1]) return undefined
+    return [
+      ...match[1].split('.').map(BigInt),
+      match[2] ? 0n : 1n,
+      ...match.slice(2).map((part) => BigInt(part ?? 0)),
+    ]
   }
   const candidate = parts(next),
     installed = parts(current)

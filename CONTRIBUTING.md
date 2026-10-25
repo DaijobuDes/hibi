@@ -4,7 +4,7 @@ contributions are greatly appreciated! hibi is a free, open-source writing app b
 
 ## before you start
 
-**hibi is alpha software.** bugs, crashes, rough performance, and incomplete addons are expected. please report them so we can track and fix them. if you need something stable, now probably isn't the right time.
+**hibi is beta software.** bugs, crashes, rough performance, and incomplete addons are expected. please report them so we can track and fix them. if you need something stable, now probably isn't the right time.
 
 the current focus is getting the foundations right: **speed, modularity, and proper addon and api support come first.** addons are extremely experimental. you can build them and submit prs now, but expect things to break as the app and its apis evolve. breaking-change alerts for addon developers are planned; don't assume every update is compatible.
 

@@ -53,13 +53,17 @@ export function UpdateSettings() {
         <SettingRow
           id="update-channel"
           label="Update channel"
-          description="Select a release channel to subscribe to."
+          description={
+            state?.channel === 'nightly'
+              ? 'Nightly builds are bleeding edge. Back up your notes before installing.'
+              : 'Select a release channel to subscribe to.'
+          }
         >
           <Select
             id="update-channel"
             aria-describedby="update-channel-description"
             disabled={waiting}
-            value={state?.channel ?? 'nightly-green'}
+            value={state?.channel ?? 'beta'}
             onChange={(event) =>
               void run(() =>
                 window.hibi.setUpdateChannel(
@@ -68,8 +72,8 @@ export function UpdateSettings() {
               )
             }
           >
-            <option value="nightly-green">Recommended nightly</option>
-            <option value="nightly">Nightly</option>
+            <option value="beta">Beta (stable)</option>
+            <option value="nightly">Nightly (bleeding edge)</option>
           </Select>
         </SettingRow>
         <SettingRow
@@ -136,8 +140,6 @@ export function UpdateSettings() {
               role={error || state?.status === 'error' ? 'alert' : 'status'}
             >
               {error || state?.message || 'Loading update settings…'}
-              {state?.broken &&
-                ' This nightly failed required checks and may be broken.'}
             </span>
           }
         >

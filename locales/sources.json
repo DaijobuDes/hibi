@@ -488,6 +488,9 @@
   "e13c426c14c5": [
     "src/renderer/src/BacklinksSidebar.tsx"
   ],
+  "adbadd2131b2": [
+    "src/renderer/src/UpdateSettings.tsx"
+  ],
   "b4276963bf99": [
     "src/addons/block-drag/index.ts"
   ],
@@ -3666,7 +3669,10 @@
     "src/main/index.ts",
     "src/shared/hotkeys.ts"
   ],
-  "ab6b5a4d586b": [
+  "2d51b02e58b4": [
+    "src/renderer/src/UpdateSettings.tsx"
+  ],
+  "1c1ba4d73879": [
     "src/renderer/src/UpdateSettings.tsx"
   ],
   "fcfa3087d422": [
@@ -4453,9 +4459,6 @@
   ],
   "a28622bdb72b": [
     "src/renderer/src/StartupPlaceholder.tsx"
-  ],
-  "8bc443715025": [
-    "src/renderer/src/UpdateSettings.tsx"
   ],
   "80e8dd1a5a05": [
     "src/addons/diagnostics/Settings.tsx"
