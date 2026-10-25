@@ -153,9 +153,12 @@ test('editor command shares rich and source action menus with guarded selection'
       throw error
     })
   // Focus returning to the editor, as when its window regains focus, keeps the menu.
-  await rich.evaluate((element) =>
-    element.dispatchEvent(new FocusEvent('focus')),
-  )
+  await rich.evaluate((element) => {
+    element.dispatchEvent(new FocusEvent('focus'))
+    // Focus reconciliation can explicitly restore an unchanged selection.
+    const { view } = element.editor
+    view.dispatch(view.state.tr.setSelection(view.state.selection))
+  })
   await menu
     .getByRole('menuitem', { name: 'Inspect editor selection' })
     .click()

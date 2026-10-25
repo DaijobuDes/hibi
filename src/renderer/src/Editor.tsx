@@ -1614,9 +1614,12 @@ export function MarkdownEditor({
       () => capture(view.state.selection.head, true, true),
       (position) => capture(position, true, true),
     )
-    // Focus and plugin metadata transactions leave the menu's target intact.
+    // Focus can explicitly restore the same selection without changing its target.
+    let selection = view.state.selection
     const invalidate = ({ transaction }: { transaction: Transaction }) => {
-      if (transaction.docChanged || transaction.selectionSet)
+      const selectionChanged = !selection.eq(transaction.selection)
+      selection = transaction.selection
+      if (transaction.docChanged || selectionChanged)
         view.dom.dispatchEvent(new Event('hibi:editor-interactions-invalidate'))
     }
     editor.on('transaction', invalidate)

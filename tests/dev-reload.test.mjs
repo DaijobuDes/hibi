@@ -7,6 +7,7 @@ import {
   mkdtemp,
   readFile,
   realpath,
+  rename,
   rm,
   symlink,
   writeFile,
@@ -568,11 +569,17 @@ dialog.showMessageBox = (...args) => {
     }
     assert.fail(`${label}\n${output.slice(-2500)}`)
   }
+  // Publish complete source files; a truncate/write can build an empty preload.
+  async function writeSource(path, source) {
+    const temporary = `${path}~`
+    await writeFile(temporary, source)
+    await rename(temporary, path)
+  }
   async function replace(file, before, after) {
     const path = join(root, file)
     const original = await readFile(path, 'utf8')
     assert.ok(original.includes(before), `${file}: marker exists`)
-    await writeFile(path, original.replace(before, after))
+    await writeSource(path, original.replace(before, after))
   }
   await until(() => seenEndpoints.length > 0, 'dev app starts', 60000)
   phase('connect first devtools')
@@ -1178,12 +1185,12 @@ dialog.showMessageBox = (...args) => {
     await page.route(preloadUrl, holdFirstReload)
     await writeFile(holdPreloadBuild, '')
     try {
-      await writeFile(
+      await writeSource(
         preload,
         `${preloadSource}\ncontextBridge.exposeInMainWorld('devWatchProbe', 'previous')\n`,
       )
       await until(() => !!heldNavigation, 'first preload reload starts')
-      await writeFile(
+      await writeSource(
         preload,
         `${preloadSource}\ncontextBridge.exposeInMainWorld('devWatchProbe', 'updated')\n`,
       )
