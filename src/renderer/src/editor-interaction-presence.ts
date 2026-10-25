@@ -2,6 +2,7 @@ import type { CommandExecutionContext } from '../../shared/foundation-contracts'
 import type { RegisteredCommand } from './addons'
 
 let providers = 0
+let present = false
 const listeners = new Set<() => void>()
 let commandMenu: {
   commands: readonly RegisteredCommand[]
@@ -12,6 +13,14 @@ export const hasEditorInteractionProviders = () =>
   providers > 0 || commandMenu.commands.length > 0
 
 export const editorCommandMenu = () => commandMenu
+
+// Editors reattach on every notice, which closes an open menu; the menu reads
+// commands and providers when it opens, so only presence changes notify.
+function publish() {
+  if (present === hasEditorInteractionProviders()) return
+  present = !present
+  for (const listener of listeners) listener()
+}
 
 export function setEditorCommandMenu(
   commands: readonly RegisteredCommand[],
@@ -30,7 +39,7 @@ export function setEditorCommandMenu(
       ),
     capture,
   }
-  for (const listener of listeners) listener()
+  publish()
 }
 
 export function onEditorInteractionProvidersChanged(listener: () => void) {
@@ -39,14 +48,13 @@ export function onEditorInteractionProvidersChanged(listener: () => void) {
 }
 
 export function countEditorInteractionProvider() {
-  const wasActive = providers > 0
   providers++
-  if (!wasActive) for (const listener of listeners) listener()
+  publish()
   let removed = false
   return () => {
     if (removed) return
     removed = true
     providers--
-    if (!providers) for (const listener of listeners) listener()
+    publish()
   }
 }
