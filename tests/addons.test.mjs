@@ -6,6 +6,10 @@ import test from 'node:test'
 import { electron } from './electron.mjs'
 import { clickMenu, pressShortcut } from './keyboard.mjs'
 
+const { version: appVersion } = JSON.parse(
+  await readFile('package.json', 'utf8'),
+)
+
 test('vim cursor stays hidden behind the startup screen', {
   timeout: 30000,
 }, async (t) => {
@@ -139,7 +143,7 @@ test('plugin pages, metadata, shared controls, and full source vim editing', {
     text: el.textContent,
   }))
   assert.ok(footer.bottom > footer.height - 80)
-  assert.match(footer.text, /Hibi 0\.1\.0/)
+  assert.ok(footer.text.includes(`Hibi ${appVersion}`))
   assert.ok(
     footer.text.includes(
       `Electron ${await app.evaluate(() => process.versions.electron)}`,

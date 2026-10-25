@@ -1,10 +1,14 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { crashAndReload, electron, showTestWindows } from './electron.mjs'
 import { clickMenu } from './keyboard.mjs'
+
+const { version: appVersion } = JSON.parse(
+  await readFile('package.json', 'utf8'),
+)
 
 test('desktop launch, isolation, offline reload, and recovery', {
   timeout: 60000,
@@ -392,7 +396,7 @@ test('desktop launch, isolation, offline reload, and recovery', {
         .waitFor()
       assert.equal(
         (await reopened.evaluate(() => window.hibi.getAppInfo())).version,
-        '0.1.0',
+        appVersion,
       )
     })
   }
@@ -408,7 +412,7 @@ test('desktop launch, isolation, offline reload, and recovery', {
     })
     assert.deepEqual(recovered, {
       editor: true,
-      version: '0.1.0',
+      version: appVersion,
     })
   })
 })
