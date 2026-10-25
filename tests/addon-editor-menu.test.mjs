@@ -188,16 +188,22 @@ test('editor command shares rich and source action menus with guarded selection'
     page,
     async () => (await window.hibi.getDocument()).markdown === 'changed',
   )
+  await rich.evaluate((element) =>
+    element.editor.commands.setTextSelection({ from: 1, to: 8 }),
+  )
+  await rich.press('Shift+F10')
+  await menu
+    .getByRole('menuitem', { name: 'Inspect editor selection' })
+    .waitFor()
+  // An addon that finishes starting while the menu is open leaves it open.
   await page.evaluate(() => window.releaseEditorMenuProbe())
   await page.getByText('The command target is no longer available.').waitFor()
   assert.equal(
     await page.evaluate(() => window.editorMenuProbeRuns?.length ?? 0),
     0,
   )
+  assert.equal(await menu.isVisible(), true)
 
-  await rich.evaluate((element) =>
-    element.editor.commands.setTextSelection({ from: 1, to: 8 }),
-  )
   await rich.press('Shift+F10')
   await menu
     .getByRole('menuitem', { name: 'Inspect editor selection' })
