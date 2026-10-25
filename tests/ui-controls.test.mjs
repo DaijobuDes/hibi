@@ -130,7 +130,14 @@ test('extension and core fields share themes, focus states, and narrow layouts',
       window.setMinimumSize(360, 500)
       window.setSize(360, 640)
     })
-    await page.waitForFunction(() => innerWidth === 360)
+    // Native bounds can change before React collapses the overlay sidebar.
+    await page.waitForFunction(
+      () =>
+        innerWidth === 360 &&
+        document.querySelector(
+          '.addon-sidebar[data-side="left"][data-overlay="true"][data-open="false"]',
+        ),
+    )
     await page
       .getByRole('button', { name: /toggle workspace sidebar/i })
       .click()
@@ -167,6 +174,13 @@ test('extension and core fields share themes, focus states, and narrow layouts',
     await dialog.waitFor({ state: 'hidden' })
     await app.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()[0].setSize(1000, 720),
+    )
+    await page.waitForFunction(
+      () =>
+        innerWidth === 1000 &&
+        document.querySelector(
+          '.addon-sidebar[data-side="left"][data-overlay="false"]',
+        ),
     )
   }
 })
