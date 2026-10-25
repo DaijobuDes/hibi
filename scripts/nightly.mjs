@@ -210,7 +210,7 @@ export function nightlyWebhook(release, repository, checksums) {
   const beta = release.channel === 'beta'
   const role = '1550309423166267432'
   return {
-    content: `${beta ? `<@&${role}> ` : ''}new ${release.channel} released: **${release.tag}**`,
+    content: `<@&${role}> new ${release.channel} released: **${release.tag}**`,
     allowed_mentions: { parse: [], roles: [role] },
     embeds: [
       {

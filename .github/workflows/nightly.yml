@@ -364,9 +364,12 @@ jobs:
             latest=true
           fi
           echo "published=false" >> "$GITHUB_OUTPUT"
+          echo "announce=false" >> "$GITHUB_OUTPUT"
           if gh release view "$TAG" >/dev/null 2>&1; then
             if [ "$(gh release view "$TAG" --json isDraft --jq .isDraft)" != true ]; then
+              # A rerun can still repair the channel feeds, but never announces twice.
               echo "::notice::Release $TAG already published; preserving its assets."
+              echo "published=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
             test "$(gh release view "$TAG" --json targetCommitish --jq .targetCommitish)" = "$SHA"
@@ -376,6 +379,7 @@ jobs:
           gh release upload "$TAG" installers/* release.json --clobber
           gh release edit "$TAG" --notes-file release-notes.md --draft=false --prerelease="$prerelease" --latest="$latest"
           echo "published=true" >> "$GITHUB_OUTPUT"
+          echo "announce=true" >> "$GITHUB_OUTPUT"
       - name: Update release channel feeds
         id: feeds
         if: steps.publish.outputs.published == 'true'
@@ -383,7 +387,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/update-feed.mjs publish
       - name: Announce release on Discord
-        if: steps.publish.outputs.published == 'true' && steps.feeds.outcome == 'success'
+        if: steps.publish.outputs.announce == 'true' && steps.feeds.outcome == 'success'
         env:
           NIGHTLIES_WEBHOOK_URL: ${{ secrets.NIGHTLIES_WEBHOOK_URL }}
         run: node scripts/nightly.mjs notify

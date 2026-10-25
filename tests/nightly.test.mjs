@@ -263,8 +263,7 @@ test('release notes and webhook announce both channels with check results, logs 
     const beta = release.channel === 'beta'
     assert.equal(
       payload.content,
-      (beta ? '<@&1550309423166267432> ' : '') +
-        'new ' +
+      '<@&1550309423166267432> new ' +
         release.channel +
         ' released: **' +
         release.tag +
@@ -506,6 +505,12 @@ test('workflow decides before signing, verifies before publishing and preserves 
   )
   assert.match(immutable.run, /published=false/)
   assert.match(immutable.run, /published=true/)
+  // A rerun repairs feeds for an existing release without announcing it again.
+  assert.match(
+    immutable.run,
+    /already published; preserving its assets\."\n\s+echo "published=true"/,
+  )
+  assert.match(immutable.run, /announce=true/)
   const feeds = publish.find((step) => step.id === 'feeds')
   assert.equal(feeds.if, "steps.publish.outputs.published == 'true'")
   assert.equal(feeds.run, 'node scripts/update-feed.mjs publish')
@@ -514,7 +519,7 @@ test('workflow decides before signing, verifies before publishing and preserves 
   )
   assert.equal(
     announcement.if,
-    "steps.publish.outputs.published == 'true' && steps.feeds.outcome == 'success'",
+    "steps.publish.outputs.announce == 'true' && steps.feeds.outcome == 'success'",
   )
   assert.equal(
     announcement.env.NIGHTLIES_WEBHOOK_URL,
