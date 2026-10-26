@@ -305,7 +305,7 @@ test('a 10,000-row table renders the rows in view and one row per edit', {
       (_, i) => `| row ${i} | **bold ${i}** | \`code ${i}\` |`,
     )
     const doc = `# Big table\n\nIntro.\n\n| a | b | c |\n| --- | :-: | --: |\n${rows.join('\n')}\n\nAfter.\n`
-    await preview.mount(doc, { width: 1000, height: 800 })
+    await preview.mount(doc, { width: 1000, height: 800 }, { editable: true })
     const view = preview.view()
     const rendered = () =>
       document.querySelectorAll('.hibi-lp-table tr[data-line]').length
@@ -343,14 +343,39 @@ test('a 10,000-row table renders the rows in view and one row per edit', {
     view.dispatch({ changes: { from: target.from + 6, insert: 'X' } })
     await preview.settle()
     observer.disconnect()
+    // Typing in a cell editor in the same row renders no rows or other cells.
+    const changed = []
+    const cells = new MutationObserver((records) => {
+      for (const record of records)
+        for (const node of record.addedNodes)
+          if (/^(TR|TD|TH)$/.test(node.nodeName)) changed.push(node.nodeName)
+    })
+    cells.observe(table.querySelector('tbody'), {
+      childList: true,
+      subtree: true,
+    })
+    view.focus()
+    table
+      .querySelector(`tr[data-line="${line}"] td`)
+      .dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }))
+    const typing = []
+    for (let key = 0; key < 5; key++) {
+      preview.reset()
+      document.execCommand('insertText', false, 'y')
+      await preview.settle()
+      typing.push({ ...preview.probe })
+    }
+    cells.disconnect()
     return {
       top,
       middle,
       shown: shown.map((row) => Number(row.dataset.line)),
       line,
       added,
-      text: table.querySelector(`tr[data-line="${line}"]`)?.innerText,
-      probe: { ...preview.probe },
+      text: view.state.doc.line(header + line).text,
+      probe: typing[0],
+      typing,
+      changed,
       height: box.height,
     }
   })
@@ -364,11 +389,14 @@ test('a 10,000-row table renders the rows in view and one row per edit', {
     JSON.stringify(result.shown),
   )
   assert.deepEqual(result.added, [String(result.line)])
-  assert.match(result.text, /^row X/)
+  assert.match(result.text, /^\| row X\d+yyyyy \|/)
+  assert.deepEqual(result.changed, [], 'no rows or cells render again')
   // The table's rows are opaque to the parser: an edit parses its opening
   // lines and scans a bounded window, not the 380 KB table.
-  assert.ok(result.probe.parsedUnits < 4096, JSON.stringify(result.probe))
-  assert.ok(result.probe.scannedUnits <= 16384, JSON.stringify(result.probe))
+  for (const probe of result.typing) {
+    assert.ok(probe.parsedUnits < 4096, JSON.stringify(probe))
+    assert.ok(probe.scannedUnits <= 16384, JSON.stringify(probe))
+  }
 })
 
 /** Mount `doc` in the editable harness. */
@@ -408,95 +436,361 @@ test('container markers stay out of the cells of tables in lists and quotes', {
   }
 })
 
-test('arrow keys move into the nearest row of an adjacent table and shift-click extends the selection', {
+/** The harness editor's source, selection and cell editor. */
+const state = () =>
+  harness.evaluate(() => {
+    const view = window.tables.view()
+    const { anchor, head } = view.state.selection.main
+    const editor = document.querySelector('.hibi-lp-cell-editor')
+    const cell = editor?.closest('td, th')
+    return {
+      doc: view.state.doc.toString(),
+      anchor,
+      head,
+      line: view.state.doc.lineAt(head).text,
+      editor: editor?.querySelector('.cm-content').textContent ?? null,
+      cell: cell
+        ? [cell.parentElement.dataset.line, cell.cellIndex].join(':')
+        : null,
+    }
+  })
+
+test('arrow keys enter the nearest cells of an adjacent table and shift-click extends the selection', {
   timeout: 30000,
 }, async () => {
   const doc = 'before\n\n| a | b |\n| --- | --- |\n| x | y |\n\nafter'
-  const caret = () =>
-    harness.evaluate(() => {
-      const view = window.tables.view()
-      const { anchor, head } = view.state.selection.main
-      return { anchor, head, line: view.state.doc.lineAt(head).text }
-    })
   await mount(doc)
   await harness.evaluate(() => {
     const view = window.tables.view()
     view.focus()
     view.dispatch({ selection: { anchor: 6 } })
   })
-  // The caret stops on the gap line, then moves into the header row.
+  // The caret stops on the gap line, then edits the header's first cell.
   await harness.keyboard.press('ArrowDown')
-  assert.equal((await caret()).line, '')
+  assert.equal((await state()).line, '')
   await harness.keyboard.press('ArrowDown')
-  assert.equal((await caret()).line, '| a | b |')
-  // The source shows while the caret is in it.
-  await harness.locator('.cm-line', { hasText: '| a | b |' }).waitFor()
+  assert.deepEqual([(await state()).cell, (await state()).editor], ['0:0', 'a'])
+  await harness.keyboard.press('Escape')
   await harness.evaluate(
     (at) => window.tables.view().dispatch({ selection: { anchor: at } }),
     doc.length,
   )
-  await harness.locator('.hibi-lp-table').waitFor()
   await harness.keyboard.press('ArrowUp')
-  assert.equal((await caret()).line, '')
   await harness.keyboard.press('ArrowUp')
-  assert.equal((await caret()).line, '| x | y |')
+  assert.equal((await state()).cell, '2:0')
+  await harness.keyboard.press('Escape')
   await harness.evaluate(() =>
     window.tables.view().dispatch({ selection: { anchor: 1 } }),
   )
   await harness.locator('.hibi-lp-table td', { hasText: 'y' }).click({
     modifiers: ['Shift'],
   })
-  const selection = await caret()
+  const selection = await state()
   assert.equal(selection.anchor, 1)
   assert.equal(selection.line, '| x | y |')
-  assert.ok(selection.head > doc.indexOf('| x'))
+  assert.equal(selection.editor, null)
 })
 
-test('arrow keys move into tables in quotes and lists at their row text', {
+test('arrow keys enter tables in quotes and lists', {
   timeout: 30000,
 }, async () => {
-  for (const [doc, header, last] of [
-    [
-      'before\n\n> | a | b |\n> | - | - |\n> | x | y |\n\nafter',
-      '> | a | b |',
-      '> | x | y |',
-    ],
-    [
-      'before\n\n- | a | b |\n  | - | - |\n  | x | y |\n\nafter',
-      '- | a | b |',
-      '  | x | y |',
-    ],
+  for (const doc of [
+    'before\n\n> | a | b |\n> | - | - |\n> | x | y |\n\nafter',
+    'before\n\n- | a | b |\n  | - | - |\n  | x | y |\n\nafter',
   ]) {
     await mount(doc)
-    const caret = () =>
-      harness.evaluate(() => {
-        const view = window.tables.view()
-        const { head } = view.state.selection.main
-        const line = view.state.doc.lineAt(head)
-        return { head, line: line.text, column: head - line.from }
-      })
     await harness.evaluate(() => {
       const view = window.tables.view()
       view.focus()
       view.dispatch({ selection: { anchor: 7 } })
     })
-    // From the gap line into the header's text, after the container marker.
     await harness.keyboard.press('ArrowDown')
-    const entered = await caret()
-    assert.deepEqual([entered.line, entered.column], [header, 2], doc)
-    await harness.locator('.cm-line', { hasText: header.slice(2) }).waitFor()
-    // The next press moves on through the source instead of staying put.
-    await harness.keyboard.press('ArrowDown')
-    assert.notEqual((await caret()).head, entered.head, doc)
+    assert.deepEqual(
+      [(await state()).cell, (await state()).editor],
+      ['0:0', 'a'],
+      doc,
+    )
+    await harness.keyboard.press('Escape')
     await harness.evaluate(
       (at) => window.tables.view().dispatch({ selection: { anchor: at } }),
       doc.length - 6,
     )
-    await harness.locator('.hibi-lp-table').waitFor()
     await harness.keyboard.press('ArrowUp')
-    const below = await caret()
-    assert.deepEqual([below.line, below.column], [last, 2], doc)
+    assert.equal((await state()).cell, '2:0', doc)
+    await harness.keyboard.press('Escape')
   }
+})
+
+test('a selection from outside into a table opens no cell editor', {
+  timeout: 30000,
+}, async () => {
+  // Text before the table's chunk, so an edit there moves the reused widget.
+  const filler = Array.from({ length: 2000 }, (_, i) => `paragraph ${i}`).join(
+    '\n\n',
+  )
+  const doc = `${filler}\n\n| a | b |\n| - | - |\n| x | y |\n\nafter`
+  await mount(doc)
+  await harness.evaluate(async () => {
+    const pane = document.querySelector('.rich-pane')
+    pane.scrollTop = pane.scrollHeight
+    for (let i = 0; i < 100 && !document.querySelector('.hibi-lp-table'); i++)
+      await window.tables.settle()
+  })
+  const errors = []
+  const listen = (error) => errors.push(error.message)
+  harness.on('pageerror', listen)
+  await harness.evaluate((doc) => {
+    const view = window.tables.view()
+    view.dispatch({ changes: { from: 0, insert: 'moved ' } })
+    view.focus()
+    view.dispatch({
+      selection: { anchor: 0, head: doc.indexOf('| x') + 'moved '.length + 2 },
+    })
+  }, doc)
+  await harness.evaluate(() => window.tables.settle())
+  harness.off('pageerror', listen)
+  const selection = await state()
+  assert.deepEqual(errors, [])
+  assert.equal(selection.editor, null)
+  assert.equal(selection.anchor, 0)
+})
+
+test('cell editors move with tab, enter and arrows and leave with escape', {
+  timeout: 30000,
+}, async () => {
+  const doc = 'before\n\n| a | b |\n| --- | --- |\n| c | d |\n| e |\n\nafter'
+  await mount(doc)
+  await harness.locator('.hibi-lp-table th', { hasText: 'a' }).click()
+  assert.equal((await state()).cell, '0:0')
+  const moves = []
+  for (const key of [
+    'Tab',
+    'Tab',
+    'Shift+Tab',
+    'Enter',
+    'ArrowRight',
+    'ArrowRight',
+    'ArrowRight',
+    'ArrowLeft',
+    'ArrowUp',
+    'ArrowDown',
+    'ArrowDown',
+  ]) {
+    await harness.keyboard.press(key)
+    moves.push((await state()).cell)
+  }
+  // The row `| e |` has no second cell: it is edited empty and created on input.
+  assert.deepEqual(moves, [
+    '0:1',
+    '2:0',
+    '0:1',
+    '2:1',
+    '3:0',
+    '3:0',
+    '3:1',
+    '3:0',
+    '2:0',
+    '3:0',
+    null,
+  ])
+  // Leaving below puts the caret on the line after the table, Escape too.
+  assert.equal((await state()).head, doc.indexOf('\n\nafter') + 1)
+  await harness.locator('.hibi-lp-table th', { hasText: 'a' }).click()
+  await harness.keyboard.press('Escape')
+  const left = await state()
+  assert.equal(left.editor, null)
+  assert.equal(left.head, doc.indexOf('\n\nafter') + 1)
+  // Tab in the last cell adds a row, as in the rich editor.
+  await harness.locator('.hibi-lp-table td', { hasText: 'e' }).click()
+  await harness.keyboard.press('Tab')
+  await harness.keyboard.press('Tab')
+  assert.equal((await state()).cell, '4:0')
+  assert.match((await state()).doc, /\| e \|\n\| {2}\| {2}\|\n\nafter/)
+})
+
+const undoKey = process.platform === 'darwin' ? 'Meta+z' : 'Control+z'
+
+test('a cell editor follows its row when rows are added or deleted around it', {
+  timeout: 30000,
+}, async () => {
+  const doc = '| h |\n| - |\n| alpha |\n| beta |\n| gamma |\n\nafter'
+  await mount(doc)
+  await harness.locator('.hibi-lp-table td', { hasText: 'gamma' }).click()
+  await harness.keyboard.press('End')
+  // Another edit adds a row above the edited one: typing stays in gamma.
+  await harness.evaluate(
+    (at) =>
+      window.tables
+        .view()
+        .dispatch({ changes: { from: at, insert: '| NEW |\n' } }),
+    doc.indexOf('| gamma'),
+  )
+  await harness.keyboard.type('X')
+  let now = await state()
+  assert.match(now.doc, /\| beta \|\n\| NEW \|\n\| gammaX \|\n/)
+  assert.deepEqual([now.cell, now.editor], ['5:0', 'gammaX'])
+  // Deleting the edited row moves the editor to the row now in its place.
+  const from = now.doc.indexOf('\n| gammaX |')
+  await harness.evaluate(
+    ({ from, to }) => window.tables.view().dispatch({ changes: { from, to } }),
+    { from, to: from + '\n| gammaX |'.length },
+  )
+  await harness.evaluate(() => window.tables.settle())
+  await harness.keyboard.type('Y')
+  now = await state()
+  assert.match(now.doc, /\| beta \|\n\| NEWY \|\n\nafter$/)
+  assert.deepEqual([now.cell, now.editor], ['4:0', 'NEWY'])
+})
+
+test('cell editors take no input while the formatted view takes none', {
+  timeout: 30000,
+}, async () => {
+  const doc = 'before\n\n| a | b |\n| - | - |\n| c | d |\n\nafter'
+  await mount(doc)
+  await harness.locator('.hibi-lp-table td', { hasText: 'c' }).click()
+  await harness.keyboard.press('End')
+  await harness.evaluate(() => window.tables.setEditable(false))
+  await harness.keyboard.type('Z')
+  await harness.keyboard.press('Shift+Enter')
+  assert.equal((await state()).doc, doc)
+  await harness.evaluate(() => window.tables.setEditable(true))
+  await harness.keyboard.type('W')
+  assert.match((await state()).doc, /^\| cW \| d \|$/m)
+  // Keys from above enter no cell of a read-only table.
+  await harness.keyboard.press('Escape')
+  await harness.evaluate(() => {
+    const view = window.tables.view()
+    window.tables.setEditable(false)
+    view.dispatch({ selection: { anchor: 6 } })
+    view.focus()
+  })
+  await harness.keyboard.press('ArrowDown')
+  await harness.keyboard.press('ArrowDown')
+  assert.equal((await state()).editor, null)
+  await harness.evaluate(() => window.tables.setEditable(true))
+})
+
+test('navigation out of a read-only table writes nothing', {
+  timeout: 30000,
+}, async () => {
+  const doc = '| a | b |\n| - | - |\n| x | y |'
+  await mount(doc)
+  // Tab in the last cell would add a row; escape at the end a paragraph.
+  for (const [cell, key] of [
+    ['y', 'Tab'],
+    ['x', 'Escape'],
+    ['x', process.platform === 'darwin' ? 'Meta+Enter' : 'Control+Enter'],
+  ]) {
+    await harness.evaluate(() => window.tables.setEditable(true))
+    await harness.locator('.hibi-lp-table td', { hasText: cell }).click()
+    await harness.keyboard.press('End')
+    await harness.evaluate(() => window.tables.setEditable(false))
+    await harness.keyboard.press(key)
+    const now = await state()
+    assert.equal(now.doc, doc, key)
+    assert.equal(now.editor, null, key)
+  }
+  // Nor do the toolbar's table actions.
+  assert.equal(
+    await harness.evaluate(() => {
+      const view = window.tables.view()
+      view.dispatch({ selection: { anchor: 3 } })
+      return window.tables.runTableAction('row-after')
+    }),
+    false,
+  )
+  assert.equal((await state()).doc, doc)
+  await harness.evaluate(() => window.tables.setEditable(true))
+})
+
+test('undo moves the cell editor to the cell whose edit it undoes', {
+  timeout: 30000,
+}, async () => {
+  const doc = '| alpha | beta |\n| - | - |\n| x | y |\n\nafter'
+  await mount(doc)
+  await harness.locator('.hibi-lp-table th', { hasText: 'alpha' }).click()
+  await harness.keyboard.press('End')
+  await harness.keyboard.type('1')
+  await harness.keyboard.press('Tab')
+  await harness.keyboard.press('End')
+  await harness.keyboard.type('2')
+  await harness.keyboard.press(undoKey)
+  assert.deepEqual(
+    [(await state()).cell, (await state()).editor],
+    ['0:1', 'beta'],
+  )
+  await harness.keyboard.press(undoKey)
+  const now = await state()
+  assert.equal(now.doc, doc)
+  assert.deepEqual([now.cell, now.editor], ['0:0', 'alpha'])
+  assert.equal(now.head, '| alpha'.length)
+})
+
+test('tab extends a table of only a header, and leaving a table at the end adds a paragraph', {
+  timeout: 30000,
+}, async () => {
+  await mount('before\n\n| a | b |\n| - | - |')
+  await harness.locator('.hibi-lp-table th', { hasText: 'b' }).click()
+  await harness.keyboard.press('Tab')
+  assert.equal((await state()).cell, '2:0')
+  await harness.keyboard.type('c')
+  assert.equal((await state()).doc, 'before\n\n| a | b |\n| - | - |\n| c |  |')
+  await harness.keyboard.press(
+    process.platform === 'darwin' ? 'Meta+Enter' : 'Control+Enter',
+  )
+  await harness.keyboard.type('AFTER')
+  const now = await state()
+  assert.equal(now.doc, 'before\n\n| a | b |\n| - | - |\n| c |  |\n\nAFTER')
+  assert.equal(now.editor, null)
+})
+
+test('typing in a cell writes escaped source into that cell only', {
+  timeout: 30000,
+}, async () => {
+  const doc = '| a | b |\n| - | - |\n| c |\n\nafter'
+  await mount(doc)
+  await harness.locator('.hibi-lp-table td', { hasText: 'c' }).click()
+  await harness.keyboard.press('End')
+  await harness.keyboard.type('|x\\')
+  // A pipe is escaped; a last backslash keeps a space before the delimiter.
+  assert.match((await state()).doc, /^\| c\\\|x\\ \|$/m)
+  // The row's missing cell gets its delimiters on the first input.
+  await harness.keyboard.press('Tab')
+  await harness.keyboard.type('new')
+  assert.match((await state()).doc, /^\| c\\\|x\\ \| new \|$/m)
+  await harness.evaluate(async () => {
+    const data = new DataTransfer()
+    data.setData('text/plain', 'one\ntwo')
+    document
+      .querySelector('.hibi-lp-cell-editor .cm-content')
+      .dispatchEvent(new ClipboardEvent('paste', { clipboardData: data }))
+  })
+  assert.match((await state()).doc, /\| newone<br>two \|$/m)
+  await harness.keyboard.press(
+    process.platform === 'darwin' ? 'Meta+z' : 'Control+z',
+  )
+  assert.match((await state()).doc, /\| new \|$/m)
+  // Inline formatting shortcuts format the cell's source.
+  await harness.keyboard.press('Home')
+  await harness.keyboard.press('Shift+End')
+  await harness.keyboard.press(
+    process.platform === 'darwin' ? 'Meta+b' : 'Control+b',
+  )
+  assert.match((await state()).doc, /\| \*\*new\*\* \|$/m)
+  await harness.keyboard.press(
+    process.platform === 'darwin' ? 'Meta+z' : 'Control+z',
+  )
+  // The table renders the source after leaving it.
+  await harness.keyboard.press('Escape')
+  const cells = await harness.evaluate(() =>
+    [...document.querySelectorAll('.hibi-lp-table tr')].map((row) =>
+      [...row.cells].map((cell) => cell.innerText.trim()),
+    ),
+  )
+  assert.deepEqual(cells, [
+    ['a', 'b'],
+    ['c|x\\', 'new'],
+  ])
 })
 
 test('cells show disabled syntax as written and follow syntax setting changes', {
@@ -538,16 +832,34 @@ test('cells show disabled syntax as written and follow syntax setting changes', 
   await toggle('markdown.strike', true)
 })
 
-test('clicking a cell reveals the table source with the caret in that cell', {
-  timeout: 90000,
-}, async () => {
+const markdown = async () =>
+  (await page.evaluate(() => window.hibi.getDocument())).markdown
+/** Wait until the app's document matches `check`, line by line. */
+const saved = async (check) => {
+  try {
+    await waitForAsync(
+      page,
+      async (check) =>
+        new RegExp(check, 'm').test((await window.hibi.getDocument()).markdown),
+      check.source,
+    )
+  } catch {
+    assert.match(await markdown(), check)
+  }
+}
+let formatted = false
+/** Open the note in the app's formatted view, once. */
+const openFormatted = async () => {
+  if (formatted) return
+  formatted = true
   // Quitting with the edited note answers the unsaved-changes prompt.
   await app.evaluate(({ dialog }) => {
     dialog.showMessageBox = async () => ({ response: 1 })
   })
-  await page.evaluate(() =>
-    localStorage.setItem('hibi:formatted-engine', 'codemirror'),
-  )
+  await page.evaluate(() => {
+    localStorage.setItem('hibi:formatted-engine', 'codemirror')
+    localStorage.setItem('hibi:toolbar', JSON.stringify({ autoHide: false }))
+  })
   await page.reload()
   await waitForDocumentEditor(app, page)
   await pressShortcut(
@@ -555,37 +867,155 @@ test('clicking a cell reveals the table source with the caret in that cell', {
     process.platform === 'darwin' ? 'Meta+o' : 'Control+o',
   )
   await page.locator('.rich-pane .hibi-lp-table').first().waitFor()
-  // Hidden windows have no focus; revealing source needs a focused editor.
+  // Hidden windows have no focus; editors need a focused page.
   const session = await page.context().newCDPSession(page)
   await session.send('Emulation.setFocusEmulationEnabled', { enabled: true })
+}
+
+test('in the app, cells edit their source in place, undo and run the toolbar table actions', {
+  timeout: 90000,
+}, async () => {
+  await openFormatted()
   await page
     .locator('.rich-pane .hibi-lp-table td', { hasText: 'two | pipe' })
     .click()
-  const line = page.locator('.rich-pane .cm-line', {
-    hasText: '| two \\| pipe |',
-  })
-  await line.waitFor()
-  // Other tables stay rendered.
-  await page
-    .locator('.rich-pane .hibi-lp-table th', { hasText: 'col 0' })
-    .waitFor()
+  await page.keyboard.press('End')
   await page.keyboard.type('!')
-  await waitForAsync(page, async () =>
-    (await window.hibi.getDocument()).markdown.includes('!'),
+  await saved(/^\| two \\\| pipe! \| \[link\]/)
+  const row = (await markdown())
+    .split('\n')
+    .find((text) => text.startsWith('| two'))
+  assert.deepEqual(
+    parseRow(row).cells.map(({ from, to }) => row.slice(from, to)),
+    ['two \\| pipe!', '[link](https://example.com/) ~~gone~~', '22'],
   )
-  // The typed text lands in the clicked cell's source.
-  const { markdown } = await page.evaluate(() => window.hibi.getDocument())
-  const row = markdown.split('\n').find((text) => text.startsWith('| two'))
-  const [first, ...rest] = parseRow(row).cells.map(({ from, to }) =>
-    row.slice(from, to),
+  // The page's key reaches the focused cell editor, which undoes through the document.
+  await page.keyboard.press(
+    process.platform === 'darwin' ? 'Meta+z' : 'Control+z',
   )
-  assert.equal(first.replace('!', ''), 'two \\| pipe', row)
-  assert.deepEqual(rest, ['[link](https://example.com/) ~~gone~~', '22'])
-  // Leaving the table renders it again with the edit.
+  await saved(/^\| two \\\| pipe \| \[link\]/)
+  // The toolbar's table actions edit the table around the cell; block
+  // actions, which would break the row, are off there.
+  const bar = page.getByRole('navigation', { name: /editor toolbar/i })
+  await page.waitForFunction(
+    () =>
+      document.querySelector('[data-toolbar-id="format.heading-1"]')
+        ?.disabled === true &&
+      !!document.querySelector('[data-toolbar-id="format.row-after"]'),
+  )
+  const run = async (id) => {
+    const action = bar.locator(`[data-toolbar-id="format.${id}"]`)
+    if (
+      !(await action.evaluate(
+        (element) =>
+          !element.closest('.toolbar-menu') ||
+          element.closest('.toolbar-menu').matches(':popover-open'),
+      ))
+    )
+      await bar
+        .getByRole('button', { name: /^more formatting actions$/i })
+        .click()
+    await action.click()
+  }
+  await run('row-after')
+  await saved(/^\| two \\\| pipe \|.*\n\| {2}\| {2}\| {2}\| {2}\|$/)
+  await run('column-after')
+  await saved(/^\| Name \| {2}\| \*\*Bold\*\* head \|/)
+  await run('column-delete')
+  await saved(/^\| Name \| \*\*Bold\*\* head \|/)
+  await run('row-delete')
+  assert.doesNotMatch(await markdown(), /^\| {2}\| {2}\| {2}\| {2}\|$/m)
+  await run('table-delete')
+  await waitForAsync(
+    page,
+    async () =>
+      !(await window.hibi.getDocument()).markdown.includes('| Name |'),
+  )
+  assert.match(
+    await markdown(),
+    /A paragraph before the table\.\n\n\| col 0 \|/,
+  )
+})
+
+test('in the app, a composition in a cell undoes as one step', {
+  timeout: 60000,
+}, async () => {
+  await openFormatted()
   await page
-    .locator('.rich-pane .cm-line', {
-      hasText: 'A paragraph before the table.',
-    })
+    .locator('.rich-pane .hibi-lp-table td')
+    .filter({ hasText: /^value 1$/ })
     .click()
-  await page.locator('.rich-pane .hibi-lp-table td', { hasText: '!' }).waitFor()
+  await page.keyboard.press('End')
+  const cdp = await page.context().newCDPSession(page)
+  // Converting moves the selection inside the composition between changes.
+  for (const [text, from, to] of [
+    ['に', 1, 1],
+    ['にほ', 2, 2],
+    ['日本', 0, 2],
+    ['日本', 2, 2],
+    ['日本語', 3, 3],
+  ])
+    await cdp.send('Input.imeSetComposition', {
+      text,
+      selectionStart: from,
+      selectionEnd: to,
+    })
+  await cdp.send('Input.insertText', { text: '日本語' })
+  await saved(/^\| value 0 \| value 1日本語 \| value 2 \|/)
+  await page.keyboard.press(undoKey)
+  await saved(/^\| value 0 \| value 1 \| value 2 \|/)
+})
+
+test('in the app, undo and redo in a cell do nothing while the view takes no input', {
+  timeout: 60000,
+}, async () => {
+  await openFormatted()
+  await page
+    .locator('.rich-pane .hibi-lp-table td')
+    .filter({ hasText: /^value 2$/ })
+    .click()
+  await page.keyboard.press('End')
+  await page.keyboard.type('X')
+  await saved(/\| value 2X \| value 3 \|/)
+  const before = await markdown()
+  // Flip the editor's own read-only and editable switch, as while its
+  // input is not ready.
+  const readOnly = await page.evaluate(() => {
+    const view = document.querySelector('.rich-pane .cm-content').cmTile.root
+      .view
+    const [compartment, access] = [...view.state.config.compartments].find(
+      ([, value]) =>
+        Array.isArray(value) &&
+        value.length === 2 &&
+        value.every((part) => part.facet && typeof part.value === 'boolean'),
+    )
+    window.restoreInput = () =>
+      view.dispatch({ effects: compartment.reconfigure(access) })
+    view.dispatch({
+      effects: compartment.reconfigure(
+        access.map((part) => part.facet.of(!part.value)),
+      ),
+    })
+    return view.state.readOnly
+  })
+  assert.equal(readOnly, true)
+  const settled = () =>
+    page.evaluate(async () => {
+      for (let frame = 0; frame < 3; frame++)
+        await new Promise(requestAnimationFrame)
+      return (await window.hibi.getDocument()).markdown
+    })
+  const results = []
+  for (const key of [
+    undoKey,
+    process.platform === 'darwin' ? 'Meta+Shift+z' : 'Control+y',
+  ]) {
+    await page.keyboard.press(key)
+    results.push(await settled())
+  }
+  await page.evaluate(() => window.restoreInput())
+  assert.deepEqual(results, [before, before])
+  // Input again: undo reaches the document's history.
+  await page.keyboard.press(undoKey)
+  await saved(/\| value 2 \| value 3 \|/)
 })

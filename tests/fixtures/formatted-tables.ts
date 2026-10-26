@@ -1,5 +1,5 @@
-import { defaultKeymap, history } from '@codemirror/commands'
-import { EditorState } from '@codemirror/state'
+import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
+import { Compartment, EditorState } from '@codemirror/state'
 import { EditorView, keymap } from '@codemirror/view'
 import '../../src/renderer/src/styles.css'
 import type { ChunkedMarkdownProbe } from '../../src/renderer/src/chunked-markdown'
@@ -7,6 +7,7 @@ import { showMarkdownMarkers } from '../../src/renderer/src/formatted-contributi
 import { formattedSyntax } from '../../src/renderer/src/formatted-syntax'
 import { livePreview } from '../../src/renderer/src/live-preview'
 import { markdownSyntax } from '../../src/renderer/src/markdown-syntax'
+import { tableActions } from '../../src/renderer/src/source-formatting'
 
 /** Table harness: the app's pane layout around a formatted view that can be read-only or editable. */
 const probe: ChunkedMarkdownProbe = {
@@ -17,6 +18,11 @@ const probe: ChunkedMarkdownProbe = {
   builtGroups: 0,
 }
 let view: EditorView | null = null
+const editable = new Compartment()
+const access = (on: boolean) => [
+  EditorState.readOnly.of(!on),
+  EditorView.editable.of(on),
+]
 
 // The GitHub flavor's strikethrough setting, which the Markdown addon registers in the app.
 markdownSyntax.register('markdown', {
@@ -62,8 +68,9 @@ Object.assign(window, {
           extensions: [
             livePreview(formattedSyntax({ probe })),
             options.editable
-              ? [history(), keymap.of(defaultKeymap)]
-              : [EditorState.readOnly.of(true), EditorView.editable.of(false)],
+              ? [history(), keymap.of([...defaultKeymap, ...historyKeymap])]
+              : [],
+            editable.of(access(!!options.editable)),
             showMarkdownMarkers.of(true),
           ],
         }),
@@ -73,6 +80,19 @@ Object.assign(window, {
       await settle()
     },
     view: () => view,
+    /** Run a toolbar table action at the selection, as the toolbar does. */
+    runTableAction(id: string) {
+      const current = view
+      return (
+        !!current &&
+        current.state
+          .facet(tableActions)
+          .some((actions) => actions.run(current, id))
+      )
+    },
+    /** Make the mounted editor read-only and not editable, or editable again. */
+    setEditable: (on: boolean) =>
+      view?.dispatch({ effects: editable.reconfigure(access(on)) }),
     setEnabled: (id: string, enabled: boolean) =>
       markdownSyntax.setEnabled(id, enabled),
     reset() {
