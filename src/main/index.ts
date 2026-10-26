@@ -6,6 +6,7 @@ import type { IpcMainInvokeEvent, MenuItemConstructorOptions } from 'electron'
 import {
   app,
   BrowserWindow,
+  clipboard,
   dialog,
   globalShortcut,
   ipcMain,
@@ -34,6 +35,7 @@ import { ADDON_TRUST_CHANNELS } from '../shared/addon-trust'
 import { ADDON_WINDOW_CHANNELS } from '../shared/addon-windows'
 import { ANALYSIS_CHANNELS } from '../shared/analysis'
 import { BACKGROUND_CHANNELS, QUICK_NOTE_COMMAND } from '../shared/background'
+import { CLIPBOARD_CHANNELS, MAX_CLIPBOARD_TEXT } from '../shared/clipboard'
 import { APPEARANCE_CHANNEL } from '../shared/colorschemes'
 import { DEPENDENCY_CHANNELS } from '../shared/dependencies'
 import {
@@ -241,7 +243,7 @@ import {
   workspaceRelativePath,
   workspaceRoot,
 } from './workspace'
-import { workspaceAction } from './workspace-actions'
+import { workspaceAction, workspaceClipboardPaths } from './workspace-actions'
 import {
   createWorkspaceBinary,
   createWorkspaceText,
@@ -1566,6 +1568,19 @@ if (!app.requestSingleInstanceLock()) {
         trustedWindow(event)
         return shell.openExternal(SPONSOR_URL)
       })
+      handle(CLIPBOARD_CHANNELS.writeText, (event, text: unknown) => {
+        trustedWindow(event)
+        if (typeof text !== 'string' || text.length > MAX_CLIPBOARD_TEXT)
+          throw new Error('Hibi could not copy this text.')
+        clipboard.writeText(text)
+      })
+      handle(
+        CLIPBOARD_CHANNELS.writeWorkspacePaths,
+        (event, paths: unknown, options: unknown) => {
+          trustedWindow(event)
+          clipboard.writeText(workspaceClipboardPaths(paths, options))
+        },
+      )
       if (import.meta.env.DEV)
         handle(
           'addons:development-manifest',

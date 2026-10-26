@@ -15,6 +15,9 @@ Object.assign(window, {
       document.body.dataset.copySaved = 'true'
       return { name: 'copy.md', markdown: 'keep this draft', dirty: false }
     },
+    writeClipboardText: async (text: string) => {
+      document.body.dataset.copiedError = text
+    },
   },
 })
 function Harness() {

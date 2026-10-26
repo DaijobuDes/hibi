@@ -7,6 +7,7 @@ import { ADDON_TRUST_CHANNELS } from '../shared/addon-trust'
 import { ADDON_WINDOW_CHANNELS } from '../shared/addon-windows'
 import { ANALYSIS_CHANNELS } from '../shared/analysis'
 import { BACKGROUND_CHANNELS } from '../shared/background'
+import { CLIPBOARD_CHANNELS } from '../shared/clipboard'
 import { APPEARANCE_CHANNEL } from '../shared/colorschemes'
 import { DEPENDENCY_CHANNELS } from '../shared/dependencies'
 import {
@@ -405,6 +406,14 @@ if (process.isMainFrame) {
     getLicenses: () => ipcRenderer.invoke(ABOUT_CHANNELS.licenses),
     getLicense: (id) => ipcRenderer.invoke(ABOUT_CHANNELS.license, id),
     openSponsor: () => ipcRenderer.invoke(ABOUT_CHANNELS.sponsor),
+    writeClipboardText: (text) =>
+      ipcRenderer.invoke(CLIPBOARD_CHANNELS.writeText, text),
+    copyWorkspacePaths: (paths, options) =>
+      ipcRenderer.invoke(
+        CLIPBOARD_CHANNELS.writeWorkspacePaths,
+        paths,
+        options,
+      ),
     setAppearance: (appearance) =>
       ipcRenderer.invoke(APPEARANCE_CHANNEL, appearance),
     getAddonStates: () => ipcRenderer.invoke(ADDON_CHANNELS.states),

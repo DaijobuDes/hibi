@@ -279,6 +279,16 @@ export type DesktopApi = {
   getLicenses: () => Promise<import('./about').LicenseInfo[]>
   getLicense: (id: string) => Promise<string>
   openSponsor: () => Promise<void>
+  /** Writes plain text to the system clipboard. */
+  writeClipboardText: (text: string) => Promise<void>
+  /** Copies workspace paths, one per line; absolute paths are resolved in main. */
+  copyWorkspacePaths: (
+    paths: string[],
+    options: {
+      absolute: boolean
+      target?: import('./foundation-contracts').WorkspaceTarget
+    },
+  ) => Promise<void>
   setAppearance: (
     appearance: import('./colorschemes').NativeAppearance,
   ) => Promise<void>

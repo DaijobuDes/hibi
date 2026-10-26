@@ -746,6 +746,7 @@
     "src/main/addon-documentation.ts"
   ],
   "5f7d0390ae07": [
+    "src/main/workspace-actions.ts",
     "src/main/workspace-paths.ts"
   ],
   "1d7031f78966": [
@@ -1220,6 +1221,12 @@
   ],
   "e21f935f11d7": [
     "src/addons/mcp-server/Settings.tsx"
+  ],
+  "0146568214a4": [
+    "src/renderer/src/workspace-menu.ts"
+  ],
+  "3c8e7898fdae": [
+    "src/renderer/src/workspace-menu.ts"
   ],
   "ec7ee2826c84": [
     "src/renderer/src/RecoveryScreen.tsx"
@@ -2638,6 +2645,12 @@
   ],
   "a0b88bf9965c": [
     "src/addons/quick-note/CaptureWindow.tsx"
+  ],
+  "e43664c0638d": [
+    "src/main/workspace-actions.ts"
+  ],
+  "d443e8296852": [
+    "src/main/index.ts"
   ],
   "87c719d7d306": [
     "src/main/history.ts"
@@ -6012,6 +6025,9 @@
     "src/addons/documentation/native.ts",
     "src/addons/documentation/site-worker.ts",
     "src/main/workspace.ts"
+  ],
+  "bcfba9ceabd5": [
+    "src/main/workspace-actions.ts"
   ],
   "1f9371eb85f2": [
     "src/main/workspace.ts"

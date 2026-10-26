@@ -69,7 +69,7 @@ export function RecoveryScreen({
   }
   async function copyDetails() {
     try {
-      await navigator.clipboard.writeText(details)
+      await window.hibi.writeClipboardText(details)
       setCopied(true)
       setStatus('Error details copied.')
     } catch {
