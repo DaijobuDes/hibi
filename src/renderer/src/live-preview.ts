@@ -1,14 +1,19 @@
 import {
-  type EditorState,
+  EditorSelection,
+  EditorState,
   type Extension,
+  Facet,
+  Prec,
   type Range,
   StateField,
   type Text,
+  type TransactionSpec,
 } from '@codemirror/state'
 import {
   Decoration,
   type DecorationSet,
   EditorView,
+  keymap,
   ViewPlugin,
   type ViewUpdate,
   WidgetType,
@@ -22,6 +27,15 @@ import {
 import { highlightTree } from '@lezer/highlight'
 import { listWindow, parsedChunks } from './chunked-markdown'
 import { codeHighlighter } from './code-languages'
+import {
+  blockBreak,
+  deleteBackward,
+  deleteForward,
+  exitBlock,
+  gapInput,
+  indent,
+  lineBreak,
+} from './formatted-commands'
 import type { FormattedSyntax } from './formatted-syntax'
 import './live-preview.css'
 
@@ -33,6 +47,18 @@ import './live-preview.css'
  */
 
 const hide = Decoration.replace({})
+
+/** Show the Markdown markers of the formatted text under the selection. */
+export const showMarkdownMarkers = Facet.define<boolean, boolean>({
+  combine: (values) => values.at(-1) ?? true,
+})
+
+/** Whether Tab indents formatted text; list items and code always take Tab. */
+export const formattedTabIndents = Facet.define<boolean, boolean>({
+  combine: (values) => values.at(-1) ?? true,
+})
+
+type Revealed = { from: number; to: number }
 
 class RuleWidget extends WidgetType {
   override eq() {
@@ -230,9 +256,16 @@ function ordinal(
 }
 
 /** Inline formatting, hidden markers and line styles for the visible ranges. */
-function inline(view: EditorView, tree: Tree): DecorationSet {
+function inline(
+  view: EditorView,
+  tree: Tree,
+  reveal: readonly Revealed[],
+): { decorations: DecorationSet; atomic: DecorationSet } {
   const { state } = view
   const doc = state.doc
+  const atomic: Range<Decoration>[] = []
+  const touched = (from: number, to: number) =>
+    reveal.some((range) => range.from <= to && range.to >= from)
   const decorations: Range<Decoration>[] = []
   const lines = new Map<number, LineInfo>()
   const line = (pos: number) => {
@@ -253,12 +286,21 @@ function inline(view: EditorView, tree: Tree): DecorationSet {
     }
     return info
   }
+  // Hidden syntax is atomic, so the caret steps over it and it never splits.
   const hideRange = (from: number, to: number) => {
-    if (to > from) decorations.push(hide.range(from, to))
+    if (to <= from) return
+    const range = hide.range(from, to)
+    decorations.push(range)
+    atomic.push(range)
   }
   const mark = (className: string, from: number, to: number) => {
     if (to > from)
       decorations.push(Decoration.mark({ class: className }).range(from, to))
+  }
+  /** Markers of formatting under the selection stay visible and editable. */
+  const syntax = (from: number, to: number, revealed: boolean) => {
+    if (revealed) mark('hibi-lp-marker', from, to)
+    else hideRange(from, to)
   }
 
   function link(node: SyntaxNode) {
@@ -276,10 +318,11 @@ function inline(view: EditorView, tree: Tree): DecorationSet {
       target !== '('
     )
       return false
-    hideRange(node.from, open.to)
+    const revealed = touched(node.from, node.to)
+    syntax(node.from, open.to, revealed)
     // A destination on later lines is hidden with its line breaks by the layout field.
     if (doc.lineAt(close.from).number === doc.lineAt(node.to).number)
-      hideRange(close.from, node.to)
+      syntax(close.from, node.to, revealed)
     mark('hibi-lp-link', open.to, close.from)
     return undefined
   }
@@ -371,24 +414,28 @@ function inline(view: EditorView, tree: Tree): DecorationSet {
           case 'HeaderMark': {
             const parent = ref.node.parent
             if (!parent?.name.startsWith('ATX')) return
+            const current = doc.lineAt(ref.from)
+            const revealed = touched(current.from, current.to)
             // The opening mark hides with its space, a closing mark with the space before it.
             if (ref.from === parent.from) {
               const after = doc.sliceString(
                 ref.to,
                 Math.min(parent.to, ref.to + 1),
               )
-              hideRange(
+              syntax(
                 ref.from,
                 ref.to + (after === ' ' || after === '\t' ? 1 : 0),
+                revealed,
               )
             } else {
               const before = doc.sliceString(
                 Math.max(parent.from, ref.from - 1),
                 ref.from,
               )
-              hideRange(
+              syntax(
                 ref.from - (before === ' ' || before === '\t' ? 1 : 0),
                 ref.to,
+                revealed,
               )
             }
             return
@@ -403,9 +450,15 @@ function inline(view: EditorView, tree: Tree): DecorationSet {
             mark('hibi-lp-strike', ref.from, ref.to)
             return
           case 'EmphasisMark':
-          case 'StrikethroughMark':
-            hideRange(ref.from, ref.to)
+          case 'StrikethroughMark': {
+            const parent = ref.node.parent
+            syntax(
+              ref.from,
+              ref.to,
+              !!parent && touched(parent.from, parent.to),
+            )
             return
+          }
           case 'InlineCode': {
             const open = ref.node.firstChild,
               close = ref.node.lastChild
@@ -415,8 +468,9 @@ function inline(view: EditorView, tree: Tree): DecorationSet {
               open.from === close.from
             )
               return false
-            hideRange(open.from, open.to)
-            hideRange(close.from, close.to)
+            const revealed = touched(ref.from, ref.to)
+            syntax(open.from, open.to, revealed)
+            syntax(close.from, close.to, revealed)
             mark('hibi-lp-code', open.to, close.from)
             return false
           }
@@ -425,8 +479,9 @@ function inline(view: EditorView, tree: Tree): DecorationSet {
           case 'Autolink': {
             const url = ref.node.getChild('URL')
             if (!url) return false
-            hideRange(ref.from, url.from)
-            hideRange(url.to, ref.to)
+            const revealed = touched(ref.from, ref.to)
+            syntax(ref.from, url.from, revealed)
+            syntax(url.to, ref.to, revealed)
             mark('hibi-lp-link', url.from, url.to)
             return false
           }
@@ -452,11 +507,13 @@ function inline(view: EditorView, tree: Tree): DecorationSet {
             return false
           case 'HorizontalRule': {
             line(doc.lineAt(ref.from).from).classes.push('hibi-lp-rule-line')
-            decorations.push(rule.range(ref.from, ref.to))
+            const range = rule.range(ref.from, ref.to)
+            decorations.push(range)
+            atomic.push(range)
             return false
           }
           case 'Escape':
-            hideRange(ref.from, ref.from + 1)
+            syntax(ref.from, ref.from + 1, touched(ref.from, ref.to))
             return
           case 'HardBreak':
             if (doc.sliceString(ref.from, ref.from + 1) === '\\')
@@ -521,7 +578,10 @@ function inline(view: EditorView, tree: Tree): DecorationSet {
       }).range(at),
     )
   }
-  return Decoration.set(decorations, true)
+  return {
+    decorations: Decoration.set(decorations, true),
+    atomic: Decoration.set(atomic, true),
+  }
 }
 
 /**
@@ -793,6 +853,12 @@ function layoutDecorations(state: EditorState, tree: Tree): DecorationSet {
   return Decoration.set(out, true)
 }
 
+/** Ranges whose markers show: the selection while the focused editor shows markers. */
+function revealed(view: EditorView): readonly Revealed[] {
+  if (!view.hasFocus || !view.state.facet(showMarkdownMarkers)) return []
+  return view.state.selection.ranges.map(({ from, to }) => ({ from, to }))
+}
+
 /**
  * Decorations mapped through an update, without the replacements it put a
  * line break into, which a view plugin may not draw.
@@ -803,6 +869,20 @@ function mapLines(set: DecorationSet, update: ViewUpdate) {
     filter: (from, to, value) =>
       !value.point || from === to || doc.lineAt(from).to >= to,
   })
+}
+
+/**
+ * A link destination on later lines shows while the selection touches it:
+ * input beside a range that hides line breaks would not map to the text.
+ */
+function revealDestinations(set: DecorationSet, state: EditorState) {
+  for (const { from, to } of state.selection.ranges)
+    set = set.update({
+      filterFrom: from,
+      filterTo: to,
+      filter: (a, b, value) => value !== hide || b < from || a > to,
+    })
+  return set
 }
 
 /** The formatted view's rendering over its chunked Markdown syntax tree. */
@@ -817,33 +897,180 @@ export function livePreview(syntax: FormattedSyntax): Extension {
         ? value.map(transaction.changes)
         : layoutDecorations(transaction.state, tree)
     },
-    provide: (field) => EditorView.decorations.from(field),
   })
   const preview = ViewPlugin.fromClass(
     class {
       decorations: DecorationSet
+      atomic: DecorationSet
+      reveal: readonly Revealed[]
       constructor(view: EditorView) {
-        this.decorations = inline(view, syntax.tree(view.state))
+        this.reveal = revealed(view)
+        ;({ decorations: this.decorations, atomic: this.atomic } = inline(
+          view,
+          syntax.tree(view.state),
+          this.reveal,
+        ))
       }
       update(update: ViewUpdate) {
         const tree = syntax.tree(update.state)
+        // Candidate text keeps its markers while an input method composes.
+        const reveal = update.view.composing
+          ? this.reveal.map((range) => ({
+              from: update.changes.mapPos(range.from, -1),
+              to: update.changes.mapPos(range.to, 1),
+            }))
+          : revealed(update.view)
+        const changedReveal =
+          reveal.length !== this.reveal.length ||
+          reveal.some(
+            (range, index) =>
+              range.from !== this.reveal[index]?.from ||
+              range.to !== this.reveal[index]?.to,
+          )
+        this.reveal = reveal
         // An edit's unfinished reparse keeps what was drawn, mapped through it.
-        if (syntax.settling(update.state))
+        if (syntax.settling(update.state)) {
           this.decorations = mapLines(this.decorations, update)
-        else if (
+          this.atomic = mapLines(this.atomic, update)
+        } else if (
           update.docChanged ||
           update.viewportChanged ||
+          changedReveal ||
           tree !== syntax.tree(update.startState)
         )
-          this.decorations = inline(update.view, tree)
+          ({ decorations: this.decorations, atomic: this.atomic } = inline(
+            update.view,
+            tree,
+            reveal,
+          ))
       }
     },
     { decorations: (plugin) => plugin.decorations },
   )
+  const hidden = (view: EditorView) =>
+    view.plugin(preview)?.atomic ?? Decoration.none
+  const run =
+    (command: (view: EditorView) => TransactionSpec | null) =>
+    (view: EditorView) => {
+      const spec = command(view)
+      if (!spec) return false
+      view.dispatch(
+        view.state.update(spec, { scrollIntoView: true, userEvent: 'input' }),
+      )
+      return true
+    }
+  const tab = (outdent: boolean) => (view: EditorView) => {
+    const tree = syntax.tree(view.state)
+    let structured = false
+    for (
+      let node: SyntaxNode | null = tree.resolveInner(
+        view.state.selection.main.head,
+        -1,
+      );
+      node;
+      node = node.parent
+    )
+      if (['ListItem', 'FencedCode', 'CodeBlock'].includes(node.name))
+        structured = true
+    if (!structured && !view.state.facet(formattedTabIndents)) return false
+    return run((current) =>
+      indent(current.state, tree, outdent, hidden(current)),
+    )(view)
+  }
   return [
     syntax.extension,
     layout,
+    EditorView.decorations.compute([layout, 'selection'], (state) =>
+      revealDestinations(state.field(layout), state),
+    ),
     preview,
+    EditorView.atomicRanges.of(hidden),
+    // Lines the layout hides whole, with the line breaks around them, so the
+    // caret never rests on one.
+    EditorView.atomicRanges.of((view) => {
+      const { doc } = view.state
+      const lines: Range<Decoration>[] = []
+      for (const { from, to } of view.visibleRanges)
+        view.state.field(layout).between(from, to, (a, b, value) => {
+          if (value === hiddenLine)
+            lines.push(
+              hide.range(Math.max(0, a - 1), Math.min(doc.length, b + 1)),
+            )
+        })
+      return Decoration.set(lines, true)
+    }),
+    // A caret those ranges leave on a hidden line at the start or end of the
+    // note moves to the visible line beside it.
+    EditorState.transactionFilter.of((transaction) => {
+      if (transaction.docChanged || !transaction.selection) return transaction
+      const { doc } = transaction.startState
+      const before = transaction.startState.selection.ranges
+      const lines = transaction.startState.field(layout)
+      let moved = false
+      const ranges = transaction.selection.ranges.map((range, index) => {
+        let head = range.head
+        lines.between(head, head, (from, to, value) => {
+          if (value !== hiddenLine || head < from || head > to) return
+          const back = head < (before[index]?.head ?? head)
+          head =
+            (back && from > 0) || to >= doc.length
+              ? Math.max(0, from - 1)
+              : to + 1
+        })
+        if (head === range.head) return range
+        moved = true
+        return range.empty
+          ? EditorSelection.cursor(head)
+          : EditorSelection.range(range.anchor, head)
+      })
+      return moved
+        ? [
+            transaction,
+            {
+              selection: EditorSelection.create(
+                ranges,
+                transaction.selection.mainIndex,
+              ),
+            },
+          ]
+        : transaction
+    }),
+    Prec.high(
+      keymap.of([
+        {
+          key: 'Enter',
+          run: run((view) => blockBreak(view.state, syntax.tree(view.state))),
+        },
+        {
+          key: 'Shift-Enter',
+          run: run((view) => lineBreak(view.state, syntax.tree(view.state))),
+        },
+        {
+          key: 'Backspace',
+          run: run((view) =>
+            deleteBackward(view.state, syntax.tree(view.state), hidden(view)),
+          ),
+        },
+        {
+          key: 'Delete',
+          run: run((view) =>
+            deleteForward(view.state, syntax.tree(view.state), hidden(view)),
+          ),
+        },
+        {
+          key: 'Mod-Enter',
+          run: run((view) => exitBlock(view.state, syntax.tree(view.state))),
+        },
+        { key: 'Tab', run: tab(false), shift: tab(true) },
+      ]),
+    ),
+    EditorView.inputHandler.of((view, from, to, text) => {
+      if (view.composing) return false
+      const spec = gapInput(view.state, syntax.tree(view.state), from, to, text)
+      if (!spec) return false
+      view.dispatch(view.state.update(spec, { scrollIntoView: true }))
+      return true
+    }),
     EditorView.lineWrapping,
     EditorView.editorAttributes.of({ class: 'hibi-formatted' }),
   ]

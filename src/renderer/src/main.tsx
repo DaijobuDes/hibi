@@ -97,6 +97,7 @@ import {
   loadFlavor,
   selectedFlavors,
 } from './flavors'
+import { codemirrorFormattedView } from './formatted-engine'
 import { LoadingScreen } from './LoadingScreen'
 import { installRendererDiagnostics } from './local-diagnostics'
 import { transformMarkdown } from './markdown-projection'
@@ -325,7 +326,9 @@ function App() {
     // Publish the demanded module as ordinary state: a first Suspense retry can
     // otherwise hold an already loaded editor behind React's reveal throttle.
     void Promise.all([
-      import('./Editor'),
+      codemirrorFormattedView
+        ? import('./FormattedEditor')
+        : import('./Editor'),
       import('./ActiveDocumentEditor'),
     ]).then(
       ([{ MarkdownEditor }, { ActiveDocumentEditor }]) => {

@@ -1788,7 +1788,8 @@
     "src/addons/_shared/document-project.ts"
   ],
   "b104fab773bf": [
-    "src/renderer/src/Editor.tsx"
+    "src/renderer/src/Editor.tsx",
+    "src/renderer/src/SourceEditor.tsx"
   ],
   "f5dd68e8bde8": [
     "src/renderer/src/FormatsSettings.tsx"
@@ -1831,7 +1832,8 @@
   ],
   "7259e702cd4d": [
     "src/renderer/src/Editor.tsx",
-    "src/renderer/src/FormatEditor.tsx"
+    "src/renderer/src/FormatEditor.tsx",
+    "src/renderer/src/FormattedEditor.tsx"
   ],
   "a8c9ae023f1a": [
     "src/renderer/src/document-worker-client.ts"
@@ -2515,7 +2517,8 @@
   ],
   "ba55f0808d87": [
     "src/renderer/src/Editor.tsx",
-    "src/renderer/src/FormatEditor.tsx"
+    "src/renderer/src/FormatEditor.tsx",
+    "src/renderer/src/FormattedEditor.tsx"
   ],
   "4bf40e194a49": [
     "src/renderer/src/LargeMarkdownPreview.tsx"
@@ -3427,7 +3430,8 @@
   ],
   "a1f7f8733bfc": [
     "src/renderer/src/Editor.tsx",
-    "src/renderer/src/FormatEditor.tsx"
+    "src/renderer/src/FormatEditor.tsx",
+    "src/renderer/src/FormattedEditor.tsx"
   ],
   "3d171d73a47a": [
     "src/renderer/src/FormatEditor.tsx"
