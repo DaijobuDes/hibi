@@ -820,7 +820,7 @@
     "src/main/document.ts"
   ],
   "42e3ecb68937": [
-    "src/main/media.ts"
+    "src/main/document-media.ts"
   ],
   "f84eb17965b6": [
     "src/main/addon-hotkeys.ts",
