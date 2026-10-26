@@ -492,6 +492,9 @@
   "e13c426c14c5": [
     "src/renderer/src/BacklinksSidebar.tsx"
   ],
+  "ceefa76015c9": [
+    "src/renderer/src/BacklinksSidebar.tsx"
+  ],
   "adbadd2131b2": [
     "src/renderer/src/UpdateSettings.tsx"
   ],
@@ -2640,9 +2643,6 @@
     "src/renderer/src/SettingsScreen.tsx",
     "src/renderer/src/Titlebar.tsx"
   ],
-  "cc05d3346ee5": [
-    "src/main/workspace.ts"
-  ],
   "3e1b6a32663d": [
     "src/renderer/src/AddonSettings.tsx"
   ],
@@ -3177,6 +3177,9 @@
   ],
   "e130481e560e": [
     "src/shared/source-projection.ts"
+  ],
+  "5d11a76afe7b": [
+    "src/main/workspace-metadata-worker.ts"
   ],
   "55fd4183e9eb": [
     "src/shared/document-worker-service.ts"
@@ -5959,6 +5962,9 @@
   "23aa870889ee": [
     "src/main/import-files.ts"
   ],
+  "47e60276c5e2": [
+    "src/main/workspace-legacy-index.ts"
+  ],
   "93989d9c45f8": [
     "src/renderer/src/mounted-document-edits.ts"
   ],
@@ -7175,14 +7181,20 @@
   "8ebd7fbef943": [
     "src/renderer/src/WorkspaceSettings.tsx"
   ],
-  "cfac7c431f69": [
-    "src/main/workspace-reference-index.ts"
+  "18a2d5510948": [
+    "src/main/workspace-metadata-parser.ts"
   ],
   "80298932a272": [
     "src/main/workspace-reference-index.ts"
   ],
   "03efeb5aa9aa": [
     "src/main/workspace-reference-index.ts"
+  ],
+  "b18dabb099df": [
+    "src/main/workspace-metadata-parser.ts"
+  ],
+  "a741ce8b69a7": [
+    "src/main/workspace-metadata-parser.ts"
   ],
   "9619649d8dc1": [
     "src/renderer/src/WorkspaceSettings.tsx"
