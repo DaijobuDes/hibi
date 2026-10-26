@@ -37,7 +37,7 @@ import {
   selectDocumentTab,
 } from './document'
 import { runFileDialog } from './file-operation-dialog'
-import { readMarkdown } from './files'
+import { readMarkdown, readMarkdownChunks } from './files'
 import {
   forgetWorkspace,
   getKnownWorkspaces,
@@ -1128,7 +1128,11 @@ export async function readWorkspaceExportPage(
   if (draft?.pendingPath) {
     await resolveWorkspaceEntry(selected, relative, true)
   }
-  const markdown = draft?.dirty ? draft.markdown : await readMarkdown(path)
+  // Export owns one page at a time and has no per-note content ceiling.
+  const chunks: string[] = []
+  if (!draft?.dirty)
+    for await (const chunk of readMarkdownChunks(path)) chunks.push(chunk)
+  const markdown = draft?.dirty ? draft.markdown : chunks.join('')
   const images: Record<string, string> = Object.create(null)
   if (media && isMarkdownDocument(relative))
     for (const source of typeof media === 'boolean'
@@ -1290,7 +1294,8 @@ async function collectIndexPages(
             existing?.page.id ??
               createHash('sha256').update(path).digest('hex'),
             item.path,
-            () => draft?.markdown ?? readMarkdown(path),
+            () =>
+              draft?.markdown ?? readMarkdown(path, 20 * 1024 * 1024 - bytes),
           )
         }
         if (!current()) return
@@ -1302,6 +1307,13 @@ async function collectIndexPages(
         next.set(item.path, cached)
         pages.push(cached.page)
       } catch (error) {
+        if (
+          error instanceof Error &&
+          error.message === 'This text is too large to read in one request.'
+        )
+          throw new Error(
+            'Hibi can index up to 2,000 documents and 20 MiB of text. Open a smaller workspace.',
+          )
         // A concurrent rename/delete can remove a cached entry; the watcher refreshes it.
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
       }
