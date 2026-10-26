@@ -5,11 +5,15 @@ import {
   type Extension,
   StateEffect,
   StateField,
-  type Text,
 } from '@codemirror/state'
 import { type EditorView, ViewPlugin, type ViewUpdate } from '@codemirror/view'
 import { type Tree, TreeFragment } from '@lezer/common'
-import { GFM, type MarkdownExtension, parseCode, parser } from '@lezer/markdown'
+import {
+  type MarkdownConfig,
+  type MarkdownExtension,
+  parseCode,
+  parser,
+} from '@lezer/markdown'
 import { createPlainTextRunExtension } from '../../shared/markdown-plain-text-runs.ts'
 import {
   ChunkedMarkdownParser,
@@ -19,6 +23,12 @@ import {
   uncovered,
 } from './chunked-markdown.ts'
 import { codeLanguages } from './code-languages.ts'
+import {
+  formattedMarkdown,
+  formattedOpaque,
+  formattedPrefix,
+  inlineStops,
+} from './formatted-contributions.ts'
 
 /**
  * The formatted view owns its syntax tree. A transaction parses for at most
@@ -29,6 +39,8 @@ import { codeLanguages } from './code-languages.ts'
 type Syntax = {
   tree: Tree
   demand: Demand
+  /** The document prefix that is not parsed as Markdown. */
+  prefix: number
   complete: boolean
   /** The unfinished parse of this document, continued by the next slice. */
   parse: ChunkedPartialParse | null
@@ -49,8 +61,20 @@ export type FormattedSyntaxOptions = {
   slice?: number
 }
 
-function markdownParser(options: FormattedSyntaxOptions) {
-  const base = parser.configure([GFM, options.extensions ?? []])
+/**
+ * CommonMark plus the Markdown extensions of the formatted view's
+ * contributions, which add GitHub's syntax for documents of that flavor.
+ */
+function markdownParser(
+  options: FormattedSyntaxOptions,
+  contributed: readonly MarkdownConfig[],
+  opaque: readonly string[],
+) {
+  const base = parser.configure([
+    { defineNodes: [{ name: 'Frontmatter', block: true }] },
+    ...contributed,
+    options.extensions ?? [],
+  ])
   const runs = createPlainTextRunExtension()
   const full = base.configure([
     runs.extension,
@@ -58,8 +82,16 @@ function markdownParser(options: FormattedSyntaxOptions) {
       codeParser: (info) => codeLanguages.resolve(info)?.parser ?? null,
     }),
   ])
-  runs.allow(full)
+  // The plain-text shortcut stops only at the characters core inline syntax
+  // starts with; contributed inline syntax that starts elsewhere turns it off.
+  if (
+    contributed.every(
+      (config) => !config.parseInline?.length || inlineStops(config),
+    )
+  )
+    runs.allow(full)
   return new ChunkedMarkdownParser(full, base, {
+    opaque: new Set(opaque),
     ...(options.probe ? { probe: options.probe } : {}),
   })
 }
@@ -70,11 +102,37 @@ const mapDemand = (demand: Demand, changes: ChangeDesc) => ({
 })
 
 function syntaxField(options: FormattedSyntaxOptions) {
-  const chunked = markdownParser(options)
+  // Contributions change the node set, so each set of extensions gets its own parser.
+  const parsers = new WeakMap<
+    readonly MarkdownConfig[],
+    WeakMap<readonly string[], ChunkedMarkdownParser>
+  >()
+  const chunkedFor = (state: EditorState) => {
+    const contributed = state.facet(formattedMarkdown),
+      opaque = state.facet(formattedOpaque)
+    let byOpaque = parsers.get(contributed)
+    if (!byOpaque) {
+      byOpaque = new WeakMap()
+      parsers.set(contributed, byOpaque)
+    }
+    let chunked = byOpaque.get(opaque)
+    if (!chunked) {
+      chunked = markdownParser(options, contributed, opaque)
+      byOpaque.set(opaque, chunked)
+    }
+    return chunked
+  }
+  const prefixOf = (state: EditorState) => {
+    let prefix = 0
+    for (const measure of state.facet(formattedPrefix))
+      prefix = Math.max(prefix, measure(state))
+    return Math.min(prefix, state.doc.length)
+  }
   const slice = options.slice ?? 8
   const run = (
     parse: ChunkedPartialParse,
     demand: Demand,
+    prefix: number,
     settling: boolean,
   ): Syntax => {
     const end = performance.now() + slice
@@ -84,6 +142,7 @@ function syntaxField(options: FormattedSyntaxOptions) {
         return {
           tree,
           demand,
+          prefix,
           complete: !uncovered(tree, demand.from, demand.to),
           parse: null,
           settling: false,
@@ -93,6 +152,7 @@ function syntaxField(options: FormattedSyntaxOptions) {
         return {
           tree: parse.snapshot(),
           demand,
+          prefix,
           complete: false,
           parse,
           settling,
@@ -100,20 +160,28 @@ function syntaxField(options: FormattedSyntaxOptions) {
     }
   }
   const start = (
-    doc: Text,
+    state: EditorState,
     fragments: readonly TreeFragment[],
     demand: Demand,
     settling: boolean,
-  ) =>
-    run(
-      chunked.startChunkedParse(new DocInput(doc), fragments, demand),
+  ) => {
+    const prefix = prefixOf(state)
+    return run(
+      chunkedFor(state).startChunkedParse(
+        new DocInput(state.doc),
+        fragments,
+        demand,
+        prefix,
+      ),
       demand,
+      prefix,
       settling,
     )
+  }
   return StateField.define<Syntax>({
     create(state) {
       return start(
-        state.doc,
+        state,
         [],
         { from: 0, to: Math.min(state.doc.length, 8192) },
         false,
@@ -129,6 +197,22 @@ function syntaxField(options: FormattedSyntaxOptions) {
           moved = true
         } else if (effect.is(resume)) resumed = true
       }
+      // New syntax contributions or a new unparsed prefix parse the document again.
+      const { state, startState } = transaction
+      if (
+        state.facet(formattedMarkdown) !==
+          startState.facet(formattedMarkdown) ||
+        state.facet(formattedOpaque) !== startState.facet(formattedOpaque) ||
+        prefixOf(state) !== value.prefix
+      )
+        return start(
+          transaction.state,
+          [],
+          transaction.docChanged
+            ? mapDemand(demand, transaction.changes)
+            : demand,
+          false,
+        )
       if (transaction.docChanged) {
         demand = mapDemand(demand, transaction.changes)
         const ranges: {
@@ -145,18 +229,18 @@ function syntaxField(options: FormattedSyntaxOptions) {
           TreeFragment.addTree(value.tree),
           ranges,
         )
-        return start(transaction.state.doc, fragments, demand, true)
+        return start(transaction.state, fragments, demand, true)
       }
       if (demand === value.demand && !resumed) return value
       if (value.parse) {
         value.parse.setDemand(demand)
         // A new viewport shows chunks as they are parsed.
-        return run(value.parse, demand, value.settling && !moved)
+        return run(value.parse, demand, value.prefix, value.settling && !moved)
       }
       if (!uncovered(value.tree, demand.from, demand.to))
         return { ...value, demand, complete: true }
       return start(
-        transaction.state.doc,
+        transaction.state,
         TreeFragment.addTree(value.tree),
         demand,
         false,

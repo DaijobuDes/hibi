@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { TreeFragment } from '@lezer/common'
-import { GFM, parser } from '@lezer/markdown'
+import { GFM, parser, Table } from '@lezer/markdown'
 import {
   ChunkedMarkdownParser,
   listWindow,
   parsedChunks,
+  readAhead,
   uncovered,
 } from '../src/renderer/src/chunked-markdown.ts'
 
@@ -669,6 +670,104 @@ test('a giant fence in a quote in a list item continues in bounded steps', () =>
   }
 })
 
+test('a decision that read past an edit parses its chunk and the chunk before it again', () => {
+  // `$$` opens display math only when a closing `$$` line follows within
+  // 10,000 characters, as in the rich view, so the decision reads ahead.
+  let input = null
+  /** Where the display math opened at `start` ends, or null. */
+  const closing = (start) => {
+    const limit = Math.min(input.length, start + 10000)
+    const close = /\n\$\$(?=\n|$)/.exec(input.read(start + 2, limit))
+    readAhead(input, close ? start + 2 + close.index + 3 : limit)
+    return close ? start + 2 + close.index + 3 : null
+  }
+  const math = parser.configure([
+    GFM,
+    {
+      defineNodes: [{ name: 'BlockMath', block: true }],
+      wrap: (inner, outer) => {
+        input = outer
+        return inner
+      },
+      parseBlock: [
+        {
+          name: 'BlockMath',
+          before: 'FencedCode',
+          // Display math interrupts a paragraph.
+          endLeaf: (cx, line) =>
+            line.text.slice(line.pos) === '$$' &&
+            closing(cx.lineStart + line.pos) !== null,
+          parse(cx, line) {
+            if (line.text.slice(line.pos) !== '$$') return false
+            const start = cx.lineStart + line.pos
+            const end = closing(start)
+            if (end === null) return false
+            while (cx.lineStart + line.text.length < end && cx.nextLine()) {}
+            cx.nextLine()
+            cx.addElement(cx.elt('BlockMath', start, end))
+            return true
+          },
+        },
+      ],
+    },
+  ])
+  const run = (text, fragments, options) =>
+    finish(
+      new ChunkedMarkdownParser(math, math, options).startChunkedParse(
+        stringInput(text),
+        fragments,
+        { from: 0, to: 3000 },
+      ),
+    )
+  const check = (before, at, insert, options, label) => {
+    const old = run(before, [], options)
+    const text = before.slice(0, at) + insert + before.slice(at)
+    const tree = run(
+      text,
+      TreeFragment.applyChanges(TreeFragment.addTree(old), [
+        { fromA: at, toA: at, fromB: at, toB: at + insert.length },
+      ]),
+      options,
+    )
+    same(nodes(tree), nodes(math.parse(text)), text, label)
+  }
+  // A closing line typed far below an opener makes it display math.
+  const padded = `$$\nx\n\n${'padding\n\n'.repeat(600)}`
+  check(padded, padded.length, '$$', {}, 'closed far below')
+  // An opener that stops being math continues the paragraph before it, so
+  // the chunk ending at its line is parsed again too.
+  const interrupted = `${'intro words\n\n'.repeat(12)}para line\n$$\nx\n\n# heading\n\n$$\n\nend\n`
+  check(
+    interrupted,
+    interrupted.lastIndexOf('$$') + 2,
+    'z',
+    { chunkSize: 4, groupSize: 3 },
+    'opener reopened as text',
+  )
+  // After a stuck list, math opening outside it holds a heading line. The
+  // search checks lines on stand-in text, where a read-ahead decision would
+  // read other text, so it leaves the rest as written.
+  const stuck = `${stuckBlock('-', 60)}$$\nx\n\n# inside math\n$$\n\nend\n`
+  const at = stuck.indexOf('# inside math')
+  const tree = finish(
+    new ChunkedMarkdownParser(math, math, {
+      chunkSize: 32,
+      groupSize: 4,
+      giantBlock: 512,
+    }).startChunkedParse(stringInput(stuck), [], {
+      from: at,
+      to: stuck.length,
+    }),
+  )
+  const shown = parsedChunks(tree).some((chunk) =>
+    chunk.covered.some((range) => range.from <= at && at < range.to),
+  )
+  assert.ok(
+    !shown || chain(tree, at + 2) === chain(math.parse(stuck), at + 2),
+    chain(tree, at + 2),
+  )
+})
+
 test('after a block that no replay can continue, formatting resumes at the next top-level block', () => {
   // A raw block known only by its fences, so a replay cannot reopen it.
   const raw = parser.configure([
@@ -826,4 +925,116 @@ test('the search after a stuck block reads a long line once, in bounded steps, a
   // The work counters include the search's reads.
   assert.ok(counts.scannedUnits >= 65536, `${counts.scannedUnits}`)
   assert.equal(chain(tree, at + 2), 'ATXHeading1>Document')
+})
+
+test('a giant window evicted by a far viewport keeps the read-ahead reach of its decisions', () => {
+  // Tables here form only when the note says ENABLE at its end, so every
+  // table decision reads the whole note.
+  let input = null
+  const original = Table.parseBlock[0]
+  const enabled = () => {
+    readAhead(input, input.length)
+    return input.read(0, input.length).includes('ENABLE')
+  }
+  const conditional = parser.configure({
+    ...Table,
+    wrap(inner, outer) {
+      input = outer
+      return inner
+    },
+    parseBlock: [
+      {
+        ...original,
+        name: 'ConditionalTable',
+        leaf: (cx, leaf) =>
+          leaf.content.includes('|') && enabled()
+            ? original.leaf(cx, leaf)
+            : null,
+        endLeaf: (cx, line, leaf) =>
+          line.text.includes('|') &&
+          enabled() &&
+          original.endLeaf(cx, line, leaf),
+      },
+    ],
+  })
+  const run = (text, fragments, demand) => {
+    const parse = new ChunkedMarkdownParser(conditional, conditional, {
+      chunkSize: 64,
+      giantBlock: 512,
+      groupSize: 4,
+      opaque: new Set(['Table']),
+    }).startChunkedParse(stringInput(text), fragments, demand)
+    for (;;) {
+      const tree = parse.advance()
+      if (tree) return tree
+    }
+  }
+  // Top-level blocks starting in the viewport near the table.
+  const top = (tree) => {
+    const out = []
+    for (let node = tree.topNode.firstChild; node; node = node.nextSibling)
+      if (node.from < 2000) out.push(`${node.name}:${node.from}-${node.to}`)
+    return out
+  }
+  const text = `${'intro text '.repeat(40)}\n| a | b |\n| - | - |\n${Array.from({ length: 500 }, (_, i) => `| ${i} | cell |`).join('\n')}\n\n${'padding\n\n'.repeat(1000)}ENABLE\n`
+  const first = run(text, [], { from: 0, to: text.length })
+  // Scroll to the end, edit there, and scroll back to the table.
+  const away = run(text, TreeFragment.addTree(first), {
+    from: text.length - 200,
+    to: text.length,
+  })
+  const at = text.indexOf('ENABLE')
+  const edited = `${text.slice(0, at)}DISABLE${text.slice(at + 6)}`
+  const changed = run(
+    edited,
+    TreeFragment.applyChanges(TreeFragment.addTree(away), [
+      { fromA: at, toA: at + 6, fromB: at, toB: at + 7 },
+    ]),
+    { from: edited.length - 200, to: edited.length },
+  )
+  const back = run(edited, TreeFragment.addTree(changed), { from: 0, to: 2000 })
+  // Before, the evicted window lost its reach and kept the stale table.
+  assert.deepEqual(top(back), top(conditional.parse(edited)))
+})
+
+test('parsed chunks found by position are the parsed chunks touching that range', () => {
+  const text = Array.from({ length: 3000 }, (_, i) =>
+    i % 7 ? `paragraph ${i} with *style*` : `- item ${i}\n- next`,
+  ).join('\n\n')
+  const parse = tiny({ chunkSize: 64, groupSize: 4 }).startChunkedParse(
+    stringInput(text),
+    [],
+    null,
+  )
+  let tree = null
+  while (!tree) tree = parse.advance()
+  const all = parsedChunks(tree)
+  // A lookup reads the chunks near its range, not every group and chunk:
+  // the formatted view does one for each selection move.
+  const proto = Object.getPrototypeOf(tree)
+  const prop = proto.prop
+  let reads = 0
+  proto.prop = function (...args) {
+    reads++
+    return prop.apply(this, args)
+  }
+  try {
+    parsedChunks(tree, { from: text.length >> 1, to: (text.length >> 1) + 10 })
+  } finally {
+    proto.prop = prop
+  }
+  assert.ok(all.length > 500 && reads < 40, `${all.length} ${reads}`)
+  const r = random(7)
+  for (let i = 0; i < 200; i++) {
+    const from = Math.floor(r() * text.length),
+      to = Math.min(text.length, from + Math.floor(r() * 400))
+    const expected = all
+      .filter(({ from: at, chunk }) => at <= to && at + chunk.length >= from)
+      .map(({ from: at }) => at)
+    assert.deepEqual(
+      parsedChunks(tree, { from, to }).map(({ from: at }) => at),
+      expected,
+      `${from}-${to}`,
+    )
+  }
 })

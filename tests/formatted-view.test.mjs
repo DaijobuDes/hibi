@@ -257,3 +257,216 @@ test('behind the switch, completions get prose context past the first 16 KiB', {
   assert.ok(call.head > 16384, JSON.stringify(call))
   assert.equal(call.prose?.before, 'last paragraph prose', JSON.stringify(call))
 })
+
+test('behind the switch, frontmatter properties above the formatted view edit the note', {
+  timeout: 90000,
+}, async (t) => {
+  const folder = await mkdtemp(join(tmpdir(), 'hibi-formatted-properties-'))
+  const file = join(folder, 'notes', 'note.md')
+  await mkdir(join(folder, 'notes'))
+  await writeFile(file, '---\ntitle: One\n---\n\n# Title\n\nBody text.\n')
+  const app = await electron.launch({
+    args: [resolve('.'), `--user-data-dir=${join(folder, 'profile')}`],
+  })
+  t.after(async () => {
+    await app.close()
+    await rm(folder, { recursive: true, force: true })
+  })
+  await app.evaluate(({ dialog }) => {
+    dialog.showMessageBox = async () => ({ response: 1 })
+  })
+  const page = await app.firstWindow()
+  await waitForDocumentEditor(app, page)
+  await page.evaluate(() =>
+    localStorage.setItem('hibi:formatted-engine', 'codemirror'),
+  )
+  await page.reload()
+  await waitForDocumentEditor(app, page)
+  await app.evaluate(({ dialog }, path) => {
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] })
+  }, file)
+  await pressShortcut(app, `${mod}+o`)
+  await page.locator('.rich-pane .hibi-lp-h1', { hasText: 'Title' }).waitFor()
+  const properties = page.locator('.rich-pane .frontmatter')
+  await properties.waitFor()
+  // The properties show the frontmatter; the text below does not repeat it.
+  // Before, it showed again as a rule and a heading.
+  await waitForAsync(
+    page,
+    () =>
+      !document
+        .querySelector('.rich-pane .cm-content')
+        ?.textContent.includes('title: One'),
+  )
+  assert.equal(await page.locator('.rich-pane .hibi-lp-h2').count(), 0)
+  await properties.locator('.frontmatter-yaml-toggle').click()
+  await properties.getByLabel('Frontmatter YAML').fill('title: Two\n')
+  await properties.getByRole('button', { name: 'Apply YAML' }).click()
+  // One minimal edit of the source; the rest of the note is untouched.
+  await waitForAsync(page, async () => {
+    const { markdown } = await window.hibi.getDocument()
+    return markdown === '---\ntitle: Two\n---\n\n# Title\n\nBody text.\n'
+  })
+})
+
+test('behind the switch, properties edit notes with crlf line breaks and a byte order mark', {
+  timeout: 120000,
+}, async (t) => {
+  for (const [label, prefix, eol] of [
+    ['crlf', '', '\r\n'],
+    ['bom crlf', '\uFEFF', '\r\n'],
+  ]) {
+    const folder = await mkdtemp(join(tmpdir(), 'hibi-formatted-properties-'))
+    const file = join(folder, 'notes', 'note.md')
+    await mkdir(join(folder, 'notes'))
+    const note = (title) =>
+      `${prefix}---${eol}title: ${title}${eol}---${eol}${eol}# Title${eol}`
+    await writeFile(file, note('A'))
+    const app = await electron.launch({
+      args: [resolve('.'), `--user-data-dir=${join(folder, 'profile')}`],
+    })
+    t.after(async () => {
+      await app.close()
+      await rm(folder, { recursive: true, force: true })
+    })
+    await app.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => ({ response: 1 })
+    })
+    const page = await app.firstWindow()
+    await waitForDocumentEditor(app, page)
+    await page.evaluate(() =>
+      localStorage.setItem('hibi:formatted-engine', 'codemirror'),
+    )
+    await page.reload()
+    await waitForDocumentEditor(app, page)
+    await app.evaluate(({ dialog }, path) => {
+      dialog.showOpenDialog = async () => ({
+        canceled: false,
+        filePaths: [path],
+      })
+    }, file)
+    await pressShortcut(app, `${mod}+o`)
+    await page.locator('.rich-pane .hibi-lp-h1', { hasText: 'Title' }).waitFor()
+    const title = page
+      .locator('.rich-pane .frontmatter')
+      .getByRole('textbox', { name: 'title', exact: true })
+    await title.waitFor()
+    // Before, offsets of the source text landed one line late in the view:
+    // `title: A` became `title: A` and `B---`.
+    await title.fill('AB')
+    const expected = note('AB')
+    await waitForAsync(
+      page,
+      async (expected) =>
+        (await window.hibi.getDocument()).markdown === expected,
+      expected,
+    ).catch(async () =>
+      assert.equal(
+        (await page.evaluate(() => window.hibi.getDocument())).markdown,
+        expected,
+        label,
+      ),
+    )
+  }
+})
+
+test('behind the switch, frontmatter after a byte order mark shows once', {
+  timeout: 120000,
+}, async (t) => {
+  for (const eol of ['\n', '\r\n']) {
+    const folder = await mkdtemp(join(tmpdir(), 'hibi-formatted-properties-'))
+    const file = join(folder, 'notes', 'note.md')
+    await mkdir(join(folder, 'notes'))
+    await writeFile(
+      file,
+      `\uFEFF---${eol}title: One${eol}---${eol}${eol}# Title${eol}${eol}Body text.${eol}`,
+    )
+    const app = await electron.launch({
+      args: [resolve('.'), `--user-data-dir=${join(folder, 'profile')}`],
+    })
+    t.after(async () => {
+      await app.close()
+      await rm(folder, { recursive: true, force: true })
+    })
+    await app.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => ({ response: 1 })
+    })
+    const page = await app.firstWindow()
+    await waitForDocumentEditor(app, page)
+    await page.evaluate(() =>
+      localStorage.setItem('hibi:formatted-engine', 'codemirror'),
+    )
+    await page.reload()
+    await waitForDocumentEditor(app, page)
+    await app.evaluate(({ dialog }, path) => {
+      dialog.showOpenDialog = async () => ({
+        canceled: false,
+        filePaths: [path],
+      })
+    }, file)
+    await pressShortcut(app, `${mod}+o`)
+    await page.locator('.rich-pane .hibi-lp-h1', { hasText: 'Title' }).waitFor()
+    await page.locator('.rich-pane .frontmatter').waitFor()
+    // Before, a byte order mark kept the frontmatter in the text as a rule
+    // and a heading.
+    await waitForAsync(
+      page,
+      () =>
+        !document
+          .querySelector('.rich-pane .cm-content')
+          ?.textContent.includes('title: One'),
+    )
+    assert.equal(
+      await page.locator('.rich-pane .hibi-lp-h2').count(),
+      0,
+      JSON.stringify(eol),
+    )
+  }
+})
+
+test('behind the switch, a leading block that is not a metadata mapping stays in the text', {
+  timeout: 120000,
+}, async (t) => {
+  for (const [label, note, check] of [
+    ['scalar', '---\nhello\n---\n\n# Title\n', 'hello'],
+    ['empty', '---\n---\n\n# Title\n', null],
+  ]) {
+    const folder = await mkdtemp(join(tmpdir(), 'hibi-formatted-properties-'))
+    const file = join(folder, 'notes', 'note.md')
+    await mkdir(join(folder, 'notes'))
+    await writeFile(file, note)
+    const app = await electron.launch({
+      args: [resolve('.'), `--user-data-dir=${join(folder, 'profile')}`],
+    })
+    t.after(async () => {
+      await app.close()
+      await rm(folder, { recursive: true, force: true })
+    })
+    await app.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => ({ response: 1 })
+    })
+    const page = await app.firstWindow()
+    await waitForDocumentEditor(app, page)
+    await page.evaluate(() =>
+      localStorage.setItem('hibi:formatted-engine', 'codemirror'),
+    )
+    await page.reload()
+    await waitForDocumentEditor(app, page)
+    await app.evaluate(({ dialog }, path) => {
+      dialog.showOpenDialog = async () => ({
+        canceled: false,
+        filePaths: [path],
+      })
+    }, file)
+    await pressShortcut(app, `${mod}+o`)
+    await page.locator('.rich-pane .hibi-lp-h1', { hasText: 'Title' }).waitFor()
+    // The properties do not show it, so the text does, as the rich view.
+    // Before, any pair of `---` lines was hidden.
+    const shown = await page.evaluate(() => ({
+      text: document.querySelector('.rich-pane .cm-content')?.textContent,
+      rules: document.querySelectorAll('.rich-pane .hibi-lp-rule').length,
+    }))
+    if (check) assert.ok(shown.text.includes(check), `${label}: ${shown.text}`)
+    else assert.ok(shown.rules > 0, `${label}: ${JSON.stringify(shown)}`)
+  }
+})
