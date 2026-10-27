@@ -1,49 +1,6 @@
 import { Extension } from '@tiptap/core'
 import { Plugin, TextSelection } from '@tiptap/pm/state'
-import { stored } from '../../ui/stored-preference.ts'
-
-const indentUnits = ['\t', '  ', '    '] as const
-type Preferences = { enabled: boolean; unit: (typeof indentUnits)[number] }
-const key = 'hibi:tab-indent'
-const preferences = stored<Preferences>(
-  key,
-  () => {
-    try {
-      const value = JSON.parse(localStorage.getItem(key) ?? '{}')
-      return {
-        enabled: value.enabled !== false,
-        unit: indentUnits.includes(value.unit) ? value.unit : '\t',
-      }
-    } catch {
-      return { enabled: true, unit: '\t' }
-    }
-  },
-  JSON.stringify,
-)
-export const tabIndent = {
-  snapshot: preferences.get,
-  subscribe: preferences.subscribe,
-  set(next: { enabled?: boolean; unit?: string }) {
-    const current = preferences.get()
-    preferences.set({
-      enabled: next.enabled ?? current.enabled,
-      unit: indentUnits.find((unit) => unit === next.unit) ?? current.unit,
-    })
-  },
-}
-
-const indented = /\t| {2,}(?=[^ \n])/y
-/** The first indented line's unit, scanning only as far as that line. */
-export function detectIndentUnit(text: string) {
-  for (let at = 0; ; ) {
-    indented.lastIndex = at
-    const match = indented.exec(text)?.[0]
-    if (match)
-      return match === '\t' ? match : ' '.repeat(Math.min(match.length, 4))
-    at = text.indexOf('\n', at) + 1
-    if (!at) return undefined
-  }
-}
+import { codeIndentLines, detectIndentUnit, tabIndent } from './indentation.ts'
 
 /** Rich-text Tab: lists and tables first, then code indentation, then a mid-line tab. */
 export const TabIndent = Extension.create({
@@ -100,7 +57,8 @@ export const TabIndent = Extension.create({
       if (code) {
         const start = $from.start()
         const text = $from.parent.textContent
-        const unit = detectIndentUnit(text) ?? tabIndent.snapshot().unit
+        const unit =
+          detectIndentUnit(text, codeIndentLines) ?? tabIndent.snapshot().unit
         if (!outdent && from === to) tr.insertText(unit, from)
         else {
           // One replacement for every line: per-line steps would each keep a whole-block copy.
