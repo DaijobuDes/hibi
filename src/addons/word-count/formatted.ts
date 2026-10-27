@@ -162,12 +162,12 @@ export function observeFormattedCounts(
       const active = context.editorViews.getActive()
       const sourceMode =
         !!active &&
-        [...entry.views].some(
+        ![...entry.views].some(
           (view) =>
             view.dom
               .closest('[data-editor-view]')
               ?.getAttribute('data-editor-view') === active.viewId &&
-            !!view.dom.closest('[aria-hidden="true"], [hidden]'),
+            !view.dom.closest('[aria-hidden="true"], [hidden]'),
         )
       return {
         kind: 'count',
