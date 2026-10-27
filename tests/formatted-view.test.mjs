@@ -565,3 +565,62 @@ test('behind the switch, a composition over a selected table undoes in one step 
     }
   }
 })
+
+test('behind the switch, a note that is only a table takes text and compositions without a key over its selection', {
+  timeout: 90000,
+}, async (t) => {
+  const folder = await mkdtemp(join(tmpdir(), 'hibi-formatted-view-'))
+  const file = join(folder, 'notes', 'note.md')
+  const note = '| a | b |\n| - | - |\n| c | d |'
+  await mkdir(join(folder, 'notes'))
+  await writeFile(file, note)
+  const app = await electron.launch({
+    args: [resolve('.'), `--user-data-dir=${join(folder, 'profile')}`],
+  })
+  t.after(async () => {
+    await app.close()
+    await rm(folder, { recursive: true, force: true })
+  })
+  await app.evaluate(({ dialog }) => {
+    dialog.showMessageBox = async () => ({ response: 1 })
+  })
+  const page = await app.firstWindow()
+  await waitForDocumentEditor(app, page)
+  await page.evaluate(() =>
+    localStorage.setItem('hibi:formatted-engine', 'codemirror'),
+  )
+  await page.reload()
+  await waitForDocumentEditor(app, page)
+  await app.evaluate(({ dialog }, path) => {
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] })
+  }, file)
+  await pressShortcut(app, `${mod}+o`)
+  await page.locator('.rich-pane .hibi-lp-table').waitFor()
+  const cdp = await page.context().newCDPSession(page)
+  await cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true })
+  const markdown = async (text, label) => {
+    await waitForAsync(
+      page,
+      async (text) => (await window.hibi.getDocument()).markdown === text,
+      text,
+    ).catch(() => {})
+    const { markdown } = await page.evaluate(() => window.hibi.getDocument())
+    assert.equal(markdown, text, label)
+  }
+  // Without a line, the selection's DOM needs a place below the table for Chromium to take input.
+  for (const candidates of [[], ['n', 'ni', '你']]) {
+    await page.locator('.rich-pane .cm-content').focus()
+    await page.keyboard.press(`${mod}+a`)
+    for (const text of candidates)
+      await cdp.send('Input.imeSetComposition', {
+        text,
+        selectionStart: text.length,
+        selectionEnd: text.length,
+      })
+    const text = candidates.at(-1) ?? '👍'
+    await cdp.send('Input.insertText', { text })
+    await markdown(text, text)
+    await pressShortcut(app, `${mod}+z`)
+    await markdown(note, `undo ${text}`)
+  }
+})
