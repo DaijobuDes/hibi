@@ -171,18 +171,20 @@ test('find cancellation and identical-query highlights stay pane-owned', async (
   const first = Promise.withResolvers(),
     second = Promise.withResolvers()
   const formatted = f.connect({
-    result: (_location, _action, starts) => first.resolve(starts),
+    result: (location, _action, starts) =>
+      first.resolve({ total: location.total, starts }),
   })
   const source = f.connect({
-    result: (_location, _action, starts) => second.resolve(starts),
+    result: (location, _action, starts) =>
+      second.resolve({ total: location.total, starts }),
   })
   formatted.find('alpha', 0, 0)
   source.find('beta', 0, 0)
   source.cancelFind()
-  assert.deepEqual(await first.promise, [0, 6])
+  assert.deepEqual(await first.promise, { total: 2, starts: [0] })
   source.find('alpha', 0, 0)
   formatted.cancelFind()
-  assert.deepEqual(await second.promise, [0, 6])
+  assert.deepEqual(await second.promise, { total: 2, starts: [0] })
   formatted.dispose()
   assert.equal(f.workers[0].terminated, false)
   source.dispose()
@@ -191,6 +193,7 @@ test('find cancellation and identical-query highlights stay pane-owned', async (
 
 test('two pane boundary streams retain paged acknowledgement and sequence ownership', async (t) => {
   const f = fixture(t, '# title\n\ntext\n\n'.repeat(20000))
+  const paged = { ...config, chunkSize: 1024 }
   const first = Promise.withResolvers(),
     firstDone = Promise.withResolvers(),
     secondDone = Promise.withResolvers()
@@ -198,7 +201,7 @@ test('two pane boundary streams retain paged acknowledgement and sequence owners
     source = f.connect()
   const sequences = [[], []]
   formatted.boundaries(
-    config,
+    paged,
     (page, acknowledge) => {
       sequences[0].push(page.sequence)
       if (page.sequence === 0) first.resolve({ page, acknowledge })
@@ -208,7 +211,7 @@ test('two pane boundary streams retain paged acknowledgement and sequence owners
     assert.fail,
   )
   source.boundaries(
-    config,
+    paged,
     (page, acknowledge) => {
       sequences[1].push(page.sequence)
       acknowledge()

@@ -191,6 +191,7 @@ function workerGroup(session: DocumentSession, initial: ClientOptions) {
           releaseMetadata(owner)
           releaseBoundaries(owner)
           cancelFind(owner)
+          if (highlightOwner === owner) highlightOwner = null
           if (owners.size) return
           client.dispose()
           if (groups.get(session) === group) groups.delete(session)
