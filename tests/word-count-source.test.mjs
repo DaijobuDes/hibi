@@ -44,7 +44,8 @@ for (const source of [
         { from: 4, to: 4, insert: 'é ' },
       ],
     ]) {
-      const before = counter.store.snapshot().sliceRaw()
+      const snapshot = counter.store.snapshot()
+      const before = snapshot.sliceRaw(0, snapshot.utf16Length)
       edit(counter, changes)
       let after = before
       for (const change of changes.toReversed())
