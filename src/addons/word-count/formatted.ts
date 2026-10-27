@@ -22,6 +22,7 @@ type Observed = {
   sender: SourceTransferSender
   ready: boolean
   references: number
+  views: Set<EditorView>
   pending: SourceOperation[]
   stop: () => void
 }
@@ -57,7 +58,8 @@ export function observeFormattedCounts(
     }
   }
   worker.addEventListener('message', message)
-  const release = (entry: Observed) => {
+  const release = (entry: Observed, view?: EditorView) => {
+    if (view) entry.views.delete(view)
     if (--entry.references) return
     entry.stop()
     entry.sender.close()
@@ -95,6 +97,7 @@ export function observeFormattedCounts(
         sender,
         ready: false,
         references: 0,
+        views: new Set(),
         pending: [],
         stop: () => {},
       }
@@ -110,24 +113,27 @@ export function observeFormattedCounts(
       send({ kind: 'open', head: sender.head })
     }
     entry.references++
+    entry.views.add(view)
     changed(tabId)
     return entry
   }
   const extension = ViewPlugin.fromClass(
     class {
       entry: Observed | null
+      readonly view: EditorView
       constructor(view: EditorView) {
+        this.view = view
         this.entry = attach(view)
       }
       update(update: ViewUpdate) {
         const document = update.state.facet(formattedDocument)
         const session = document && documentRuntime.session(document.tabId)
         if (this.entry?.session === session) return
-        if (this.entry) release(this.entry)
+        if (this.entry) release(this.entry, update.view)
         this.entry = attach(update.view)
       }
       destroy() {
-        if (this.entry) release(this.entry)
+        if (this.entry) release(this.entry, this.view)
       }
     },
   )
@@ -139,7 +145,6 @@ export function observeFormattedCounts(
     extension,
     read(
       document: Readonly<DocumentState>,
-      sourceMode = false,
     ): FormattedCountRequest | null | undefined {
       const entry = documents.get(document.tabId)
       if (
@@ -154,6 +159,16 @@ export function observeFormattedCounts(
         ),
       )
       const { settings } = context.editor.getMetadataSyntax(document.id)
+      const active = context.editorViews.getActive()
+      const sourceMode =
+        !!active &&
+        [...entry.views].some(
+          (view) =>
+            view.dom
+              .closest('[data-editor-view]')
+              ?.getAttribute('data-editor-view') === active.viewId &&
+            !!view.dom.closest('[aria-hidden="true"], [hidden]'),
+        )
       return {
         kind: 'count',
         ...(sourceMode ? { mode: 'source' as const } : {}),
@@ -175,6 +190,7 @@ export function observeFormattedCounts(
       for (const remove of unlisten) remove()
       for (const entry of streams.values()) {
         entry.references = 1
+        entry.views.clear()
         release(entry)
       }
     },

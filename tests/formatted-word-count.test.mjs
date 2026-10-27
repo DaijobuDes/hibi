@@ -137,6 +137,34 @@ test('formatted counts match rich document totals and ignore selections', {
     assert.equal(await sourceText(), source)
   }
 })
+test('source view counts literal text while split and normal views keep formatted totals', async () => {
+  for (const formatted of [false, true]) {
+    const name = `mode-${Number(formatted)}.md`
+    await writeFile(join(folder, name), source)
+    await engine(formatted)
+    await open(name)
+    await counts(expected(body))
+    await page.getByRole('button', { name: /^side-by-side$/i }).click()
+    await waitForDocumentEditor(app, page, { name: 'Markdown editor' })
+    const editor = page.getByRole('textbox', {
+      name: 'Markdown editor',
+      exact: true,
+    })
+    await editor.press('ControlOrMeta+End')
+    await page.keyboard.insertText(' added')
+    await waitForAsync(
+      page,
+      async (text) => (await window.hibi.getDocument()).markdown === text,
+      source + ' added',
+    )
+    await counts(expected(body + ' added'))
+    await pressShortcut(app, mod + '+Shift+]')
+    await counts(label(countText(source + ' added')))
+    await pressShortcut(app, mod + '+Shift+[')
+    await counts(expected(body + ' added'))
+  }
+})
+
 test('tab-separated tasks count their text in both formatted engines', {
   timeout: 90000,
 }, async () => {

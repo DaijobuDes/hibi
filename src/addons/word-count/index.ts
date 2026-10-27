@@ -30,14 +30,9 @@ export default defineAddon({
         const document = context.editor.getDocument()
         if (!document) return null
         const markdown = isMarkdownDocument(document.name)
-        const view = context.editorViews.getActive()
-        const selection = view && context.editorViews.getSelection(view)
-        const sourceMode = selection?.ok && selection.value.editor === 'source'
-        const formatted = markdown
-          ? formattedCounts?.read(document, sourceMode)
-          : undefined
+        const formatted = markdown ? formattedCounts?.read(document) : undefined
         if (formatted !== undefined) {
-          countsRichText = !sourceMode
+          countsRichText = formatted?.mode !== 'source'
           return formatted
         }
         if (markdown && formattedLoad && !formattedCounts) return null
