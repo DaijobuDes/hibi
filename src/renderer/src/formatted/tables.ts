@@ -8,8 +8,11 @@ import {
   StateField,
   type Text,
   Transaction,
+  type TransactionSpec,
 } from '@codemirror/state'
 import {
+  Decoration,
+  type DecorationSet,
   EditorView,
   ViewPlugin,
   type ViewUpdate,
@@ -29,6 +32,7 @@ import {
   formattedLiteral,
   formattedMarkdown,
   formattedRenderInputs,
+  formattedSyntaxTree,
   formattedViews,
 } from '../formatted-contributions.ts'
 import { tableActions } from '../source-formatting.ts'
@@ -1824,22 +1828,20 @@ function tableAt(view: EditorView, pos: number, strict = false) {
   return null
 }
 
+type InputStart = KeyboardEvent | InputEvent | CompositionEvent
+
+/** Whether input that is not composing goes to the writable formatted view, at one selection. */
+const takesInput = (event: InputStart, view: EditorView) =>
+  event.target === view.contentDOM &&
+  !('isComposing' in event && event.isComposing) &&
+  !view.composing &&
+  view.state.selection.ranges.length === 1 &&
+  writable(view.state)
+
 /** Whether input in the writable formatted view acts on one selection over a whole table or across its edge. */
-function overTable(
-  event: KeyboardEvent | InputEvent | CompositionEvent,
-  view: EditorView,
-) {
-  const { selection } = view.state
-  const { main } = selection
-  if (
-    event.target !== view.contentDOM ||
-    ('isComposing' in event && event.isComposing) ||
-    view.composing ||
-    main.empty ||
-    selection.ranges.length !== 1 ||
-    !writable(view.state)
-  )
-    return false
+function overTable(event: InputStart, view: EditorView) {
+  const { main } = view.state.selection
+  if (main.empty || !takesInput(event, view)) return false
   for (const table of mounted.get(view) ?? []) {
     if (!table.current || !table.dom.isConnected) continue
     const { from, to } = table.range()
@@ -1870,6 +1872,103 @@ function type(view: EditorView, text: string) {
   return true
 }
 
+/**
+ * An editable place below a table that ends the note, which a block widget
+ * leaves none of: the caret and the selection's DOM go there, so input
+ * methods have text input to start. Handlers below take the input there.
+ */
+class TableEnd extends WidgetType {
+  override eq() {
+    return true
+  }
+  // Not marked uneditable by the view, as its own gaps for text out of view.
+  get editable() {
+    return true
+  }
+  override ignoreEvent() {
+    return false
+  }
+  toDOM() {
+    const end = document.createElement('div')
+    end.className = 'hibi-lp-table-end'
+    end.append(document.createElement('br'))
+    return end
+  }
+}
+const tableEnd = Decoration.widget({
+  widget: new TableEnd(),
+  block: true,
+  side: 1,
+})
+
+const revealTable = StateEffect.define<{ from: number; to: number } | null>()
+/**
+ * A table that shows its source while a composition that cleared a
+ * selection into it goes on, as no text of a table widget takes input, until
+ * the selection leaves it or the view loses focus.
+ */
+const revealedTable = StateField.define<{ from: number; to: number } | null>({
+  create: () => null,
+  update(range, tr) {
+    for (const effect of tr.effects)
+      if (effect.is(revealTable)) return effect.value
+    if (!range) return null
+    const from = tr.changes.mapPos(range.from, -1),
+      to = tr.changes.mapPos(range.to, 1)
+    const { head } = tr.state.selection.main
+    if (head < from || head > to) return null
+    return from === range.from && to === range.to ? range : { from, to }
+  },
+  provide: (field) => [
+    EditorView.focusChangeEffect.of((state, focusing) =>
+      !focusing && state.field(field) ? revealTable.of(null) : null,
+    ),
+    // Layouts are kept per chunk; a reveal lays them out again.
+    formattedRenderInputs.compute([field], (state) => !!state.field(field)),
+  ],
+})
+
+/** The editable place below a table that ends the note, while it shows as a table. */
+const tableEnds = StateField.define<DecorationSet>({
+  create: (state) => endPlace(state, Decoration.none, true),
+  update: (set, tr) => endPlace(tr.state, set, tr.docChanged),
+  provide: (field) => EditorView.decorations.from(field),
+})
+function endPlace(state: EditorState, set: DecorationSet, moved: boolean) {
+  const last = formattedSyntaxTree(state)?.topNode.lastChild
+  if (
+    last?.name !== 'Table' ||
+    last.to !== state.doc.length ||
+    state.field(revealedTable) ||
+    state.facet(formattedLiteral).includes('Table')
+  )
+    return Decoration.none
+  return set.size && !moved
+    ? set
+    : Decoration.set(tableEnd.range(state.doc.length))
+}
+
+/** Whether input in the writable formatted view goes to a caret below a table that ends the note. */
+function belowTable(event: InputStart, view: EditorView) {
+  const { state } = view
+  const { main } = state.selection
+  return (
+    main.empty &&
+    main.head === state.doc.length &&
+    state.field(tableEnds).size > 0 &&
+    takesInput(event, view)
+  )
+}
+
+/** Input below a table that ends the note starts a paragraph, as on a blank line between blocks. */
+const paragraphBelow = (view: EditorView) => {
+  const end = view.state.doc.length
+  return {
+    changes: { from: end, insert: '\n\n' },
+    selection: { anchor: end + 2 },
+  }
+}
+
 const composeStart = StateEffect.define<null>()
 /** Whether the selection was cleared for a composition that has not changed the text yet. */
 const composeCleared = StateField.define<boolean>({
@@ -1880,16 +1979,43 @@ const composeCleared = StateField.define<boolean>({
 })
 
 /**
- * Clears the selection so a composition starts at a caret, as Chromium does
- * over a selected text range. The clearing starts the composition's history
- * step, and its first change continues that step however late it comes.
+ * Gives a composition about to start a caret in text: over a selection
+ * across a table, as Chromium does over a selected text range, the selection
+ * is cleared, and a table the caret stays in shows its source; below a table
+ * that ends the note, a paragraph starts. That edit starts the composition's
+ * history step, and its first change continues it however late it comes.
  */
-const clearForComposition = (view: EditorView) =>
-  view.dispatch(view.state.replaceSelection(''), {
-    effects: composeStart.of(null),
+function prepareComposition(event: InputStart, view: EditorView) {
+  const { state } = view
+  let spec: TransactionSpec
+  const effects: StateEffect<unknown>[] = [composeStart.of(null)]
+  if (overTable(event, view)) {
+    spec = state.replaceSelection('')
+    // Clearing from inside a table to past it keeps the table before the caret.
+    const at = state.selection.main.from
+    for (
+      let node = formattedSyntaxTree(state)?.resolveInner(at, -1) ?? null;
+      node;
+      node = node.parent
+    )
+      if (node.name === 'Table' && node.from < at) {
+        effects.push(revealTable.of({ from: node.from, to: at }))
+        break
+      }
+  } else if (belowTable(event, view)) spec = paragraphBelow(view)
+  else return
+  view.dispatch(spec, {
+    effects,
     userEvent: 'input.type.compose.start',
     scrollIntoView: true,
   })
+}
+
+/** Compositions in the place below a table that ends the note, and the text their result replaces. */
+const endCompositions = new WeakMap<
+  EditorView,
+  { doc: Text; from: number; to: number; before: string }
+>()
 
 /**
  * Tables follow scrolling with their row windows, and a collapsed
@@ -1997,6 +2123,9 @@ export const contribution: FormattedContribution = {
       // Rows are read from the text; neither pass walks them as nodes.
       decorate: () => false,
       layout(node, out, { state }) {
+        const shown = state.field(revealedTable, false)
+        if (shown && shown.from <= node.to && shown.to >= node.from)
+          return false
         const first = state.doc.lineAt(node.from),
           last = state.doc.lineAt(node.to)
         let quotes = 0,
@@ -2045,6 +2174,8 @@ export const contribution: FormattedContribution = {
     // Chromium drops typing and compositions over a selection that covers a
     // table widget or starts or ends inside one.
     composeCleared,
+    revealedTable,
+    tableEnds,
     // History starts a step at a composition's first change; after a clearing
     // for the composition, that change continues the clearing's step.
     EditorState.transactionFilter.of((tr) =>
@@ -2063,7 +2194,43 @@ export const contribution: FormattedContribution = {
     // over several lines, in a history step of their own.
     EditorView.domEventObservers({
       compositionstart(event, view) {
-        if (overTable(event, view)) clearForComposition(view)
+        // One that started there goes on; the view reads its caret there now.
+        if (endCompositions.has(view)) return
+        // Chromium may not keep a composition whose start edits the text
+        // around it. Below a table after other text, it composes on the
+        // line the view put the caret on, as before, which a paragraph
+        // below the table would edit.
+        const caret = view.contentDOM.ownerDocument.getSelection()?.focusNode
+        const element = caret instanceof Element ? caret : caret?.parentElement
+        const below = belowTable(event, view)
+        if (element?.closest('.cm-line') || !view.state.field(tableEnds).size) {
+          if (!below) prepareComposition(event, view)
+          return
+        }
+        // With no line in the note, it composes in the place below its table,
+        // which the view does not read: the result applies when it ends.
+        if (!below && !overTable(event, view)) return
+        const { main } = view.state.selection
+        endCompositions.set(view, {
+          doc: view.state.doc,
+          from: main.from,
+          to: main.to,
+          before: below ? '\n\n' : '',
+        })
+      },
+      compositionend(event, view) {
+        const pending = endCompositions.get(view)
+        endCompositions.delete(view)
+        if (!pending || pending.doc !== view.state.doc) return
+        const { from, to, before } = pending
+        if (!event.data && from === to) return
+        const insert = event.data ? before + event.data : ''
+        view.dispatch({
+          changes: { from, to, insert },
+          selection: { anchor: from + insert.length },
+          userEvent: 'input.type',
+          scrollIntoView: true,
+        })
       },
     }),
     Prec.lowest(
@@ -2071,11 +2238,8 @@ export const contribution: FormattedContribution = {
         // An IME takes the key that starts a composition (keyCode 229), and a
         // dead key starts one too, before the view is composing.
         keydown(event, view) {
-          if (
-            (event.keyCode === 229 || event.key === 'Dead') &&
-            overTable(event, view)
-          )
-            clearForComposition(view)
+          if (event.keyCode === 229 || event.key === 'Dead')
+            prepareComposition(event, view)
           return false
         },
         // Keypress comes after keymaps ran on keydown, only for keys that
@@ -2089,14 +2253,14 @@ export const contribution: FormattedContribution = {
             type(view, event.key)
           )
         },
-        // Text without a key, as from dictation or an emoji picker.
+        // Typing below a table that ends the note, and text without a key,
+        // as from dictation or an emoji picker.
         beforeinput(event, view) {
-          return (
-            event.inputType === 'insertText' &&
-            !!event.data &&
-            overTable(event, view) &&
-            type(view, event.data)
-          )
+          if (event.inputType !== 'insertText' || !event.data) return false
+          if (belowTable(event, view))
+            view.dispatch(paragraphBelow(view), { userEvent: 'input.type' })
+          else if (!overTable(event, view)) return false
+          return type(view, event.data)
         },
       }),
     ),

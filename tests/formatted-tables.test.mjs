@@ -771,6 +771,93 @@ test('a late first candidate keeps a composition over a table one undo step', {
   await cdp.detach()
 })
 
+test('a composition from inside a table to past it composes in the table source at the caret, in one undo step', {
+  timeout: 30000,
+}, async () => {
+  const cdp = await harness.context().newCDPSession(harness)
+  const doc = `before\n\n${overTableTable}\n\nafter`
+  const inner = doc.indexOf('| c') + 3
+  // To the end of the note, and into the text after the table.
+  for (const range of [
+    [inner, doc.length],
+    [inner, doc.length - 2],
+  ]) {
+    await selectRange(doc, range)
+    await cdp.send('Input.dispatchKeyEvent', {
+      type: 'rawKeyDown',
+      key: 'k',
+      code: 'KeyK',
+      windowsVirtualKeyCode: 229,
+      nativeVirtualKeyCode: 229,
+    })
+    await compose(cdp, 'k', 'か')
+    await cdp.send('Input.insertText', { text: 'か' })
+    await replacedOnce(doc, range, 'か', `${range}`)
+    // The table shows its source while the caret is in it, as a table again after.
+    await harness.evaluate(() =>
+      window.tables.view().dispatch({ selection: { anchor: 0 } }),
+    )
+    await harness.evaluate(() => window.tables.settle())
+    assert.equal(await harness.locator('.hibi-lp-table').count(), 1)
+  }
+  await cdp.detach()
+})
+
+test('a note that is only a table takes text and compositions without a key over its selection', {
+  timeout: 30000,
+}, async () => {
+  const cdp = await harness.context().newCDPSession(harness)
+  for (const [candidates, text] of [
+    [[], '👍'],
+    [['n', 'ni', '你'], '你'],
+  ]) {
+    await mount(overTableTable)
+    await harness.evaluate(() => window.tables.view().focus())
+    await harness.keyboard.press('ControlOrMeta+a')
+    await compose(cdp, ...candidates)
+    await cdp.send('Input.insertText', { text })
+    await replacedOnce(overTableTable, [0, overTableTable.length], text, text)
+  }
+  await cdp.detach()
+})
+
+test('typing and composing below a table that ends the note starts a paragraph below it', {
+  timeout: 30000,
+}, async () => {
+  const cdp = await harness.context().newCDPSession(harness)
+  for (const doc of [overTableTable, `before\n\n${overTableTable}`]) {
+    for (const composed of [false, true]) {
+      await mount(doc)
+      const below = await harness.evaluate(() => {
+        const { left, bottom } = document
+          .querySelector('.hibi-lp-table')
+          .getBoundingClientRect()
+        return { x: left + 20, y: bottom + 8 }
+      })
+      await harness.mouse.click(below.x, below.y)
+      assert.equal((await state()).head, doc.length, doc)
+      if (composed) {
+        await cdp.send('Input.dispatchKeyEvent', {
+          type: 'rawKeyDown',
+          key: 'k',
+          code: 'KeyK',
+          windowsVirtualKeyCode: 229,
+          nativeVirtualKeyCode: 229,
+        })
+        await compose(cdp, 'k', 'か')
+        await cdp.send('Input.insertText', { text: 'か' })
+      } else await harness.keyboard.type('xy')
+      await replacedOnce(
+        doc,
+        [doc.length, doc.length],
+        composed ? '\n\nか' : '\n\nxy',
+        `${doc} ${composed}`,
+      )
+    }
+  }
+  await cdp.detach()
+})
+
 test('typing replaces a selection from inside a table to past it, and keys still move over a selected table', {
   timeout: 30000,
 }, async () => {
