@@ -3381,6 +3381,31 @@ for (const [label] of [...toolbarSelectionCases, ['whole document', null]]) {
         )
       },
     )
+    if (label === 'table cell')
+      await t.test(
+        'the line break action writes the cell line break and keeps editing the cell',
+        async () => {
+          await page.evaluate(() =>
+            document
+              .querySelector(
+                '.editor-toolbar [data-toolbar-id="format.hard-break"]',
+              )
+              .click(),
+          )
+          await waitForAsync(
+            page,
+            async (markdown) =>
+              (await window.hibi.getDocument()).markdown === markdown,
+            oracle.source.replace('| cell |', '| c<br>ell |'),
+          )
+          assert.equal(
+            await page.evaluate(
+              () => document.activeElement?.getAttribute('aria-label') ?? null,
+            ),
+            'Table cell',
+          )
+        },
+      )
   })
 }
 

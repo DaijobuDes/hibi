@@ -71,7 +71,6 @@ const blockIds = [
   'quote',
   'code-block',
   'divider',
-  'hard-break',
   'table',
   'indent',
   'outdent',
@@ -396,7 +395,8 @@ export function sourceFormatting(
       return done
     }
     if (view.state.selection.ranges.length !== 1) return false
-    if (tableIds.includes(id))
+    // A table writes a cell's line break as `<br>`.
+    if (tableIds.includes(id) || (id === 'hard-break' && inTable(view)))
       return view.state
         .facet(tableActions)
         .some((actions) => actions.run(view, id))
