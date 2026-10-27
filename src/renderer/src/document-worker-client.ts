@@ -795,8 +795,10 @@ export class DocumentWorkerClient {
         type: 'module',
       })
     this.#worker = worker
-    worker.onmessage = (event: MessageEvent<DocumentWorkerReply>) =>
-      this.#reply(event.data)
+    worker.onmessage = (event: MessageEvent<DocumentWorkerReply>) => {
+      if (epoch === this.#epoch && this.#worker === worker)
+        this.#reply(event.data)
+    }
     worker.onerror = (event) => {
       event.preventDefault()
       if (epoch === this.#epoch && this.#worker === worker) {

@@ -265,7 +265,8 @@ test('released boundary ids do not suppress a fresh replica', async (t) => {
   const f = fixture(t, '# title\n\nbody')
   f.request()
   await until(() => f.pages.at(-1)?.done)
-  const epoch = f.pages[0].epoch
+  const old = f.pages[0]
+  const epoch = old.epoch
   f.client.releaseBoundaries(true)
   f.session.reidentify({ tabId: 'boundary', revision: 1 })
   f.request()
@@ -276,6 +277,8 @@ test('released boundary ids do not suppress a fresh replica', async (t) => {
   assert.equal(f.transports.length, 2)
   assert.notEqual(f.pages.at(-1).epoch, epoch)
   assert.equal(f.transports[0].terminated, true)
+  f.transports[0].onmessage({ data: old })
+  assert.deepEqual(f.declined, [])
   assert.deepEqual(f.errors, [])
 })
 
