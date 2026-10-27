@@ -193,17 +193,18 @@ test('find cancellation and identical-query highlights stay pane-owned', async (
 
 test('reopening a completed pane search refreshes its highlight checkpoints', async (t) => {
   const f = fixture(t, 'alpha alpha')
-  const first = Promise.withResolvers(), second = Promise.withResolvers()
+  const reads = Array.from({ length: 3 }, () => Promise.withResolvers())
   let replies = 0
   const source = f.connect({
-    result: (_location, _action, starts) =>
-      (++replies === 1 ? first : second).resolve(starts),
+    result: (_location, _action, starts) => reads[replies++].resolve(starts),
   })
   source.find('alpha', 0, 0)
-  assert.deepEqual(await first.promise, [0])
+  assert.deepEqual(await reads[0].promise, [0])
+  source.find('alpha', 1, 1)
+  assert.equal(await reads[1].promise, undefined)
   source.cancelFind()
   source.find('alpha', 0, 0)
-  assert.deepEqual(await second.promise, [0])
+  assert.deepEqual(await reads[2].promise, [0])
 })
 
 test('two pane boundary streams retain paged acknowledgement and sequence ownership', async (t) => {
