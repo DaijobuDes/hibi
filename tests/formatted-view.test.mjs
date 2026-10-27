@@ -470,3 +470,80 @@ test('behind the switch, a leading block that is not a metadata mapping stays in
     else assert.ok(shown.rules > 0, `${label}: ${JSON.stringify(shown)}`)
   }
 })
+
+test('behind the switch, a composition over a selected table undoes in one step however late it starts', {
+  timeout: 90000,
+}, async (t) => {
+  const folder = await mkdtemp(join(tmpdir(), 'hibi-formatted-view-'))
+  const file = join(folder, 'notes', 'note.md')
+  const note = 'before\n\n| a | b |\n| - | - |\n| c | d |\n\nafter\n'
+  await mkdir(join(folder, 'notes'))
+  await writeFile(file, note)
+  const app = await electron.launch({
+    args: [resolve('.'), `--user-data-dir=${join(folder, 'profile')}`],
+  })
+  t.after(async () => {
+    await app.close()
+    await rm(folder, { recursive: true, force: true })
+  })
+  await app.evaluate(({ dialog }) => {
+    dialog.showMessageBox = async () => ({ response: 1 })
+  })
+  const page = await app.firstWindow()
+  await waitForDocumentEditor(app, page)
+  await page.evaluate(() =>
+    localStorage.setItem('hibi:formatted-engine', 'codemirror'),
+  )
+  await page.reload()
+  await waitForDocumentEditor(app, page)
+  await app.evaluate(({ dialog }, path) => {
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] })
+  }, file)
+  await pressShortcut(app, `${mod}+o`)
+  await page.locator('.rich-pane .hibi-lp-table').waitFor()
+  const cdp = await page.context().newCDPSession(page)
+  await cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true })
+  const markdown = async (text, label) => {
+    await waitForAsync(
+      page,
+      async (text) => (await window.hibi.getDocument()).markdown === text,
+      text,
+    ).catch(() => {})
+    const { markdown } = await page.evaluate(() => window.hibi.getDocument())
+    assert.equal(markdown, text, label)
+  }
+  // Undo goes through the document's history, which starts a step with each composition.
+  for (const late of [false, true]) {
+    await page.locator('.rich-pane .cm-line', { hasText: 'before' }).click()
+    await page.keyboard.press(`${mod}+a`)
+    await cdp.send('Input.dispatchKeyEvent', {
+      type: 'rawKeyDown',
+      key: 'k',
+      code: 'KeyK',
+      windowsVirtualKeyCode: 229,
+      nativeVirtualKeyCode: 229,
+    })
+    if (late)
+      await page.evaluate(() => {
+        const now = Date.now
+        Date.now = () => now() + 1000
+        window.restoreNow = () => {
+          Date.now = now
+        }
+      })
+    try {
+      for (const text of ['k', 'か'])
+        await cdp.send('Input.imeSetComposition', {
+          text,
+          selectionStart: 1,
+          selectionEnd: 1,
+        })
+      await cdp.send('Input.insertText', { text: 'か' })
+      await markdown('か', `late: ${late}`)
+      await pressShortcut(app, `${mod}+z`)
+      await markdown(note, `undo, late: ${late}`)
+    } finally {
+      if (late) await page.evaluate(() => window.restoreNow())
+    }
+  }
+})

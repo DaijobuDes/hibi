@@ -1,8 +1,11 @@
 import { isolateHistory } from '@codemirror/commands'
 import {
   type ChangeDesc,
+  EditorState,
   MapMode,
   Prec,
+  StateEffect,
+  StateField,
   type Text,
   Transaction,
 } from '@codemirror/state'
@@ -1821,13 +1824,16 @@ function tableAt(view: EditorView, pos: number, strict = false) {
   return null
 }
 
-/** Whether a key in the writable formatted view acts on one selection over a whole table or across its edge. */
-function overTable(event: KeyboardEvent, view: EditorView) {
+/** Whether input in the writable formatted view acts on one selection over a whole table or across its edge. */
+function overTable(
+  event: KeyboardEvent | InputEvent | CompositionEvent,
+  view: EditorView,
+) {
   const { selection } = view.state
   const { main } = selection
   if (
     event.target !== view.contentDOM ||
-    event.isComposing ||
+    ('isComposing' in event && event.isComposing) ||
     view.composing ||
     main.empty ||
     selection.ranges.length !== 1 ||
@@ -1846,6 +1852,44 @@ function overTable(event: KeyboardEvent, view: EditorView) {
   }
   return false
 }
+
+/** Types text over the selection through the view's input handlers, then the default insert. */
+function type(view: EditorView, text: string) {
+  const { from, to } = view.state.selection.main
+  const insert = () =>
+    view.state.update(view.state.replaceSelection(text), {
+      userEvent: 'input.type',
+      scrollIntoView: true,
+    })
+  if (
+    !view.state
+      .facet(EditorView.inputHandler)
+      .some((handler) => handler(view, from, to, text, insert))
+  )
+    view.dispatch(insert())
+  return true
+}
+
+const composeStart = StateEffect.define<null>()
+/** Whether the selection was cleared for a composition that has not changed the text yet. */
+const composeCleared = StateField.define<boolean>({
+  create: () => false,
+  update: (cleared, tr) =>
+    tr.effects.some((effect) => effect.is(composeStart)) ||
+    (cleared && !tr.docChanged && !tr.selection),
+})
+
+/**
+ * Clears the selection so a composition starts at a caret, as Chromium does
+ * over a selected text range. The clearing starts the composition's history
+ * step, and its first change continues that step however late it comes.
+ */
+const clearForComposition = (view: EditorView) =>
+  view.dispatch(view.state.replaceSelection(''), {
+    effects: composeStart.of(null),
+    userEvent: 'input.type.compose.start',
+    scrollIntoView: true,
+  })
 
 /**
  * Tables follow scrolling with their row windows, and a collapsed
@@ -2000,43 +2044,59 @@ export const contribution: FormattedContribution = {
     tableEditing,
     // Chromium drops typing and compositions over a selection that covers a
     // table widget or starts or ends inside one.
+    composeCleared,
+    // History starts a step at a composition's first change; after a clearing
+    // for the composition, that change continues the clearing's step.
+    EditorState.transactionFilter.of((tr) =>
+      tr.startState.field(composeCleared) &&
+      tr.annotation(Transaction.userEvent) === 'input.type.compose.start'
+        ? {
+            changes: tr.changes,
+            selection: tr.selection,
+            effects: tr.effects,
+            scrollIntoView: tr.scrollIntoView,
+            userEvent: 'input.type.compose',
+          }
+        : tr,
+    ),
+    // Observers run before the view's own one, which clears only selections
+    // over several lines, in a history step of their own.
+    EditorView.domEventObservers({
+      compositionstart(event, view) {
+        if (overTable(event, view)) clearForComposition(view)
+      },
+    }),
     Prec.lowest(
       EditorView.domEventHandlers({
-        // An IME takes this key (keyCode 229) to start composing: clear the
-        // selection so the composition has a caret to start at.
+        // An IME takes the key that starts a composition (keyCode 229), and a
+        // dead key starts one too, before the view is composing.
         keydown(event, view) {
-          if (event.keyCode === 229 && overTable(event, view))
-            view.dispatch(view.state.replaceSelection(''), {
-              userEvent: 'input.type',
-              scrollIntoView: true,
-            })
+          if (
+            (event.keyCode === 229 || event.key === 'Dead') &&
+            overTable(event, view)
+          )
+            clearForComposition(view)
           return false
         },
         // Keypress comes after keymaps ran on keydown, only for keys that
         // type a character, Option and AltGr ones included.
         keypress(event, view) {
-          if (
-            event.metaKey ||
-            (event.ctrlKey && !event.altKey) ||
-            [...event.key].length !== 1 ||
-            !overTable(event, view)
+          return (
+            !event.metaKey &&
+            !(event.ctrlKey && !event.altKey) &&
+            [...event.key].length === 1 &&
+            overTable(event, view) &&
+            type(view, event.key)
           )
-            return false
-          const selection = view.state.selection.main
-          const insert = () =>
-            view.state.update(view.state.replaceSelection(event.key), {
-              userEvent: 'input.type',
-              scrollIntoView: true,
-            })
-          if (
-            !view.state
-              .facet(EditorView.inputHandler)
-              .some((handler) =>
-                handler(view, selection.from, selection.to, event.key, insert),
-              )
+        },
+        // Text without a key, as from dictation or an emoji picker.
+        beforeinput(event, view) {
+          return (
+            event.inputType === 'insertText' &&
+            !!event.data &&
+            overTable(event, view) &&
+            type(view, event.data)
           )
-            view.dispatch(insert())
-          return true
         },
       }),
     ),

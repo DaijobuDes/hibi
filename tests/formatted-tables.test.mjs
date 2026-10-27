@@ -645,6 +645,132 @@ test('composed, option and altgr text replaces a selection over a table in one u
   await cdp.detach()
 })
 
+/** Selects `range` (the whole note by default) in a focused harness editor. */
+const selectRange = async (doc, range = [0, doc.length]) => {
+  await mount(doc)
+  await harness.evaluate((range) => {
+    const view = window.tables.view()
+    view.focus()
+    view.dispatch({ selection: { anchor: range[0], head: range[1] } })
+  }, range)
+}
+/** The range replaced by `text`, then one undo restores the note and redo the text. */
+const replacedOnce = async (doc, [from, to], text, label) => {
+  await harness.evaluate(() => window.tables.settle())
+  const typed = doc.slice(0, from) + text + doc.slice(to)
+  assert.equal((await state()).doc, typed, label)
+  await harness.keyboard.press('ControlOrMeta+z')
+  assert.equal((await state()).doc, doc, label)
+  await harness.keyboard.press('ControlOrMeta+Shift+z')
+  assert.equal((await state()).doc, typed, label)
+}
+const compose = async (cdp, ...candidates) => {
+  for (const text of candidates)
+    await cdp.send('Input.imeSetComposition', {
+      text,
+      selectionStart: text.length,
+      selectionEnd: text.length,
+    })
+}
+const overTableTable = '| a | b |\n| - | - |\n| c | d |'
+const overTableNotes = [
+  overTableTable,
+  `before\n\n${overTableTable}\n\nafter`,
+  `${overTableTable}\n\nafter`,
+]
+
+test('a dead key composes over a selection over a table in one undo step', {
+  timeout: 30000,
+}, async () => {
+  const cdp = await harness.context().newCDPSession(harness)
+  for (const doc of overTableNotes) {
+    await selectRange(doc)
+    // A dead key starts a composition with its own key code, not 229.
+    await cdp.send('Input.dispatchKeyEvent', {
+      type: 'rawKeyDown',
+      key: 'Dead',
+      code: 'Quote',
+      windowsVirtualKeyCode: 222,
+      nativeVirtualKeyCode: 222,
+    })
+    await compose(cdp, '´', 'é')
+    await cdp.send('Input.insertText', { text: 'é' })
+    await replacedOnce(doc, [0, doc.length], 'é', doc)
+  }
+  await cdp.detach()
+})
+
+test('a composition that starts without a key replaces a selection over a table in one undo step', {
+  timeout: 30000,
+}, async () => {
+  const cdp = await harness.context().newCDPSession(harness)
+  for (const doc of overTableNotes) {
+    await selectRange(doc)
+    await harness.evaluate(() =>
+      window.tables
+        .view()
+        .contentDOM.dispatchEvent(
+          new CompositionEvent('compositionstart', { bubbles: true }),
+        ),
+    )
+    await compose(cdp, '´', 'é')
+    await cdp.send('Input.insertText', { text: 'é' })
+    await replacedOnce(doc, [0, doc.length], 'é', `compositionstart ${doc}`)
+  }
+  // The table alone selected: the view's own observer clears only selections over several lines.
+  const doc = `before\n\n${overTableTable}\n\nafter`
+  const table = [doc.indexOf('|'), doc.lastIndexOf('|') + 1]
+  await selectRange(doc, table)
+  await compose(cdp, 'n', 'ni', '你')
+  await cdp.send('Input.insertText', { text: '你' })
+  await replacedOnce(doc, table, '你', 'table')
+  await cdp.detach()
+})
+
+test('text without a key, as from dictation, replaces a selection over a table', {
+  timeout: 30000,
+}, async () => {
+  const cdp = await harness.context().newCDPSession(harness)
+  for (const doc of overTableNotes.slice(1)) {
+    await selectRange(doc)
+    await cdp.send('Input.insertText', { text: '👍' })
+    await replacedOnce(doc, [0, doc.length], '👍', doc)
+  }
+  await cdp.detach()
+})
+
+test('a late first candidate keeps a composition over a table one undo step', {
+  timeout: 30000,
+}, async () => {
+  const cdp = await harness.context().newCDPSession(harness)
+  for (const doc of overTableNotes) {
+    await selectRange(doc)
+    await cdp.send('Input.dispatchKeyEvent', {
+      type: 'rawKeyDown',
+      key: 'k',
+      code: 'KeyK',
+      windowsVirtualKeyCode: 229,
+      nativeVirtualKeyCode: 229,
+    })
+    // History groups edits by their time; the IME answers a second later.
+    await harness.evaluate(() => {
+      const now = Date.now
+      Date.now = () => now() + 1000
+      window.restoreNow = () => {
+        Date.now = now
+      }
+    })
+    try {
+      await compose(cdp, 'k', 'か')
+      await cdp.send('Input.insertText', { text: 'か' })
+      await replacedOnce(doc, [0, doc.length], 'か', doc)
+    } finally {
+      await harness.evaluate(() => window.restoreNow())
+    }
+  }
+  await cdp.detach()
+})
+
 test('typing replaces a selection from inside a table to past it, and keys still move over a selected table', {
   timeout: 30000,
 }, async () => {
