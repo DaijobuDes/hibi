@@ -177,6 +177,26 @@ const readClipboard = () =>
     }
   })
 
+/** Copied html, parsed: its elements as `name attribute=value…`, and its text. */
+const copiedDom = (html) =>
+  page.evaluate((html) => {
+    const { body } = new DOMParser().parseFromString(html, 'text/html')
+    return {
+      elements: [...body.querySelectorAll('*')].map((element) =>
+        [
+          element.localName,
+          ...[...element.attributes].map(
+            ({ name, value }) => `${name}=${value}`,
+          ),
+        ].join(' '),
+      ),
+      text: body.textContent,
+    }
+  }, html)
+/** The elements a copy of raw html may hold: its wrapper, paragraphs and literal text. */
+const literalElements =
+  /^(?:div data-hibi-markdown=|p|div class=hibi-literal-block|span class=hibi-literal-inline)$/
+
 test('native copy, cut and paste retain both clipboard formats and sanitize exported html', {
   timeout: 60000,
 }, async () => {
@@ -233,12 +253,11 @@ test('native copy, cut and paste retain both clipboard formats and sanitize expo
   await nativeClipboard('copy', note.length, note.length + unsafe.length)
   const copiedUnsafe = await readClipboard()
   assert.equal(copiedUnsafe.text, unsafe)
-  // Raw HTML is literal text: no tag runs a script or a handler.
-  assert.match(copiedUnsafe.html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/)
-  assert.doesNotMatch(
-    copiedUnsafe.html,
-    /<script|<img|<[^>]*(?:\son\w+=|javascript:)/i,
-  )
+  // Raw HTML copies as literal text, not as elements.
+  const copiedRaw = await copiedDom(copiedUnsafe.html)
+  for (const element of copiedRaw.elements)
+    assert.match(element, literalElements)
+  assert.deepEqual(copiedRaw.text.trim().split('\n'), unsafe.split('\n\n'))
   await undo()
   await settled(note)
 })
@@ -328,14 +347,45 @@ test('copied html leaves out scripts, event handlers and script links', {
   assert.equal(text, unsafe)
   // Raw HTML copies as the literal text the formatted view shows; Markdown
   // links still render, without script destinations.
-  assert.match(html, /&lt;img src="x\.png" onerror=/)
-  assert.match(
-    html,
-    />bad<\/a>[\s\S]*&lt;a href="javascript:alert\(2\)" onclick=/,
-  )
-  assert.doesNotMatch(html, /<script|<img|<[^>]*(?:\son\w+=|javascript:)/i)
+  const copied = await copiedDom(html)
+  for (const element of copied.elements)
+    assert.match(element, element === 'a' ? /^a$/ : literalElements)
+  assert.ok(copied.elements.includes('a'))
+  assert.deepEqual(copied.text.trim().split('\n'), [
+    '<script>document.body.dataset.copied = "script"</script>',
+    '<img src="x.png" onerror="document.body.dataset.copied = \'image\'">',
+    'bad <a href="javascript:alert(2)" onclick="alert(3)">raw</a>',
+  ])
   await undo()
   await settled(note)
+})
+
+test('copied raw html, raw-text bodies included, is its literal source', {
+  timeout: 30000,
+}, async () => {
+  try {
+    for (const source of [
+      'a <code><img/src=x onerror=alert(1)></code> b',
+      'a <pre><svg/onload=alert(1)></pre> b',
+      'a <kbd>&lt;b&gt; <a href=javascript:alert(1)>x</a></kbd> b',
+      'a <script><img/src=x onerror=alert(1)></script> b',
+      'a <style>p { color: red }</style> b',
+      'a <textarea><img src=x></textarea> b',
+      'a <img/src=x onerror=alert(1)> b',
+      'a <img src = x onerror = "alert(1)"> b',
+      'a <img src=x title="a>b" onerror=alert(1)> b',
+      '<div>\n<pre><img src=x onerror=alert(1)></pre>\n</div>',
+    ]) {
+      await setFixture(source)
+      const { html } = await clipboardEvent('copy', 0, null)
+      const copied = await copiedDom(html)
+      for (const element of copied.elements)
+        assert.match(element, literalElements, source)
+      assert.equal(copied.text.trim(), source)
+    }
+  } finally {
+    await setFixture(note)
+  }
 })
 
 test('cut removes the selection in one undoable edit', {
