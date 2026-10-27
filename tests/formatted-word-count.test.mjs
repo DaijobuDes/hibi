@@ -159,8 +159,10 @@ test('source view counts literal text while split and normal views keep formatte
     )
     await counts(expected(body + ' added'))
     await pressShortcut(app, mod + '+Shift+]')
+    await page.locator('.editor-panes.mode-markdown').waitFor()
     await counts(label(countText(source + ' added')))
     await pressShortcut(app, mod + '+Shift+[')
+    await page.locator('.editor-panes.mode-normal').waitFor()
     await counts(expected(body + ' added'))
   }
 })

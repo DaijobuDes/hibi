@@ -140,6 +140,7 @@ export function observeFormattedCounts(
   const unlisten = [
     flavors.subscribe(refresh),
     context.editor.onSyntaxChange(refresh),
+    context.editorViews.onDidChangeActive(refresh),
   ]
   return {
     extension,

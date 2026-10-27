@@ -2348,6 +2348,7 @@ export function SourceEditor({
   // Before paint and before focus moves here, a shown or targeted view catches up.
   useLayoutEffect(() => {
     bridge.setVisible(sourceVisible || editTarget)
+    documentProjections.invalidate()
   }, [bridge, sourceVisible, editTarget])
 
   // A view keeps its place while its pane still lays out: the cleanup that
