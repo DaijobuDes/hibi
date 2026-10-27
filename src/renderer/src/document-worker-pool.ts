@@ -94,7 +94,11 @@ function workerGroup(session: DocumentSession, initial: ClientOptions) {
       baseVersion,
     )
   }
-  const cancelFind = (owner: ClientOptions) => {
+  const cancelFind = (owner: ClientOptions, releaseHighlights = true) => {
+    if (releaseHighlights && highlightOwner === owner) {
+      highlightOwner = null
+      client.invalidateHighlights()
+    }
     findQueue = findQueue.filter((job) => job.owner !== owner)
     if (find?.owner !== owner) return
     find = null
@@ -165,7 +169,7 @@ function workerGroup(session: DocumentSession, initial: ClientOptions) {
       return {
         find(...args) {
           if (disposed) return
-          cancelFind(owner)
+          cancelFind(owner, false)
           findQueue.push({ owner, args })
           nextFind()
         },
@@ -191,7 +195,6 @@ function workerGroup(session: DocumentSession, initial: ClientOptions) {
           releaseMetadata(owner)
           releaseBoundaries(owner)
           cancelFind(owner)
-          if (highlightOwner === owner) highlightOwner = null
           if (owners.size) return
           client.dispose()
           if (groups.get(session) === group) groups.delete(session)
