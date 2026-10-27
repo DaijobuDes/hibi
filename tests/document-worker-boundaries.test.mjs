@@ -261,6 +261,24 @@ test('configuration changes supersede in-flight pages and unknown versions decli
   assert.deepEqual(f.errors, [])
 })
 
+test('released boundary ids do not suppress a fresh replica', async (t) => {
+  const f = fixture(t, '# title\n\nbody')
+  f.request()
+  await until(() => f.pages.at(-1)?.done)
+  const epoch = f.pages[0].epoch
+  f.client.releaseBoundaries(true)
+  f.session.reidentify({ tabId: 'boundary', revision: 1 })
+  f.request()
+  await until(() =>
+    f.transports[1]?.replies.some(({ type }) => type === 'boundaries'),
+  )
+  await new Promise(setImmediate)
+  assert.equal(f.transports.length, 2)
+  assert.notEqual(f.pages.at(-1).epoch, epoch)
+  assert.equal(f.transports[0].terminated, true)
+  assert.deepEqual(f.errors, [])
+})
+
 test('close cancels scan, transfer ownership and further replies while another note opens', async (t) => {
   const f = fixture(t),
     g = fixture(t, '# other note\n\nready\n')

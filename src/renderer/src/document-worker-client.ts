@@ -104,6 +104,7 @@ export class DocumentWorkerClient {
     declined: (reason: 'stale' | 'mismatch') => void
   } | null = null
   #sentBoundaries = ''
+  #releasedBoundaryId = 0
   #boundarySequence = 0
   #boundaryFrom: number | null = null
   #boundaryTo: number | null = null
@@ -205,6 +206,10 @@ export class DocumentWorkerClient {
     this.#flushBoundaries()
   }
   releaseBoundaries(retain = false) {
+    this.#releasedBoundaryId = Math.max(
+      this.#releasedBoundaryId,
+      this.#boundaries?.id ?? 0,
+    )
     this.#boundaries = null
     this.#sentBoundaries = ''
     this.#boundarySequence = 0
@@ -454,7 +459,7 @@ export class DocumentWorkerClient {
       if (
         Number.isSafeInteger(reply.id) &&
         reply.id > 0 &&
-        reply.id < request.id
+        reply.id <= this.#releasedBoundaryId
       )
         return
       if (
@@ -730,7 +735,7 @@ export class DocumentWorkerClient {
     this.#stop()
     this.#deferFind(this.#findQuietUntil)
     this.#epoch = crypto.randomUUID()
-    this.#requestId = 0
+    this.#requestId = this.#releasedBoundaryId = 0
     if (this.#latest)
       this.#latest = {
         ...this.#latest,
