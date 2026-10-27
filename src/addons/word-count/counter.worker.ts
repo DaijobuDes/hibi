@@ -9,12 +9,14 @@ import {
 import { countText } from './count.ts'
 import { FormattedCounter } from './formatted-counter.ts'
 import type { CountSyntax } from './formatted-text.ts'
+import { SourceCounter } from './source-counter.ts'
 
 export type FormattedCountRequest = {
   kind: 'count'
   streamId: string
   version: number
   syntax: CountSyntax
+  mode?: 'source'
 }
 export type CounterRequest =
   | string
@@ -34,6 +36,7 @@ type Document = {
   store?: SourceStore
   model?: FormattedCounter
   syntax?: string
+  source?: SourceCounter
 }
 const documents = new Map<string, Document>()
 let job: {
@@ -91,11 +94,10 @@ self.onmessage = (event: MessageEvent<CounterRequest>) => {
       const entry = documents.get(message.streamId)
       if (!entry?.store) return
       cancel(message.streamId)
-      if (entry.model) entry.model.apply(message.operation)
-      else {
-        const prepared = entry.store.prepare(message.operation)
-        entry.store.commit(prepared)
-      }
+      const prepared = entry.store.prepare(message.operation)
+      entry.source?.apply(prepared)
+      if (entry.model) entry.model.apply(message.operation, prepared)
+      else entry.store.commit(prepared)
       break
     }
     case 'close':
@@ -110,6 +112,16 @@ self.onmessage = (event: MessageEvent<CounterRequest>) => {
         return
       }
       cancel()
+      if (message.mode === 'source') {
+        entry.source ??= new SourceCounter(entry.store)
+        const current = {
+          streamId: message.streamId,
+          work: entry.source.read(),
+        }
+        job = current
+        setTimeout(() => advance(current), 0)
+        return
+      }
       const syntax = JSON.stringify(message.syntax)
       if (!entry.model || entry.syntax !== syntax) {
         entry.model?.dispose()

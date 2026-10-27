@@ -314,24 +314,17 @@ test('source outline resolves references through its worker and preserves native
     () => window.outlineWorkers.length,
   )
   const assertWorkerReuse = () =>
-    t.test(
-      'source outline reuses its document worker',
-      {
-        todo: 'formatted gap semantics-003: formatted and source outlines must reuse one document worker',
-      },
-      async () => {
-        const workers = page
-          .workers()
-          .filter((worker) => worker.url().includes('/document.worker-'))
-        assert.equal(workers.length, 1)
-        for (const worker of documentWorkers)
-          assert.ok(workers.includes(worker))
-        assert.equal(
-          await page.evaluate(() => window.outlineWorkers.length),
-          workerCreations,
-        )
-      },
-    )
+    t.test('source outline reuses its document worker', async () => {
+      const workers = page
+        .workers()
+        .filter((worker) => worker.url().includes('/document.worker-'))
+      assert.equal(workers.length, 1)
+      for (const worker of documentWorkers) assert.ok(workers.includes(worker))
+      assert.equal(
+        await page.evaluate(() => window.outlineWorkers.length),
+        workerCreations,
+      )
+    })
   const expectedLabels = ['**literal** label', 'real']
   const checkFormattedHeadings = async () => {
     await page

@@ -91,6 +91,7 @@ export function localCount(
   insert: string,
   base: number,
   spans: number | SourceOwners,
+  literal = false,
 ) {
   const span =
     typeof spans === 'number'
@@ -104,7 +105,7 @@ export function localCount(
   if (span?.owner.kind !== 'plain') return null
   const start = base + span.from,
     end = base + span.to
-  if (from < start || to > end || syntax.test(insert)) return null
+  if (from < start || to > end || (!literal && syntax.test(insert))) return null
   // ponytail: a run without stable spaces needs its whole segmentation context;
   // composable unicode segmentation summaries would bound edits within that run.
   let left = from,
@@ -144,21 +145,25 @@ export function localCount(
   const after = `${before.slice(0, from - left)}${insert}${before.slice(to - left)}`
   // indentation, punctuation or deletion can change paragraph ownership.
   if (
+    !literal &&
     left === base &&
     (!/^\S/.test(after) || /^\d{1,9}[.)](?:\s|$)/.test(after))
   )
     return null
   // url/email recognition can change when ordinary letters are edited beside these.
   if (
-    /[:@]/.test(before) ||
-    /[:@]/.test(insert) ||
-    /www\./i.test(before) ||
-    /www\./i.test(after)
+    !literal &&
+    (/[:@]/.test(before) ||
+      /[:@]/.test(insert) ||
+      /www\./i.test(before) ||
+      /www\./i.test(after))
   )
     return null
   const oldCount = countText(before),
     newCount = countText(after)
   return {
+    from: left,
+    to: right,
     words: newCount.words - oldCount.words,
     characters: newCount.characters - oldCount.characters,
     units: before.length + after.length,

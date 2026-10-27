@@ -30,7 +30,7 @@ export type FindAction = 'first' | 'next' | 'previous' | null
 type Request = Extract<DocumentWorkerRequest, { type: 'find' }> & {
   action: FindAction
 }
-type ClientOptions = {
+export type ClientOptions = {
   changed: () => void
   pending: () => void
   result: (
@@ -282,6 +282,9 @@ export class DocumentWorkerClient {
     }
     this.#options.metadataPending?.()
     this.#flushMetadata()
+  }
+  invalidateHighlights() {
+    this.#highlightRequest = null
   }
   cancelFind() {
     this.#highlightRequest = null

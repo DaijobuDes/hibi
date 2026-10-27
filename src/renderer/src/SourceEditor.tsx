@@ -111,7 +111,11 @@ import { documentEdits } from './document-edits'
 import { editorDocument } from './document-formats'
 import { documentProjections } from './document-projections'
 import { documentRuntime } from './document-runtime'
-import { DocumentWorkerClient, type FindAction } from './document-worker-client'
+import type { FindAction } from './document-worker-client'
+import {
+  connectDocumentWorker,
+  type DocumentWorkerConnection,
+} from './document-worker-pool'
 import { registerEditorSelectionCapture } from './editor-command-targets'
 import { captureEditorFocus } from './editor-focus-restore'
 import {
@@ -376,7 +380,7 @@ export function SourceEditor({
     query: findQuery,
     report: onFindStatus,
   })
-  const sourceFind = useRef<DocumentWorkerClient | null>(null)
+  const sourceFind = useRef<DocumentWorkerConnection | null>(null)
   const referenceUsed = useRef(false)
   const referenceFailed = useRef(false)
   const referenceQueue = useRef<ReferenceJob[]>([])
@@ -424,7 +428,7 @@ export function SourceEditor({
         sourceFind.current = null
         referenceFailed.current = false
       }
-      sourceFind.current ??= new DocumentWorkerClient(session, {
+      sourceFind.current ??= connectDocumentWorker(session, {
         changed: () => {
           // Edits already cancel old-version work in the client. Keep its
           // reference index available for the next incremental lookup.

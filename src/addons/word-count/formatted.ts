@@ -139,6 +139,7 @@ export function observeFormattedCounts(
     extension,
     read(
       document: Readonly<DocumentState>,
+      sourceMode = false,
     ): FormattedCountRequest | null | undefined {
       const entry = documents.get(document.tabId)
       if (
@@ -155,6 +156,7 @@ export function observeFormattedCounts(
       const { settings } = context.editor.getMetadataSyntax(document.id)
       return {
         kind: 'count',
+        ...(sourceMode ? { mode: 'source' as const } : {}),
         streamId: entry.sender.head.streamId,
         version: entry.session.snapshot().version,
         syntax: {

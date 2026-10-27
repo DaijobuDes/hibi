@@ -93,7 +93,6 @@ owner numbers follow the ordered formatted engine readiness plan. the default fl
 | input-056 | [editor-input.test.mjs:3067](editor-input.test.mjs#L3067) | native enter preserves four line feeds between paragraphs | 8a: native input, structure and toolbar state |
 | input-073 | [editor-input.test.mjs:3440](editor-input.test.mjs#L3440) | native bold typing keeps bold action pressed | 8a: native input, structure and toolbar state |
 | input-074 | [editor-input.test.mjs:3454](editor-input.test.mjs#L3454) | native bold typing renders strong text in canonical source | 8a: native input, structure and toolbar state |
-| semantics-001 | [editor-plugins.test.mjs:67](editor-plugins.test.mjs#L67) | source-view word counts must include markdown characters | 9: outline semantics and diagram lifecycle |
 | api-003 | [editor-view-bridge.test.mjs:189](editor-view-bridge.test.mjs#L189) | switching source view must retain the hosting view identity | 6: verbatim projections and selection contracts |
 | api-006 | [editor-view-bridge.test.mjs:201](editor-view-bridge.test.mjs#L201) | switching to source must stale the previous formatted selection | 6: verbatim projections and selection contracts |
 | split-002 | [editor.test.mjs:187](editor.test.mjs#L187) | split formatted view must remain read-only | 3: read-only access and shared history guards |
@@ -139,8 +138,7 @@ owner numbers follow the ordered formatted engine readiness plan. the default fl
 | math-001 | [math-rendering.test.mjs:626](math-rendering.test.mjs#L626) | tall formula rendering must preserve the reading position | 8b: hidden markers and math caret placement |
 | split-005 | [motion.test.mjs:223](motion.test.mjs#L223) | split formatted view must remain read-only without an input caret | 3: read-only access and shared history guards |
 | split-006 | [motion.test.mjs:281](motion.test.mjs#L281) | typing in a read-only split preview must preserve source | 3: read-only access and shared history guards |
-| semantics-003 | [outline-navigation.test.mjs:320](outline-navigation.test.mjs#L320) | formatted and source outlines must reuse one document worker | 9: outline semantics and diagram lifecycle |
-| link-001 | [outline-navigation.test.mjs:365](outline-navigation.test.mjs#L365) | formatted heading references must render resolved link labels | 5a: reference labels and destinations |
+| link-001 | [outline-navigation.test.mjs:358](outline-navigation.test.mjs#L358) | formatted heading references must render resolved link labels | 5a: reference labels and destinations |
 | contracts-001 | [raw-html-editor.test.mjs:1147](raw-html-editor.test.mjs#L1147) | clipboard html must exclude markup outside the selected fragment | 3c: clipboard fragments and trusted source |
 | contracts-002 | [raw-html-editor.test.mjs:1156](raw-html-editor.test.mjs#L1156) | a clipboard fragment must restore its exact selected markdown source | 3c: clipboard fragments and trusted source |
 | contracts-003 | [raw-html-editor.test.mjs:1241](raw-html-editor.test.mjs#L1241) | modified inline html copies must fall back without restoring raw markup | 3c: clipboard fragments and trusted source |
@@ -155,8 +153,7 @@ owner numbers follow the ordered formatted engine readiness plan. the default fl
 | split-008 | [slash.test.mjs:344](slash.test.mjs#L344) | split formatted view must remain read-only | 3: read-only access and shared history guards |
 | split-009 | [source-markdown-lifecycle.test.mjs:337](source-markdown-lifecycle.test.mjs#L337) | split formatted view must remain read-only | 3: read-only access and shared history guards |
 | projection-002 | [source-preservation.test.mjs:105](source-preservation.test.mjs#L105) | formatted body edits must preserve custom source prefixes and line endings | 6: verbatim projections and selection contracts |
-| semantics-002 | [source-reference-navigation.test.mjs:160](source-reference-navigation.test.mjs#L160) | formatted and source references must reuse one document worker | 9: outline semantics and diagram lifecycle |
-| addon-001 | [source-reference-navigation.test.mjs:185](source-reference-navigation.test.mjs#L185) | rich-only addon syntax must retain native editing and source reference isolation | 2b: legacy feature notices and literal fallback |
+| addon-001 | [source-reference-navigation.test.mjs:179](source-reference-navigation.test.mjs#L179) | rich-only addon syntax must retain native editing and source reference isolation | 2b: legacy feature notices and literal fallback |
 | split-010 | [split-preview-catchup.test.mjs:470](split-preview-catchup.test.mjs#L470) | split formatted view must remain read-only | 3: read-only access and shared history guards |
 | split-016 | [split-preview-catchup.test.mjs:591](split-preview-catchup.test.mjs#L591) | typing in a read-only split preview must preserve source | 3: read-only access and shared history guards |
 | split-011 | [split-preview-ime.test.mjs:491](split-preview-ime.test.mjs#L491) | split formatted view must remain read-only during native composition | 3: read-only access and shared history guards |
