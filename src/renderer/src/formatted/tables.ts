@@ -860,6 +860,12 @@ class TableView {
       fill: (text) => this.fill(text),
       move: (move) => this.move(move),
       leave: (after) => this.leave(after),
+      exit: () => {
+        if (!this.current || !writable(this.view.state) || !this.ends())
+          return false
+        this.leave(true)
+        return true
+      },
       blurred: (editor) => {
         if (this.editing?.editor === editor) this.stopEditing()
       },
@@ -932,13 +938,7 @@ class TableView {
     this.stopEditing()
     const before = doc.lineAt(from).from,
       end = doc.lineAt(to).to
-    // Whether only blank lines follow the table.
-    let last = after
-    for (let pos = end; last && pos < doc.length; ) {
-      const line = doc.lineAt(pos + 1)
-      last = !line.text.trim()
-      pos = line.to
-    }
+    const last = after && this.ends()
     let anchor = after ? end + 1 : before - 1
     let insert: { from: number; insert: string } | null = null
     if (last) {
@@ -961,6 +961,17 @@ class TableView {
       userEvent: insert ? 'input' : 'select',
     })
     this.view.focus()
+  }
+
+  /** Whether only blank lines follow the table. */
+  private ends() {
+    const { doc } = this.view.state
+    for (let pos = doc.lineAt(this.range().to).to; pos < doc.length; ) {
+      const line = doc.lineAt(pos + 1)
+      if (line.text.trim()) return false
+      pos = line.to
+    }
+    return true
   }
 
   stopEditing(redraw = true) {

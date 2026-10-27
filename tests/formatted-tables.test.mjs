@@ -673,6 +673,31 @@ test('typing replaces a selection from inside a table to past it, and keys still
   }
 })
 
+test('mod-enter in a table that ends the note leaves it for a paragraph below, as in the rich editor', {
+  timeout: 30000,
+}, async () => {
+  const doc = 'before\n\n| a | b |\n| - | - |\n| c | d |'
+  for (const cell of ['a', 'c']) {
+    await mount(doc)
+    await harness
+      .locator('.hibi-lp-table :is(td, th)', { hasText: cell })
+      .click()
+    await harness.keyboard.press('ControlOrMeta+Enter')
+    const now = await state()
+    assert.deepEqual(
+      [now.doc, now.head, now.editor],
+      [`${doc}\n\n`, doc.length + 2, null],
+      cell,
+    )
+    await harness.keyboard.press('ControlOrMeta+z')
+    assert.equal((await state()).doc, doc, cell)
+  }
+  await harness.locator('.hibi-lp-table td', { hasText: 'd' }).click()
+  await harness.keyboard.press('ControlOrMeta+Enter')
+  await harness.keyboard.type('AFTER')
+  assert.equal((await state()).doc, `${doc}\n\nAFTER`)
+})
+
 test('a selection in a table edits the cell it is in once the table has redrawn', {
   timeout: 30000,
 }, async () => {
