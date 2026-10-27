@@ -624,3 +624,76 @@ test('behind the switch, a note that is only a table takes text and compositions
     await markdown(note, `undo ${text}`)
   }
 })
+
+test('behind the switch, undoing a composition from inside a table to past it shows the tables it restores', {
+  timeout: 90000,
+}, async (t) => {
+  const folder = await mkdtemp(join(tmpdir(), 'hibi-formatted-view-'))
+  const file = join(folder, 'notes', 'note.md')
+  const table = '| a | b |\n| - | - |\n| c | d |'
+  const note = `before\n\n${table}\n\nafter\n\n${table}\n\nend`
+  const range = [note.indexOf('| c') + 3, note.length]
+  await mkdir(join(folder, 'notes'))
+  await writeFile(file, note)
+  const app = await electron.launch({
+    args: [resolve('.'), `--user-data-dir=${join(folder, 'profile')}`],
+  })
+  t.after(async () => {
+    await app.close()
+    await rm(folder, { recursive: true, force: true })
+  })
+  await app.evaluate(({ dialog }) => {
+    dialog.showMessageBox = async () => ({ response: 1 })
+  })
+  const page = await app.firstWindow()
+  await waitForDocumentEditor(app, page)
+  await page.evaluate(() =>
+    localStorage.setItem('hibi:formatted-engine', 'codemirror'),
+  )
+  await page.reload()
+  await waitForDocumentEditor(app, page)
+  await app.evaluate(({ dialog }, path) => {
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] })
+  }, file)
+  await pressShortcut(app, `${mod}+o`)
+  await page.locator('.rich-pane .hibi-lp-table').nth(1).waitFor()
+  const cdp = await page.context().newCDPSession(page)
+  await cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true })
+  const markdown = async (text, label) => {
+    await waitForAsync(
+      page,
+      async (text) => (await window.hibi.getDocument()).markdown === text,
+      text,
+    ).catch(() => {})
+    const { markdown } = await page.evaluate(() => window.hibi.getDocument())
+    assert.equal(markdown, text, label)
+  }
+  await page.locator('.rich-pane .cm-content').evaluate((element, range) => {
+    const { view } = element.cmTile.root
+    view.focus()
+    view.dispatch({ selection: { anchor: range[0], head: range[1] } })
+  }, range)
+  await cdp.send('Input.dispatchKeyEvent', {
+    type: 'rawKeyDown',
+    key: 'k',
+    code: 'KeyK',
+    windowsVirtualKeyCode: 229,
+    nativeVirtualKeyCode: 229,
+  })
+  for (const text of ['k', 'か'])
+    await cdp.send('Input.imeSetComposition', {
+      text,
+      selectionStart: 1,
+      selectionEnd: 1,
+    })
+  await cdp.send('Input.insertText', { text: 'か' })
+  await markdown(`${note.slice(0, range[0])}か`, 'composed')
+  // Undo goes through the document's history, whose edits carry no input event.
+  await pressShortcut(app, `${mod}+z`)
+  await markdown(note, 'undone')
+  await waitForAsync(
+    page,
+    () => document.querySelectorAll('.rich-pane .hibi-lp-table').length === 2,
+  ).catch(() => {})
+  assert.equal(await page.locator('.rich-pane .hibi-lp-table').count(), 2)
+})

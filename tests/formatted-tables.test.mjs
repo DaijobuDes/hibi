@@ -804,6 +804,31 @@ test('a composition from inside a table to past it composes in the table source 
   await cdp.detach()
 })
 
+test('undoing a composition from inside a table to past it shows the tables it restores', {
+  timeout: 30000,
+}, async () => {
+  const cdp = await harness.context().newCDPSession(harness)
+  const doc = `before\n\n${overTableTable}\n\nafter\n\n${overTableTable}\n\nend`
+  const range = [doc.indexOf('| c') + 3, doc.length]
+  await selectRange(doc, range)
+  await cdp.send('Input.dispatchKeyEvent', {
+    type: 'rawKeyDown',
+    key: 'k',
+    code: 'KeyK',
+    windowsVirtualKeyCode: 229,
+    nativeVirtualKeyCode: 229,
+  })
+  await compose(cdp, 'k', 'か')
+  await cdp.send('Input.insertText', { text: 'か' })
+  await harness.evaluate(() => window.tables.settle())
+  assert.equal((await state()).doc, `${doc.slice(0, range[0])}か`)
+  await harness.keyboard.press('ControlOrMeta+z')
+  await harness.evaluate(() => window.tables.settle())
+  assert.equal((await state()).doc, doc)
+  assert.equal(await harness.locator('.hibi-lp-table').count(), 2)
+  await cdp.detach()
+})
+
 test('a note that is only a table takes text and compositions without a key over its selection', {
   timeout: 30000,
 }, async () => {
