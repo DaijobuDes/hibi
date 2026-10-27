@@ -12,9 +12,12 @@ import {
   type EditorState,
   Facet,
   type SelectionRange,
+  StateEffect,
+  StateField,
   Transaction,
+  type TransactionSpec,
 } from '@codemirror/state'
-import type { EditorView, KeyBinding } from '@codemirror/view'
+import { EditorView, type KeyBinding } from '@codemirror/view'
 import type { SyntaxNode, Tree } from '@lezer/common'
 import type {
   DocumentEdit,
@@ -22,6 +25,7 @@ import type {
   DocumentSelection,
 } from '../../addons/api'
 import type { MediaAttachment } from '../../shared/media'
+import { gapInput } from './formatted-commands.ts'
 import { formattedSyntaxTree } from './formatted-contributions.ts'
 
 /** Same format actions as the toolbar; addon keymaps (including vim) run first. */
@@ -228,18 +232,21 @@ function formattedStates(
   const start = blockAt(tree, range.from, 1)
   const end = range.empty ? start : blockAt(tree, range.to, -1)
   const inline = marksAt(state, tree, range.from, range.to)
+  const stored = storedAt(state)
   const both = (test: (block: Block) => boolean) => test(start) && test(end)
   const literal = both(({ kind }) => kind === 'code-block' || kind === 'other')
   const listed = both(({ item }) => !!item)
   const pressed = (id: string) =>
-    Object.values(markIds).includes(id)
-      ? inline.has(id) ||
-        (range.empty && !!marks[id] && opened(state, range.from, marks[id]))
-      : id === 'quote'
-        ? both(({ quote }) => quote)
-        : id === 'bullet-list' || id === 'numbered-list' || id === 'checklist'
-          ? both(({ lists }) => lists.has(id))
-          : both(({ kind }) => kind === id)
+    stored && storable.includes(id)
+      ? stored.includes(id)
+      : Object.values(markIds).includes(id)
+        ? inline.has(id) ||
+          (range.empty && !!marks[id] && opened(state, range.from, marks[id]))
+        : id === 'quote'
+          ? both(({ quote }) => quote)
+          : id === 'bullet-list' || id === 'numbered-list' || id === 'checklist'
+            ? both(({ lists }) => lists.has(id))
+            : both(({ kind }) => kind === id)
   const disabled = (id: string) => {
     switch (id) {
       case 'bold':
@@ -247,7 +254,7 @@ function formattedStates(
       case 'strike':
       case 'subscript':
       case 'link':
-        return literal || inline.has('inline-code')
+        return literal || pressed('inline-code')
       case 'inline-code':
         return literal
       case 'paragraph':
@@ -280,6 +287,144 @@ function formattedStates(
   }
   return { pressed, disabled }
 }
+
+/**
+ * The marks text typed at the formatted view's caret takes, which a toolbar
+ * action at the caret sets like the rich editor's stored marks. Moving the
+ * caret or any edit drops them.
+ */
+type StoredMarks = { pos: number; marks: readonly string[] }
+const storeMarks = StateEffect.define<StoredMarks>()
+const storedMarks = StateField.define<StoredMarks | null>({
+  create: () => null,
+  update(value, transaction) {
+    for (const effect of transaction.effects)
+      if (effect.is(storeMarks)) return effect.value
+    const { main } = transaction.newSelection
+    return value &&
+      !transaction.docChanged &&
+      main.empty &&
+      main.head === value.pos
+      ? value
+      : null
+  },
+})
+/** The marks a caret action stores, outermost first. */
+const storable = ['bold', 'italic', 'strike', 'subscript', 'inline-code']
+
+/** The stored marks at the caret of a formatted view. */
+function storedAt(state: EditorState) {
+  const stored = state.field(storedMarks, false)
+  const { main } = state.selection
+  return stored && main.empty && main.head === stored.pos ? stored.marks : null
+}
+
+/**
+ * `text` typed with the caret's stored marks. Formatting the text leaves
+ * closes before it and opens again after it; formatting it takes wraps it,
+ * with its outer spaces outside, as the rich editor saved them.
+ */
+function storedInput(
+  state: EditorState,
+  tree: Tree,
+  stored: StoredMarks,
+  text: string,
+): TransactionSpec | null {
+  let at = stored.pos,
+    close = '',
+    reopen = '',
+    kept = false
+  const current = marksAt(state, tree, at, at)
+  // Innermost first, like the formatting a line break closes and opens.
+  for (const [id, node] of current) {
+    if (stored.marks.includes(id)) {
+      kept = true
+      continue
+    }
+    const first = node.firstChild,
+      last = node.lastChild
+    // Kept formatting inside it would have to close and open around the text too.
+    if (kept || !first || !last) return null
+    if (at === first.to) at = node.from
+    else if (at === last.from) at = node.to
+    else {
+      close += state.sliceDoc(last.from, last.to)
+      reopen = state.sliceDoc(first.from, first.to) + reopen
+    }
+  }
+  const core = text.trim()
+  let add = storable.filter(
+    (id) => stored.marks.includes(id) && !current.has(id),
+  )
+  if (add.length === 1 && !close && !reopen && core) {
+    // Text next to the same formatting joins it rather than opening its own.
+    for (
+      let node: SyntaxNode | null = tree.resolveInner(at, -1);
+      node && !node.type.is('Block');
+      node = node.parent
+    )
+      if (node.to === at && markIds[node.name] === add[0] && node.lastChild) {
+        at = node.lastChild.from
+        add = []
+        break
+      }
+  }
+  const lead = core ? text.slice(0, text.indexOf(core)) : text
+  const trail = core ? text.slice(lead.length + core.length) : ''
+  const pad = add.includes('inline-code') && /^`|`$/.test(core) ? ' ' : ''
+  const delimiters = add.map((id) =>
+    id === 'inline-code' ? '`'.repeat(fenceLength(core)) : marks[id],
+  )
+  const open = delimiters.join('') + pad
+  const shut = pad + delimiters.toReversed().join('')
+  const typed = core ? lead + open + core + shut + trail : text
+  const insert = close + typed + reopen
+  // The caret stays in the formatting it opened, for the text typed next;
+  // spaces after it keep the marks stored.
+  const keep = add.length > 0 && (!core || !!trail)
+  const caret =
+    at + close.length + (keep ? typed.length : typed.length - shut.length)
+  const effects = keep ? storeMarks.of({ pos: caret, marks: stored.marks }) : []
+  const gap = gapInput(state, tree, at, at, insert)
+  if (gap)
+    return {
+      ...gap,
+      selection: EditorSelection.cursor(
+        state.doc.lineAt(at).from + 1 + caret - at,
+      ),
+      effects,
+      scrollIntoView: true,
+    }
+  return {
+    changes: { from: at, insert },
+    selection: EditorSelection.cursor(caret),
+    effects,
+    userEvent: 'input.type',
+    scrollIntoView: true,
+  }
+}
+
+/** Stored marks for a formatted view, which wrap the text typed next at their caret. */
+export const storedMarkInput = [
+  storedMarks,
+  EditorView.inputHandler.of((view, from, to, text) => {
+    const stored = view.state.field(storedMarks)
+    const tree = formattedSyntaxTree(view.state)
+    if (
+      !stored ||
+      !tree ||
+      view.composing ||
+      from !== stored.pos ||
+      to !== from ||
+      /[\r\n]/.test(text)
+    )
+      return false
+    const spec = storedInput(view.state, tree, stored, text)
+    if (!spec) return false
+    view.dispatch(spec)
+    return true
+  }),
+]
 
 const fenceLength = (text: string, minimum = 0) =>
   Array.from(text.matchAll(/`+/g)).reduce(
@@ -402,6 +547,29 @@ export function sourceFormatting(
         .some((actions) => actions.run(view, id))
     const range = view.state.selection.main
     const doc = view.state.doc
+    const tree = formattedSyntaxTree(view.state)
+    if (
+      range.empty &&
+      tree &&
+      storable.includes(id) &&
+      view.state.field(storedMarks, false) !== undefined &&
+      !inTable(view)
+    ) {
+      // Like the rich editor, a caret action formats the text typed next.
+      const current = storedAt(view.state) ?? [
+        ...marksAt(view.state, tree, range.head, range.head).keys(),
+      ]
+      view.dispatch({
+        effects: storeMarks.of({
+          pos: range.head,
+          marks: current.includes(id)
+            ? current.filter((mark) => mark !== id)
+            : [...current, id],
+        }),
+      })
+      view.focus()
+      return true
+    }
     let from = range.from,
       to = range.to
     const selected = doc.sliceString(from, to)
@@ -502,8 +670,8 @@ export function sourceFormatting(
       end = insert.length
     } else if (id === 'unlink') {
       // Like the rich editor, a caret in a link removes that link.
-      const tree = range.empty ? formattedSyntaxTree(view.state) : null
-      const link = tree && marksAt(view.state, tree, from, to).get('link')
+      const link =
+        range.empty && tree && marksAt(view.state, tree, from, to).get('link')
       if (link) {
         from = link.from
         to = link.to

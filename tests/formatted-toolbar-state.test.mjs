@@ -1,10 +1,14 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { EditorState, Text } from '@codemirror/state'
+import { EditorView } from '@codemirror/view'
 import { Tree } from '@lezer/common'
 import { GFM, parser } from '@lezer/markdown'
 import { formattedTree } from '../src/renderer/src/formatted-contributions.ts'
-import { sourceFormatting } from '../src/renderer/src/source-formatting.ts'
+import {
+  sourceFormatting,
+  storedMarkInput,
+} from '../src/renderer/src/source-formatting.ts'
 
 const markdown = parser.configure(GFM)
 const note = [
@@ -272,4 +276,96 @@ test('formatted toolbar inspection reads the same text and syntax in a 50 MiB no
     assert.deepEqual(inspect(large), expected, String(text))
     assert.equal(expected.scans, 0)
   }
+})
+
+/** A formatted view of `doc`, with stored marks, that types like CodeMirror's input. */
+function typing(doc, anchor) {
+  const target = {
+    composing: false,
+    state: EditorState.create({
+      doc,
+      selection: { anchor },
+      extensions: [
+        formattedTree.of((state) => markdown.parse(state.doc.toString())),
+        storedMarkInput,
+      ],
+    }),
+    dispatch(spec) {
+      this.state = this.state.update(spec).state
+    },
+    focus() {},
+    type(text) {
+      for (const character of text) {
+        const { from, to } = this.state.selection.main
+        const insert = () =>
+          this.state.update(this.state.replaceSelection(character))
+        if (
+          !this.state
+            .facet(EditorView.inputHandler)
+            .some((handler) => handler(this, from, to, character, insert))
+        )
+          this.state = insert().state
+      }
+      return this.state.doc.toString()
+    },
+  }
+  target.formatting = sourceFormatting(target)
+  target.pressed = (id) => target.formatting.inspect().state(id).pressed
+  return target
+}
+
+test('a formatted caret action stores its mark for the text typed next', () => {
+  const view = typing('plain end', 9)
+  assert.equal(view.formatting.run('bold'), true)
+  assert.equal(view.state.doc.toString(), 'plain end')
+  assert.equal(view.pressed('bold'), true)
+  assert.equal(view.type(' typed'), 'plain end **typed**')
+  assert.equal(view.pressed('bold'), true)
+  assert.equal(view.type(' more'), 'plain end **typed more**')
+
+  const off = typing('a **bold** b', 6)
+  off.formatting.run('bold')
+  assert.equal(off.pressed('bold'), false)
+  assert.equal(off.type('X'), 'a **bo**X**ld** b')
+  assert.equal(off.pressed('bold'), false)
+  const end = typing('a **bold** b', 8)
+  end.formatting.run('bold')
+  assert.equal(end.type('X'), 'a **bold**X b')
+
+  // Typing next to the same formatting extends it.
+  const joined = typing('a **bold** b', 10)
+  assert.equal(joined.pressed('bold'), false)
+  joined.formatting.run('bold')
+  assert.equal(joined.type('er'), 'a **bolder** b')
+  // Two marks open together, and a gap line between blocks becomes a paragraph.
+  const gap = typing('a\n\nb', 2)
+  gap.formatting.run('bold')
+  gap.formatting.run('italic')
+  assert.equal(gap.pressed('italic'), true)
+  assert.equal(gap.type('x'), 'a\n\n***x***\n\nb')
+  assert.equal(gap.type('y'), 'a\n\n***xy***\n\nb')
+  const code = typing('a ', 2)
+  code.formatting.run('inline-code')
+  assert.equal(code.pressed('bold'), false)
+  assert.equal(code.formatting.inspect().state('bold').disabled, true)
+  assert.equal(code.type('x'), 'a `x`')
+})
+
+test('stored marks drop when the caret moves or the text has lines', () => {
+  const moved = typing('plain end', 9)
+  moved.formatting.run('bold')
+  moved.dispatch({ selection: { anchor: 3 } })
+  moved.dispatch({ selection: { anchor: 9 } })
+  assert.equal(moved.pressed('bold'), false)
+  assert.equal(moved.type('x'), 'plain endx')
+  // Like the rich editor, multi-line input does not take the caret's stored marks.
+  const lines = typing('', 0)
+  lines.formatting.run('bold')
+  const { from, to } = lines.state.selection.main
+  assert.equal(
+    lines.state
+      .facet(EditorView.inputHandler)
+      .some((handler) => handler(lines, from, to, 'alpha\nbeta', () => null)),
+    false,
+  )
 })

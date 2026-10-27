@@ -76,8 +76,6 @@ owner numbers follow the ordered formatted engine readiness plan. the default fl
 | input-071 | [editor-input.test.mjs:2447](editor-input.test.mjs#L2447) | toolbar states match live table cell selection | 8a: native input, structure and toolbar state |
 | input-051 | [editor-input.test.mjs:2733](editor-input.test.mjs#L2733) | native multiline input exits empty list and preserves following paragraph | 8a: native input, structure and toolbar state |
 | input-056 | [editor-input.test.mjs:3039](editor-input.test.mjs#L3039) | native enter preserves four line feeds between paragraphs | 8a: native input, structure and toolbar state |
-| input-073 | [editor-input.test.mjs:3412](editor-input.test.mjs#L3412) | native bold typing keeps bold action pressed | 8a: native input, structure and toolbar state |
-| input-074 | [editor-input.test.mjs:3426](editor-input.test.mjs#L3426) | native bold typing renders strong text in canonical source | 8a: native input, structure and toolbar state |
 | semantics-001 | [editor-plugins.test.mjs:67](editor-plugins.test.mjs#L67) | source-view word counts must include markdown characters | 9: outline semantics and diagram lifecycle |
 | api-003 | [editor-view-bridge.test.mjs:189](editor-view-bridge.test.mjs#L189) | switching source view must retain the hosting view identity | 6: verbatim projections and selection contracts |
 | api-006 | [editor-view-bridge.test.mjs:201](editor-view-bridge.test.mjs#L201) | switching to source must stale the previous formatted selection | 6: verbatim projections and selection contracts |
