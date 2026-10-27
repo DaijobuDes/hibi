@@ -1810,6 +1810,32 @@ function tableAt(view: EditorView, pos: number, strict = false) {
   return null
 }
 
+/** Whether a key in the writable formatted view acts on one selection over a whole table or across its edge. */
+function overTable(event: KeyboardEvent, view: EditorView) {
+  const { selection } = view.state
+  const { main } = selection
+  if (
+    event.target !== view.contentDOM ||
+    event.isComposing ||
+    view.composing ||
+    main.empty ||
+    selection.ranges.length !== 1 ||
+    !writable(view.state)
+  )
+    return false
+  for (const table of mounted.get(view) ?? []) {
+    if (!table.current || !table.dom.isConnected) continue
+    const { from, to } = table.range()
+    if (
+      main.from < to &&
+      main.to > from &&
+      (main.from <= from || main.to >= to)
+    )
+      return true
+  }
+  return false
+}
+
 /**
  * Tables follow scrolling with their row windows, and a collapsed
  * selection that lands inside a table, as after undo or find, edits the
@@ -1961,32 +1987,31 @@ export const contribution: FormattedContribution = {
   ],
   extension: [
     tableEditing,
+    // Chromium drops typing and compositions over a selection that covers a
+    // table widget or starts or ends inside one.
     Prec.lowest(
       EditorView.domEventHandlers({
+        // An IME takes this key (keyCode 229) to start composing: clear the
+        // selection so the composition has a caret to start at.
         keydown(event, view) {
+          if (event.keyCode === 229 && overTable(event, view))
+            view.dispatch(view.state.replaceSelection(''), {
+              userEvent: 'input.type',
+              scrollIntoView: true,
+            })
+          return false
+        },
+        // Keypress comes after keymaps ran on keydown, only for keys that
+        // type a character, Option and AltGr ones included.
+        keypress(event, view) {
           if (
-            event.target !== view.contentDOM ||
-            event.isComposing ||
-            view.composing ||
-            event.altKey ||
-            event.ctrlKey ||
             event.metaKey ||
+            (event.ctrlKey && !event.altKey) ||
             [...event.key].length !== 1 ||
-            !writable(view.state)
+            !overTable(event, view)
           )
             return false
           const selection = view.state.selection.main
-          if (
-            selection.empty ||
-            view.state.selection.ranges.length !== 1 ||
-            ![...(mounted.get(view) ?? [])].some((table) => {
-              if (!table.current || !table.dom.isConnected) return false
-              const { from, to } = table.range()
-              return selection.from <= from && selection.to >= to
-            })
-          )
-            return false
-          // Chromium can drop typing over a selected block widget.
           const insert = () =>
             view.state.update(view.state.replaceSelection(event.key), {
               userEvent: 'input.type',

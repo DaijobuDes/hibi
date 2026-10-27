@@ -577,6 +577,102 @@ test('physical typing replaces a selection over a table and undo restores it', a
   }
 })
 
+test('composed, option and altgr text replaces a selection over a table in one undo step', {
+  timeout: 30000,
+}, async () => {
+  const table = '| a | b |\n| - | - |\n| c | d |'
+  const cdp = await harness.context().newCDPSession(harness)
+  const select = async (doc) => {
+    await mount(doc)
+    await harness.evaluate(() => window.tables.view().focus())
+    await harness.keyboard.press('ControlOrMeta+a')
+  }
+  const undone = async (doc, label) => {
+    await harness.keyboard.press('ControlOrMeta+z')
+    assert.equal((await state()).doc, doc, label)
+  }
+  for (const doc of [table, `before\n\n${table}\n\nafter`]) {
+    // An IME takes the key that starts a composition: keyCode 229, not yet composing.
+    await select(doc)
+    await cdp.send('Input.dispatchKeyEvent', {
+      type: 'rawKeyDown',
+      key: 'k',
+      code: 'KeyK',
+      windowsVirtualKeyCode: 229,
+      nativeVirtualKeyCode: 229,
+    })
+    await cdp.send('Input.imeSetComposition', {
+      text: 'k',
+      selectionStart: 1,
+      selectionEnd: 1,
+    })
+    await cdp.send('Input.insertText', { text: 'か' })
+    await cdp.send('Input.dispatchKeyEvent', {
+      type: 'keyUp',
+      key: 'k',
+      code: 'KeyK',
+      windowsVirtualKeyCode: 229,
+    })
+    await harness.evaluate(() => window.tables.settle())
+    assert.equal((await state()).doc, 'か')
+    await undone(doc, 'composition')
+    // Option (Alt) characters on macOS; AltGr is Control and Alt on Windows.
+    for (const [modifiers, text, code] of [
+      [1, 'å', 'KeyA'],
+      [3, '@', 'KeyQ'],
+    ]) {
+      await select(doc)
+      await cdp.send('Input.dispatchKeyEvent', {
+        type: 'keyDown',
+        key: text,
+        code,
+        text,
+        unmodifiedText: code.at(-1).toLowerCase(),
+        modifiers,
+        windowsVirtualKeyCode: code.charCodeAt(3),
+      })
+      await cdp.send('Input.dispatchKeyEvent', {
+        type: 'keyUp',
+        key: text,
+        code,
+        modifiers,
+        windowsVirtualKeyCode: code.charCodeAt(3),
+      })
+      assert.equal((await state()).doc, text)
+      await undone(doc, text)
+    }
+  }
+  await cdp.detach()
+})
+
+test('typing replaces a selection from inside a table to past it, and keys still move over a selected table', {
+  timeout: 30000,
+}, async () => {
+  const doc = 'before\n\n| a | b |\n| - | - |\n| c | d |\n\nafter'
+  // A selection a find match could leave, from a row to the end.
+  const from = doc.indexOf('| c')
+  await mount(doc)
+  await harness.evaluate((from) => {
+    const view = window.tables.view()
+    view.focus()
+    view.dispatch({ selection: { anchor: from, head: view.state.doc.length } })
+  }, from)
+  await harness.keyboard.press('r')
+  assert.equal((await state()).doc, `${doc.slice(0, from)}r`)
+  await harness.keyboard.press('ControlOrMeta+z')
+  assert.equal((await state()).doc, doc)
+  // Shortcuts and arrows over a selected table type nothing.
+  for (const [key, at] of [
+    ['ArrowLeft', 0],
+    ['ArrowRight', doc.length],
+  ]) {
+    await harness.keyboard.press('ControlOrMeta+a')
+    await harness.keyboard.press(key)
+    const now = await state()
+    assert.deepEqual([now.doc, now.anchor, now.head], [doc, at, at], key)
+  }
+})
+
 test('a selection in a table edits the cell it is in once the table has redrawn', {
   timeout: 30000,
 }, async () => {
