@@ -450,6 +450,13 @@ export class DocumentWorkerClient {
     if (reply.type === 'boundaries' || reply.type === 'boundary-declined') {
       const request = this.#boundaries
       if (!request) return
+      // A released pane's late pages cannot invalidate the next receiver.
+      if (
+        Number.isSafeInteger(reply.id) &&
+        reply.id > 0 &&
+        reply.id < request.id
+      )
+        return
       if (
         reply.id !== request.id ||
         reply.version !== request.version ||

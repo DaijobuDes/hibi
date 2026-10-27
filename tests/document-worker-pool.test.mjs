@@ -166,6 +166,29 @@ test('boundary pages keep their acknowledgement owner while panes queue and disp
   assert.equal(f.workers.length, 1)
 })
 
+test('late cancelled boundary pages cannot decline the next pane stream', async (t) => {
+  const f = fixture(t, '# first\n\nbody')
+  const held = Promise.withResolvers(),
+    done = Promise.withResolvers()
+  const formatted = f.connect(),
+    source = f.connect()
+  const declined = []
+  formatted.boundaries(config, (page) => held.resolve(page), assert.fail)
+  source.boundaries(
+    config,
+    (page, acknowledge) => {
+      acknowledge()
+      if (page.done) done.resolve()
+    },
+    (reason) => declined.push(reason),
+  )
+  const obsolete = await held.promise
+  formatted.dispose()
+  f.workers[0].onmessage({ data: obsolete })
+  assert.deepEqual(declined, [])
+  await done.promise
+})
+
 test('find cancellation and identical-query highlights stay pane-owned', async (t) => {
   const f = fixture(t, 'alpha alpha beta')
   const first = Promise.withResolvers(),
