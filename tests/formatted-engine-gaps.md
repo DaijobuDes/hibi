@@ -90,9 +90,8 @@ owner numbers follow the ordered formatted engine readiness plan. the default fl
 | input-071 | [editor-input.test.mjs:2473](editor-input.test.mjs#L2473) | toolbar states match live table cell selection | 8a: native input, structure and toolbar state |
 | input-072 | [editor-input.test.mjs:2475](editor-input.test.mjs#L2475) | toolbar states match live whole document selection | 8a: native input, structure and toolbar state |
 | input-051 | [editor-input.test.mjs:2761](editor-input.test.mjs#L2761) | native multiline input exits empty list and preserves following paragraph | 8a: native input, structure and toolbar state |
-| input-056 | [editor-input.test.mjs:3067](editor-input.test.mjs#L3067) | native enter preserves four line feeds between paragraphs | 8a: native input, structure and toolbar state |
-| input-073 | [editor-input.test.mjs:3440](editor-input.test.mjs#L3440) | native bold typing keeps bold action pressed | 8a: native input, structure and toolbar state |
-| input-074 | [editor-input.test.mjs:3454](editor-input.test.mjs#L3454) | native bold typing renders strong text in canonical source | 8a: native input, structure and toolbar state |
+| input-073 | [editor-input.test.mjs:3437](editor-input.test.mjs#L3437) | native bold typing keeps bold action pressed | 8a: native input, structure and toolbar state |
+| input-074 | [editor-input.test.mjs:3451](editor-input.test.mjs#L3451) | native bold typing renders strong text in canonical source | 8a: native input, structure and toolbar state |
 | semantics-001 | [editor-plugins.test.mjs:67](editor-plugins.test.mjs#L67) | source-view word counts must include markdown characters | 9: outline semantics and diagram lifecycle |
 | api-003 | [editor-view-bridge.test.mjs:189](editor-view-bridge.test.mjs#L189) | switching source view must retain the hosting view identity | 6: verbatim projections and selection contracts |
 | api-006 | [editor-view-bridge.test.mjs:201](editor-view-bridge.test.mjs#L201) | switching to source must stale the previous formatted selection | 6: verbatim projections and selection contracts |

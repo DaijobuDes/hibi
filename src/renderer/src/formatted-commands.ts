@@ -324,8 +324,15 @@ export function blockBreak(
         : spanned(state, tree, range.from, range.to)
       return insert(`${close}\n${prefix}${open}`, at, end)
     }
-    // A blank line between blocks gains another empty line.
-    if (blank(line.text)) return insert('\n')
+    // A blank line between blocks gains another empty line. After the last
+    // block, blank lines show in pairs as empty paragraphs, as in the rich
+    // view, so it gains a pair.
+    if (blank(line.text)) {
+      let number = line.number + 1
+      while (number <= state.doc.lines && blank(state.doc.line(number).text))
+        number++
+      return insert(number > state.doc.lines ? '\n\n' : '\n')
+    }
     const { close, open, at, end } = range.empty
       ? reopened(state, tree, pos)
       : spanned(state, tree, range.from, range.to)

@@ -759,3 +759,10 @@ test('enter with a selection at the edges of formatting leaves no empty markers,
     '1. parent\n   - child\n2. |\n3. after',
   )
 })
+
+test('enter on a blank line after the last block adds an empty paragraph, and one line between blocks', () => {
+  // Before, it added one line break, which the rich view shows as nothing.
+  assert.equal(run('first\n\n|', blockBreak), 'first\n\n\n\n|')
+  assert.equal(run('first\n\n|\n', blockBreak), 'first\n\n\n\n|\n')
+  assert.equal(run('a\n\n|\n\nb', blockBreak), 'a\n\n\n|\n\nb')
+})
