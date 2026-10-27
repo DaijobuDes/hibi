@@ -34,6 +34,7 @@ import { listWindow, parsedChunks, uncovered } from './chunked-markdown'
 import { codeHighlighter } from './code-languages'
 import {
   blockBreak,
+  codeIndent,
   deleteBackward,
   deleteForward,
   exitBlock,
@@ -72,7 +73,7 @@ import './live-preview.css'
 
 const hide = Decoration.replace({})
 
-/** Whether Tab indents formatted text; list items and code always take Tab. */
+/** Whether Tab indents formatted text and code; list items always take Tab. */
 export const formattedTabIndents = Facet.define<boolean, boolean>({
   combine: (values) => values.at(-1) ?? true,
 })
@@ -1482,7 +1483,7 @@ export function livePreview(
     }
   const tab = (outdent: boolean) => (view: EditorView) => {
     const tree = syntax.tree(view.state)
-    let structured = false
+    let item = false
     for (
       let node: SyntaxNode | null = tree.resolveInner(
         view.state.selection.main.head,
@@ -1491,9 +1492,8 @@ export function livePreview(
       node;
       node = node.parent
     )
-      if (['ListItem', 'FencedCode', 'CodeBlock'].includes(node.name))
-        structured = true
-    if (!structured && !view.state.facet(formattedTabIndents)) return false
+      if (node.name === 'ListItem') item = true
+    if (!item && !view.state.facet(formattedTabIndents)) return false
     return run((current) =>
       indent(current.state, tree, outdent, hidden(current)),
     )(view)
@@ -1530,6 +1530,7 @@ export function livePreview(
     formattedTree.of(syntax.tree),
     follow,
     syntax.extension,
+    codeIndent,
     focused,
     layout,
     EditorView.decorations.compute([layout, 'selection'], (state) =>
