@@ -270,6 +270,40 @@ test('list and definition projection differences stay explicit', () => {
     }
 })
 
+test('custom alert and subtext bodies retain native text with disabled bold', () => {
+  const disabledFeatures = ['core.heading-1', 'core.bold', 'core.images']
+  for (const feature of disabledFeatures)
+    markdownSyntax.setEnabled(feature, false)
+  try {
+    for (const body of ['> [!TIP]\n> **careful**', '-# small **words**']) {
+      const source = `**outside**\n\n${body}\n\n# after`
+      const syntax = {
+        ...defaultNoteSyntax,
+        alerts: true,
+        textExtras: true,
+        disabledFeatures,
+      }
+      const expected = native(source)
+      assert.equal(richText(source, syntax).slice(1), expected)
+      const counter = new FormattedCounter(
+        new SourceStore(source, { tabId: 'flavor', revision: 0 }),
+        syntax,
+      )
+      try {
+        const work = counter.read()
+        let step
+        do step = work.next()
+        while (!step.done)
+        assert.deepEqual(step.value, countText(expected))
+      } finally {
+        counter.dispose()
+      }
+    }
+  } finally {
+    markdownSyntax.reset()
+  }
+})
+
 test('disabled syntax remains literal in document totals', () => {
   for (const [source, feature, expected] of [
     ['one **bold**', 'core.bold', 'one **bold**'],

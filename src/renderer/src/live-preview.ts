@@ -129,6 +129,19 @@ const noBlocks: Blocks = {
 }
 let blocks = noBlocks
 
+/** Native custom bodies drop unsupported bold marks while keeping their text. */
+function customBold(node: SyntaxNodeRef, literal: ReadonlySet<string>) {
+  if (node.name !== 'StrongEmphasis' || !literal.has(node.name)) return false
+  for (let parent = node.node.parent; parent; parent = parent.parent)
+    if (
+      parent.name === 'Subtext' ||
+      (parent.name === 'Blockquote' &&
+        parent.firstChild?.nextSibling?.name === 'AlertTitle')
+    )
+      return true
+  return false
+}
+
 const isBlock = (node: SyntaxNode) => node.type.is('Block')
 const isList = (node: SyntaxNode) =>
   node.name === 'BulletList' || node.name === 'OrderedList'
@@ -523,7 +536,7 @@ function inline(
       mode: IterMode.IgnoreMounts,
       enter(ref: SyntaxNodeRef) {
         const name = ref.name
-        let skip = literal.has(name)
+        let skip = literal.has(name) && !customBold(ref, literal)
         if (!skip) {
           const contributed = views(ref.type)
           if (contributed.views.length) {
@@ -653,7 +666,7 @@ function inline(
         mark('hibi-lp-em', ref.from, ref.to)
         return
       case 'StrongEmphasis':
-        mark('hibi-lp-strong', ref.from, ref.to)
+        if (!literal.has(ref.name)) mark('hibi-lp-strong', ref.from, ref.to)
         return
       case 'EmphasisMark': {
         const parent = ref.node.parent
@@ -1157,7 +1170,7 @@ function chunkLayout(
       mode: IterMode.IgnoreMounts,
       enter(ref) {
         if (ref.to <= range.from || ref.from >= range.to) return false
-        if (literal.has(ref.name)) return false
+        if (literal.has(ref.name) && !customBold(ref, literal)) return false
         const contributed = views(ref.type).views
         if (contributed.some((view) => view.layout)) {
           sensitive = true

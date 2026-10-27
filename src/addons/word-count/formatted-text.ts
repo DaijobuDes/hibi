@@ -43,6 +43,12 @@ export function countParser(syntax: CountSyntax) {
     if (syntax.textExtras) parser.use(textExtrasMarkdown)
     if (syntax.math) parser.use(mathTokens)
     if (syntax.typst) parser.use(typstTokens)
+    // Native custom tokenizers own their children without preference masking.
+    const children = parser.defaults.extensions?.childTokens
+    if (children) {
+      children.githubAlert = []
+      children.subtext = []
+    }
     parsers.set(key, parser)
   }
   return parser
