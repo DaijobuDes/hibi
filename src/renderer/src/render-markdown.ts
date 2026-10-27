@@ -5,11 +5,17 @@ import literalStyles from '../../ui/markdown-literal.css?raw'
 import syntaxStyles from '../../ui/syntax.css?raw'
 import { codeHtml, escapeCode } from './code-languages'
 import { flavorMatches, flavors, loadFlavor, selectedFlavors } from './flavors'
+import { markdownSyntax } from './markdown-syntax'
 import { installSyntaxPreferences } from './syntax-parser'
 
+/**
+ * `literalHtml` renders raw HTML as its literal source, as the formatted view
+ * shows it, instead of as sanitized markup.
+ */
 export function renderMarkdown(
   source: string,
   documentId?: string,
+  literalHtml = false,
 ): RenderedMarkdown {
   const selected = selectedFlavors(loadFlavor(documentId), flavors.snapshot())
   const parser = installSyntaxPreferences(
@@ -28,6 +34,22 @@ export function renderMarkdown(
     for (const extension of flavor.export?.extensions ?? [])
       parser.use(extension)
   }
+  if (literalHtml)
+    parser.use({
+      walkTokens(token) {
+        // A `<br>` the formatted view draws as a line break stays one.
+        if (
+          token.type === 'html' &&
+          (token.block ||
+            !/^<br\s*\/?>$/i.test(token.raw) ||
+            !markdownSyntax.enabled('core.line-breaks'))
+        )
+          Object.assign(token, {
+            type: token.block ? 'hibiLiteralBlock' : 'hibiLiteralInline',
+            text: token.block ? token.raw.replace(/\n+$/, '') : token.raw,
+          })
+      },
+    })
   return {
     html: parser.parse(source, { async: false }),
     css:

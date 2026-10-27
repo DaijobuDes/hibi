@@ -231,10 +231,13 @@ test('native copy, cut and paste retain both clipboard formats and sanitize expo
   })
   await settled(note + unsafe)
   await nativeClipboard('copy', note.length, note.length + unsafe.length)
-  assert.equal((await readClipboard()).text, unsafe)
+  const copiedUnsafe = await readClipboard()
+  assert.equal(copiedUnsafe.text, unsafe)
+  // Raw HTML is literal text: no tag runs a script or a handler.
+  assert.match(copiedUnsafe.html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/)
   assert.doesNotMatch(
-    (await readClipboard()).html,
-    /<script|onerror|javascript:/i,
+    copiedUnsafe.html,
+    /<script|<img|<[^>]*(?:\son\w+=|javascript:)/i,
   )
   await undo()
   await settled(note)
@@ -323,9 +326,14 @@ test('copied html leaves out scripts, event handlers and script links', {
   await settled(note + unsafe)
   const { text, html } = await clipboardEvent('copy', note.length, null)
   assert.equal(text, unsafe)
-  assert.match(html, /<img [^>]*src="x\.png"/)
-  assert.match(html, />bad<\/a>[\s\S]*>raw<\/a>/)
-  assert.doesNotMatch(html, /<script|onerror|onclick|javascript:/i)
+  // Raw HTML copies as the literal text the formatted view shows; Markdown
+  // links still render, without script destinations.
+  assert.match(html, /&lt;img src="x\.png" onerror=/)
+  assert.match(
+    html,
+    />bad<\/a>[\s\S]*&lt;a href="javascript:alert\(2\)" onclick=/,
+  )
+  assert.doesNotMatch(html, /<script|<img|<[^>]*(?:\son\w+=|javascript:)/i)
   await undo()
   await settled(note)
 })

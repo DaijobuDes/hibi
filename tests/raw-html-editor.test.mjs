@@ -787,9 +787,11 @@ test('codemirror: literal html stays inert through native body edits, source swi
     }
   })
   assert.equal(copied.text, edited)
+  // Raw HTML copies as the literal text this view shows: none of it is live
+  // markup, and no copied tag carries a handler.
   assert.doesNotMatch(
     copied.html,
-    /<script|<iframe|<style| onerror=| onclick=/i,
+    /<(?:kbd|details|summary|script|style|img|svg|iframe|object|embed|input)\b|<[^>]*\son\w+=/i,
   )
   await native('cut')
   await saved('')
