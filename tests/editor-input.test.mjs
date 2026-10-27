@@ -2443,36 +2443,8 @@ const linearInputGaps = {
 }
 
 const toolbarInputGaps = {
-  heading:
-    'formatted gap input-057: toolbar states match live heading selection',
-  'plain text':
-    'formatted gap input-058: toolbar states match live plain text selection',
-  'bold text':
-    'formatted gap input-059: toolbar states match live bold text selection',
-  'italic selection':
-    'formatted gap input-060: toolbar states match live italic selection selection',
-  'mixed selection':
-    'formatted gap input-061: toolbar states match live mixed selection selection',
-  'inline code':
-    'formatted gap input-062: toolbar states match live inline code selection',
-  link: 'formatted gap input-063: toolbar states match live link selection',
-  'first list item':
-    'formatted gap input-064: toolbar states match live first list item selection',
-  'second list item':
-    'formatted gap input-065: toolbar states match live second list item selection',
-  'nested list item':
-    'formatted gap input-066: toolbar states match live nested list item selection',
-  'numbered list':
-    'formatted gap input-067: toolbar states match live numbered list selection',
-  checklist:
-    'formatted gap input-068: toolbar states match live checklist selection',
-  quote: 'formatted gap input-069: toolbar states match live quote selection',
-  'code block':
-    'formatted gap input-070: toolbar states match live code block selection',
   'table cell':
     'formatted gap input-071: toolbar states match live table cell selection',
-  'whole document':
-    'formatted gap input-072: toolbar states match live whole document selection',
 }
 
 async function selectNativeInputTable(t, page, rich, what, oracle) {
