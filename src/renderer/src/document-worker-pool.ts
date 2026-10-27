@@ -116,7 +116,9 @@ function workerGroup(session: DocumentSession, initial: ClientOptions) {
     boundaryQueue = boundaryQueue.filter((job) => job.owner !== owner)
     if (boundaries?.owner !== owner) return
     boundaries = null
-    client.releaseBoundaries(retain || owners.size > 1)
+    client.releaseBoundaries(
+      retain || owners.size > 1 || boundaryQueue.length > 0,
+    )
     nextBoundaries()
   }
   const clear = () => {

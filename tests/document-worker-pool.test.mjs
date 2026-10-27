@@ -3,6 +3,7 @@ import test from 'node:test'
 import { connectDocumentWorker } from '../src/renderer/src/document-worker-pool.ts'
 import { DocumentSession } from '../src/shared/document-session.ts'
 import { DocumentWorkerService } from '../src/shared/document-worker-service.ts'
+import { MarkdownBoundaryIndex } from '../src/shared/markdown-boundary-index.ts'
 
 class TestWorker {
   messages = []
@@ -167,6 +168,12 @@ test('boundary pages keep their acknowledgement owner while panes queue and disp
 })
 
 test('late cancelled boundary pages cannot decline the next pane stream', async (t) => {
+  const indexes = new Set()
+  const advance = MarkdownBoundaryIndex.prototype.advance
+  t.mock.method(MarkdownBoundaryIndex.prototype, 'advance', function () {
+    indexes.add(this)
+    return advance.call(this)
+  })
   const f = fixture(t, '# first\n\nbody')
   const held = Promise.withResolvers(),
     done = Promise.withResolvers()
@@ -183,10 +190,16 @@ test('late cancelled boundary pages cannot decline the next pane stream', async 
     (reason) => declined.push(reason),
   )
   const obsolete = await held.promise
+  const scanned = indexes.size
   formatted.dispose()
   f.workers[0].onmessage({ data: obsolete })
   assert.deepEqual(declined, [])
   await done.promise
+  assert.equal(
+    indexes.size,
+    scanned,
+    'queued pane must reuse its boundary index',
+  )
 })
 
 test('find cancellation and identical-query highlights stay pane-owned', async (t) => {
