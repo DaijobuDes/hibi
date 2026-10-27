@@ -73,11 +73,10 @@ owner numbers follow the ordered formatted engine readiness plan. the default fl
 | input-053 | [editor-input.test.mjs:2437](editor-input.test.mjs#L2437) | native 1000 line input into empty paragraph preserves literal blocks | 8a: native input, structure and toolbar state |
 | input-054 | [editor-input.test.mjs:2440](editor-input.test.mjs#L2440) | native 500 line input into select all preserves literal blocks | 8a: native input, structure and toolbar state |
 | input-055 | [editor-input.test.mjs:2441](editor-input.test.mjs#L2441) | native 1000 line input into select all preserves literal blocks | 8a: native input, structure and toolbar state |
-| input-071 | [editor-input.test.mjs:2447](editor-input.test.mjs#L2447) | toolbar states match live table cell selection | 8a: native input, structure and toolbar state |
-| input-051 | [editor-input.test.mjs:2733](editor-input.test.mjs#L2733) | native multiline input exits empty list and preserves following paragraph | 8a: native input, structure and toolbar state |
-| input-056 | [editor-input.test.mjs:3039](editor-input.test.mjs#L3039) | native enter preserves four line feeds between paragraphs | 8a: native input, structure and toolbar state |
-| input-073 | [editor-input.test.mjs:3437](editor-input.test.mjs#L3437) | native bold typing keeps bold action pressed | 8a: native input, structure and toolbar state |
-| input-074 | [editor-input.test.mjs:3451](editor-input.test.mjs#L3451) | native bold typing renders strong text in canonical source | 8a: native input, structure and toolbar state |
+| input-051 | [editor-input.test.mjs:2728](editor-input.test.mjs#L2728) | native multiline input exits empty list and preserves following paragraph | 8a: native input, structure and toolbar state |
+| input-056 | [editor-input.test.mjs:3034](editor-input.test.mjs#L3034) | native enter preserves four line feeds between paragraphs | 8a: native input, structure and toolbar state |
+| input-073 | [editor-input.test.mjs:3459](editor-input.test.mjs#L3459) | native bold typing keeps bold action pressed | 8a: native input, structure and toolbar state |
+| input-074 | [editor-input.test.mjs:3473](editor-input.test.mjs#L3473) | native bold typing renders strong text in canonical source | 8a: native input, structure and toolbar state |
 | semantics-001 | [editor-plugins.test.mjs:67](editor-plugins.test.mjs#L67) | source-view word counts must include markdown characters | 9: outline semantics and diagram lifecycle |
 | api-003 | [editor-view-bridge.test.mjs:189](editor-view-bridge.test.mjs#L189) | switching source view must retain the hosting view identity | 6: verbatim projections and selection contracts |
 | api-006 | [editor-view-bridge.test.mjs:201](editor-view-bridge.test.mjs#L201) | switching to source must stale the previous formatted selection | 6: verbatim projections and selection contracts |
@@ -147,3 +146,11 @@ owner numbers follow the ordered formatted engine readiness plan. the default fl
 | split-011 | [split-preview-ime.test.mjs:491](split-preview-ime.test.mjs#L491) | split formatted view must remain read-only during native composition | 3: read-only access and shared history guards |
 | split-017 | [split-preview-ime.test.mjs:575](split-preview-ime.test.mjs#L575) | composition in a read-only split preview must preserve source and content version | 3: read-only access and shared history guards |
 | split-014 | [typst.test.mjs:432](typst.test.mjs#L432) | split formatted view must remain read-only | 3: read-only access and shared history guards |
+
+## accepted differences
+
+the formatted view keeps these outcomes on purpose, because the rich editor's behavior is a defect. each test that asserts the formatted outcome names its id as `accepted difference <id>:`.
+
+| difference id | test | rich editor behavior | why it is a defect | evidence |
+| --- | --- | --- | --- | --- |
+| input-071 | [editor-input.test.mjs](editor-input.test.mjs) table cell toolbar states | in a table cell the toolbar enables small text, headings, lists, quote, code block, divider and table | a cell holds only inline markdown, so these are written as literal cell text and reopening the note reads them back as text, not blocks | reread after each action, the cell reads `# cell`, `- cell`, `1. cell`, `- \[ \] cell`, `&gt; cell`, inline code `` `<br>cell<br>` ``, text `---` between line breaks, and two line breaks for a table |

@@ -2442,11 +2442,6 @@ const linearInputGaps = {
   },
 }
 
-const toolbarInputGaps = {
-  'table cell':
-    'formatted gap input-071: toolbar states match live table cell selection',
-}
-
 async function selectNativeInputTable(t, page, rich, what, oracle) {
   // The shipped table widget owns a real cell editor. Let its normal selection bridge focus it.
   await rich.evaluate(
@@ -3308,6 +3303,33 @@ test('the toolbar corpus retains all fifteen historical selections plus select-a
   assert.equal(new Set(toolbarSelectionCases.map(([name]) => name)).size, 15)
 })
 
+// accepted difference input-071: in a table cell the rich toolbar enables
+// block actions and writes them as literal cell text, which reopening the
+// note reads back as text. The formatted view keeps them disabled.
+const literalCellActions = [
+  'subtext',
+  ...[1, 2, 3, 4, 5, 6].map((level) => `heading-${level}`),
+  'bullet-list',
+  'numbered-list',
+  'checklist',
+  'quote',
+  'code-block',
+  'divider',
+  'table',
+]
+const formattedToolbarState = (label, expected) =>
+  label === 'table cell'
+    ? {
+        ...expected,
+        ...Object.fromEntries(
+          literalCellActions.map((id) => [
+            id,
+            { ...expected[id], disabled: true },
+          ]),
+        ),
+      }
+    : expected
+
 for (const [label] of [...toolbarSelectionCases, ['whole document', null]]) {
   test('codemirror: all historical toolbar action states at ' +
     label +
@@ -3319,6 +3341,7 @@ for (const [label] of [...toolbarSelectionCases, ['whole document', null]]) {
       Object.keys(oracle.expected).length,
       label === 'table cell' ? 35 : 28,
     )
+    const expected = formattedToolbarState(label, oracle.expected)
     const { page, rich } = await launchInputFixture(t, oracle.source)
     const before = await acceptedInput(page)
     await rich.focus()
@@ -3332,7 +3355,6 @@ for (const [label] of [...toolbarSelectionCases, ['whole document', null]]) {
     )
     await t.test(
       'all historical toolbar states settle from the selected range',
-      { todo: toolbarInputGaps[label] },
       async () => {
         try {
           await page.waitForFunction((expected) => {
@@ -3359,11 +3381,11 @@ for (const [label] of [...toolbarSelectionCases, ['whole document', null]]) {
                   actual[id]?.disabled === state.disabled,
               )
             )
-          }, oracle.expected)
+          }, expected)
         } catch {
-          assert.deepEqual(await toolbarSnapshot(page), oracle.expected, label)
+          assert.deepEqual(await toolbarSnapshot(page), expected, label)
         }
-        assert.deepEqual(await toolbarSnapshot(page), oracle.expected, label)
+        assert.deepEqual(await toolbarSnapshot(page), expected, label)
       },
     )
     await t.test(
