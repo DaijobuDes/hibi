@@ -421,6 +421,204 @@ test('select-all code input matches the native model with exact formatted undo a
     })
 })
 
+test('multiline selection edges match untouched native marks with exact formatted history', {
+  timeout: 120000,
+}, async (t) => {
+  const cases = [
+    {
+      name: 'both edges',
+      source: '`a` mid `b`',
+      from: 2,
+      to: 9,
+      nativeFrom: 2,
+      nativeTo: 7,
+      expected: '`a`\\`x\\`\n\n\\`y\\``b`',
+    },
+    {
+      name: 'start edge',
+      source: '`a` mid `b`',
+      from: 2,
+      to: 6,
+      nativeFrom: 2,
+      nativeTo: 5,
+      expected: '`a`\\`x\\`\n\n\\`y\\`d `b`',
+    },
+    {
+      name: 'end edge',
+      source: '`a` mid `b`',
+      from: 4,
+      to: 9,
+      nativeFrom: 3,
+      nativeTo: 7,
+      expected: '`a` \\`x\\`\n\n\\`y\\``b`',
+    },
+    {
+      name: 'nested edges',
+      source: '**`a`** mid **`b`**',
+      from: 4,
+      to: 15,
+      nativeFrom: 2,
+      nativeTo: 7,
+      expected: '**`a`**\\`x\\`\n\n\\`y\\`**`b`**',
+      plain: '**`a`**&#120;\n\n&#121;**`b`**',
+    },
+    {
+      name: 'shared bold',
+      source: '**`a` mid `b`**',
+      from: 4,
+      to: 11,
+      nativeFrom: 2,
+      nativeTo: 7,
+      expected: '**`a`\\`x\\`**\n\n**\\`y\\``b`**',
+    },
+    {
+      name: 'full selection',
+      source: '`a` mid `b`',
+      from: 0,
+      to: 11,
+      nativeFrom: 1,
+      nativeTo: 8,
+      expected: '`` `x` ``\n\n\\`y\\`',
+    },
+  ]
+  const parse = modelParser()
+  const native = new Map()
+  for (const engine of ['tiptap', 'codemirror'])
+    await t.test(engine, async (t) => {
+      const { app, page, folder } = await launch(t, engine)
+      for (const item of cases)
+        for (const backward of [false, true])
+          for (const ticks of [true, false]) {
+            const name =
+              item.name +
+              '-' +
+              (backward ? 'backward' : 'forward') +
+              '-' +
+              (ticks ? 'backticks' : 'plain')
+            await t.test(name, async () => {
+              const editor = await openFixture(
+                app,
+                page,
+                folder,
+                name,
+                item.source,
+                engine,
+              )
+              await editor.focus()
+              await editor.evaluate(
+                (element, { engine, item, backward }) => {
+                  const from = engine === 'tiptap' ? item.nativeFrom : item.from
+                  const to = engine === 'tiptap' ? item.nativeTo : item.to
+                  const anchor = backward ? to : from
+                  const head = backward ? from : to
+                  if (engine === 'codemirror')
+                    element.cmTile.root.view.dispatch({
+                      selection: { anchor, head },
+                    })
+                  else {
+                    const editor = element.editor
+                    editor.view.dispatch(
+                      editor.state.tr.setSelection(
+                        editor.state.selection.constructor.create(
+                          editor.state.doc,
+                          anchor,
+                          head,
+                        ),
+                      ),
+                    )
+                    editor.view.focus()
+                  }
+                },
+                { engine, item, backward },
+              )
+              const before = await snapshot(page)
+              assert.equal(before.source, item.source)
+              if (engine === 'tiptap')
+                assert.deepEqual(before.model, parse(item.source))
+              const expected = ticks
+                ? item.expected
+                : (item.plain ??
+                  (item.name === 'full selection'
+                    ? '`x`\n\ny'
+                    : item.expected
+                        .replaceAll('\\`x\\`', 'x')
+                        .replaceAll('\\`y\\`', 'y')))
+              await page.keyboard.insertText(ticks ? '`x`\n`y`' : 'x\ny')
+              const typed = await snapshot(page)
+              assert.notEqual(
+                typed.source,
+                before.source,
+                'native control must perform an edit',
+              )
+              if (engine === 'tiptap') {
+                assert.notDeepEqual(
+                  typed.model,
+                  before.model,
+                  'native model must change',
+                )
+                assert.deepEqual(typed.model, parse(expected))
+                native.set(name, typed.model)
+              } else {
+                assert.equal(typed.source, expected)
+                assert.ok(native.has(name), 'native control must pass first')
+                assert.deepEqual(parse(typed.source), native.get(name))
+                await assertHistory(app, page, before, typed)
+              }
+            })
+          }
+    })
+})
+
+test('raw marker multiline ranges preserve unselected source and exact history', {
+  timeout: 120000,
+}, async (t) => {
+  const source = '**`a`** mid **`b`**'
+  const ranges = [
+    [2, 3],
+    [4, 5],
+    [14, 15],
+    [16, 17],
+    [1, 3],
+    [4, 6],
+    [13, 15],
+    [16, 18],
+  ]
+  const { app, page, folder } = await launch(t)
+  for (const [from, to] of ranges)
+    for (const backward of [false, true])
+      for (const input of ['x\ny', '`x`\n`y`'])
+        await t.test(`${from}..${to}, ${backward}, ${input}`, async () => {
+          const name = `raw-markers-${from}-${to}-${backward}-${input.includes('`')}`
+          const editor = await openFixture(app, page, folder, name, source)
+          await editor.focus()
+          const selected = await editor.evaluate(
+            (element, { from, to, backward }) => {
+              const view = element.cmTile.root.view
+              view.dispatch({
+                selection: backward
+                  ? { anchor: to, head: from }
+                  : { anchor: from, head: to },
+              })
+              const { anchor, head } = view.state.selection.main
+              return { anchor, head }
+            },
+            { from, to, backward },
+          )
+          assert.deepEqual(
+            selected,
+            backward ? { anchor: to, head: from } : { anchor: from, head: to },
+          )
+          const before = await snapshot(page)
+          await page.keyboard.insertText(input)
+          const typed = await snapshot(page)
+          assert.equal(
+            typed.source,
+            source.slice(0, from) + input + source.slice(to),
+          )
+          await assertHistory(app, page, before, typed)
+        })
+})
+
 test('inline code multiline input matches the native model with exact source and history', {
   timeout: 120000,
 }, async (t) => {

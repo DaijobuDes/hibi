@@ -654,6 +654,24 @@ export function lineInput(
           break
         }
     }
+  // A range touching only a format's markers leaves its text and markers
+  // together. A caret still types inside the format at its content edge.
+  let beforeStyle = false,
+    afterStyle = false
+  if (from < to && !all && !waiting) {
+    for (const { node, last } of formatting(state, tree, from))
+      if (spanNames.includes(node.name) && from === last.from) {
+        from = node.to
+        beforeStyle ||= styles.includes(node.name)
+      }
+    for (const { node, first } of formatting(state, tree, to))
+      if (spanNames.includes(node.name) && to === first.to) {
+        to = node.from
+        afterStyle ||= styles.includes(node.name)
+      }
+    // A range of only whole or partial markers has no native text selection.
+    if (from >= to) return null
+  }
   let start = leafAt(tree, from)
   if (start?.name === 'HorizontalRule' && waiting && start.from >= from)
     start = null
@@ -861,7 +879,13 @@ export function lineInput(
   const recodedFirst = [...ended, ...spans].some((span) =>
     codeMarkers.has(span),
   )
-  const firstText = literalLine(lines[0]!, verbatimFirst, at === startText)
+  let firstText = literalLine(lines[0]!, verbatimFirst, at === startText)
+  // References keep retained style delimiters valid beside literal letters.
+  if (beforeStyle && !verbatimFirst)
+    firstText = firstText.replace(
+      /^[^\s\p{P}\p{S}]/u,
+      (char) => `&#${char.codePointAt(0)};`,
+    )
   const [lead, core, trail] = recodedFirst
     ? ['', firstText, '']
     : spaced(firstText)
@@ -914,7 +938,12 @@ export function lineInput(
       : (closeAt < 0 ? closing : '') + lead + trail)
   /** Line `index` (from 1) with the caret's offset in it; the last line ends with `rest`. */
   const line = (index: number, rest = '') => {
-    const value = literalLine(lines[index]!, verbatim, true)
+    let value = literalLine(lines[index]!, verbatim, true)
+    if (index === last && afterStyle && !verbatim)
+      value = value.replace(
+        /[^\s\p{P}\p{S}]$/u,
+        (char) => `&#${char.codePointAt(0)};`,
+      )
     const [lead, core, trail] = kept.some((span) => codeMarkers.has(span))
       ? ['', value, '']
       : spaced(value)

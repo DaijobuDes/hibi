@@ -1178,3 +1178,85 @@ test('select-all code input keeps matching fences as literal code', () => {
     assert.equal(doc.content[0].content[0].text, normalized)
   }
 })
+
+test('multiline selections preserve unselected formatting edges', async (t) => {
+  const cases = [
+    ['both edges', '`a` mid `b`', 2, 9, '`a`\\`x\\`\n\n\\`y\\``b`'],
+    ['start edge', '`a` mid `b`', 2, 6, '`a`\\`x\\`\n\n\\`y\\`d `b`'],
+    ['end edge', '`a` mid `b`', 4, 9, '`a` \\`x\\`\n\n\\`y\\``b`'],
+    [
+      'nested edges',
+      '**`a`** mid **`b`**',
+      4,
+      15,
+      '**`a`**\\`x\\`\n\n\\`y\\`**`b`**',
+      '**`a`**&#120;\n\n&#121;**`b`**',
+    ],
+    [
+      'shared bold',
+      '**`a` mid `b`**',
+      4,
+      11,
+      '**`a`\\`x\\`**\n\n**\\`y\\``b`**',
+    ],
+    ['full selection', '`a` mid `b`', 0, 11, '`` `x` ``\n\n\\`y\\`'],
+  ]
+  for (const [name, source, from, to, expected, plainExpected] of cases)
+    for (const backward of [false, true])
+      for (const ticks of [true, false])
+        await t.test(
+          name +
+            ': ' +
+            (backward ? 'backward' : 'forward') +
+            ', ' +
+            (ticks ? 'backticks' : 'plain'),
+          () => {
+            const state = EditorState.create({
+              doc: source,
+              selection: backward
+                ? { anchor: to, head: from }
+                : { anchor: from, head: to },
+            })
+            const spec = lineInput(
+              state,
+              markdown.parse(source),
+              from,
+              to,
+              ticks ? '`x`\n`y`' : 'x\ny',
+            )
+            assert.ok(spec, 'selection must be handled')
+            const plain =
+              plainExpected ??
+              (name === 'full selection'
+                ? '`x`\n\ny'
+                : expected
+                    .replaceAll('\\`x\\`', 'x')
+                    .replaceAll('\\`y\\`', 'y'))
+            assert.equal(
+              state.update(spec).state.doc.toString(),
+              ticks ? expected : plain,
+            )
+          },
+        )
+})
+
+test('multiline input keeps selections through partial inline markers valid', () => {
+  for (const source of ['`a` mid `b`', '**`a`** mid **`b`**']) {
+    const tree = markdown.parse(source)
+    for (let from = 0; from <= source.length; from++)
+      for (let to = from; to <= source.length; to++)
+        for (const backward of [false, true])
+          for (const text of ['x\ny', '`x`\n`y`']) {
+            const state = EditorState.create({
+              doc: source,
+              selection: backward
+                ? { anchor: to, head: from }
+                : { anchor: from, head: to },
+            })
+            assert.doesNotThrow(() => {
+              const spec = lineInput(state, tree, from, to, text)
+              if (spec) state.update(spec)
+            }, `${source}: ${from}..${to}, ${backward}, ${text}`)
+          }
+  }
+})
