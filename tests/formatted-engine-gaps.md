@@ -33,10 +33,10 @@ accepted differences are not gaps; their tests assert each engine. the codemirro
 | corpus-011 | [markdown-semantics-native.test.mjs:105](markdown-semantics-native.test.mjs#L105) | disabled heading syntax must preserve bold formatting inside alerts | 9: outline semantics and diagram lifecycle |
 | corpus-012 | [markdown-semantics-native.test.mjs:107](markdown-semantics-native.test.mjs#L107) | disabled heading syntax must preserve bold formatting inside subtext | 9: outline semantics and diagram lifecycle |
 | semantics-003 | [outline-navigation.test.mjs:320](outline-navigation.test.mjs#L320) | formatted and source outlines must reuse one document worker | 9: outline semantics and diagram lifecycle |
-| contracts-003 | [raw-html-editor.test.mjs:1225](raw-html-editor.test.mjs#L1225) | modified inline html copies must fall back without restoring raw markup | 3c: clipboard fragments and trusted source |
-| contracts-004 | [raw-html-editor.test.mjs:1227](raw-html-editor.test.mjs#L1227) | superseded inline html copies must fall back without restoring raw markup | 3c: clipboard fragments and trusted source |
-| contracts-005 | [raw-html-editor.test.mjs:1231](raw-html-editor.test.mjs#L1231) | modified block html copies must fall back without restoring raw markup | 3c: clipboard fragments and trusted source |
-| contracts-006 | [raw-html-editor.test.mjs:1233](raw-html-editor.test.mjs#L1233) | superseded block html copies must fall back without restoring raw markup | 3c: clipboard fragments and trusted source |
+| contracts-003 | [raw-html-editor.test.mjs:1244](raw-html-editor.test.mjs#L1244) | modified inline html copies must fall back without restoring raw markup | 3c: clipboard fragments and trusted source |
+| contracts-004 | [raw-html-editor.test.mjs:1246](raw-html-editor.test.mjs#L1246) | superseded inline html copies must fall back without restoring raw markup | 3c: clipboard fragments and trusted source |
+| contracts-005 | [raw-html-editor.test.mjs:1250](raw-html-editor.test.mjs#L1250) | modified block html copies must fall back without restoring raw markup | 3c: clipboard fragments and trusted source |
+| contracts-006 | [raw-html-editor.test.mjs:1252](raw-html-editor.test.mjs#L1252) | superseded block html copies must fall back without restoring raw markup | 3c: clipboard fragments and trusted source |
 | semantics-002 | [source-reference-navigation.test.mjs:161](source-reference-navigation.test.mjs#L161) | formatted and source references must reuse one document worker | 9: outline semantics and diagram lifecycle |
 
 ## accepted differences

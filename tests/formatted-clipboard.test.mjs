@@ -177,6 +177,26 @@ const readClipboard = () =>
     }
   })
 
+/** Copied html, parsed: its elements as `name attribute=value…`, and its text. */
+const copiedDom = (html) =>
+  page.evaluate((html) => {
+    const { body } = new DOMParser().parseFromString(html, 'text/html')
+    return {
+      elements: [...body.querySelectorAll('*')].map((element) =>
+        [
+          element.localName,
+          ...[...element.attributes].map(
+            ({ name, value }) => `${name}=${value}`,
+          ),
+        ].join(' '),
+      ),
+      text: body.textContent,
+    }
+  }, html)
+/** The elements a copy of raw html may hold: its wrapper, paragraphs and literal text. */
+const literalElements =
+  /^(?:div data-hibi-markdown=|p|div class=hibi-literal-block|span class=hibi-literal-inline)$/
+
 test('native copy, cut and paste retain both clipboard formats and sanitize exported html', {
   timeout: 60000,
 }, async () => {
@@ -231,11 +251,13 @@ test('native copy, cut and paste retain both clipboard formats and sanitize expo
   })
   await settled(note + unsafe)
   await nativeClipboard('copy', note.length, note.length + unsafe.length)
-  assert.equal((await readClipboard()).text, unsafe)
-  assert.doesNotMatch(
-    (await readClipboard()).html,
-    /<script|onerror|javascript:/i,
-  )
+  const copiedUnsafe = await readClipboard()
+  assert.equal(copiedUnsafe.text, unsafe)
+  // Raw HTML copies as literal text, not as elements.
+  const copiedRaw = await copiedDom(copiedUnsafe.html)
+  for (const element of copiedRaw.elements)
+    assert.match(element, literalElements)
+  assert.deepEqual(copiedRaw.text.trim().split('\n'), unsafe.split('\n\n'))
   await undo()
   await settled(note)
 })
@@ -323,11 +345,71 @@ test('copied html leaves out scripts, event handlers and script links', {
   await settled(note + unsafe)
   const { text, html } = await clipboardEvent('copy', note.length, null)
   assert.equal(text, unsafe)
-  assert.match(html, /<img [^>]*src="x\.png"/)
-  assert.match(html, />bad<\/a>[\s\S]*>raw<\/a>/)
-  assert.doesNotMatch(html, /<script|onerror|onclick|javascript:/i)
+  // Raw HTML copies as the literal text the formatted view shows; Markdown
+  // links still render, without script destinations.
+  const copied = await copiedDom(html)
+  for (const element of copied.elements)
+    assert.match(element, element === 'a' ? /^a$/ : literalElements)
+  assert.ok(copied.elements.includes('a'))
+  assert.deepEqual(copied.text.trim().split('\n'), [
+    '<script>document.body.dataset.copied = "script"</script>',
+    '<img src="x.png" onerror="document.body.dataset.copied = \'image\'">',
+    'bad <a href="javascript:alert(2)" onclick="alert(3)">raw</a>',
+  ])
   await undo()
   await settled(note)
+})
+
+test('copied raw html, raw-text bodies included, is its literal source', {
+  timeout: 30000,
+}, async () => {
+  try {
+    for (const source of [
+      'a <code><img/src=x onerror=alert(1)></code> b',
+      'a <pre><svg/onload=alert(1)></pre> b',
+      'a <kbd>&lt;b&gt; <a href=javascript:alert(1)>x</a></kbd> b',
+      'a <script><img/src=x onerror=alert(1)></script> b',
+      'a <style>p { color: red }</style> b',
+      'a <textarea><img src=x></textarea> b',
+      'a <img/src=x onerror=alert(1)> b',
+      'a <img src = x onerror = "alert(1)"> b',
+      'a <img src=x title="a>b" onerror=alert(1)> b',
+      '<div>\n<pre><img src=x onerror=alert(1)></pre>\n</div>',
+    ]) {
+      await setFixture(source)
+      const { html } = await clipboardEvent('copy', 0, null)
+      const copied = await copiedDom(html)
+      for (const element of copied.elements)
+        assert.match(element, literalElements, source)
+      assert.equal(copied.text.trim(), source)
+    }
+    // Image descriptions stay plain text.
+    await setFixture('![before <kbd>x</kbd> after](image.png)')
+    const image = await clipboardEvent('copy', 0, null)
+    assert.equal(
+      await page.evaluate(
+        (html) =>
+          new DOMParser()
+            .parseFromString(html, 'text/html')
+            .querySelector('img')?.alt,
+        image.html,
+      ),
+      'before <kbd>x</kbd> after',
+    )
+    // Every break the view draws copies as one.
+    for (const space of ['', ' ', '\v', '\u00a0', '\u2028']) {
+      const source = `a<br${space}/>b`
+      await setFixture(source)
+      const { html } = await clipboardEvent('copy', 0, null)
+      assert.deepEqual(
+        (await copiedDom(html)).elements,
+        ['div data-hibi-markdown=', 'p', 'br'],
+        JSON.stringify(source),
+      )
+    }
+  } finally {
+    await setFixture(note)
+  }
 })
 
 test('cut removes the selection in one undoable edit', {
