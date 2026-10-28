@@ -14,6 +14,15 @@ import { waitForAsync } from './poll.mjs'
 const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
 const scenarios = [
   {
+    name: 'ordinary input splits a backtick run',
+    source: 'a `b``c`',
+    raw: 5,
+    pm: 5,
+    actions: ['inline-code', 'inline-code'],
+    text: 'x',
+    expected: 'a ``b`x`c``',
+  },
+  {
     name: 'continued adjacent code',
     source: 'a `b`',
     raw: 5,
@@ -195,6 +204,30 @@ test('stored mark review cases through native input and toolbar', {
       await history(item.source, typed)
       assert.equal(marked.parseInline(typed), marked.parseInline(item.expected))
     })
+  await t.test('retyping after undo keeps code', async (t) => {
+    const source = 'a `b`'
+    await open('undo-retype-code', source, 5, 4)
+    await action('inline-code')
+    await action('inline-code')
+    await page.keyboard.type('x`y')
+    const typed = await snapshot()
+    assert.equal(marked.parseInline(typed), marked.parseInline('a ``bx`y``'))
+    await history(source, typed)
+    await pressShortcut(app, `${mod}+z`)
+    assert.equal(await snapshot(), source)
+    await page.keyboard.type('Z')
+    const replaced = await snapshot()
+    await history(source, replaced)
+    await t.test(
+      'replacement text retains native code mark',
+      engine === 'codemirror'
+        ? { todo: 'formatted gap action-010: retyping after undo retains code' }
+        : {},
+      () => {
+        assert.equal(marked.parseInline(replaced), marked.parseInline('a `bZ`'))
+      },
+    )
+  })
   for (const cancel of [true, false])
     await t.test(
       `pending marks survive ime ${cancel ? 'cancellation' : 'commit'}`,

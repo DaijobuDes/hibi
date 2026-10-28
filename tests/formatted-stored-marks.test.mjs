@@ -5,7 +5,7 @@ import { DocInput } from '@codemirror/language'
 import { EditorState, Text } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { Tree, TreeCursor } from '@lezer/common'
-import { GFM, parser } from '@lezer/markdown'
+import { GFM } from '@lezer/markdown'
 import { Editor } from '@tiptap/core'
 import { Markdown } from '@tiptap/markdown'
 import {
@@ -19,8 +19,9 @@ import {
   sourceFormatting,
   storedMarkInput,
 } from '../src/renderer/src/source-formatting.ts'
+import { formattedMarkdownParser } from '../src/shared/formatted-markdown.ts'
 
-const grammar = parser.configure(GFM)
+const grammar = formattedMarkdownParser(GFM)
 
 function typing(source, anchor, literal = [], tree) {
   const view = {
@@ -170,6 +171,21 @@ for (const [source, from, position] of [
   })
 }
 
+for (const [source, from, position, text] of [
+  ['a ``` b``c ```', 8, 5, '`x'],
+  ['a `` `b ``', 6, 4, 'x'],
+  ['a ` b`', 5, 5, ' '],
+  ['a `   `', 5, 5, 'x'],
+  ['a `   `', 5, 5, '`'],
+  ['a `b` `c`', 5, 4, 'x`y'],
+  ['a `b``c`', 5, 5, 'x'],
+  ['a ``b```c``', 6, 5, 'x'],
+]) {
+  test(`code summary preserves joins and padding: ${JSON.stringify({ source, from, text })}`, () => {
+    compare(source, from, position, ['inline-code', 'inline-code'], text)
+  })
+}
+
 test('ordinary stored bold still types, undoes and redoes', () => {
   compare('a ', 2, 3, ['bold'], 'ordinary text')
   compare('a **bold** b', 8, 7, ['bold', 'bold'], ' more')
@@ -241,6 +257,112 @@ test('stored mark work is bounded with unrelated text', () => {
   assert.ok(small.text > 0 && small.resolve > 0)
   assert.equal(small.walks, 0)
   assert.deepEqual(large, small)
+})
+
+test('cold ordinary code input is bounded before continuation', () => {
+  function measure(length) {
+    const content = 'a`'.repeat(length / 2) + 'a'
+    const source = '``' + content + '``'
+    const tree = grammar.parse(source)
+    const view = typing(source, 2 + length / 2, [], tree)
+    view.formatting.run('inline-code')
+    view.formatting.run('inline-code')
+    const input = view.state.facet(EditorView.inputHandler)[0]
+    const count = (type) => {
+      const result = { read: 0, scanned: 0 }
+      const proto = Object.getPrototypeOf(view.state.doc)
+      const slice = proto.sliceString
+      const matchAll = String.prototype.matchAll
+      proto.sliceString = function (...args) {
+        const value = slice.apply(this, args)
+        result.read += value.length
+        return value
+      }
+      String.prototype.matchAll = function (expression) {
+        if (expression.source === '`+') result.scanned += this.length
+        return matchAll.call(this, expression)
+      }
+      try {
+        for (const text of type) {
+          const at = view.state.selection.main.head
+          assert.equal(
+            input(view, at, at, text, () => null),
+            true,
+          )
+        }
+      } finally {
+        proto.sliceString = slice
+        String.prototype.matchAll = matchAll
+      }
+      return result
+    }
+    const cold = count('x')
+    const warm = count('`y')
+    assert.ok(cold.read <= 16, JSON.stringify({ length, cold }))
+    assert.equal(cold.scanned, 1)
+    assert.deepEqual(warm, { read: 0, scanned: 2 })
+    const typed = view.state.doc.toString()
+    assert.equal(
+      typed,
+      '``' +
+        content.slice(0, length / 2) +
+        'x`y' +
+        content.slice(length / 2) +
+        '``',
+    )
+    assert.equal(undo(view), true)
+    assert.equal(view.state.doc.toString(), source)
+    assert.equal(redo(view), true)
+    assert.equal(view.state.doc.toString(), typed)
+    return cold
+  }
+  const small = measure(32)
+  assert.deepEqual(measure(1024 * 1024), small)
+  assert.deepEqual(measure(8 * 1024 * 1024), small)
+})
+
+test('cold ordinary input preserves fences around long runs and blank code', () => {
+  for (const content of [
+    'a' + '`'.repeat(1024 * 1024) + 'z',
+    ' '.repeat(1024 * 1024),
+  ]) {
+    const source = '`' + content + '`'
+    const at = Math.floor(source.length / 2)
+    const view = typing(source, at, [], grammar.parse(source))
+    view.formatting.run('inline-code')
+    view.formatting.run('inline-code')
+    const proto = Object.getPrototypeOf(view.state.doc)
+    const slice = proto.sliceString
+    let read = 0
+    proto.sliceString = function (...args) {
+      const value = slice.apply(this, args)
+      read += value.length
+      return value
+    }
+    try {
+      assert.equal(
+        view.state.facet(EditorView.inputHandler)[0](
+          view,
+          at,
+          at,
+          'x',
+          () => null,
+        ),
+        true,
+      )
+    } finally {
+      proto.sliceString = slice
+    }
+    assert.ok(read <= 16, String(read))
+    const typed = content.startsWith(' ')
+      ? '` ' + source.slice(1, at) + 'x' + source.slice(at, -1) + ' `'
+      : source.slice(0, at) + 'x' + source.slice(at)
+    assert.equal(view.state.doc.toString(), typed)
+    assert.equal(undo(view), true)
+    assert.equal(view.state.doc.toString(), source)
+    assert.equal(redo(view), true)
+    assert.equal(view.state.doc.toString(), typed)
+  }
 })
 
 for (const placement of ['new', 'end', 'adjacent', 'middle']) {

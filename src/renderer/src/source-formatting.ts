@@ -25,6 +25,7 @@ import type {
   DocumentFormat,
   DocumentSelection,
 } from '../../addons/api'
+import { inlineCodeInfo } from '../../shared/formatted-markdown.ts'
 import { markdownLiteral } from '../../shared/markdown-literal.ts'
 import type { MediaAttachment } from '../../shared/media'
 import { gapInput } from './formatted-commands.ts'
@@ -140,8 +141,8 @@ type StoredMarks = {
     first: string
     last: string
     blank: boolean
-    head: number
-    tail: number
+    head: number | null
+    tail: number | null
     longest: number
   }
 }
@@ -262,7 +263,7 @@ function continueInline(
   }
 }
 
-/** Read an existing span once; later input only inspects the new text. */
+/** Use the parser's summary; ordinary input only needs the span's edges. */
 function storedCode(
   state: EditorState,
   stored: StoredMarks,
@@ -270,16 +271,20 @@ function storedCode(
 ): StoredMarks {
   const first = node.firstChild!,
     last = node.lastChild!
-  const raw = state.sliceDoc(first.to, last.from).replace(/\n/g, ' ')
-  const blank = /^ *$/.test(raw)
-  const pad = !blank && raw.startsWith(' ') && raw.endsWith(' ')
-  const value = pad ? raw.slice(1, -1) : raw
+  const info = first.prop(inlineCodeInfo)
+  // A contributed replacement for InlineCode may not supply the core summary.
+  const raw = info
+    ? ''
+    : state.sliceDoc(first.to, last.from).replace(/\n/g, ' ')
+  const blank = info?.blank ?? /^ *$/.test(raw)
+  const char = (pos: number) => state.sliceDoc(pos, pos + 1).replace('\n', ' ')
+  const pad = !blank && char(first.to) === ' ' && char(last.from - 1) === ' '
   const from = first.to + Number(pad),
     to = last.from - Number(pad)
   const pos = Math.max(from, Math.min(stored.pos, to))
-  const before = codeRuns(value.slice(0, pos - from))
-  const after = codeRuns(value.slice(pos - from))
-  const head = value.slice(pos - from).match(/^`*/)?.[0].length ?? 0
+  const longest = info?.longest ?? codeRuns(raw).longest
+  const adjacent = (at: number) =>
+    char(at) === '`' ? (longest === 1 ? 1 : null) : 0
   return {
     ...stored,
     pos,
@@ -288,23 +293,66 @@ function storedCode(
       to,
       fence: first.to - first.from,
       pad,
-      first: value.charAt(0),
-      last: value.charAt(value.length - 1),
+      first: char(from),
+      last: char(to - 1),
       blank,
-      head,
-      tail: before.tail,
-      longest: Math.max(before.longest, after.longest, before.tail + head),
+      head: pos === to ? 0 : adjacent(pos),
+      tail: pos === from ? 0 : adjacent(pos - 1),
+      longest,
     },
   }
 }
 
+/** Only a newly typed backtick needs the adjoining run, never the rest of the span. */
+function codeRun(
+  state: EditorState,
+  at: number,
+  limit: number,
+  maximum = Infinity,
+) {
+  const direction = at < limit ? 1 : -1
+  limit = at + direction * Math.min(Math.abs(limit - at), maximum)
+  let length = 0
+  while (at !== limit) {
+    const end = at + direction * Math.min(64, Math.abs(limit - at))
+    const text = state.sliceDoc(Math.min(at, end), Math.max(at, end))
+    const run = text.match(direction === 1 ? /^`*/ : /`*$/)![0].length
+    length += run
+    if (run !== text.length) break
+    at = end
+  }
+  return length
+}
+
 /** Extend our code span by editing only its fences and the text at the caret. */
-function continueCode(stored: StoredMarks, text: string): TransactionSpec {
+function continueCode(
+  state: EditorState,
+  stored: StoredMarks,
+  text: string,
+): TransactionSpec {
   const code = stored.code!
-  const runs = codeRuns(text, code.tail)
-  const longest = Math.max(code.longest, runs.longest, runs.tail + code.head)
-  const fence = Math.max(code.fence, longest + 1)
   const oldOpen = code.fence + Number(code.pad)
+  const tail = text.startsWith('`')
+    ? (code.tail ?? codeRun(state, stored.pos, code.from + oldOpen))
+    : 0
+  const head = text.endsWith('`')
+    ? (code.head ?? codeRun(state, stored.pos, code.to))
+    : code.head
+  const runs = codeRuns(text, tail)
+  const longest = Math.max(code.longest, runs.longest, runs.tail + (head ?? 0))
+  // Splitting an existing run can create a closing fence even without typing a backtick.
+  const split =
+    !runs.longest &&
+    code.longest >= code.fence &&
+    code.head !== 0 &&
+    code.tail !== 0 &&
+    ((code.tail ??
+      codeRun(state, stored.pos, code.from + oldOpen, code.fence + 1)) ===
+      code.fence ||
+      (code.head ?? codeRun(state, stored.pos, code.to, code.fence + 1)) ===
+        code.fence)
+  const fence =
+    runs.longest || split ? Math.max(code.fence, longest + 1) : code.fence
   const first = stored.pos === code.from + oldOpen ? text.charAt(0) : code.first
   const last = stored.pos === code.to ? text.charAt(text.length - 1) : code.last
   const blank = code.blank && /^ *$/.test(text)
@@ -333,6 +381,7 @@ function continueCode(stored: StoredMarks, text: string): TransactionSpec {
         last,
         blank,
         longest,
+        head,
         tail: runs.tail,
       },
     }),
@@ -352,7 +401,7 @@ function storedInput(
   stored: StoredMarks,
   text: string,
 ): TransactionSpec | null {
-  if (stored.code) return continueCode(stored, text)
+  if (stored.code) return continueCode(state, stored, text)
   if (stored.inline) return continueInline(state, stored, text)
   let at = stored.pos,
     close = '',
@@ -366,7 +415,7 @@ function storedInput(
     const node =
       current.get('inline-code') ??
       (before && formattingAt(state, tree, before.to).get('inline-code'))
-    if (node) return continueCode(storedCode(state, stored, node), text)
+    if (node) return continueCode(state, storedCode(state, stored, node), text)
   }
   if (
     !current.has('inline-code') &&
