@@ -1264,6 +1264,149 @@ test('native table picks retain multiline caret positions, scalar boundaries and
   }
 })
 
+test('codemirror: a native table pick keeps the shared input guards', {
+  timeout: 60000,
+}, async (t) => {
+  for (const guard of [
+    'readonly',
+    'composing event',
+    'foreign target',
+    'multiple ranges',
+  ]) {
+    for (const kind of ['beforeinput', 'keypress']) {
+      await t.test(guard + ': ' + kind, async (t) => {
+        const oracle = inputFixture('multiline', 'into a table')
+        const { page, rich } = await launchInputFixture(t, oracle.source)
+        await rich.focus()
+        await selectNativeInputTable(t, page, rich, 'into a table', oracle)
+        const setup = await rich.evaluate((element, guard) => {
+          const view = element.cmTile.root.view
+          if (guard === 'readonly') {
+            const [compartment, access] = [
+              ...view.state.config.compartments,
+            ].find(
+              ([, value]) =>
+                Array.isArray(value) &&
+                value.length === 2 &&
+                value.every(
+                  (part) => part.facet && typeof part.value === 'boolean',
+                ),
+            )
+            view.dispatch({
+              effects: compartment.reconfigure(
+                access.map((part) => part.facet.of(!part.value)),
+              ),
+            })
+          } else if (guard === 'multiple ranges') {
+            const [compartment, access] = [
+              ...view.state.config.compartments,
+            ].find(
+              ([, value]) =>
+                Array.isArray(value) &&
+                value.length === 2 &&
+                value.every(
+                  (part) => part.facet && typeof part.value === 'boolean',
+                ),
+            )
+            view.dispatch({
+              effects: compartment.reconfigure([
+                ...access,
+                view.state.constructor.allowMultipleSelections.of(true),
+              ]),
+            })
+            const selection = view.state.selection.constructor
+            const { anchor, head } = view.state.selection.main
+            view.dispatch({
+              selection: selection.create(
+                [
+                  selection.range(anchor, head),
+                  selection.cursor(view.state.doc.length),
+                ],
+                0,
+              ),
+              userEvent: 'select',
+              scrollIntoView: true,
+            })
+          }
+          return {
+            readonly: view.state.readOnly,
+            composing: view.composing,
+            ranges: view.state.selection.ranges.map((range) => [
+              range.anchor,
+              range.head,
+            ]),
+          }
+        }, guard)
+        assert.equal(setup.readonly, guard === 'readonly')
+        assert.equal(setup.composing, false)
+        assert.equal(setup.ranges.length, guard === 'multiple ranges' ? 2 : 1)
+        const before = await acceptedInput(page)
+        await inputWorkProbe(rich)
+        const composing = await rich.evaluate(
+          (element, { guard, kind }) => {
+            const target =
+              guard === 'foreign target'
+                ? element.querySelector('.cm-line')
+                : element
+            const init = {
+              bubbles: true,
+              cancelable: true,
+              isComposing: guard === 'composing event',
+            }
+            const event =
+              kind === 'beforeinput'
+                ? new InputEvent(kind, {
+                    ...init,
+                    inputType: 'insertText',
+                    data: 'Q',
+                  })
+                : new KeyboardEvent(kind, { ...init, key: 'Q' })
+            target.dispatchEvent(event)
+            return event.isComposing
+          },
+          { guard, kind },
+        )
+        assert.equal(composing, guard === 'composing event')
+        const after = await acceptedInput(page)
+        if (
+          after.markdown !== before.markdown ||
+          after.contentVersion !== before.contentVersion
+        )
+          t.diagnostic(
+            JSON.stringify({
+              before: {
+                markdown: before.markdown,
+                version: before.contentVersion,
+              },
+              after: {
+                markdown: after.markdown,
+                version: after.contentVersion,
+              },
+              work: await page.evaluate(() => ({
+                changes: window.cmInputWork.changes,
+                inputs: window.cmInputWork.inputs,
+              })),
+            }),
+          )
+        assert.equal(after.markdown, before.markdown)
+        assert.equal(after.contentVersion, before.contentVersion)
+        assert.deepEqual(
+          await rich.evaluate((element) =>
+            element.cmTile.root.view.state.selection.ranges.map((range) => [
+              range.anchor,
+              range.head,
+            ]),
+          ),
+          setup.ranges,
+        )
+        const work = await page.evaluate(() => window.cmInputWork)
+        assert.equal(work.changes, 0)
+        assert.deepEqual(work.inputs, [])
+      })
+    }
+  }
+})
+
 test('multi-line text input work in the visual editor stays linear in the lines', {
   timeout: 60000,
 }, async (t) => {

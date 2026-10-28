@@ -2070,6 +2070,11 @@ function overTable(event: InputStart, view: EditorView) {
   return false
 }
 
+/** Native picks take the same input as selections across a table's edge. */
+const tableInput = (event: InputStart, view: EditorView) =>
+  takesInput(event, view) &&
+  (view.state.field(pickedTable) || overTable(event, view))
+
 /** Types text over the selection through the view's input handlers, then the default insert. */
 function type(view: EditorView, text: string) {
   const { from, to } = view.state.selection.main
@@ -2730,7 +2735,7 @@ export const contribution: FormattedContribution = {
             !event.metaKey &&
             !(event.ctrlKey && !event.altKey) &&
             [...event.key].length === 1 &&
-            (overTable(event, view) || view.state.field(pickedTable)) &&
+            tableInput(event, view) &&
             type(view, event.key)
           )
         },
@@ -2740,8 +2745,7 @@ export const contribution: FormattedContribution = {
           if (event.inputType !== 'insertText' || !event.data) return false
           if (belowTable(event, view))
             view.dispatch(paragraphBelow(view), { userEvent: 'input.type' })
-          else if (!overTable(event, view) && !view.state.field(pickedTable))
-            return false
+          else if (!tableInput(event, view)) return false
           event.preventDefault()
           type(view, event.data)
           view.contentDOM.dispatchEvent(
