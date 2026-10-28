@@ -21,7 +21,7 @@ export function registerDOMPositions(
   }
 }
 
-function position(view: EditorView, node: Node, offset: number) {
+export function readDOMPosition(view: EditorView, node: Node, offset: number) {
   if (!view.contentDOM.contains(node)) return null
   for (let root: Node | null = node; root; root = root.parentNode) {
     const entry = positions.get(root)
@@ -98,12 +98,16 @@ export const nativeDOMSelection = ViewPlugin.fromClass(
       if (active !== this.document.body && !view.dom.contains(active)) return
       const selection = this.document.getSelection()
       if (!selection?.anchorNode || !selection.focusNode) return
-      const anchor = position(
+      const anchor = readDOMPosition(
         view,
         selection.anchorNode,
         selection.anchorOffset,
       )
-      const head = position(view, selection.focusNode, selection.focusOffset)
+      const head = readDOMPosition(
+        view,
+        selection.focusNode,
+        selection.focusOffset,
+      )
       if (!anchor || !head || !(anchor.mapped || head.mapped)) return
       this.picked = true
       const current = view.state.selection.main

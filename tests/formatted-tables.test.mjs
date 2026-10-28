@@ -1591,6 +1591,117 @@ test('a cell editor whose row is deleted leaves focus that moved out of the edit
   assert.equal((await state()).editor, null)
 })
 
+test('a native table pick releases its editing host on blur, new intent, readonly and destruction', {
+  timeout: 30000,
+}, async (t) => {
+  const doc = 'ab\n\n|   |\n| - |\n| cd |\n\nend'
+  for (const action of [
+    'outside focus',
+    'outside pointer',
+    'window blur',
+    'readonly',
+    'new document',
+    'new pick',
+    'destroy',
+  ]) {
+    await t.test(action, async () => {
+      await mount(doc)
+      await harness.evaluate((at) => {
+        const view = window.tables.view()
+        view.focus()
+        view.dispatch({ selection: { anchor: at } })
+      }, doc.indexOf('cd') + 1)
+      await harness
+        .getByRole('textbox', { name: 'Table cell', exact: true })
+        .waitFor()
+      await harness.evaluate(() => {
+        const root = window.tables.view().contentDOM
+        const find = (word) => {
+          const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+          while (walker.nextNode())
+            if (walker.currentNode.textContent.trim() === word)
+              return walker.currentNode
+        }
+        const a = find('ab'),
+          b = find('cd')
+        getSelection().setBaseAndExtent(
+          a,
+          1,
+          b,
+          b.textContent.indexOf('cd') + 1,
+        )
+      })
+      await harness.waitForFunction(
+        () =>
+          getSelection().toString().replace(/\s/g, '') === 'bc' &&
+          document.querySelector('.hibi-lp-table').contentEditable ===
+            'inherit',
+      )
+      const before = await state()
+      await harness.evaluate(async (action) => {
+        window.pickedTableDOM = document.querySelector('.hibi-lp-table')
+        if (action === 'readonly') window.tables.setEditable(false)
+        else if (action === 'new document') window.tables.echo('!')
+        else if (action === 'new pick') {
+          const view = window.tables.view()
+          view.contentDOM.dispatchEvent(
+            new PointerEvent('pointerdown', { bubbles: true }),
+          )
+          view.dispatch({ selection: { anchor: view.state.doc.length } })
+          view.focus()
+        } else if (action === 'destroy')
+          await window.tables.mount(
+            'replacement',
+            { width: 1000, height: 800 },
+            { editable: true },
+          )
+        else if (action === 'window blur')
+          window.dispatchEvent(new FocusEvent('blur'))
+        else {
+          const button = document.createElement('button')
+          button.className = 'table-pick-outside'
+          button.textContent = 'Outside the editor'
+          document.body.append(button)
+          if (action === 'outside focus') button.focus()
+          else
+            button.dispatchEvent(
+              new PointerEvent('pointerdown', { bubbles: true }),
+            )
+        }
+        await window.tables.settle()
+      }, action)
+      assert.equal(
+        await harness.evaluate(() => window.pickedTableDOM.contentEditable),
+        'false',
+      )
+      if (action !== 'destroy') {
+        const after = await state()
+        assert.equal(after.doc, action === 'new document' ? doc + '!' : doc)
+        assert.deepEqual(
+          [after.anchor, after.head],
+          action === 'new pick'
+            ? [doc.length, doc.length]
+            : [before.anchor, before.head],
+        )
+      }
+      if (action === 'outside focus')
+        assert.equal(
+          await harness.evaluate(() =>
+            document.activeElement.matches('.table-pick-outside'),
+          ),
+          true,
+        )
+      if (action === 'new pick') {
+        await harness.keyboard.insertText('Q')
+        assert.equal((await state()).doc, doc + 'Q')
+      }
+      await harness.evaluate(() =>
+        document.querySelector('.table-pick-outside')?.remove(),
+      )
+    })
+  }
+})
+
 test('a native selection in a read-only table becomes the editing selection', {
   timeout: 30000,
 }, async () => {

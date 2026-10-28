@@ -27,6 +27,7 @@ import {
   customBody as nativeBody,
 } from '../../../shared/formatted-custom-body.ts'
 import { formattedInlineParser } from '../../../shared/formatted-markdown.ts'
+import { markdownLiteral } from '../../../shared/markdown-literal.ts'
 import { runSourceHistory } from '../../../shared/source-history.ts'
 import {
   blockMarkedNodes,
@@ -759,8 +760,43 @@ export class CellEditor {
                 /^[yz]$/i.test(event.key) &&
                 (!writable(host.main.state) ||
                   runScopeHandlers(host.main, event, 'editor')),
-              beforeinput: (event) => {
-                const { inputType } = event
+              beforeinput: (event, view) => {
+                const { inputType, data } = event
+                if (
+                  inputType === 'insertText' &&
+                  data &&
+                  /[\r\n]/.test(data) &&
+                  !event.isComposing &&
+                  !view.composing &&
+                  writable(host.main.state) &&
+                  host.current()
+                ) {
+                  event.preventDefault()
+                  const { from, to } = view.state.selection.main
+                  const text = view.state.toText(data).toString()
+                  const insert = () =>
+                    view.state.update(
+                      view.state.replaceSelection(markdownLiteral(text)),
+                      {
+                        userEvent: 'input.type',
+                        scrollIntoView: true,
+                      },
+                    )
+                  if (
+                    !view.state
+                      .facet(EditorView.inputHandler)
+                      .some((handler) => handler(view, from, to, text, insert))
+                  )
+                    view.dispatch(insert())
+                  view.contentDOM.dispatchEvent(
+                    new InputEvent('input', {
+                      inputType,
+                      data,
+                      bubbles: true,
+                    }),
+                  )
+                  return true
+                }
                 if (inputType !== 'historyUndo' && inputType !== 'historyRedo')
                   return false
                 if (writable(host.main.state))

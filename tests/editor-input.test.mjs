@@ -824,6 +824,12 @@ async function installTiptapMultilineProbe(page) {
         },
       })
       editor.commands.setContent(html, { contentType: 'html' })
+      // Tables load through the source parser too: their serialized empty
+      // header must already exist in the model that native history restores.
+      if (html.includes('<table>'))
+        editor.commands.setContent(editor.getMarkdown(), {
+          contentType: 'markdown',
+        })
       const marks = []
       editor.state.doc.descendants((node, pos) => {
         for (const match of node.text?.matchAll(/[|[\]]/g) ?? [])
@@ -951,13 +957,125 @@ test('multi-line text input in the visual editor makes the browser edit in one s
         (args) => window.richLines(...args),
         [html, select, browser],
       )
+      const before = ['cell', 'cells', 'into a table'].includes(what)
+        ? await rich.evaluate((element) => ({
+            doc: element.editor.getJSON(),
+            markdown: element.editor.getMarkdown(),
+          }))
+        : null
+      if (before)
+        assert.equal(
+          (await acceptedInput(page)).markdown,
+          before.markdown,
+          what + ' canonical before source',
+        )
       await page.keyboard.insertText(text)
       results.push({
         rest,
+        before,
         ...(await page.evaluate(() => window.richLinesResult())),
       })
     }
     const [browser, typed] = results
+    if (['cell', 'cells', 'into a table'].includes(what)) {
+      assert.notDeepEqual(
+        typed.doc,
+        typed.before.doc,
+        what + ' edits the native model',
+      )
+      const modelCells = (doc) => {
+        const cells = []
+        const read = (node) =>
+          node.type === 'hardBreak'
+            ? '\n'
+            : (node.text ??
+              (node.content ?? [])
+                .map(read)
+                .join(
+                  node.type === 'tableCell' || node.type === 'tableHeader'
+                    ? '\n'
+                    : '',
+                ))
+        const walk = (node) => {
+          if (node.type === 'tableRow') cells.push(node.content.map(read))
+          else for (const child of node.content ?? []) walk(child)
+        }
+        walk(doc)
+        return cells
+      }
+      const expected = {
+        cell: [
+          ['', ''],
+          ['aone\n\ntwo', 'b'],
+          ['c', 'd'],
+        ],
+        cells: [
+          ['', ''],
+          ['a', 'b'],
+          ['c', 'one\ntwo'],
+        ],
+        'into a table': [['d']],
+      }[what]
+      assert.deepEqual(
+        modelCells(browser.doc),
+        expected,
+        what + ' browser model',
+      )
+      assert.deepEqual(modelCells(typed.doc), expected, what + ' native model')
+      const history = await rich.evaluate((element) => {
+        const editor = element.editor
+        editor.commands.undo()
+        const undo = { doc: editor.getJSON(), markdown: editor.getMarkdown() }
+        editor.commands.redo()
+        return {
+          undo,
+          redo: { doc: editor.getJSON(), markdown: editor.getMarkdown() },
+        }
+      })
+      assert.deepEqual(history.undo, typed.before, what + ' native undo')
+      assert.equal(
+        history.redo.markdown,
+        typed.markdown,
+        what + ' exact native redo source',
+      )
+      const fresh = await launchInputFixture(t, typed.markdown, 'tiptap')
+      const reloaded = await fresh.rich.evaluate((element) =>
+        element.editor.getJSON(),
+      )
+      assert.equal((await acceptedInput(fresh.page)).markdown, typed.markdown)
+      assert.deepEqual(
+        history.redo.doc,
+        reloaded,
+        what + ' native redo model equals a fresh source load',
+      )
+      // The native range removes the empty header; source loading supplies it again.
+      assert.deepEqual(
+        modelCells(reloaded),
+        what === 'into a table' ? [[''], ['d']] : expected,
+        what + ' native reload cell text and counts',
+      )
+      const styles = (node) => {
+        if (node.type === 'text')
+          return [...node.text].map((text) => ({
+            text,
+            marks: node.marks ?? [],
+          }))
+        if (node.type === 'hardBreak')
+          return [{ text: '\n', marks: node.marks ?? [] }]
+        return (node.content ?? []).flatMap((child, index) => [
+          ...(index && ['tableCell', 'tableHeader'].includes(node.type)
+            ? [{ text: '\n', marks: [] }]
+            : []),
+          ...styles(child),
+        ])
+      }
+      assert.deepEqual(
+        styles(reloaded),
+        styles(typed.doc),
+        what + ' native reload text and styles',
+      )
+      await fresh.close()
+    }
     assert.deepEqual(
       [typed.doc, typed.markdown],
       [browser.doc, browser.markdown],
@@ -1023,6 +1141,127 @@ test('multi-line text input in the visual editor makes the browser edit in one s
       select: null,
       result: { markdown: ended.markdown, caret: ended.caret },
     })
+})
+
+test('native table picks retain multiline caret positions, scalar boundaries and literal text', {
+  timeout: 60000,
+}, async (t) => {
+  const native = await launchInputFixture(t, '', 'tiptap')
+  await installTiptapMultilineProbe(native.page)
+  const outcomes = []
+  for (const [what, html, , select] of multilineInputCases.filter(([name]) =>
+    ['cells', 'into a table'].includes(name),
+  )) {
+    for (const [text, caret] of [
+      ['Z', null],
+      ['a\nb', ['', 'b']],
+      ['a\nbcdef', ['bcde', 'f']],
+      ['a\nb\nc', ['b', '']],
+      ['a\n😀', ['😀', '']],
+      ['**a**\n| &amp;', null],
+    ]) {
+      await native.rich.focus()
+      await native.page.evaluate(
+        (args) => window.richLines(...args),
+        [html, select, false],
+      )
+      await native.rich.evaluate((element) => element.editor.view.focus())
+      await native.page.waitForFunction(() => {
+        const editor = document.querySelector('.tiptap').editor
+        const selection = getSelection()
+        return (
+          selection?.focusNode &&
+          editor.view.posAtDOM(selection.focusNode, selection.focusOffset) ===
+            editor.state.selection.head
+        )
+      })
+      const before = await native.rich.evaluate((element) =>
+        element.editor.getJSON(),
+      )
+      assert.equal(
+        (await acceptedInput(native.page)).markdown,
+        await native.rich.evaluate((element) => element.editor.getMarkdown()),
+      )
+      await native.page.keyboard.insertText(text)
+      const result = await native.page.evaluate(() => window.richLinesResult())
+      assert.notDeepEqual(result.doc, before, what + ' edits the native model')
+      assert.deepEqual(result.steps, [1])
+      if (caret) assert.deepEqual(result.caret, caret, what + ': ' + text)
+      await native.page.keyboard.insertText('Q')
+      const following = await native.page.evaluate(() =>
+        window.richLinesResult(),
+      )
+      assert.notDeepEqual(
+        following.doc,
+        result.doc,
+        what + ' native following character edits the model',
+      )
+      outcomes.push({ what, text, result, following })
+    }
+  }
+  await native.close()
+  for (const { what, text, result, following } of outcomes) {
+    await t.test(what + ': ' + JSON.stringify(text), async (t) => {
+      const oracle = inputFixture('multiline', what)
+      const { app, page, rich } = await launchInputFixture(t, oracle.source)
+      await rich.focus()
+      await selectNativeInputTable(t, page, rich, what, oracle)
+      // The owner can focus again before the browser's selection echo arrives.
+      await rich.evaluate((element) => element.cmTile.root.view.focus())
+      await page.waitForFunction(
+        ({ from, to, text }) => {
+          const element = document.querySelector(
+            '.rich-pane [aria-label="Document editor"]',
+          )
+          const range = element.cmTile.root.view.state.selection.main
+          return (
+            range.from === from &&
+            range.to === to &&
+            getSelection()?.toString().replace(/\s/g, '') === text
+          )
+        },
+        {
+          from: oracle.from,
+          to: oracle.to,
+          text: what === 'cells' ? 'abcd' : 'bc',
+        },
+      )
+      const before = await acceptedInput(page)
+      await inputWorkProbe(rich)
+      await page.keyboard.insertText(text)
+      const actual = await acceptedInput(page)
+      assert.deepEqual(
+        inputOutcome(actual.markdown),
+        inputOutcome(result.markdown),
+      )
+      assert.deepEqual(await cmCaretText(rich), result.caret)
+      const work = await page.evaluate(() => window.cmInputWork)
+      assert.equal(work.beforeinput.length, 1)
+      assert.deepEqual(work.inputs, [{ type: 'insertText', data: text }])
+      assert.equal(work.changes, 1)
+      assert.equal(actual.contentVersion, before.contentVersion + 1)
+      await pressShortcut(
+        app,
+        process.platform === 'darwin' ? 'Meta+z' : 'Control+z',
+      )
+      assert.equal((await acceptedInput(page)).markdown, before.markdown)
+      await pressShortcut(
+        app,
+        process.platform === 'darwin' ? 'Meta+Shift+z' : 'Control+y',
+      )
+      const redone = await acceptedInput(page)
+      assert.equal(redone.markdown, actual.markdown)
+      assert.deepEqual(await cmCaretText(rich), result.caret)
+      await page.keyboard.insertText('Q')
+      const continued = await acceptedInput(page)
+      assert.deepEqual(
+        inputOutcome(continued.markdown),
+        inputOutcome(following.markdown),
+      )
+      assert.deepEqual(await cmCaretText(rich), following.caret)
+      assert.equal(continued.contentVersion, redone.contentVersion + 1)
+    })
+  }
 })
 
 test('multi-line text input work in the visual editor stays linear in the lines', {
