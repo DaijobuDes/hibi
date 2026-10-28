@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
+import { getSchema } from '@tiptap/core'
 import { MarkdownManager } from '@tiptap/markdown'
 import { markdownConfiguration } from '../src/renderer/src/markdown.ts'
 import { electron } from './electron.mjs'
@@ -11,6 +12,46 @@ import { clickMenu, pressShortcut } from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
 
 const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
+
+function modelParser() {
+  const { parser: marked, options, core, addons } = markdownConfiguration([])
+  const extensions = [...core, ...addons]
+  const manager = new MarkdownManager({
+    extensions,
+    marked,
+    markedOptions: options,
+  })
+  const schema = getSchema(extensions)
+  return (source) => schema.nodeFromJSON(manager.parse(source)).toJSON()
+}
+
+const snapshot = (page) =>
+  page.evaluate(async () => {
+    await window.hibi.flushDocumentChanges()
+    const element = document.querySelector('[aria-label="Document editor"]')
+    return {
+      source: (await window.hibi.getDocument()).markdown,
+      model: element.editor?.getJSON() ?? null,
+    }
+  })
+
+async function assertHistory(app, page, before, typed) {
+  for (const [shortcut, expected] of [
+    [`${mod}+z`, before],
+    [process.platform === 'darwin' ? 'Meta+Shift+z' : 'Control+y', typed],
+  ]) {
+    await pressShortcut(app, shortcut)
+    await waitForAsync(
+      page,
+      async (expected) => {
+        await window.hibi.flushDocumentChanges()
+        return (await window.hibi.getDocument()).markdown === expected.source
+      },
+      expected,
+    )
+    assert.deepEqual(await snapshot(page), expected)
+  }
+}
 
 async function openFixture(
   app,
@@ -237,24 +278,60 @@ test('the native editor nests later lines typed in the middle of a task', {
 })
 
 test('native multiline input after a long formatted space run keeps paragraph boundaries', {
-  timeout: 30000,
-  todo: 'formatted gap input-space-001: multiline input after a long formatted space run keeps paragraph boundaries',
+  timeout: 60000,
 }, async (t) => {
-  const { app, page, folder } = await launch(t)
   const spaces = ' '.repeat(257)
   const source = `**a${spaces}b**`
-  const editor = await openFixture(
-    app,
-    page,
-    folder,
-    'long-formatted-spaces',
-    source,
-  )
-  const actual = await typeAt(page, editor, {
-    from: 3 + spaces.length,
-    input: '\ny',
-  })
-  assert.equal(actual, `**a**${spaces}\n\n**yb**`)
+  const expected = `**a${spaces.slice(1)}&#32;**\n\n**yb**`
+  const nativeSource = `**a**${spaces}\n\n**yb**`
+  const parse = modelParser()
+  let nativeModel
+  for (const engine of ['tiptap', 'codemirror'])
+    await t.test(engine, async (t) => {
+      const { app, page, folder } = await launch(t, engine)
+      const editor = await openFixture(
+        app,
+        page,
+        folder,
+        'long-formatted-spaces',
+        source,
+        engine,
+      )
+      await editor.focus()
+      await editor.evaluate(
+        (element, { engine, length }) => {
+          if (engine === 'codemirror') {
+            element.cmTile.root.view.dispatch({
+              selection: { anchor: length + 3 },
+            })
+            return
+          }
+          element.editor.commands.setTextSelection(length + 2)
+          element.editor.view.focus()
+        },
+        { engine, length: spaces.length },
+      )
+      const before = await snapshot(page)
+      assert.equal(before.source, source)
+      if (engine === 'tiptap') assert.deepEqual(before.model, parse(source))
+      await page.keyboard.insertText('\ny')
+      const typed = await snapshot(page)
+      assert.equal(typed.source, engine === 'tiptap' ? nativeSource : expected)
+      if (engine === 'tiptap') {
+        nativeModel = typed.model
+        assert.notDeepEqual(parse(typed.source), typed.model)
+      } else assert.deepEqual(parse(typed.source), nativeModel)
+      await t.test(
+        'exact source and model after undo and redo',
+        {
+          todo:
+            engine === 'tiptap'
+              ? 'native markdown serialization drops the bold mark on trailing spaces during redo'
+              : false,
+        },
+        () => assertHistory(app, page, before, typed),
+      )
+    })
 })
 
 test('select-all code input matches the native model with exact formatted undo and redo', {
@@ -341,5 +418,156 @@ test('select-all code input matches the native model with exact formatted undo a
         )
         assert.deepEqual(await snapshot(), expected)
       }
+    })
+})
+
+test('inline code multiline input matches the native model with exact source and history', {
+  timeout: 120000,
+}, async (t) => {
+  const cases = [
+    {
+      name: 'later-backticks',
+      source: '`abcd`',
+      text: 'abcd',
+      offset: 2,
+      from: 3,
+      input: 'x\n`y`',
+      expected: '`abx`\n\n`` `y`cd ``',
+    },
+    {
+      name: 'first-backticks',
+      source: '`abcd`',
+      text: 'abcd',
+      offset: 2,
+      from: 3,
+      input: '`x`\ny',
+      expected: '`` ab`x` ``\n\n`ycd`',
+    },
+    {
+      name: 'padded-code',
+      source: '`` `abcd` ``',
+      text: '`abcd`',
+      offset: 3,
+      from: 6,
+      input: 'x\n`y`',
+      expected: '`` `abx ``\n\n`` `y`cd` ``',
+    },
+    {
+      name: 'different-runs',
+      source: '``a`b``',
+      text: 'a`b',
+      offset: 2,
+      from: 4,
+      input: '`x`\n``y``',
+      expected: '``` a``x` ```\n\n` ``y``b `',
+    },
+    {
+      name: 'code-end',
+      source: '`abcd`',
+      text: 'abcd',
+      offset: 4,
+      from: 5,
+      input: '`x`\ny',
+      expected: '`` abcd`x` ``\n\ny',
+    },
+    {
+      name: 'code-start',
+      source: '`abcd`',
+      text: 'abcd',
+      offset: 0,
+      from: 1,
+      input: '`x`\ny',
+      expected: '`` `x` ``\n\n`yabcd`',
+    },
+    {
+      name: 'bold-code',
+      source: '**`abcd`**',
+      text: 'abcd',
+      offset: 2,
+      from: 5,
+      input: 'x\n`y`',
+      expected: '**`abx`**\n\n**`` `y`cd ``**',
+    },
+    {
+      name: 'list-code',
+      source: '- `abcd`\n- tail',
+      text: 'abcd',
+      offset: 2,
+      from: 5,
+      input: 'x\n`y`',
+      expected: '- `abx`\n- `` `y`cd ``\n- tail',
+    },
+    {
+      name: 'code-spaces',
+      source: '`a  b`',
+      text: 'a  b',
+      offset: 3,
+      from: 4,
+      input: '\n`y`',
+      expected: '`a  `\n\n`` `y`b ``',
+      native: '`a`  \n\n`` `y`b ``',
+    },
+  ]
+  const parse = modelParser()
+  const native = new Map()
+  for (const engine of ['tiptap', 'codemirror'])
+    await t.test(engine, async (t) => {
+      const { app, page, folder } = await launch(t, engine)
+      for (const item of cases)
+        await t.test(item.name, async (t) => {
+          const editor = await openFixture(
+            app,
+            page,
+            folder,
+            item.name,
+            item.source,
+            engine,
+          )
+          await editor.focus()
+          await editor.evaluate(
+            (element, { engine, item }) => {
+              if (engine === 'codemirror') {
+                element.cmTile.root.view.dispatch({
+                  selection: { anchor: item.from },
+                })
+                return
+              }
+              let position
+              element.editor.state.doc.descendants((node, pos) => {
+                if (node.isText && node.text === item.text)
+                  position = pos + item.offset
+              })
+              if (position == null)
+                throw new Error('Native code text was not found.')
+              element.editor.commands.setTextSelection(position)
+              element.editor.view.focus()
+            },
+            { engine, item },
+          )
+          const before = await snapshot(page)
+          assert.equal(before.source, item.source)
+          if (engine === 'tiptap')
+            assert.deepEqual(before.model, parse(item.source))
+          await page.keyboard.insertText(item.input)
+          const typed = await snapshot(page)
+          assert.equal(
+            typed.source,
+            engine === 'tiptap'
+              ? (item.native ?? item.expected)
+              : item.expected,
+          )
+          if (engine === 'tiptap') native.set(item.name, typed.model)
+          else assert.deepEqual(parse(typed.source), native.get(item.name))
+          await t.test(
+            'exact source and model after undo and redo',
+            {
+              todo:
+                engine === 'tiptap' && item.native
+                  ? 'native markdown serialization drops the code mark on trailing spaces during redo'
+                  : false,
+            },
+            () => assertHistory(app, page, before, typed),
+          )
+        })
     })
 })

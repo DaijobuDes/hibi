@@ -847,9 +847,9 @@ test('multi-line text input repairs formatting it cuts, as the browser types', (
     run('**ab|cd**', typing('\tx\n    y')),
     '**ab\tx**\n\n&#32;   **y|cd**',
   )
-  assert.equal(run('**ab |cd**', typing('\ny')), '**ab** \n\n**y|cd**')
-  // Only the closing markers move before spaces the caret follows.
-  assert.equal(run('**a   |b**', typing('\ny')), '**a**   \n\n**y|b**')
+  assert.equal(run('**ab |cd**', typing('\ny')), '**ab&#32;**\n\n**y|cd**')
+  // A character reference keeps existing trailing spaces inside their marks.
+  assert.equal(run('**a   |b**', typing('\ny')), '**a  &#32;**\n\n**y|b**')
   // A line break alone is the browser's input, not Enter: a heading continues.
   assert.equal(run('## ab|cd', typing('\n')), '## ab\n\n## |cd')
   assert.equal(run('## a^b\n\nc|d', typing('\n')), '## a\n\n## |d')
@@ -978,18 +978,18 @@ test('multi-line input after a long run of spaces reads a bounded part of it', (
     } finally {
       Object.assign(prototype, originals)
     }
-    // Past the limit the input is left to the default insertion, which
-    // keeps the bold whole across a soft line break.
-    assert.equal(spec, null)
-    if (size === 2 ** 20) {
-      const typed = `${doc.slice(0, caret)}\ny${doc.slice(caret)}`
-      const strong = markdown.parse(typed).topNode.firstChild.firstChild
-      assert.deepEqual(
-        [strong?.name, strong?.from, strong?.to],
-        ['StrongEmphasis', 0, typed.length],
-      )
-    }
-    assert.ok(units > 0 && units <= 1024, `${units} units read`)
+    assert.ok(spec)
+    const changes = []
+    spec.changes.iterChanges((from, to, _from, _to, insert) =>
+      changes.push({ from, to, insert: insert.toString() }),
+    )
+    assert.deepEqual(changes, [
+      { from: caret - 1, to: caret, insert: '&#32;**\n\n**y' },
+    ])
+    assert.equal(spec.selection.head, caret + 11)
+    // The old bounded fallback read 259 units and declined. The completed
+    // edit reads only the two markers and the final space at either size.
+    assert.equal(units, 5)
   }
 })
 
@@ -1039,10 +1039,57 @@ test('multi-line text input at the edges of formatting, headings and lists, as t
   )
 })
 
-test('backticks typed into inline code keep the code span', {
-  todo: 'formatted gap input-075: multi-line input with backticks inside inline code keeps the code span',
-}, () => {
-  assert.equal(run('`ab|cd`', typing('x\n`y`')), '`abx`\n\n`` `y`|cd ``')
+test('backticks typed into inline code keep the code span', () => {
+  for (const [source, text, expected] of [
+    ['`ab|cd`', 'x\n`y`', '`abx`\n\n`` `y`|cd ``'],
+    ['`ab|cd`', '`x`\ny', '`` ab`x` ``\n\n`y|cd`'],
+    ['`` `ab|cd` ``', 'x\n`y`', '`` `abx ``\n\n`` `y`|cd` ``'],
+    ['``a`|b``', '`x`\n``y``', '``` a``x` ```\n\n` ``y``|b `'],
+    ['`abcd|`', '`x`\ny', '`` abcd`x` ``\n\ny|'],
+    ['`|abcd`', '`x`\ny', '`` `x` ``\n\n`y|abcd`'],
+    ['**`ab|cd`**', 'x\n`y`', '**`abx`**\n\n**`` `y`|cd ``**'],
+    ['- `ab|cd`\n- tail', 'x\n`y`', '- `abx`\n- `` `y`|cd ``\n- tail'],
+    ['`a  |b`', '\n`y`', '`a  `\n\n`` `y`|b ``'],
+    ['`ab^cd|ef`', 'x\n`y`', '`abx`\n\n`` `y`|ef ``'],
+    ['^`abcd`|', '`x`\ny', '`` `x` ``\n\ny|'],
+    ['^`` `abcd` ``|', '`x`\ny', '`` `x` ``\n\ny|'],
+    ['`\nab|cd\n`', 'x\n`y`', '`abx`\n\n`` `y`|cd ``'],
+    ['`ab|cd`', '`x`\n`y`\nz', '`` ab`x` ``\n\n`` `y` ``\n\n`z|cd`'],
+  ])
+    assert.equal(run(source, typing(text)), expected, source)
+})
+
+test('inline code re-fencing reads only its span and leaves the document tail untouched', () => {
+  const reads = []
+  for (const length of [2 ** 16, 2 ** 20]) {
+    const source = '`abcd`\n\n' + 'z'.repeat(length)
+    const state = EditorState.create({ doc: source, selection: { anchor: 3 } })
+    const tree = markdown.parse('`abcd`\n\nz')
+    const prototype = Object.getPrototypeOf(state.doc)
+    const originals = Object.fromEntries(
+      ['sliceString', 'lineAt', 'line'].map((name) => [name, prototype[name]]),
+    )
+    let units = 0
+    for (const name of Object.keys(originals))
+      prototype[name] = function (...args) {
+        const value = originals[name].apply(this, args)
+        units += value.length
+        return value
+      }
+    let spec
+    try {
+      spec = lineInput(state, tree, 3, 3, 'x\n`y`')
+    } finally {
+      Object.assign(prototype, originals)
+    }
+    assert.ok(spec)
+    const next = state.update(spec)
+    assert.equal(next.state.doc.sliceString(0, 20), '`abx`\n\n`` `y`cd ``\n\n')
+    next.changes.iterChanges((from, to) => assert.ok(from <= 6 && to <= 6))
+    assert.ok(units > 0 && units <= 32, `${units} units read`)
+    reads.push(units)
+  }
+  assert.equal(reads[0], reads[1])
 })
 
 test('multi-line input in a 50 MiB block reads and rewrites only around the caret', () => {
