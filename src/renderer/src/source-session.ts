@@ -611,6 +611,7 @@ export function createSourceSession(
         if (snapshot !== change.before)
           throw new Error('The source replica missed an operation.')
         snapshot = change.after
+        if (!failed && !pending) bindSourceText(view.state.doc, snapshot)
       })
       return () => {
         flush = () => {}

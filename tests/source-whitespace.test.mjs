@@ -2,6 +2,9 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { setImmediate as nextTask } from 'node:timers/promises'
 import { EditorState } from '@codemirror/state'
+import { GFM, parser } from '@lezer/markdown'
+import { ChunkedMarkdownParser } from '../src/renderer/src/chunked-markdown.ts'
+import { blockBreak } from '../src/renderer/src/formatted-commands.ts'
 import {
   createSourceSession,
   sourceEditorTextCooperatively,
@@ -75,6 +78,130 @@ test('source whitespace follows admitted edits, hidden echoes and undo without c
   check(true)
   detach()
   session.dispose()
+})
+
+async function compactableView(t, source) {
+  const session = new DocumentSession(source, key, 0, {
+    chunkUnits: 65536,
+    enqueue: () => {},
+    onError: (error) => {
+      throw error
+    },
+  })
+  // Retain one space per arena chunk so maintenance has storage to reclaim.
+  session.edit(
+    [{ from: 0, to: 0, insert: ' '.repeat(5 * 65536) }],
+    'source',
+    'paste',
+  )
+  session.edit(
+    Array.from({ length: 5 }, (_, i) => ({
+      from: 1 + i * 65536,
+      to: (i + 1) * 65536,
+      insert: '',
+    })),
+    'source',
+    'cut',
+  )
+  const bridge = createSourceSession(session)
+  const view = {
+    state: EditorState.create({ doc: await textFor(session.snapshot()) }),
+    update(transactions) {
+      for (const transaction of transactions) this.state = transaction.state
+    },
+  }
+  const detach = bridge.attach(view)
+  t.after(() => {
+    detach()
+    session.dispose()
+  })
+  return { session, bridge, view }
+}
+
+test('live mixed-tail Enter survives storage compaction and garbage collection', {
+  skip: !globalThis.gc,
+}, async (t) => {
+  for (const visible of [true, false])
+    await t.test(
+      visible ? 'shown' : 'hidden without pending edits',
+      async (t) => {
+        const prefix = `first\n\n${'old tail\n\n'.repeat(20000)}`
+        const { session, bridge, view } = await compactableView(
+          t,
+          prefix + ' \t\n'.repeat(1400),
+        )
+        const from = prefix.length + 5
+        view.state = view.state.update({ selection: { anchor: from } }).state
+        bridge.setVisible(visible)
+        const doc = view.state.doc
+        const markdown = parser.configure(GFM)
+        const parse = new ChunkedMarkdownParser(
+          markdown,
+          markdown,
+        ).startChunkedParse(
+          {
+            length: doc.length,
+            lineChunks: false,
+            chunk: (from) =>
+              doc.sliceString(from, Math.min(from + 4096, doc.length)),
+            read: (from, to) => doc.sliceString(from, to),
+          },
+          [],
+          { from: 0, to: 8192 },
+        )
+        let tree
+        while (!tree) tree = parse.advance()
+        assert.ok(tree.topNode.lastChild.to < from)
+        const inserted = () =>
+          view.state.update(blockBreak(view.state, tree)).newDoc.length -
+          doc.length
+        assert.equal(sourceWhitespace(doc, from), true)
+        assert.equal(inserted(), 2)
+        const oldSnapshot = new WeakRef(session.snapshot())
+        const epoch = session.snapshot().storageEpoch
+        await session.maintainStorage()
+        assert.equal(session.snapshot().storageEpoch, epoch + 1)
+        for (let i = 0; i < 20; i++) {
+          await nextTask()
+          globalThis.gc()
+        }
+        assert.equal(oldSnapshot.deref(), undefined)
+        assert.equal(view.state.doc, doc)
+        assert.equal(bridge.isCurrent(), true)
+        assert.equal(sourceWhitespace(doc, from), true)
+        assert.equal(inserted(), 2)
+      },
+    )
+})
+
+test('storage replacement does not bind stale hidden text to newer same-length content', {
+  skip: !globalThis.gc,
+}, async (t) => {
+  const { session, bridge, view } = await compactableView(
+    t,
+    `x\n${' \t\n'.repeat(1400)}`,
+  )
+  const before = session.snapshot()
+  const doc = view.state.doc
+  const from = 7
+  bridge.setVisible(false)
+  session.edit([{ from, to: from + 1, insert: 'z' }], 'source', 'replace')
+  const epoch = session.snapshot().storageEpoch
+  await session.maintainStorage()
+  assert.equal(session.snapshot().storageEpoch, epoch + 1)
+  for (let i = 0; i < 20; i++) {
+    await nextTask()
+    globalThis.gc()
+  }
+  assert.equal(view.state.doc, doc)
+  assert.equal(before.isWhitespace(from), true)
+  assert.equal(session.snapshot().isWhitespace(from), false)
+  assert.equal(session.snapshot().normalizedLength, doc.length)
+  assert.equal(bridge.isCurrent(), false)
+  assert.equal(sourceWhitespace(doc, from), true)
+  bridge.setVisible(true)
+  assert.equal(bridge.isCurrent(), true)
+  assert.equal(sourceWhitespace(view.state.doc, from), false)
 })
 
 test('indexed whitespace proofs keep bounded reads at 1 and 50 MiB', async (t) => {
