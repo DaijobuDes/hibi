@@ -677,6 +677,24 @@ export function lineInput(
           break
         }
     }
+  // A range touching only a format's markers leaves its text and markers
+  // together. A caret still types inside the format at its content edge.
+  let beforeStyle = false,
+    afterStyle = false
+  if (from < to && !all && !waiting) {
+    for (const { node, last } of formatting(state, tree, from))
+      if (spanNames.includes(node.name) && from === last.from) {
+        from = node.to
+        beforeStyle ||= styles.includes(node.name)
+      }
+    for (const { node, first } of formatting(state, tree, to))
+      if (spanNames.includes(node.name) && to === first.to) {
+        to = node.from
+        afterStyle ||= styles.includes(node.name)
+      }
+    // A range of only whole or partial markers has no native text selection.
+    if (from >= to) return null
+  }
   let start = leafAt(tree, from)
   if (start?.name === 'HorizontalRule' && waiting && start.from >= from)
     start = null
@@ -790,18 +808,80 @@ export function lineInput(
     list.some(({ node }) => node.name === 'InlineCode')
   const verbatim = code(kept),
     verbatimFirst = code([...spans, ...ended])
-  if (
-    (verbatimFirst && lines[0]!.includes('`')) ||
-    (verbatim && lines.slice(1).some((line) => line.includes('`')))
-  )
-    return null
-  const open = (list: Formatting[]) =>
+  // Re-fence only code spans receiving backticks. Each resulting line must
+  // include its retained text when choosing delimiters and padding.
+  const codeMarkers = new Map<Formatting, { open: string; close: string }[]>()
+  const codeEdges: { from: number; to: number; insert: string }[] = []
+  for (const span of [...ended, ...spans, ...started]) {
+    if (span.node.name !== 'InlineCode') continue
+    const first = [...ended, ...spans].includes(span)
+    const later = kept.includes(span) || following.includes(span)
+    if (
+      !(first && lines[0]!.includes('`')) &&
+      !(later && lines.slice(1).some((line) => line.includes('`')))
+    )
+      continue
+    const raw = all ? '' : state.sliceDoc(span.first.to, span.last.from)
+    const normalized = raw.replace(/\n/g, ' ')
+    const padded =
+      normalized.startsWith(' ') &&
+      normalized.endsWith(' ') &&
+      /[^ ]/.test(normalized)
+    const start = span.first.to + Number(padded)
+    const end = span.last.from - Number(padded)
+    const before = first ? raw.slice(Number(padded), from - span.first.to) : ''
+    const after = following.includes(span)
+      ? raw.slice(to - span.first.to, raw.length - Number(padded))
+      : ''
+    const markers = lines.map((line, index) => {
+      const content =
+        `${index === 0 ? before : ''}${line}${index === last ? after : ''}`.replace(
+          /\n/g,
+          ' ',
+        )
+      const widths = new Set(
+        Array.from(content.matchAll(/`+/g), (run) => run[0].length),
+      )
+      let width = 1
+      while (widths.has(width)) width++
+      const fence = '`'.repeat(width)
+      const pad =
+        content.startsWith('`') ||
+        content.endsWith('`') ||
+        (content.startsWith(' ') &&
+          content.endsWith(' ') &&
+          /[^ ]/.test(content))
+          ? ' '
+          : ''
+      return { open: fence + pad, close: pad + fence }
+    })
+    codeMarkers.set(span, markers)
+    if (first)
+      codeEdges.push({
+        from: span.first.from,
+        to: start,
+        insert: markers[0]!.open,
+      })
+    if (following.includes(span))
+      codeEdges.push({
+        from: end,
+        to: span.last.to,
+        insert: markers[last]!.close,
+      })
+  }
+  const open = (list: Formatting[], index = 0) =>
     list
-      .map((span) => opener(state, span))
+      .map(
+        (span) => codeMarkers.get(span)?.[index]?.open ?? opener(state, span),
+      )
       .reverse()
       .join('')
-  const close = (list: Formatting[]) =>
-    list.map((span) => closer(state, span)).join('')
+  const close = (list: Formatting[], index = 0) =>
+    list
+      .map(
+        (span) => codeMarkers.get(span)?.[index]?.close ?? closer(state, span),
+      )
+      .join('')
   const heading = start && /^(?:ATX|Setext)Heading(\d)$/.exec(start.name)
   const setext = !!heading && start!.name.startsWith('Setext')
   if (across && end!.name.startsWith('Setext')) return null
@@ -819,9 +899,19 @@ export function lineInput(
     headingEnd =
       skip >= textEnd || blankRun(state, skip, textEnd) === textEnd - skip
   }
-  const [lead, core, trail] = spaced(
-    literalLine(lines[0]!, verbatimFirst, at === startText),
+  const recodedFirst = [...ended, ...spans].some((span) =>
+    codeMarkers.has(span),
   )
+  let firstText = literalLine(lines[0]!, verbatimFirst, at === startText)
+  // References keep retained style delimiters valid beside literal letters.
+  if (beforeStyle && !verbatimFirst)
+    firstText = firstText.replace(
+      /^[^\s\p{P}\p{S}]/u,
+      (char) => `&#${char.codePointAt(0)};`,
+    )
+  const [lead, core, trail] = recodedFirst
+    ? ['', firstText, '']
+    : spaced(firstText)
   // Formatting whose text starts at the caret takes the first line after the
   // spaces it starts with; with no text typed into it, its opening marker
   // goes, so no empty markers remain.
@@ -836,16 +926,26 @@ export function lineInput(
     openers = core ? state.sliceDoc(openFrom, at) : ''
     at = openFrom
   }
-  // The first line closes formatting the caret ends; spaces it ends with,
-  // or the text before it when it has none, go after the closing markers.
+  // The first line closes formatting the caret ends. Spaces in typed text
+  // stay outside the markers; existing trailing spaces keep their marks.
   const closing = close(ending)
-  let closeAt = -1
-  if (closing && !core) {
-    // The closing markers move before the spaces; the spaces stay.
+  let closeAt = -1,
+    escapedSpace = ''
+  if (closing && !core && !recodedFirst) {
     const innermost = ending[0]!
-    const spaces = blankBefore(state, at, innermost.first.to)
-    if (spaces < 0) return null
-    if (spaces && spaces < at - innermost.first.to) closeAt = at - spaces
+    if (code(ending)) {
+      const spaces = blankBefore(state, at, innermost.first.to)
+      if (spaces < 0) return null
+      if (spaces && spaces < at - innermost.first.to) closeAt = at - spaces
+    } else {
+      // Keep trailing whitespace in its marks. Escaping its last character
+      // lets Markdown close them without reading or moving the space run.
+      const previous = state.sliceDoc(Math.max(innermost.first.to, at - 1), at)
+      if (previous === ' ' || previous === '\t') {
+        at--
+        escapedSpace = previous === ' ' ? '&#32;' : '&#9;'
+      }
+    }
   }
   // A setext heading's underline stays with its last part, so the first
   // part, or all of it when the underline goes, is written as ATX.
@@ -855,27 +955,39 @@ export function lineInput(
       : ''
   const first =
     (atx && at === start!.from ? atx : '') +
+    escapedSpace +
     (core
       ? lead + openers + core + closing + trail
       : (closeAt < 0 ? closing : '') + lead + trail)
   /** Line `index` (from 1) with the caret's offset in it; the last line ends with `rest`. */
   const line = (index: number, rest = '') => {
-    const value = literalLine(lines[index]!, verbatim, true)
-    const [lead, core, trail] = spaced(value)
+    let value = literalLine(lines[index]!, verbatim, true)
+    if (index === last && afterStyle && !verbatim)
+      value = value.replace(
+        /[^\s\p{P}\p{S}]$/u,
+        (char) => `&#${char.codePointAt(0)};`,
+      )
+    const [lead, core, trail] = kept.some((span) => codeMarkers.has(span))
+      ? ['', value, '']
+      : spaced(value)
     if (index === last && after) {
-      const typed = lead + open(kept) + core
+      const typed = lead + open(kept, index) + core
       const text = core
-        ? typed + close(closed) + trail
-        : lead + open(kept.filter((span) => following.includes(span)))
+        ? typed + close(closed, index) + trail
+        : lead +
+          open(
+            kept.filter((span) => following.includes(span)),
+            index,
+          )
       return {
-        text: text + open(dropped) + rest,
+        text: text + open(dropped, index) + rest,
         caret: core && !trail ? typed.length : text.length,
       }
     }
     if (!core) return { text: value, caret: value.length }
     // With nothing typed after them, the caret stays inside the styles.
-    const typed = lead + open(kept) + core
-    const text = typed + close(kept) + trail
+    const typed = lead + open(kept, index) + core
+    const text = typed + close(kept, index) + trail
     return { text, caret: trail ? text.length : typed.length }
   }
   const changes: { from: number; to?: number; insert?: string }[] =
@@ -1127,13 +1239,26 @@ export function lineInput(
   if (all) {
     // One change of the whole note, its leading blank lines included.
     if (changes.length || replaceFrom < lineStart) return null
-    const kept = doc.sliceString(lineStart, replaceFrom)
+    let kept = doc.sliceString(
+      lineStart,
+      Math.max(replaceFrom, ...codeEdges.map((edge) => edge.to)),
+    )
+    for (const edge of codeEdges.toReversed())
+      kept =
+        kept.slice(0, edge.from - lineStart) +
+        edge.insert +
+        kept.slice(edge.to - lineStart)
     insert = kept + insert
     offset += kept.length
     replaceFrom = 0
     replaceTo = doc.length
   }
   changes.push({ from: replaceFrom, to: replaceTo, insert })
+  changes.push(
+    ...codeEdges.filter(
+      (edge) => edge.to <= replaceFrom || edge.from >= replaceTo,
+    ),
+  )
   const set = state.changes(changes)
   return {
     changes: set,
