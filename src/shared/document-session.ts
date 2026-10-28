@@ -220,6 +220,8 @@ export class DocumentSession {
       ),
     }
   }
+  /** Opaque content identity retained by undo/redo and storage compaction. */
+  historyIdentity = () => this.#contentIdentity
   historyDepth() {
     return { undo: this.#undo.length, redo: this.#redo.length }
   }

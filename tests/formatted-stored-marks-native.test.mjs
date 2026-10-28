@@ -2,7 +2,11 @@ import assert from 'node:assert/strict'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { Editor } from '@tiptap/core'
+import { Markdown } from '@tiptap/markdown'
 import { marked } from 'marked'
+import { markdownConfiguration } from '../src/renderer/src/markdown.ts'
+import { sameRichSourceDocument } from '../src/renderer/src/rich-source-preservation.ts'
 import { electron, waitForDocumentEditor } from './electron.mjs'
 import {
   selectFormattedEngine,
@@ -11,6 +15,8 @@ import {
 import { clickMenu, pressShortcut } from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
 
+const nativeDocuments = new Map()
+const nativeSources = new Map()
 const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
 const scenarios = [
   {
@@ -118,6 +124,23 @@ test('stored mark review cases through native input and toolbar', {
   timeout: 120000,
 }, async (t) => {
   const engine = t.formattedEngine
+  const config = markdownConfiguration([
+    { id: 'github', markedOptions: { gfm: true } },
+  ])
+  const oracle = new Editor({
+    element: null,
+    extensions: [
+      ...config.core,
+      Markdown.configure({
+        marked: config.parser,
+        markedOptions: config.options,
+      }),
+      ...config.addons,
+    ],
+    content: 'seed',
+    contentType: 'markdown',
+  })
+  t.after(() => oracle.destroy())
   const profile = await mkdtemp(join(tmpdir(), 'hibi-stored-marks-'))
   const app = await electron.launch({
     args: [resolve('.'), `--user-data-dir=${profile}`],
@@ -143,6 +166,51 @@ test('stored mark review cases through native input and toolbar', {
       await window.hibi.flushDocumentChanges()
       return (await window.hibi.getDocument()).markdown
     })
+  const compareNative = async (name, source) => {
+    if (engine === 'tiptap') {
+      nativeSources.set(name, source)
+      nativeDocuments.set(
+        name,
+        await rich.evaluate((element) => element.editor.state.doc.toJSON()),
+      )
+    } else {
+      assert.equal(
+        await rich.evaluate((element) =>
+          element.cmTile.root.view.state.doc.toString(),
+        ),
+        source,
+      )
+      // Preserve the native spelling for the pre-existing adjacent literals.
+      if (name === 'literal star' || name === 'literal entity') {
+        assert.equal(source, nativeSources.get(name))
+        return
+      }
+      const expected = oracle.schema.nodeFromJSON(nativeDocuments.get(name))
+      const actual = oracle.schema.nodeFromJSON(oracle.markdown.parse(source))
+      assert.ok(
+        sameRichSourceDocument(actual, expected, true),
+        JSON.stringify({
+          name,
+          source,
+          actual: actual.toJSON(),
+          expected: expected.toJSON(),
+        }),
+      )
+    }
+  }
+  const compose = async (text) => {
+    await cdp.send('Input.imeSetComposition', {
+      text: '仮',
+      selectionStart: 1,
+      selectionEnd: 1,
+    })
+    await waitForAsync(page, () =>
+      document
+        .querySelector('[aria-label="Document editor"]')
+        .textContent.includes('仮'),
+    )
+    await cdp.send('Input.insertText', { text })
+  }
   const open = async (name, source, raw, pm) => {
     const file = join(profile, `${name}.md`)
     await writeFile(file, source)
@@ -201,6 +269,7 @@ test('stored mark review cases through native input and toolbar', {
       for (const id of item.actions) await action(id)
       await page.keyboard.type(item.text)
       const typed = await snapshot()
+      await compareNative(item.name, typed)
       await history(item.source, typed)
       assert.equal(marked.parseInline(typed), marked.parseInline(item.expected))
     })
@@ -218,15 +287,10 @@ test('stored mark review cases through native input and toolbar', {
     await page.keyboard.type('Z')
     const replaced = await snapshot()
     await history(source, replaced)
-    await t.test(
-      'replacement text retains native code mark',
-      engine === 'codemirror'
-        ? { todo: 'formatted gap action-010: retyping after undo retains code' }
-        : {},
-      () => {
-        assert.equal(marked.parseInline(replaced), marked.parseInline('a `bZ`'))
-      },
-    )
+    await t.test('replacement text retains native code mark', async () => {
+      await compareNative('undo-retype', replaced)
+      assert.equal(marked.parseInline(replaced), marked.parseInline('a `bZ`'))
+    })
   })
   for (const cancel of [true, false])
     await t.test(
@@ -259,6 +323,7 @@ test('stored mark review cases through native input and toolbar', {
           )
           await page.keyboard.type('X')
           const typed = await snapshot()
+          await compareNative('cancelled-ime', typed)
           await history(source, typed)
           assert.equal(
             marked.parseInline(typed),
@@ -268,21 +333,143 @@ test('stored mark review cases through native input and toolbar', {
           await cdp.send('Input.insertText', { text: '日本' })
           const typed = await snapshot()
           await history(source, typed)
-          await t.test(
-            'committed ime text keeps pending bold',
-            engine === 'codemirror'
-              ? {
-                  todo: 'formatted gap action-009: committed ime text keeps pending marks',
-                }
-              : {},
-            () => {
-              assert.equal(
-                marked.parseInline(typed),
-                marked.parseInline('plain end**日本**'),
-              )
-            },
-          )
+          await t.test('committed ime text keeps pending bold', async () => {
+            await compareNative('committed-ime', typed)
+            assert.equal(
+              marked.parseInline(typed),
+              marked.parseInline('plain end**日本**'),
+            )
+          })
         }
+      },
+    )
+  for (const [id, text] of [
+    ['bold', '*&copy;'],
+    ['italic', '日本'],
+    ['inline-code', 'a`b'],
+  ])
+    await t.test(`committed ime keeps ${id} and literal text`, async () => {
+      await open('ime-' + id, 'plain end  tail', 10, 11)
+      await action(id)
+      await compose(text)
+      const typed = await snapshot()
+      await compareNative('ime-' + id, typed)
+      await history('plain end  tail', typed)
+      await page.keyboard.type('Z')
+      const continued = await snapshot()
+      await compareNative('ime-continued-' + id, continued)
+      await history(typed, continued)
+    })
+
+  for (const [source, raw, pm] of [
+    ['a `b`', 5, 4],
+    ['a `bc`', 4, 4],
+  ])
+    await t.test(
+      'committed ime continues existing code at ' + raw,
+      async () => {
+        await open('ime-existing-' + raw, source, raw, pm)
+        await action('inline-code')
+        await action('inline-code')
+        await compose('x`y')
+        const typed = await snapshot()
+        await compareNative('ime-existing-' + raw, typed)
+        await history(source, typed)
+      },
+    )
+
+  await t.test(
+    'redo keeps code continuation and moving clears it',
+    async () => {
+      await open('redo-code', 'a `b`', 5, 4)
+      await action('inline-code')
+      await action('inline-code')
+      await page.keyboard.type('x`y')
+      const typed = await snapshot()
+      await history('a `b`', typed)
+      await page.keyboard.type('Z')
+      const continued = await snapshot()
+      await compareNative('redo-continued', continued)
+      await history(typed, continued)
+      await rich.evaluate((element, engine) => {
+        if (engine === 'codemirror')
+          element.cmTile.root.view.dispatch({ selection: { anchor: 0 } })
+        else element.editor.commands.setTextSelection(1)
+      }, engine)
+      await page.keyboard.type('Q')
+      await compareNative('moved-selection', await snapshot())
+    },
+  )
+
+  if (engine === 'codemirror')
+    await t.test(
+      'candidate updates stay literal until one marked commit',
+      async () => {
+        await open('candidates', 'plain end', 9, 10)
+        await action('bold')
+        for (const text of ['仮', '候補']) {
+          await cdp.send('Input.imeSetComposition', {
+            text,
+            selectionStart: text.length,
+            selectionEnd: text.length,
+          })
+          await waitForAsync(
+            page,
+            (text) =>
+              document
+                .querySelector('[aria-label="Document editor"]')
+                .textContent.includes(text),
+            text,
+          )
+          assert.equal(await snapshot(), 'plain end' + text)
+        }
+        await cdp.send('Input.insertText', { text: '日本' })
+        const typed = await snapshot()
+        assert.equal(typed, 'plain end**日本**')
+        await compareNative('committed-ime', typed)
+        await history('plain end', typed)
+      },
+    )
+
+  if (engine === 'codemirror')
+    await t.test(
+      'source edits clear pending marks and retain source focus',
+      async () => {
+        await open('external', 'plain end', 9, 10)
+        await page
+          .getByRole('button', { name: /^side-by-side$/i, exact: true })
+          .click()
+        await page
+          .locator('.mode-side-by-side[data-source-ready="true"]')
+          .waitFor()
+        await rich.focus()
+        await action('bold')
+        const source = page.getByRole('textbox', {
+          name: 'Markdown editor',
+          exact: true,
+        })
+        await source.focus()
+        await source.evaluate((element) => {
+          const view = element.cmTile.root.view
+          view.dispatch({
+            changes: { from: 0, insert: 'other ' },
+            selection: { anchor: 15 },
+            userEvent: 'input.type',
+          })
+        })
+        assert.equal(
+          await source.evaluate(
+            (element) => element === document.activeElement,
+          ),
+          true,
+        )
+        assert.equal(await snapshot(), 'other plain end')
+        await rich.focus()
+        await rich.evaluate((element) =>
+          element.cmTile.root.view.dispatch({ selection: { anchor: 15 } }),
+        )
+        await page.keyboard.type('X')
+        assert.equal(await snapshot(), 'other plain endX')
       },
     )
 })
