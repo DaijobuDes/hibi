@@ -49,9 +49,8 @@ accepted differences are not gaps; their tests assert each engine. the codemirro
 | contracts-005 | [raw-html-editor.test.mjs:1231](raw-html-editor.test.mjs#L1231) | modified block html copies must fall back without restoring raw markup | 3c: clipboard fragments and trusted source |
 | contracts-006 | [raw-html-editor.test.mjs:1233](raw-html-editor.test.mjs#L1233) | superseded block html copies must fall back without restoring raw markup | 3c: clipboard fragments and trusted source |
 | semantics-002 | [source-reference-navigation.test.mjs:161](source-reference-navigation.test.mjs#L161) | formatted and source references must reuse one document worker | 9: outline semantics and diagram lifecycle |
-| input-075 | [formatted-commands.test.mjs:1043](formatted-commands.test.mjs#L1043) | multi-line input with backticks inside inline code keeps the code span | 8a: native input, structure and toolbar state |
+| input-075 | [formatted-commands.test.mjs:1045](formatted-commands.test.mjs#L1045) | multi-line input with backticks inside inline code keeps the code span | 8a: native input, structure and toolbar state |
 | input-space-001 | [formatted-multiline-regressions.test.mjs:241](formatted-multiline-regressions.test.mjs#L241) | multiline input after a long formatted space run must retain native paragraph boundaries; the bounded fallback currently inserts a soft break | 8a: native input, structure and toolbar state |
-| input-blank-tail-001 | [formatted-commands.test.mjs:1190](formatted-commands.test.mjs#L1190) | unparsed space/tab tails longer than 4096 units must retain the same empty paragraph as a complete parse | 8a: native input, trailing-whitespace index (#559) |
 
 ## accepted differences
 

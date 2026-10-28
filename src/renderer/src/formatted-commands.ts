@@ -19,6 +19,7 @@ import {
 import { uncovered } from './chunked-markdown.ts'
 import { formattedFormatting } from './formatted-contributions.ts'
 import { codeIndentLines, detectIndentUnit, tabIndent } from './indentation.ts'
+import { sourceWhitespace } from './source-whitespace.ts'
 
 /*
  * Structure keys for the formatted view. They edit the Markdown source the
@@ -261,8 +262,7 @@ function nextMarker(state: EditorState, item: SyntaxNode) {
   return `${indent}${ordered ? `${Number(ordered[1]) + 1}${ordered[2]}` : text} ${task ? '[ ] ' : ''}`
 }
 
-/** Longest unparsed suffix read when the line count cannot prove it blank. */
-// ponytail: longer unparsed space/tab tails need an indexed whitespace proof.
+/** Longest unparsed suffix read outside an indexed source session. */
 const unparsedLimit = 4096
 
 /** Enter: split paragraphs and headings, continue or leave lists and quotes, newline in code. */
@@ -360,8 +360,8 @@ export function blockBreak(
     // A blank line between blocks gains another empty line. After the last
     // block, blank lines show in pairs as empty paragraphs, as in the rich
     // view, so it gains a pair. The tree says whether a block ends after the
-    // selection; the line index proves any length of newline-only suffix
-    // blank without reading it. Other unparsed text needs a bounded read.
+    // selection. Line counts prove newline-only suffixes; source counts
+    // prove mixed whitespace without reading the tail.
     if (blank(line.text)) {
       let last = tree.topNode.lastChild
       while (last && !last.type.is('Block')) last = last.prevSibling
@@ -373,8 +373,9 @@ export function blockBreak(
         (!last || last.to <= range.to) &&
         (!unparsed ||
           rest === state.doc.lines - state.doc.lineAt(range.to).number ||
-          (rest <= unparsedLimit &&
-            !/\S/.test(state.sliceDoc(range.to, state.doc.length))))
+          (sourceWhitespace(state.doc, range.to) ??
+            (rest <= unparsedLimit &&
+              !/\S/.test(state.sliceDoc(range.to, state.doc.length)))))
       return insert(after ? '\n\n' : '\n')
     }
     const { close, open, at, end } = range.empty

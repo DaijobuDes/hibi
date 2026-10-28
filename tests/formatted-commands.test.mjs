@@ -24,7 +24,9 @@ import {
   tabIndent,
 } from '../src/renderer/src/indentation.ts'
 import { markdownConfiguration } from '../src/renderer/src/markdown.ts'
+import { sourceEditorTextCooperatively } from '../src/renderer/src/source-session.ts'
 import { Footnotes } from '../src/shared/markdown-extra-syntax.ts'
+import { SourceStore } from '../src/shared/source-buffer.ts'
 
 const markdown = parser.configure(GFM)
 const hide = Decoration.replace({})
@@ -1178,21 +1180,31 @@ test('enter on a blank line after the last block reads no more of a 50 MiB blank
   assert.equal(next.sliceString(0, 5), 'x\n\n\n\n')
 })
 
-for (const [name, tail, todo] of [
+for (const [name, tail, direction] of [
   ['no suffix', ''],
   ['4096 line feeds', '\n'.repeat(4096)],
   ['4097 line feeds', '\n'.repeat(4097)],
   ['8192 line feeds', '\n'.repeat(8192)],
   ['8192 line feeds before text', `${'\n'.repeat(8192)}last`],
+  ['4098 spaces and tabs', ' \t\n'.repeat(1366)],
+  ['mixed whitespace before text', `${' \t\n'.repeat(1366)}last`],
+  ['JavaScript whitespace', ' \t\u00a0\ufeff\u2003\n'.repeat(1000)],
+  ['whitespace before an astral character', `${' \t\n'.repeat(1366)}😀`],
   [
-    '4098 spaces and tabs',
-    ' \t\n'.repeat(1366),
-    'formatted gap input-blank-tail-001: unparsed space and tab tails retain empty paragraphs',
+    'mixed tail after a forward selection',
+    `\n${' \t\n'.repeat(1366)}`,
+    'forward',
+  ],
+  [
+    'mixed tail after a backward selection',
+    `\n${' \t\n'.repeat(1366)}`,
+    'backward',
   ],
 ]) {
-  test(`enter before ${name} agrees with a complete parse`, { todo }, () => {
+  test(`enter before ${name} agrees with a complete parse`, async () => {
     const prefix = `first\n\n${'old tail\n\n'.repeat(20000)}`
-    const doc = prefix + tail
+    const selected = direction ? '\n\nsecond' : ''
+    const doc = prefix + selected + tail
     const parse = new ChunkedMarkdownParser(
       markdown,
       markdown,
@@ -1209,9 +1221,17 @@ for (const [name, tail, todo] of [
     let partial = parse.advance()
     while (!partial) partial = parse.advance()
     assert.ok(partial.topNode.lastChild.to < 20000, 'parsed only at the start')
+    const store = new SourceStore(doc, { tabId: 'blank-tail', revision: 0 })
+    const text = await sourceEditorTextCooperatively(store.snapshot(), {
+      signal: new AbortController().signal,
+      yieldTask: async () => {},
+    })
     const state = EditorState.create({
-      doc,
-      selection: { anchor: prefix.length },
+      doc: text,
+      selection:
+        direction === 'backward'
+          ? { anchor: prefix.length + selected.length, head: prefix.length }
+          : { anchor: prefix.length, head: prefix.length + selected.length },
     })
     let units = 0
     const slice = state.sliceDoc.bind(state)
@@ -1224,7 +1244,10 @@ for (const [name, tail, todo] of [
     const expected = state.update(blockBreak(state, markdown.parse(doc))).state
     assert.ok(actual.doc.eq(expected.doc))
     assert.ok(actual.selection.eq(expected.selection))
-    assert.equal(actual.doc.length, doc.length + (/\S/.test(tail) ? 1 : 2))
+    assert.equal(
+      actual.doc.length,
+      doc.length - selected.length + (/\S/.test(tail) ? 1 : 2),
+    )
     assert.ok(units <= 4096, `${units} source units read`)
   })
 }
