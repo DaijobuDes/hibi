@@ -137,24 +137,35 @@ test('regional definitions retain first and closing table title boundaries', (t)
 })
 
 test('indented reference table titles retain frozen counts through edits and undo', (t) => {
-  for (const indent of ['    ', '\t'])
+  for (const [first, rest, indent, hasTitle, characters] of [
+    ['', '', '    ', true, 9],
+    ['', '', '\t', true, 9],
+    ['> ', '> ', '\t', false, 10],
+    ['- > ', '  > ', '\t', true, 12],
+    ['10. > ', '    > ', '\t', false, 12],
+    ['> > ', '> > ', '\t', true, 11],
+  ])
     for (const eol of ['\n', '\r\n'])
       for (const gfm of [false, true]) {
         const text = [
-          '[ref]: /x',
-          `${indent}"a | b"`,
-          '--|--',
+          `${first}[ref]: /x`,
+          `${rest}${indent}"a | b"`,
+          `${rest}--|--`,
           '',
           '[ref]',
         ].join(eol)
         const config = { ...syntax, gfm }
         const f = fixture(t, text, config)
-        const expected = { words: 1, characters: 9 }
+        const table = gfm && !hasTitle
+        const expected = {
+          words: table ? 3 : 1,
+          characters: characters + (table ? 4 : 0),
+        }
         assert.deepEqual(f.expected(), expected, text)
         assert.deepEqual(f.read(), expected, text)
         const from = text.indexOf('--|--')
         f.edit(from, from + 5, 'plain')
-        assert.deepEqual(f.expected(), { words: 2, characters: 9 })
+        assert.deepEqual(f.expected(), { words: 2, characters })
         assert.deepEqual(f.read(), f.expected())
         f.edit(from, from + 5, '--|--', 'undo')
         assert.deepEqual(f.expected(), expected)

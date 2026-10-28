@@ -4,6 +4,8 @@ import { type MarkedExtension, marked, Tokenizer } from 'marked'
 // per character or continuation line. Equivalence tests guard the rule delimiters.
 const setextRules = new WeakMap<RegExp, { start: RegExp; candidate: RegExp }>()
 const paragraphRules = new WeakMap<RegExp, RegExp>()
+// Tabs keep their physical columns when a list removes its content indent.
+const containerColumns = new WeakMap<Tokenizer, number>()
 
 // Candidate calls and source spans, including title interruption windows.
 export const blockScanCounters = { calls: 0, units: 0 }
@@ -68,6 +70,20 @@ export function parseMarkdown(source: string) {
 
 export const blockMarkdown: MarkedExtension = {
   tokenizer: {
+    list(source) {
+      return BlockTokenizer.prototype.list.call(
+        this,
+        source,
+        Object.getPrototypeOf(this).list,
+      )
+    },
+    blockquote(source) {
+      return BlockTokenizer.prototype.blockquote.call(
+        this,
+        source,
+        Object.getPrototypeOf(this).blockquote,
+      )
+    },
     def(source) {
       return BlockTokenizer.prototype.def.call(
         this,
@@ -116,6 +132,101 @@ function blockToken<Result>(
 }
 
 export class BlockTokenizer extends Tokenizer {
+  override list(source: string, read = Tokenizer.prototype.list) {
+    if (!this.rules.block.list.test(source)) return read.call(this, source)
+    const rules = this.rules,
+      columns: number[] = [],
+      base = containerColumns.get(this) ?? 0
+    this.rules = {
+      ...rules,
+      other: {
+        ...rules.other,
+        listItemRegex: (bullet) => {
+          const rule = rules.other.listItemRegex(bullet),
+            exec = rule.exec
+          rule.exec = (text) => {
+            const match = exec.call(rule, text)
+            if (match) {
+              let column = base + match[1]!.length
+              for (const char of /^[ \t]*/.exec(match[2]!)![0])
+                column += char === '\t' ? 4 - (column % 4) : 1
+              const padding = column - base - match[1]!.length
+              const indent = padding > 4 ? 1 : padding || 1
+              columns.push(base + match[1]!.length + indent)
+            }
+            return match
+          }
+          return rule
+        },
+      },
+    }
+    const lexer = this.lexer,
+      blockTokens = lexer.blockTokens
+    let item = 0
+    const nested: typeof blockTokens = (...args) => {
+      this.rules = rules
+      lexer.blockTokens = blockTokens
+      containerColumns.set(this, columns[item++]!)
+      try {
+        return Reflect.apply(blockTokens, lexer, args)
+      } finally {
+        containerColumns.set(this, base)
+        lexer.blockTokens = nested
+      }
+    }
+    lexer.blockTokens = nested
+    try {
+      return read.call(this, source)
+    } finally {
+      this.rules = rules
+      lexer.blockTokens = blockTokens
+      containerColumns.set(this, base)
+    }
+  }
+
+  override blockquote(source: string, read = Tokenizer.prototype.blockquote) {
+    const match = this.rules.block.blockquote.exec(source)
+    if (!match?.[0].includes('\t')) return read.call(this, source)
+    const base = containerColumns.get(this) ?? 0
+    let added = 0
+    const offsets: [number, number][] = []
+    // Expand indentation before stripping quote markers; leave body tabs alone.
+    const text = match[0].replace(/^[ \t>]+/gm, (prefix, at: number) => {
+      if (!prefix.includes('\t')) return prefix
+      let column = base,
+        indent = 0,
+        expanded = ''
+      for (let i = 0; i < prefix.length; i++) {
+        const char = prefix[i]!
+        const width = char === '\t' ? 4 - (column % 4) : 1
+        expanded += char === '\t' ? ' '.repeat(width) : char
+        column += width
+        indent = char === '>' ? -1 : indent + width
+        // Tabs after the code indent are literal code content.
+        if (indent >= 4) {
+          expanded += prefix.slice(i + 1)
+          break
+        }
+      }
+      if (expanded.length !== prefix.length) {
+        added += expanded.length - prefix.length
+        offsets.push([at + prefix.length + added, added])
+      }
+      return expanded
+    })
+    const token = read.call(this, text)
+    if (token) {
+      let extra = 0
+      for (const [end, added] of offsets) {
+        if (end > token.raw.length) break
+        extra = added
+      }
+      // The outer lexer consumes original text, not expanded indentation.
+      token.raw = source.slice(0, token.raw.length - extra)
+    }
+    return token
+  }
+
   override def(source: string, read = Tokenizer.prototype.def) {
     let token = read.call(this, source)
     const title = token?.title && this.rules.block.def.exec(token.raw)?.[3]
