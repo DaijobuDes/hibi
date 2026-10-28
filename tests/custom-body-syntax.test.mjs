@@ -2,9 +2,11 @@ import assert from 'node:assert/strict'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { countText } from '../src/addons/word-count/count.ts'
 import { electron, waitForDocumentEditor } from './electron.mjs'
-import { customBodyBoldCases } from './fixtures/custom-body.mjs'
+import {
+  customBodyBoldCases,
+  customBodyCases,
+} from './fixtures/custom-body.mjs'
 import {
   selectFormattedEngine,
   testFormattedEngines as test,
@@ -18,7 +20,6 @@ const cases = [
       ['> [!TIP]\n> *careful*', 'careful'],
       ['-# small *words*', 'small words'],
     ],
-    gap: 'formatted gap corpus-022: custom alert and subtext bodies must preserve native italic parsing',
   },
   {
     feature: 'markdown.strike',
@@ -26,7 +27,6 @@ const cases = [
       ['> [!TIP]\n> ~~gone~~', 'gone'],
       ['-# small ~~words~~', 'small words'],
     ],
-    gap: 'formatted gap corpus-023: custom alert and subtext bodies must preserve native strike parsing',
   },
   {
     feature: 'core.links',
@@ -34,12 +34,10 @@ const cases = [
       ['> [!TIP]\n> [a](https://b.test)', 'a'],
       ['-# small [a](https://b.test)', 'small a'],
     ],
-    gap: 'formatted gap corpus-024: custom alert and subtext bodies must preserve native link parsing',
   },
   {
     feature: 'core.heading-1',
     bodies: [['> [!TIP]\n> # head', 'head']],
-    gap: 'formatted gap corpus-025: custom alert bodies must preserve native heading parsing',
   },
 ]
 
@@ -58,9 +56,29 @@ test('custom body preference scopes match native text', {
     await app.close()
     await rm(profile, { recursive: true, force: true })
   })
+  await app.evaluate(({ dialog }) => {
+    dialog.showMessageBox = async () => ({ response: 1 })
+  })
   const page = await app.firstWindow()
   page.setDefaultTimeout(10000)
   await selectFormattedEngine(app, page, t.formattedEngine)
+  // Segment fixed fixture text with the editor's ICU version, which may differ from Node.
+  const count = (text) =>
+    page.evaluate(
+      (text) => ({
+        words: [
+          ...new Intl.Segmenter(undefined, { granularity: 'word' }).segment(
+            text,
+          ),
+        ].filter((part) => part.isWordLike).length,
+        characters: [
+          ...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(
+            text,
+          ),
+        ].length,
+      }),
+      text,
+    )
   let index = 0
   const render = async (feature, source, counted) => {
     await page.evaluate((feature) => {
@@ -86,7 +104,7 @@ test('custom body preference scopes match native text', {
       `${source}\n\ntail`,
     )
     if (counted !== undefined) {
-      const totals = countText(`${counted}\ntail`)
+      const totals = await count(`${counted}\ntail`)
       const expected = `${totals.words} words · ${totals.characters} characters`
       await page.waitForFunction(
         (label) =>
@@ -132,18 +150,14 @@ test('custom body preference scopes match native text', {
   }
 
   for (const entry of cases)
-    await t.test(
-      entry.feature,
-      { todo: t.formattedEngine === 'codemirror' ? entry.gap : false },
-      async () => {
-        for (const [source, text] of entry.bodies)
-          assert.equal(
-            await render(entry.feature, source),
-            `${text} tail`,
-            source,
-          )
-      },
-    )
+    await t.test(entry.feature, async () => {
+      for (const [source, text] of entry.bodies)
+        assert.equal(
+          await render(entry.feature, source),
+          `${text} tail`,
+          source,
+        )
+    })
 
   for (const [name, source, expected] of [
     ['bullet alert', '- > [!TIP]\n  > **x**', '**x** tail'],
@@ -168,17 +182,78 @@ test('custom body preference scopes match native text', {
       )
     })
 
-  if (t.formattedEngine === 'codemirror') {
+  for (const fixture of customBodyCases)
     await t.test(
-      'task items keep their literal view and count scope',
+      `model, renderer, count and undo: ${fixture.name}`,
       async () => {
         assert.equal(
-          await render(
-            'core.bold',
-            '> [!TIP]\n> - [ ] **x** y',
-            '\n\n\n**x** y',
-          ),
-          '**x** y tail',
+          await render(fixture.feature, fixture.source, fixture.text),
+          `${fixture.text}\n\ntail`.replace(/\s+/g, ' ').trim(),
+        )
+        const pane = page.locator('.rich-pane')
+        const styled =
+          fixture.feature === 'core.heading-1'
+            ? '.hibi-lp-h2, h2'
+            : fixture.name === 'subscript bold'
+              ? '.hibi-lp-subscript, sub'
+              : null
+        if (styled) assert.ok(await pane.locator(styled).count(), fixture.name)
+        if (fixture.feature === 'markdown.strike')
+          assert.equal(await pane.locator('.hibi-lp-strike, s').count(), 0)
+        if (fixture.feature === 'core.italic')
+          assert.equal(await pane.locator('.hibi-lp-em, em').count(), 0)
+        if (fixture.feature === 'core.links')
+          assert.equal(await pane.locator('.hibi-lp-link, a').count(), 0)
+        if (fixture.feature === 'core.bold' || fixture.name === 'bullet alert')
+          assert.equal(await pane.locator('.hibi-lp-strong, strong').count(), 0)
+        if (fixture.name === 'ordered alert')
+          assert.ok(await pane.locator('.hibi-lp-strong, strong').count())
+        if (fixture.name === 'alert task')
+          assert.equal(await pane.locator('input[type="checkbox"]').count(), 1)
+        const editor = page.getByRole('textbox', {
+          name: 'Document editor',
+          exact: true,
+        })
+        await editor.focus()
+        await page.keyboard.insertText(' proof')
+        const modified = `${fixture.source}\n\ntail proof`
+        await page.waitForFunction(
+          async (source) =>
+            (await window.hibi.getDocument()).markdown === source,
+          modified,
+        )
+        const total = await count(`${fixture.text}\ntail proof`)
+        await page.waitForFunction(
+          (expected) =>
+            document.querySelector('[data-status-id="word-count.total"]')
+              ?.textContent === expected,
+          `${total.words} words · ${total.characters} characters`,
+        )
+        await editor.press(
+          `${process.platform === 'darwin' ? 'Meta' : 'Control'}+z`,
+        )
+        await page.waitForFunction(
+          async (source) =>
+            (await window.hibi.getDocument()).markdown === source,
+          `${fixture.source}\n\ntail`,
+        )
+        const restored = await count(`${fixture.text}\ntail`)
+        await page.waitForFunction(
+          (expected) =>
+            document.querySelector('[data-status-id="word-count.total"]')
+              ?.textContent === expected,
+          `${restored.words} words · ${restored.characters} characters`,
+        )
+      },
+    )
+
+  if (t.formattedEngine === 'codemirror') {
+    await t.test(
+      'task items keep their native body and count scope',
+      async () => {
+        assert.equal(
+          await render('core.bold', '> [!TIP]\n> - [ ] **x** y', '\n\n\nx y'),
+          'x y tail',
         )
       },
     )
@@ -234,40 +309,31 @@ test('custom body preference scopes match native text', {
     )
   }
 
-  const directListGap =
-    'formatted gap corpus-028: alerts directly in list items must retain native body parsing and counts'
-  for (const [name, feature, source, text, gap] of [
+  for (const [name, feature, source, text] of [
     [
       'native task item in alert',
       'core.bold',
       '> [!TIP]\n> - [ ] **x** y',
       '\n\n\nx y',
-      'formatted gap corpus-027: task items inside alerts must retain native bold parsing and counts',
     ],
     [
       'native alert in bullet item',
       '',
       '- > [!TIP]\n  > **x** y',
       '\n\n**x** y',
-      directListGap,
     ],
     [
       'native alert in ordered item',
       '',
       '1. > [!TIP]\n   > **x** y',
       '\n\n\n\n\n\nx y',
-      directListGap,
     ],
   ])
-    await t.test(
-      name,
-      { todo: t.formattedEngine === 'codemirror' ? gap : false },
-      async () => {
-        assert.equal(
-          await render(feature, source, text),
-          `${text}\ntail`.replace(/\s+/g, ' ').trim(),
-          source,
-        )
-      },
-    )
+    await t.test(name, async () => {
+      assert.equal(
+        await render(feature, source, text),
+        `${text}\ntail`.replace(/\s+/g, ' ').trim(),
+        source,
+      )
+    })
 })

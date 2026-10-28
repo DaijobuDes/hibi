@@ -22,6 +22,10 @@ import {
 } from '@codemirror/view'
 import { type SyntaxNodeRef, Tree } from '@lezer/common'
 import type { MarkdownConfig, MarkdownParser } from '@lezer/markdown'
+import {
+  literalText,
+  customBody as nativeBody,
+} from '../../../shared/formatted-custom-body.ts'
 import { formattedInlineParser } from '../../../shared/formatted-markdown.ts'
 import { runSourceHistory } from '../../../shared/source-history.ts'
 import {
@@ -117,7 +121,6 @@ function decorateCell(
   const to = from + (source?.[text.length] ?? text.length)
   const views = formattedNodeViews(state)
   const literal = literalNodes(state)
-  const plainBold = customBody && literal.has('StrongEmphasis')
   const replacements = new Set<string>()
   // Node and context positions stay in the owning document. Only the sink
   // maps them to the cell's displayed text, where escaped pipes lose a slash.
@@ -182,10 +185,7 @@ function decorateCell(
   cursor.firstChild()
   cursor.iterate((node) => {
     // Syntax whose setting is off shows as written, its children too.
-    if (
-      literal.has(node.name) &&
-      !(plainBold && node.name === 'StrongEmphasis')
-    )
+    if (literalText(node.node, literal, customBody || nativeBody(node.node)))
       return false
     const revealed = revealedFor(node)
     const nodeOut = sink(revealed)
@@ -213,10 +213,10 @@ function decorateCell(
       out.mark(from, to, { class: name })
     switch (node.name) {
       case 'Emphasis':
-        style('hibi-lp-em', node.from, node.to)
+        if (!literal.has(node.name)) style('hibi-lp-em', node.from, node.to)
         return
       case 'StrongEmphasis':
-        if (!plainBold) style('hibi-lp-strong', node.from, node.to)
+        if (!literal.has(node.name)) style('hibi-lp-strong', node.from, node.to)
         return
       case 'EmphasisMark': {
         const parent = node.node.parent
@@ -256,11 +256,12 @@ function decorateCell(
         if (reference && !answer) return
         out.syntax(node.from, open.to)
         out.syntax(close.from, node.to)
-        out.link(
-          open.to,
-          close.from,
-          answer?.title ? { title: answer.title } : undefined,
-        )
+        if (!literal.has('Link'))
+          out.link(
+            open.to,
+            close.from,
+            answer?.title ? { title: answer.title } : undefined,
+          )
         return
       }
       case 'Autolink': {
@@ -268,12 +269,13 @@ function decorateCell(
         if (!url) return false
         out.syntax(node.from, url.from)
         out.syntax(url.to, node.to)
-        out.link(url.from, url.to)
+        if (!literal.has('Autolink')) out.link(url.from, url.to)
         return false
       }
       case 'URL': {
         const parent = node.node.parent?.name
         if (
+          !literal.has('URL') &&
           parent !== 'Link' &&
           parent !== 'Image' &&
           parent !== 'LinkReference'

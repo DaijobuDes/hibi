@@ -40,7 +40,10 @@ import { editorExtensions } from '../src/renderer/src/markdown.ts'
 import { markdownSyntax } from '../src/renderer/src/markdown-syntax.ts'
 import { defaultNoteSyntax } from '../src/shared/note-syntax.ts'
 import { SourceStore } from '../src/shared/source-buffer.ts'
-import { customBodyBoldCases } from './fixtures/custom-body.mjs'
+import {
+  customBodyBoldCases,
+  customBodyCases,
+} from './fixtures/custom-body.mjs'
 
 const flavors = [
   {
@@ -88,7 +91,17 @@ flavors.push({
   ],
   export: { extensions: [mathTokens] },
 })
-function native(source, selected = flavors) {
+markdownSyntax.register('markdown', {
+  id: 'strike',
+  label: 'Strikethrough',
+  group: 'Markdown',
+  level: 'inline',
+  extensions: ['strike'],
+  nodes: ['Strikethrough'],
+  matches: (token) => token.type === 'del',
+})
+
+function nativeDocument(source, selected = flavors) {
   const freshFlavors = selected.map((flavor) =>
     flavor.id === 'markdown.github'
       ? {
@@ -105,11 +118,141 @@ function native(source, selected = flavors) {
     markedOptions: markdown.options.markedOptions,
   })
   const schema = getSchema(extensions)
-  return getText(schema.nodeFromJSON(manager.parse(source)), {
+  return schema.nodeFromJSON(manager.parse(source))
+}
+
+function native(source, selected = flavors) {
+  const document = nativeDocument(source, selected)
+  return getText(document, {
     blockSeparator: '\n',
-    textSerializers: getTextSerializersFromSchema(schema),
+    textSerializers: getTextSerializersFromSchema(document.type.schema),
   })
 }
+
+for (const fixture of customBodyCases)
+  test(`custom body native model: ${fixture.name}`, () => {
+    markdownSyntax.reset()
+    if (fixture.feature) markdownSyntax.setEnabled(fixture.feature, false)
+    try {
+      const document = nativeDocument(fixture.source)
+      assert.equal(native(fixture.source), fixture.text)
+      const nodes = [],
+        marks = []
+      document.descendants((node) => {
+        nodes.push(node.type.name)
+        marks.push(...node.marks.map((mark) => mark.type.name))
+      })
+      if (fixture.feature === 'markdown.strike')
+        assert.ok(!marks.includes('strike'))
+      if (fixture.feature === 'core.italic')
+        assert.ok(!marks.includes('italic'))
+      if (fixture.feature === 'core.links') assert.ok(!marks.includes('link'))
+      if (fixture.feature === 'core.bold') assert.ok(!marks.includes('bold'))
+      if (fixture.feature === 'core.heading-1')
+        assert.ok(nodes.includes('heading'))
+      if (fixture.name === 'subscript bold')
+        assert.ok(marks.includes('subscript'))
+      if (fixture.name === 'alert task') assert.ok(nodes.includes('taskItem'))
+      if (fixture.name === 'bullet alert')
+        assert.equal(
+          document.firstChild.firstChild.firstChild.firstChild.text,
+          '**x** y',
+        )
+      if (fixture.name === 'ordered alert') {
+        assert.deepEqual(
+          nodes.filter((name) => name !== 'text'),
+          [
+            'orderedList',
+            'listItem',
+            'paragraph',
+            'githubAlert',
+            'paragraph',
+            'blockquote',
+            'paragraph',
+          ],
+        )
+        assert.ok(marks.includes('bold'))
+      }
+      const syntax = {
+        ...defaultNoteSyntax,
+        alerts: true,
+        textExtras: true,
+        disabledFeatures: fixture.feature ? [fixture.feature] : [],
+      }
+      assert.equal(richText(fixture.source, syntax).slice(1), fixture.text)
+      const counter = new FormattedCounter(
+        new SourceStore(fixture.source, { tabId: 'custom-body', revision: 0 }),
+        syntax,
+      )
+      try {
+        let step
+        const work = counter.read()
+        do step = work.next()
+        while (!step.done)
+        assert.deepEqual(step.value, countText(fixture.text))
+      } finally {
+        counter.dispose()
+      }
+    } finally {
+      markdownSyntax.reset()
+    }
+  })
+
+for (const paragraphs of [32, 2048])
+  test(`custom body edits retain bounded regional counts with ${paragraphs} neighbours`, (t) => {
+    const prefix = 'padding block\n\n'.repeat(paragraphs)
+    const fixture = customBodyCases.find((entry) => entry.name === 'alert task')
+    const syntax = {
+      ...defaultNoteSyntax,
+      alerts: true,
+      textExtras: true,
+      disabledFeatures: ['core.bold'],
+    }
+    const source = `${prefix}${fixture.source}\n\nend`
+    const counter = new FormattedCounter(
+      new SourceStore(source, { tabId: 'bounded-custom', revision: 0 }),
+      syntax,
+    )
+    const read = () => {
+      const work = counter.read()
+      let step
+      do step = work.next()
+      while (!step.done)
+      return step.value
+    }
+    const edit = (from, to, insert) => {
+      const snapshot = counter.store.snapshot()
+      counter.apply({
+        document: snapshot.document,
+        operationId: `body-${snapshot.version}`,
+        baseVersion: snapshot.version,
+        contentVersion: snapshot.version + 1,
+        origin: 'source',
+        historyGroup: 'custom-body',
+        changes: [{ from, to, insert }],
+      })
+    }
+    try {
+      const initial = read()
+      const at = prefix.length + fixture.source.length
+      counter.counters(true)
+      edit(at, at, ' proof')
+      assert.deepEqual(read(), {
+        words: initial.words + 1,
+        characters: initial.characters + 6,
+      })
+      const work = counter.counters()
+      assert.ok(work.countedUnits < 2048, JSON.stringify(work))
+      assert.ok(work.source.sourceUnitsRead < 16384, JSON.stringify(work))
+      assert.equal(work.source.materializations, 0)
+      assert.equal(work.source.materializedUnits, 0)
+      t.diagnostic(JSON.stringify({ paragraphs, work }))
+      edit(at, at + 6, '')
+      assert.deepEqual(read(), initial)
+    } finally {
+      counter.dispose()
+    }
+  })
 
 for (const source of [
   '> [!NOTE]\n> a\n>\n>\n>\n> b',
@@ -311,27 +454,27 @@ for (const [feature, bodies] of [
   [
     'core.italic',
     [
-      ['> [!TIP]\n> *careful*', '*careful*'],
-      ['-# small *words*', 'small *words*'],
+      ['> [!TIP]\n> *careful*', 'careful'],
+      ['-# small *words*', 'small words'],
     ],
   ],
   [
     'markdown.strike',
     [
-      ['> [!TIP]\n> ~~gone~~', '~~gone~~'],
-      ['-# small ~~words~~', 'small ~~words~~'],
+      ['> [!TIP]\n> ~~gone~~', 'gone'],
+      ['-# small ~~words~~', 'small words'],
     ],
   ],
   [
     'core.links',
     [
-      ['> [!TIP]\n> [a](https://b.test)', '[a](https://b.test)'],
-      ['-# small [a](https://b.test)', 'small [a](https://b.test)'],
+      ['> [!TIP]\n> [a](https://b.test)', 'a'],
+      ['-# small [a](https://b.test)', 'small a'],
     ],
   ],
-  ['core.heading-1', [['> [!TIP]\n> # head', '# head']]],
+  ['core.heading-1', [['> [!TIP]\n> # head', 'head']]],
 ])
-  test(`custom bodies keep the view's literal ${feature} in counts`, () => {
+  test(`custom bodies keep native ${feature} in counts`, () => {
     for (const [source, text] of bodies) {
       const syntax = {
         ...defaultNoteSyntax,
@@ -389,9 +532,7 @@ test('list-nested alerts keep disabled bold literal while subtext owns its body'
   }
 })
 
-test('custom subscript bodies preserve native inline mark parsing', {
-  todo: 'formatted gap corpus-026: custom subscript bodies must preserve native inline mark parsing',
-}, () => {
+test('custom subscript bodies preserve native inline mark parsing', () => {
   markdownSyntax.setEnabled('core.bold', false)
   try {
     const source = 'H~**2**~O'
