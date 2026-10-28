@@ -183,34 +183,53 @@ test('custom body preference scopes match native text', {
       },
     )
     await t.test(
-      'table cell editors keep the enclosing custom body scope',
+      'table cell editors preserve scope with markers shown or hidden',
       async () => {
         const fixture = customBodyBoldCases.find(
           (entry) => entry.name === 'table / bold',
         )
-        await render('core.bold', fixture.source, fixture.text)
-        await page.locator('.rich-pane td').first().click()
-        const cell = page.getByRole('textbox', {
-          name: 'Table cell',
-          exact: true,
-        })
-        await cell.evaluate((element) => {
-          const view = element.cmTile.root.view
-          view.dispatch({ selection: { anchor: view.state.doc.length } })
-        })
-        await page.waitForFunction(() => {
-          const element = document.querySelector(
-            '.hibi-lp-cell-editor .cm-content',
-          )
-          return element?.innerText.trim() === 'x'
-        })
-        assert.equal(await cell.locator('.hibi-lp-strong').count(), 0)
-        assert.match(
-          await cell.evaluate((element) =>
-            element.cmTile.root.view.state.doc.toString(),
-          ),
-          /\*\*x\*\*/,
-        )
+        assert.ok(fixture)
+        try {
+          for (const markers of [true, false]) {
+            await page.evaluate(
+              (shown) =>
+                localStorage.setItem('markdown-markers', String(shown)),
+              markers,
+            )
+            await render('core.bold', fixture.source, fixture.text)
+            await page.locator('.rich-pane td').first().click()
+            const cell = page.getByRole('textbox', {
+              name: 'Table cell',
+              exact: true,
+            })
+            await cell.evaluate((element) => {
+              const view = element.cmTile.root.view
+              view.dispatch({ selection: { anchor: view.state.doc.length } })
+            })
+            const expected = markers ? '**x**' : 'x'
+            await page
+              .waitForFunction(
+                (text) =>
+                  document
+                    .querySelector('.hibi-lp-cell-editor .cm-content')
+                    ?.innerText.trim() === text,
+                expected,
+              )
+              .catch((error) => {
+                if (error.name !== 'TimeoutError') throw error
+              })
+            assert.equal((await cell.innerText()).trim(), expected)
+            assert.equal(await cell.locator('.hibi-lp-strong').count(), 0)
+            assert.match(
+              await cell.evaluate((element) =>
+                element.cmTile.root.view.state.doc.toString(),
+              ),
+              /\*\*x\*\*/,
+            )
+          }
+        } finally {
+          await page.evaluate(() => localStorage.removeItem('markdown-markers'))
+        }
       },
     )
   }

@@ -119,8 +119,8 @@ accepted differences are not gaps; their tests assert each engine. the codemirro
 | corpus-024 | [custom-body-syntax.test.mjs:37](custom-body-syntax.test.mjs#L37) | custom alert and subtext bodies must preserve native link parsing | 9: outline semantics and diagram lifecycle |
 | corpus-025 | [custom-body-syntax.test.mjs:42](custom-body-syntax.test.mjs#L42) | custom alert bodies must preserve native heading parsing | 9: outline semantics and diagram lifecycle |
 | corpus-026 | [word-count-formatted.test.mjs:393](word-count-formatted.test.mjs#L393) | custom subscript bodies must preserve native inline mark parsing | 9: outline semantics and diagram lifecycle |
-| corpus-027 | [custom-body-syntax.test.mjs:226](custom-body-syntax.test.mjs#L226) | task items inside alerts must retain native bold parsing and counts | 9: outline semantics and diagram lifecycle |
-| corpus-028 | [custom-body-syntax.test.mjs:219](custom-body-syntax.test.mjs#L219) | alerts directly in list items must retain native body parsing and counts | 9: outline semantics and diagram lifecycle |
+| corpus-027 | [custom-body-syntax.test.mjs:245](custom-body-syntax.test.mjs#L245) | task items inside alerts must retain native bold parsing and counts | 9: outline semantics and diagram lifecycle |
+| corpus-028 | [custom-body-syntax.test.mjs:238](custom-body-syntax.test.mjs#L238) | alerts directly in list items must retain native body parsing and counts | 9: outline semantics and diagram lifecycle |
 
 ## accepted differences
 
