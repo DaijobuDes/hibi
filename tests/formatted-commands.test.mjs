@@ -778,6 +778,8 @@ test('enter on a blank line after the last block adds an empty paragraph, and on
   assert.equal(run('first\n\n|', blockBreak), 'first\n\n\n\n|')
   assert.equal(run('first\n\n|\n', blockBreak), 'first\n\n\n\n|\n')
   assert.equal(run('a\n\n|\n\nb', blockBreak), 'a\n\n\n|\n\nb')
+  // The note's end is where it ends once the selection is gone.
+  assert.equal(run('first\n\n^\n\nsecond|', blockBreak), 'first\n\n\n\n|')
 })
 
 test('enter on a blank line after the last block reads no more of a 50 MiB blank tail', () => {
