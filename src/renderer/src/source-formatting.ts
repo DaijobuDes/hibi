@@ -19,7 +19,7 @@ import {
   type TransactionSpec,
 } from '@codemirror/state'
 import { EditorView, type KeyBinding, ViewPlugin } from '@codemirror/view'
-import type { Tree } from '@lezer/common'
+import type { SyntaxNode, Tree } from '@lezer/common'
 import type {
   DocumentEdit,
   DocumentFormat,
@@ -134,9 +134,13 @@ type StoredMarks = {
   inline?: { close: string; tail: string }
   code?: {
     from: number
+    to: number
     fence: number
     pad: boolean
-    firstTick: boolean
+    first: string
+    last: string
+    blank: boolean
+    head: number
     tail: number
     longest: number
   }
@@ -258,27 +262,79 @@ function continueInline(
   }
 }
 
+/** Read an existing span once; later input only inspects the new text. */
+function storedCode(
+  state: EditorState,
+  stored: StoredMarks,
+  node: SyntaxNode,
+): StoredMarks {
+  const first = node.firstChild!,
+    last = node.lastChild!
+  const raw = state.sliceDoc(first.to, last.from).replace(/\n/g, ' ')
+  const blank = /^ *$/.test(raw)
+  const pad = !blank && raw.startsWith(' ') && raw.endsWith(' ')
+  const value = pad ? raw.slice(1, -1) : raw
+  const from = first.to + Number(pad),
+    to = last.from - Number(pad)
+  const pos = Math.max(from, Math.min(stored.pos, to))
+  const before = codeRuns(value.slice(0, pos - from))
+  const after = codeRuns(value.slice(pos - from))
+  const head = value.slice(pos - from).match(/^`*/)?.[0].length ?? 0
+  return {
+    ...stored,
+    pos,
+    code: {
+      from: node.from,
+      to,
+      fence: first.to - first.from,
+      pad,
+      first: value.charAt(0),
+      last: value.charAt(value.length - 1),
+      blank,
+      head,
+      tail: before.tail,
+      longest: Math.max(before.longest, after.longest, before.tail + head),
+    },
+  }
+}
+
 /** Extend our code span by editing only its fences and the text at the caret. */
 function continueCode(stored: StoredMarks, text: string): TransactionSpec {
   const code = stored.code!
   const runs = codeRuns(text, code.tail)
-  const longest = Math.max(code.longest, runs.longest)
+  const longest = Math.max(code.longest, runs.longest, runs.tail + code.head)
   const fence = Math.max(code.fence, longest + 1)
-  const pad = code.firstTick || text.endsWith('`')
+  const oldOpen = code.fence + Number(code.pad)
+  const first = stored.pos === code.from + oldOpen ? text.charAt(0) : code.first
+  const last = stored.pos === code.to ? text.charAt(text.length - 1) : code.last
+  const blank = code.blank && /^ *$/.test(text)
+  const pad =
+    first === '`' || last === '`' || (!blank && first === ' ' && last === ' ')
   const open = '`'.repeat(fence) + (pad ? ' ' : '')
   const close = (pad ? ' ' : '') + '`'.repeat(fence)
-  const oldOpen = code.fence + Number(code.pad)
-  const pos = stored.pos + text.length + open.length - oldOpen
+  const shift = text.length + open.length - oldOpen
+  const pos = stored.pos + shift
   return {
     changes: [
       { from: code.from, to: code.from + oldOpen, insert: open },
-      { from: stored.pos, to: stored.pos + oldOpen, insert: text + close },
+      { from: stored.pos, insert: text },
+      { from: code.to, to: code.to + oldOpen, insert: close },
     ],
     selection: EditorSelection.cursor(pos),
     effects: storeMarks.of({
       ...stored,
       pos,
-      code: { ...code, fence, pad, longest, tail: runs.tail },
+      code: {
+        ...code,
+        to: code.to + shift,
+        fence,
+        pad,
+        first,
+        last,
+        blank,
+        longest,
+        tail: runs.tail,
+      },
     }),
     userEvent: 'input.type',
     scrollIntoView: true,
@@ -303,6 +359,15 @@ function storedInput(
     reopen = '',
     kept = false
   const current = formattingAt(state, tree, at)
+  if (stored.marks.includes('inline-code')) {
+    const before = current.has('inline-code')
+      ? null
+      : formattingBefore(state, tree, at, 'inline-code')
+    const node =
+      current.get('inline-code') ??
+      (before && formattingAt(state, tree, before.to).get('inline-code'))
+    if (node) return continueCode(storedCode(state, stored, node), text)
+  }
   if (
     !current.has('inline-code') &&
     stored.marks.every((id) => current.has(id))
@@ -377,9 +442,13 @@ function storedInput(
     const runs = codeRuns(value)
     pending.code = {
       from: at + close.length + lead.length,
+      to: caret,
       fence: fenceLength(value),
       pad: !!pad,
-      firstTick: value.startsWith('`'),
+      first: value.charAt(0),
+      last: value.charAt(value.length - 1),
+      blank: false,
+      head: 0,
       ...runs,
     }
   }
@@ -388,7 +457,10 @@ function storedInput(
     const shift = state.doc.lineAt(at).from + 1 - at
     caret += shift
     pending.pos = caret
-    if (pending.code) pending.code.from += shift
+    if (pending.code) {
+      pending.code.from += shift
+      pending.code.to += shift
+    }
   }
   return {
     ...(gap ?? { changes: { from: at, insert }, userEvent: 'input.type' }),

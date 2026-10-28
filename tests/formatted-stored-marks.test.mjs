@@ -156,6 +156,20 @@ for (const text of ['a`b', '`a`', 'a``b`c', 'a ` b', '``']) {
   })
 }
 
+for (const [source, from, position] of [
+  ['a `b`', 4, 4],
+  ['a `b`', 5, 4],
+  ['a `bc`', 4, 4],
+  ['a `` `b ``', 7, 5],
+  ['a `` b` ``', 7, 5],
+  ['a `  b  `', 7, 6],
+  ['a `b``c`', 8, 7],
+]) {
+  test(`existing code continues at ${from} in ${JSON.stringify(source)}`, () => {
+    compare(source, from, position, ['inline-code', 'inline-code'], 'x`y')
+  })
+}
+
 test('ordinary stored bold still types, undoes and redoes', () => {
   compare('a ', 2, 3, ['bold'], 'ordinary text')
   compare('a **bold** b', 8, 7, ['bold', 'bold'], ' more')
@@ -229,42 +243,61 @@ test('stored mark work is bounded with unrelated text', () => {
   assert.deepEqual(large, small)
 })
 
-test('continued code refencing does not rescan the existing span', () => {
-  const measure = (length) => {
-    const view = typing('', 0, [], grammar.parse(''))
-    view.formatting.run('inline-code')
-    const input = view.state.facet(EditorView.inputHandler)[0]
-    input(view, 0, 0, 'a'.repeat(length), () => null)
-    const counts = { text: 0, resolves: 0 }
-    const proto = Object.getPrototypeOf(view.state.doc)
-    const slice = proto.sliceString
-    const resolve = Tree.prototype.resolveInner
-    proto.sliceString = function (...args) {
-      const text = slice.apply(this, args)
-      counts.text += text.length
-      return text
-    }
-    Tree.prototype.resolveInner = function (...args) {
-      counts.resolves++
-      return resolve.apply(this, args)
-    }
-    try {
-      for (const text of ['`', 'b']) {
-        const at = view.state.selection.main.head
-        assert.equal(
-          input(view, at, at, text, () => null),
-          true,
-        )
+for (const placement of ['new', 'end', 'adjacent', 'middle']) {
+  test(`continued code refencing does not rescan: ${placement}`, () => {
+    const measure = (length) => {
+      const source = placement === 'new' ? '' : `\`${'a'.repeat(length)}\``
+      const anchor =
+        placement === 'new'
+          ? 0
+          : placement === 'middle'
+            ? 1 + length / 2
+            : length + (placement === 'adjacent' ? 2 : 1)
+      const view = typing(source, anchor, [], grammar.parse(source))
+      view.formatting.run('inline-code')
+      if (placement !== 'new') view.formatting.run('inline-code')
+      const input = view.state.facet(EditorView.inputHandler)[0]
+      input(
+        view,
+        anchor,
+        anchor,
+        placement === 'new' ? 'a'.repeat(length) : 'x',
+        () => null,
+      )
+      const counts = { text: 0, resolves: 0 }
+      const proto = Object.getPrototypeOf(view.state.doc)
+      const slice = proto.sliceString
+      const resolve = Tree.prototype.resolveInner
+      proto.sliceString = function (...args) {
+        const text = slice.apply(this, args)
+        counts.text += text.length
+        return text
       }
-    } finally {
-      proto.sliceString = slice
-      Tree.prototype.resolveInner = resolve
+      Tree.prototype.resolveInner = function (...args) {
+        counts.resolves++
+        return resolve.apply(this, args)
+      }
+      try {
+        for (const text of ['`', 'b']) {
+          const at = view.state.selection.main.head
+          assert.equal(
+            input(view, at, at, text, () => null),
+            true,
+          )
+        }
+      } finally {
+        proto.sliceString = slice
+        Tree.prototype.resolveInner = resolve
+      }
+      assert.equal(
+        view.state.doc.length,
+        length + (placement === 'new' ? 6 : 7),
+      )
+      assert.equal(view.state.sliceDoc(0, 2), '``')
+      assert.equal(view.state.sliceDoc(view.state.doc.length - 2), '``')
+      return counts
     }
-    assert.equal(view.state.doc.length, length + 6)
-    assert.equal(view.state.sliceDoc(0, 2), '``')
-    assert.equal(view.state.sliceDoc(view.state.doc.length - 3), 'b``')
-    return counts
-  }
-  assert.deepEqual(measure(32), { text: 0, resolves: 0 })
-  assert.deepEqual(measure(1024 * 1024), { text: 0, resolves: 0 })
-})
+    assert.deepEqual(measure(32), { text: 0, resolves: 0 })
+    assert.deepEqual(measure(1024 * 1024), { text: 0, resolves: 0 })
+  })
+}

@@ -14,6 +14,42 @@ import { waitForAsync } from './poll.mjs'
 const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
 const scenarios = [
   {
+    name: 'continued adjacent code',
+    source: 'a `b`',
+    raw: 5,
+    pm: 4,
+    actions: ['inline-code', 'inline-code'],
+    text: 'x`y',
+    expected: 'a ``bx`y``',
+  },
+  {
+    name: 'continued inside code',
+    source: 'a `bc`',
+    raw: 4,
+    pm: 4,
+    actions: ['inline-code', 'inline-code'],
+    text: 'x`y',
+    expected: 'a ``bx`yc``',
+  },
+  {
+    name: 'continued padded code',
+    source: 'a `` b` ``',
+    raw: 7,
+    pm: 5,
+    actions: ['inline-code', 'inline-code'],
+    text: 'x`y',
+    expected: 'a ``b`x`y``',
+  },
+  {
+    name: 'continued longer code run',
+    source: 'a `b``c`',
+    raw: 8,
+    pm: 7,
+    actions: ['inline-code', 'inline-code'],
+    text: 'x`y',
+    expected: 'a ```b``cx`y```',
+  },
+  {
     name: 'code excludes bold',
     source: 'a **bold** b',
     raw: 6,
