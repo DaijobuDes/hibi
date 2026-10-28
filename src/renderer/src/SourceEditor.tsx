@@ -988,8 +988,8 @@ export function SourceEditor({
       }
       getWorker().find(
         find.current.query,
-        action === 'first' ? 0 : selection.from,
-        action === 'first' ? 0 : selection.to,
+        action === 'first' ? 0 : Math.min(selection.from, selection.to),
+        action === 'first' ? 0 : Math.max(selection.from, selection.to),
         action,
         config ? { mode: 'rendered', config, viewport } : {},
       )
