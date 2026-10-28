@@ -147,7 +147,33 @@ export const GithubAlerts: MarkdownConfig = {
     {
       name: 'AlertQuoteStart',
       parse(cx, line) {
-        if (line.next === 62 /* > */) quoteStarts.set(cx, cx.lineStart)
+        if (line.next !== 62 /* > */) return false
+        quoteStarts.set(cx, cx.lineStart)
+        if (
+          cx.parentType().name !== 'ListItem' ||
+          cx.parentType(cx.depth - 2).name !== 'OrderedList' ||
+          !/(?:^|[ \t>])\d{1,9}[.)][ \t]+$/.test(line.text.slice(0, line.pos))
+        )
+          return false
+        // Native ordered items tokenize their first line separately from nested blocks.
+        const title = line.text.slice(line.pos + 1).replace(/^[ \t]+/, '')
+        const marker = alertMarker(title)
+        if (marker) {
+          const from = cx.lineStart + line.pos
+          const to = cx.lineStart + line.text.length
+          const start = to - title.length
+          const mark = 3 + (marker[1]?.length ?? 0) + (marker[2]?.length ?? 0)
+          cx.addElement(
+            cx.elt('Blockquote', from, to, [
+              cx.elt('QuoteMark', from, from + 1),
+              cx.elt('AlertTitle', start, to, [
+                cx.elt('AlertMark', start, start + mark),
+              ]),
+            ]),
+          )
+          cx.nextLine()
+          return true
+        }
         return false
       },
       before: 'Blockquote',

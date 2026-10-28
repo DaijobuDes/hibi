@@ -108,13 +108,6 @@ accepted differences are not gaps; their tests assert each engine. the codemirro
 | semantics-002 | [source-reference-navigation.test.mjs:160](source-reference-navigation.test.mjs#L160) | formatted and source references must reuse one document worker | 9: outline semantics and diagram lifecycle |
 | addon-001 | [source-reference-navigation.test.mjs:185](source-reference-navigation.test.mjs#L185) | rich-only addon syntax must retain native editing and source reference isolation | 2b: legacy feature notices and literal fallback |
 
-| corpus-022 | [custom-body-syntax.test.mjs:21](custom-body-syntax.test.mjs#L21) | custom alert and subtext bodies must preserve native italic parsing | 9: outline semantics and diagram lifecycle |
-| corpus-023 | [custom-body-syntax.test.mjs:29](custom-body-syntax.test.mjs#L29) | custom alert and subtext bodies must preserve native strike parsing | 9: outline semantics and diagram lifecycle |
-| corpus-024 | [custom-body-syntax.test.mjs:37](custom-body-syntax.test.mjs#L37) | custom alert and subtext bodies must preserve native link parsing | 9: outline semantics and diagram lifecycle |
-| corpus-025 | [custom-body-syntax.test.mjs:42](custom-body-syntax.test.mjs#L42) | custom alert bodies must preserve native heading parsing | 9: outline semantics and diagram lifecycle |
-| corpus-026 | [word-count-formatted.test.mjs:393](word-count-formatted.test.mjs#L393) | custom subscript bodies must preserve native inline mark parsing | 9: outline semantics and diagram lifecycle |
-| corpus-027 | [custom-body-syntax.test.mjs:245](custom-body-syntax.test.mjs#L245) | task items inside alerts must retain native bold parsing and counts | 9: outline semantics and diagram lifecycle |
-| corpus-028 | [custom-body-syntax.test.mjs:238](custom-body-syntax.test.mjs#L238) | alerts directly in list items must retain native body parsing and counts | 9: outline semantics and diagram lifecycle |
 
 ## accepted differences
 

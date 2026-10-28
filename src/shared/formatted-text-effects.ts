@@ -1,12 +1,15 @@
 import {
   IterMode,
   type SyntaxNode,
-  type SyntaxNodeRef,
   type Tree,
   type TreeCursor,
 } from '@lezer/common'
 import type { MarkdownParser } from '@lezer/markdown'
-import { customBody } from './formatted-custom-body.ts'
+import {
+  customBody,
+  customBodyNodes,
+  literalText,
+} from './formatted-custom-body.ts'
 import {
   type FormattedTextInput,
   formattedAtomic,
@@ -43,13 +46,6 @@ const leafNames = new Set([
   'BlockMath',
 ])
 
-function literalText(node: SyntaxNodeRef, literal: ReadonlySet<string>) {
-  return (
-    literal.has(node.name) &&
-    !(node.name === 'StrongEmphasis' && customBody(node.node))
-  )
-}
-
 /** Whether a candidate leaf contributes separator evidence; opaque widgets still do. */
 export function formattedTextLeafVisible(
   node: SyntaxNode,
@@ -72,7 +68,7 @@ export function formattedTextWindow(
     let work = 0
     while (++work <= 64) {
       const leaf =
-        literalText(cursor, literal) ||
+        literalText(cursor.node, literal) ||
         cursor.type.is('LeafBlock') ||
         leafNames.has(cursor.name) ||
         cursor.name === 'Table'
@@ -511,15 +507,14 @@ export function* formattedTextEffects(
       descend = false
     }
     if (name === 'Table' && features.has('markdown.tables')) {
-      const cellConfig =
-        literal.has('StrongEmphasis') && customBody(node)
-          ? {
-              ...config,
-              literal: config.literal.filter(
-                (name) => name !== 'StrongEmphasis',
-              ),
-            }
-          : config
+      const cellConfig = customBody(node)
+        ? {
+            ...config,
+            literal: config.literal.filter(
+              (name) => !customBodyNodes.has(name),
+            ),
+          }
+        : config
       const firstRow = input.lineAt(from),
         delimiter = input.lineAt(firstRow.to + 1)
       let row = input.lineAt(Math.max(from, selected.from))
