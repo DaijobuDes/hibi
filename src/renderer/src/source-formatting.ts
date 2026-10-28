@@ -241,7 +241,11 @@ export function sourceFormatting(
           ? unfenceChanges(tree, range)
           : null
     if (structural) {
-      if (!structural.length) return false
+      // An action with nothing to change still returns focus to the note, like any action.
+      if (!structural.length) {
+        view.focus()
+        return false
+      }
       view.dispatch({
         changes: structural,
         annotations: [
@@ -396,8 +400,10 @@ export function sourceFormatting(
       } else return false
     }
     // An action that changes no Markdown leaves the note unedited.
-    if (format === 'markdown' && insert === doc.sliceString(from, to))
+    if (format === 'markdown' && insert === doc.sliceString(from, to)) {
+      view.focus()
       return false
+    }
     return applyEdit({ from, to, insert, selection: { from: start, to: end } })
   }
   const inspect = () => {
