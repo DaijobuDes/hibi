@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { Compartment, EditorState } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
+import { commands } from '../src/addons/sdk-source.ts'
 import {
   formattedDocument,
   formattedPrefix,
@@ -24,7 +25,7 @@ try {
 
 const document = new Compartment()
 const source = '```\nalpha\n```\n\n```\nplain bold\n```'
-function fixture(extensions = [], prefix = '') {
+function fixture(extensions = [], prefix = '', select = true) {
   const view = {
     contentDOM: {},
     hasFocus: true,
@@ -45,6 +46,11 @@ function fixture(extensions = [], prefix = '') {
       this.state = this.state.update(spec).state
       this.commits++
     },
+  }
+  view.dispatch = view.dispatch.bind(view)
+  if (select) {
+    commands.selectAll(view)
+    view.commits = 0
   }
   const event = {
     target: view.contentDOM,
@@ -128,6 +134,17 @@ test('physical whole-note handling respects input ownership and key guards', () 
     assert.equal(keypress(event, view), false)
     assert.equal(view.commits, 0)
   }
+})
+
+test('a raw full text range never grants whole-note intent', () => {
+  const { event, view } = fixture([], '', false)
+  assert.equal(keypress(event, view), false)
+  view.dispatch({
+    selection: { anchor: 0, head: source.length },
+    userEvent: 'select',
+  })
+  assert.equal(keypress(event, view), false)
+  assert.equal(view.state.doc.toString(), source)
 })
 
 test('new selections and external document identities clear whole-note intent', () => {

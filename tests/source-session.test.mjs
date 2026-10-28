@@ -315,6 +315,34 @@ test('two source views share text and history but keep separate selections', () 
   f.session.dispose()
 })
 
+test('select-all commands and keymaps preserve exact source selection without view effects', () => {
+  for (const bindings of [commands.standardKeymap, commands.defaultKeymap])
+    assert.equal(
+      bindings.find((binding) => binding.key === 'Mod-a').run,
+      commands.selectAll,
+    )
+  const f = fixture('abcd'),
+    source = f.attach('source')
+  assert.equal(
+    commands.selectAll({ state: source.view.state, dispatch: source.dispatch }),
+    true,
+  )
+  assert.deepEqual(
+    source.view.state.selection.toJSON(),
+    EditorSelection.single(0, 4).toJSON(),
+  )
+  assert.deepEqual(
+    f.session
+      .selection('source')
+      .ranges.map(({ anchor, head }) => ({ anchor, head })),
+    [{ anchor: 0, head: 4 }],
+  )
+  assert.equal(f.session.snapshot().version, 0)
+  assert.deepEqual(f.session.historyDepth(), { undo: 0, redo: 0 })
+  source.dispose()
+  f.session.dispose()
+})
+
 test('history selection effects stay local to the view that captured them', () => {
   const f = fixture('abcd', {}, [
     sourceHistoryEffects.of(() => [

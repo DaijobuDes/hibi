@@ -14,13 +14,7 @@ import {
   setSelectedCompletion,
   startCompletion,
 } from '@codemirror/autocomplete'
-import {
-  defaultKeymap,
-  indentLess,
-  indentMore,
-  isolateHistory,
-  selectAll,
-} from '@codemirror/commands'
+import { indentLess, indentMore, isolateHistory } from '@codemirror/commands'
 import {
   ensureSyntaxTree,
   HighlightStyle,
@@ -70,6 +64,7 @@ import type {
   FormattedExtension,
   SourceExtension,
 } from '../../addons/api'
+import { commands as sourceCommands } from '../../addons/sdk-source'
 import {
   type CompletionItem,
   type CompletionRequest,
@@ -2045,8 +2040,8 @@ export function SourceEditor({
             },
           }),
           keymap.of([
-            { key: 'Ctrl-a', run: selectAll },
-            ...defaultKeymap,
+            { key: 'Ctrl-a', run: sourceCommands.selectAll },
+            ...sourceCommands.defaultKeymap,
             {
               key: 'Mod-z',
               run: bridge.undo,

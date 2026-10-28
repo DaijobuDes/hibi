@@ -623,7 +623,7 @@ const ownsWholeSelection = (value: WholeSelection, state: EditorState) => {
   )
 }
 const wholeSelection = StateField.define<WholeSelection | null>({
-  create: wholeSelectionAt,
+  create: () => null,
   update(value, transaction) {
     for (const effect of transaction.effects)
       if (effect.is(storeWholeSelection)) {
@@ -645,10 +645,13 @@ const wholeSelection = StateField.define<WholeSelection | null>({
             selection: transaction.newSelection,
           }
         : null
-    return transaction.selection
-      ? (wholeSelectionAt(transaction.state) ??
-          (value?.selection.eq(transaction.newSelection) ? value : null))
-      : value
+    if (!transaction.selection) return value
+    if (transaction.isUserEvent('select.all'))
+      return wholeSelectionAt(transaction.state)
+    return transaction.isUserEvent('input.format') &&
+      value?.selection.eq(transaction.newSelection)
+      ? value
+      : null
   },
 })
 

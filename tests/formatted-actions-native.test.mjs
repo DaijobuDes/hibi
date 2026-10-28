@@ -112,6 +112,24 @@ const cases = [
     physical: true,
   },
   {
+    name: 'selected blocks code physical menu selection',
+    source: '## alpha\n\nplain **bold**',
+    all: true,
+    selectionMenu: true,
+    action: 'code-block',
+    physical: true,
+  },
+  {
+    name: 'selected text blocks code physical key',
+    source: 'alpha\n\nplain bold',
+    text: 'alpha',
+    offset: 0,
+    end: 'bold',
+    endOffset: 4,
+    action: 'code-block',
+    physical: true,
+  },
+  {
     name: 'selected blocks code physical key after format history',
     source: '## alpha\n\nplain **bold**',
     all: true,
@@ -508,8 +526,9 @@ for (const engine of ['tiptap', 'codemirror'])
                   throw new Error(`missing native text: ${word}`)
                 return found
               }
-              if (item.all) editor.commands.selectAll()
-              else if (item.empty) editor.commands.setTextSelection(1)
+              if (item.all && !item.selectionMenu) editor.commands.selectAll()
+              else if (item.empty || item.selectionMenu)
+                editor.commands.setTextSelection(1)
               else
                 editor.commands.setTextSelection({
                   from: position(item.text, item.offset),
@@ -521,22 +540,50 @@ for (const engine of ['tiptap', 'codemirror'])
               const view = root.cmTile.root.view,
                 source = view.state.doc.toString()
               view.dispatch({
-                selection: item.all
-                  ? { anchor: 0, head: source.length }
-                  : item.empty
-                    ? { anchor: 0 }
-                    : {
-                        anchor: source.indexOf(item.text) + item.offset,
-                        head: item.end
-                          ? source.indexOf(item.end) + item.endOffset
-                          : source.indexOf(item.text) + item.offset,
-                      },
+                selection:
+                  item.all && !item.selectionMenu
+                    ? { anchor: 0, head: source.length }
+                    : item.empty || item.selectionMenu
+                      ? { anchor: 0 }
+                      : {
+                          anchor: source.indexOf(item.text) + item.offset,
+                          head: item.end
+                            ? source.indexOf(item.end) + item.endOffset
+                            : source.indexOf(item.text) + item.offset,
+                        },
                 scrollIntoView: true,
               })
             }
           },
           { item, engine },
         )
+        if (item.all && !item.selectionMenu)
+          await page.keyboard.press(`${mod}+a`)
+        if (item.selectionMenu) {
+          await rich.evaluate((element) =>
+            element.editor
+              ? element.editor.view.focus()
+              : element.cmTile.root.view.focus(),
+          )
+          await app.evaluate(({ BrowserWindow, Menu }) => {
+            const window = BrowserWindow.getAllWindows()[0]
+            const item = Menu.getApplicationMenu()
+              .items.find((item) => item.label === 'Edit')
+              .submenu.items.find(
+                (item) => item.role?.toLowerCase() === 'selectall',
+              )
+            if (!item) throw new Error('missing select all menu')
+            window.webContents.selectAll()
+          })
+          await page.waitForFunction(() => {
+            const root = document.querySelector(
+              '.rich-pane [aria-label="Document editor"]',
+            )
+            return root.editor
+              ? !root.editor.state.selection.empty
+              : !root.cmTile.root.view.state.selection.main.empty
+          })
+        }
         if (item.cell && engine === 'codemirror') {
           await page.locator('td').filter({ hasText: 'cell' }).click()
           const cell = page.getByRole('textbox', {
@@ -764,7 +811,9 @@ for (const engine of ['tiptap', 'codemirror'])
         assert.equal(typed.version, typingVersion + typedText.length)
         assert.deepEqual(
           typed.inputs,
-          item.physical && !item.clearSelection
+          item.physical &&
+            !item.clearSelection &&
+            (engine === 'tiptap' || (item.all && !item.selectionMenu))
             ? []
             : Array.from(typedText, (data) => ({ type: 'insertText', data })),
         )
