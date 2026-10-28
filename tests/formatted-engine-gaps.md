@@ -27,10 +27,6 @@ accepted differences are not gaps; their tests assert each engine. the codemirro
 | input-076 | [formatted-toolbar-state.test.mjs:1528](formatted-toolbar-state.test.mjs#L1528) | the code block action turns the selected blocks into code | 8a: native input, structure and toolbar state |
 | action-007 | [formatted-toolbar-state.test.mjs:1532](formatted-toolbar-state.test.mjs#L1532) | list actions renumber, nest and convert items as the rich editor does | 8a: native input, structure and toolbar state |
 | action-006 | [formatted-toolbar-state.test.mjs:1543](formatted-toolbar-state.test.mjs#L1543) | block actions convert each selected block and keep its containers as the rich editor does | 8a: native input, structure and toolbar state |
-| contracts-003 | [raw-html-editor.test.mjs:1244](raw-html-editor.test.mjs#L1244) | modified inline html copies must fall back without restoring raw markup | 3c: clipboard fragments and trusted source |
-| contracts-004 | [raw-html-editor.test.mjs:1246](raw-html-editor.test.mjs#L1246) | superseded inline html copies must fall back without restoring raw markup | 3c: clipboard fragments and trusted source |
-| contracts-005 | [raw-html-editor.test.mjs:1250](raw-html-editor.test.mjs#L1250) | modified block html copies must fall back without restoring raw markup | 3c: clipboard fragments and trusted source |
-| contracts-006 | [raw-html-editor.test.mjs:1252](raw-html-editor.test.mjs#L1252) | superseded block html copies must fall back without restoring raw markup | 3c: clipboard fragments and trusted source |
 
 ## accepted differences
 

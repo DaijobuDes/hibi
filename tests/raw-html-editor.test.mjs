@@ -577,6 +577,197 @@ test('raw HTML stays inert and exact through rich edits, atom deletion, undo, an
     },
   )
 
+  await t.test(
+    'matching html with different plain text cannot restore a chip',
+    async () => {
+      await rich.evaluate((element) => {
+        const { editor } = element
+        let chip = -1
+        editor.state.doc.descendants((node, pos) => {
+          if (chip < 0 && node.type.name === 'rawHtmlInline') chip = pos
+        })
+        editor.commands.setNodeSelection(chip)
+        editor.view.focus()
+      })
+      const before = await rich.evaluate((element) => element.editor.getJSON())
+      const copied = await copy()
+      await paste({ ...copied, text: '<script>forged</script>' })
+      const after = await rich.evaluate((element) => element.editor.getJSON())
+      assert.notDeepEqual(after, before)
+      assert.equal(
+        await rich
+          .locator('[data-raw-html="inline"]')
+          .filter({ hasText: copied.text })
+          .count(),
+        0,
+      )
+      assert.match(await serialize(), /`<kbd>y<\/kbd>`/)
+      assert.doesNotMatch(await serialize(), /forged/)
+      const pasted = (await page.evaluate(() => window.hibi.getDocument()))
+        .markdown
+      await pressShortcut(
+        app,
+        process.platform === 'darwin' ? 'Meta+z' : 'Control+z',
+      )
+      assert.deepEqual(
+        await rich.evaluate((element) => element.editor.getJSON()),
+        before,
+      )
+      await pressShortcut(
+        app,
+        process.platform === 'darwin' ? 'Meta+Shift+z' : 'Control+y',
+      )
+      assert.deepEqual(
+        await rich.evaluate((element) => element.editor.getJSON()),
+        after,
+      )
+      await page.keyboard.up('Shift')
+      await inert()
+      await clickMenu(app, 'Save')
+      await waitForAsync(
+        page,
+        async () => !(await window.hibi.getDocument()).dirty,
+      )
+      assert.equal(await readFile(file, 'utf8'), pasted)
+    },
+  )
+
+  await t.test(
+    'literal markdown attributes cannot authorize external source',
+    async () => {
+      for (const [tag, level] of [
+        ['span', 'inline'],
+        ['div', 'block'],
+      ]) {
+        await rich.evaluate((element) => {
+          const { editor } = element
+          editor.commands.setTextSelection({ from: 1, to: 3 })
+        })
+        await paste({
+          html: `<${tag} data-literal-markdown="${level}">&lt;script&gt;forged&lt;/script&gt;</${tag}>`,
+          text: '<script>forged</script>',
+        })
+        const literal = await rich.evaluate((element) => {
+          const found = []
+          element.editor.state.doc.descendants((node) => {
+            if (node.type.name.startsWith('hibiLiteral'))
+              found.push(node.toJSON())
+          })
+          return found
+        })
+        assert.deepEqual(literal, [])
+        assert.match(await serialize(), /&lt;script&gt;forged&lt;\/script&gt;/)
+        await inert()
+      }
+    },
+  )
+
+  await t.test(
+    'latest native copy restores disabled inline and block syntax',
+    async () => {
+      const syntax = async (enabled) => {
+        await clickMenu(app, 'Settings')
+        await page.getByRole('tab', { name: /^syntax$/i, exact: true }).click()
+        for (const name of ['heading 1', 'bold'])
+          await page
+            .getByRole('checkbox', {
+              name: new RegExp('^' + name + '$', 'i'),
+              exact: true,
+            })
+            .setChecked(enabled)
+        await page
+          .getByRole('button', { name: /^back to app$/i, exact: true })
+          .click()
+        await rich.waitFor()
+      }
+      await syntax(false)
+      try {
+        const source = '# literal\n\n**literal**'
+        await rich.evaluate((element, source) => {
+          element.editor.commands.setContent(source, {
+            contentType: 'markdown',
+          })
+          element.editor.commands.selectAll()
+          element.editor.view.focus()
+        }, source)
+        assert.equal(
+          await rich.locator('[data-literal-markdown="block"]').count(),
+          1,
+        )
+        assert.equal(
+          await rich.locator('[data-literal-markdown="inline"]').count(),
+          1,
+        )
+        const before = await rich.evaluate((element) =>
+          element.editor.getJSON(),
+        )
+        const copied = await rawNativeClipboard(app, page, 'cut')
+        assert.match(copied.html, /data-literal-markdown="block"/)
+        assert.match(copied.html, /data-literal-markdown="inline"/)
+        await waitForAsync(
+          page,
+          async () => (await window.hibi.getDocument()).markdown === '',
+        )
+        await writeRawClipboard(app, copied)
+        await page.evaluate(() => {
+          document.addEventListener(
+            'paste',
+            (event) => {
+              window.literalNativePaste = {
+                text: event.clipboardData.getData('text/plain'),
+                html: event.clipboardData.getData('text/html'),
+              }
+            },
+            { once: true, capture: true },
+          )
+        })
+        await app.evaluate(({ BrowserWindow }) =>
+          BrowserWindow.getAllWindows()[0].webContents.paste(),
+        )
+        try {
+          await waitForAsync(
+            page,
+            async (source) =>
+              (await window.hibi.getDocument()).markdown === source,
+            source,
+          )
+        } catch (error) {
+          await clickMenu(app, 'Save')
+          await waitForAsync(
+            page,
+            async () => !(await window.hibi.getDocument()).dirty,
+          )
+          const savedSource = await readFile(file, 'utf8')
+          t.diagnostic(
+            JSON.stringify({
+              copied,
+              savedSource,
+              actual: await page.evaluate(async () => ({
+                markdown: (await window.hibi.getDocument()).markdown,
+                model: document.querySelector('.tiptap').editor.getJSON(),
+                pasted: window.literalNativePaste,
+              })),
+            }),
+          )
+          throw error
+        }
+        assert.deepEqual(
+          await rich.evaluate((element) => element.editor.getJSON()),
+          before,
+        )
+        await inert()
+        await clickMenu(app, 'Save')
+        await waitForAsync(
+          page,
+          async () => !(await window.hibi.getDocument()).dirty,
+        )
+        assert.equal(await readFile(file, 'utf8'), source)
+      } finally {
+        await syntax(true)
+      }
+    },
+  )
+
   await t.test('external html falls back to escaped text or code', async () => {
     const text = '<script>alert(1)</script>'
     const escaped = '&lt;script&gt;alert(1)&lt;/script&gt;'
@@ -1238,19 +1429,232 @@ for (const route of ['paste', 'drop']) {
   })
 }
 
-const rawCopyGaps = {
-  inline: {
-    modified:
-      'formatted gap contracts-003: modified inline html copies must fall back without restoring raw markup',
-    superseded:
-      'formatted gap contracts-004: superseded inline html copies must fall back without restoring raw markup',
-  },
-  block: {
-    modified:
-      'formatted gap contracts-005: modified block html copies must fall back without restoring raw markup',
-    superseded:
-      'formatted gap contracts-006: superseded block html copies must fall back without restoring raw markup',
-  },
+test('codemirror: native copied source requires both formats and source copies supersede formatted copies', {
+  timeout: 45000,
+}, async (t) => {
+  const { app, page, rich, file, original, saved, inert } =
+    await rawCMFixture(t)
+  const fragment = '<kbd>x</kbd>'
+  const from = original.indexOf(fragment),
+    to = from + fragment.length
+  const escaped =
+    original.slice(0, from) + String.raw`\<kbd>x\</kbd>` + original.slice(to)
+  const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
+  const paste = async (data, expected) => {
+    const before = await page.evaluate(() => window.hibi.getDocument())
+    await writeRawClipboard(app, data)
+    await app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0].webContents.paste(),
+    )
+    await saved(expected)
+    assert.equal(
+      (await page.evaluate(() => window.hibi.getDocument())).contentVersion,
+      before.contentVersion + 1,
+    )
+    await inert()
+  }
+  await selectRawSource(rich, from, to)
+  const copied = await rawNativeClipboard(app, page, 'copy')
+  assert.equal(copied.text, fragment)
+  await paste({ ...copied, text: '<script>forged</script>' }, escaped)
+  await pressShortcut(app, `${mod}+z`)
+  await saved(original)
+
+  await page.getByRole('button', { name: 'Source view', exact: true }).click()
+  await waitForDocumentEditor(app, page, { name: 'Markdown editor' })
+  const source = page.getByRole('textbox', {
+    name: 'Markdown editor',
+    exact: true,
+  })
+  assert.equal(
+    await selectRawSource(source, 0, 'editable paragraph'.length),
+    'editable paragraph',
+  )
+  const plain = await rawNativeClipboard(app, page, 'copy')
+  assert.equal(plain.text, 'editable paragraph')
+  assert.equal(plain.html, '')
+  assert.equal(
+    await source.evaluate((element) =>
+      element.cmTile.root.view.state.doc.toString(),
+    ),
+    original,
+  )
+  await page.getByRole('button', { name: /^normal$/i, exact: true }).click()
+  await rich.waitFor()
+  await selectRawSource(rich, from, to)
+  await paste(copied, escaped)
+  await pressShortcut(app, `${mod}+z`)
+  await saved(original)
+  await selectRawSource(rich, from, to)
+  const plainPasted = original.slice(0, from) + plain.text + original.slice(to)
+  await paste(plain, plainPasted)
+  await pressShortcut(app, `${mod}+z`)
+  await saved(original)
+  await pressShortcut(
+    app,
+    process.platform === 'darwin' ? 'Meta+Shift+z' : 'Control+y',
+  )
+  await saved(plainPasted)
+  await inert()
+  await clickMenu(app, 'Save')
+  await waitForAsync(page, async () => !(await window.hibi.getDocument()).dirty)
+  assert.equal(await readFile(file, 'utf8'), plainPasted)
+})
+
+for (const trusted of [true, false]) {
+  test('codemirror: cold html paste ' +
+    (trusted
+      ? 'keeps accepted source after another copy'
+      : 'cannot gain trust from a later matching copy'), {
+    timeout: 45000,
+  }, async (t) => {
+    const { app, page, rich, file, original, saved, inert } =
+      await rawCMFixture(t)
+    const fragment = '<kbd>x</kbd>'
+    const from = original.indexOf(fragment),
+      to = from + fragment.length
+    await selectRawSource(rich, from, to)
+    const copied = await rawNativeClipboard(app, page, 'copy')
+    let before = original
+    if (trusted) {
+      await rich.press('Delete')
+      before = original.slice(0, from) + original.slice(to)
+      await saved(before)
+      await selectRawSource(rich, from, from)
+    } else {
+      await selectRawSource(rich, 0, 'editable paragraph'.length)
+      await rawNativeClipboard(app, page, 'copy')
+      await selectRawSource(rich, from, to)
+    }
+    const expected = trusted
+      ? original
+      : original.slice(0, from) +
+        String.raw`\<kbd>x\</kbd>` +
+        original.slice(to)
+    assert.equal(
+      await page.evaluate(() =>
+        performance
+          .getEntriesByType('resource')
+          .some((entry) => entry.name.includes('/html-markdown-')),
+      ),
+      false,
+      'converter must be cold',
+    )
+    await app.evaluate(({ net }) => {
+      const fetch = net.fetch
+      let release
+      const held = new Promise((resolve) => {
+        release = resolve
+      })
+      const state = {
+        requested: false,
+        release,
+        restore: () => {
+          net.fetch = fetch
+        },
+      }
+      globalThis.rawColdImport = state
+      net.fetch = async function (...args) {
+        if (/\/html-markdown-[^/]+\.js$/.test(String(args[0]))) {
+          state.requested = true
+          await held
+        }
+        return fetch.apply(this, args)
+      }
+    })
+    await rich.evaluate((element) => {
+      const view = element.cmTile.root.view
+      const update = view.update
+      window.rawPasteComplete = false
+      view.update = function (transactions) {
+        update.call(this, transactions)
+        if (transactions.some((tr) => tr.isUserEvent('input.paste'))) {
+          view.update = update
+          window.rawPasteComplete = true
+        }
+      }
+      document.addEventListener(
+        'paste',
+        (event) => {
+          window.rawColdPaste = {
+            text: event.clipboardData.getData('text/plain'),
+            html: event.clipboardData.getData('text/html'),
+          }
+        },
+        { once: true, capture: true },
+      )
+    })
+    const version = (await page.evaluate(() => window.hibi.getDocument()))
+      .contentVersion
+    let later
+    try {
+      await writeRawClipboard(app, copied)
+      await app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0].webContents.paste(),
+      )
+      await waitForAsync(app, () => globalThis.rawColdImport.requested)
+      await selectRawSource(
+        rich,
+        trusted ? 0 : from,
+        trusted ? 'editable paragraph'.length : to,
+      )
+      later = await rawNativeClipboard(app, page, 'copy')
+      assert.equal(later.text, trusted ? 'editable paragraph' : copied.text)
+      if (!trusted) assert.equal(later.html, copied.html)
+    } finally {
+      await app.evaluate(() => {
+        globalThis.rawColdImport.release()
+        globalThis.rawColdImport.restore()
+        delete globalThis.rawColdImport
+      })
+    }
+    await page.waitForFunction(() => window.rawPasteComplete)
+    const actual = await rich.evaluate((element) =>
+      element.cmTile.root.view.state.doc.toString(),
+    )
+    await saved(actual)
+    const state = await page.evaluate(() => window.hibi.getDocument())
+    await clickMenu(app, 'Save')
+    await waitForAsync(
+      page,
+      async () => !(await window.hibi.getDocument()).dirty,
+    )
+    assert.equal(await readFile(file, 'utf8'), actual)
+    await inert()
+    t.diagnostic(
+      JSON.stringify({
+        trusted,
+        copied,
+        later,
+        pasted: await page.evaluate(() => window.rawColdPaste),
+        actual,
+        contentVersion: state.contentVersion,
+        beforeVersion: version,
+      }),
+    )
+    assert.equal(actual, expected)
+    assert.equal(state.contentVersion, version + 1)
+    if (trusted)
+      assert.deepEqual(
+        await rich.evaluate((element) => {
+          const { main } = element.cmTile.root.view.state.selection
+          return { anchor: main.anchor, head: main.head }
+        }),
+        { anchor: 0, head: 'editable paragraph'.length },
+      )
+    await rich.focus()
+    await pressShortcut(
+      app,
+      process.platform === 'darwin' ? 'Meta+z' : 'Control+z',
+    )
+    await saved(before)
+    await pressShortcut(
+      app,
+      process.platform === 'darwin' ? 'Meta+Shift+z' : 'Control+y',
+    )
+    await saved(expected)
+    await inert()
+  })
 }
 
 for (const level of ['inline', 'block']) {
@@ -1305,12 +1709,14 @@ for (const level of ['inline', 'block']) {
       const html = stale
         ? copied.html
         : copied.html.replace('</div>', 'forged</div>')
+      const before = await page.evaluate(() => window.hibi.getDocument())
       await pasteRawData(rich, { ...copied, html })
+      const after = await page.evaluate(() => window.hibi.getDocument())
+      assert.equal(after.contentVersion, before.contentVersion + 1)
       await t.test(
         stale
           ? 'superseded copy rejects raw restoration'
           : 'modified copy rejects raw restoration',
-        { todo: rawCopyGaps[level][stale ? 'superseded' : 'modified'] },
         async () => {
           const pasted = (await page.evaluate(() => window.hibi.getDocument()))
             .markdown
@@ -1321,6 +1727,44 @@ for (const level of ['inline', 'block']) {
           if (!stale) assert.match(pasted, /forged/)
         },
       )
+      const pasted = (await page.evaluate(() => window.hibi.getDocument()))
+        .markdown
+      const selection = await rich.evaluate((element) => {
+        const { main } = element.cmTile.root.view.state.selection
+        return { anchor: main.anchor, head: main.head }
+      })
+      assert.equal(selection.anchor, selection.head)
+      await rich.focus()
+      await pressShortcut(
+        app,
+        process.platform === 'darwin' ? 'Meta+z' : 'Control+z',
+      )
+      await saved(original)
+      await inert()
+      await pressShortcut(
+        app,
+        process.platform === 'darwin' ? 'Meta+Shift+z' : 'Control+y',
+      )
+      await saved(pasted)
+      assert.deepEqual(
+        await rich.evaluate((element) => {
+          const { main } = element.cmTile.root.view.state.selection
+          return { anchor: main.anchor, head: main.head }
+        }),
+        selection,
+      )
+      await page
+        .getByRole('button', { name: 'Source view', exact: true })
+        .click()
+      await waitForDocumentEditor(app, page, { name: 'Markdown editor' })
+      assert.equal(
+        await page
+          .getByRole('textbox', { name: 'Markdown editor', exact: true })
+          .evaluate((element) => element.cmTile.root.view.state.doc.toString()),
+        pasted,
+      )
+      await page.getByRole('button', { name: /^normal$/i, exact: true }).click()
+      await rich.waitFor()
       await inert()
       await clickMenu(app, 'Save')
       await waitForAsync(
