@@ -667,8 +667,8 @@ export function formattedStates(
  * text, keeping that text. Like the rich editor, a range leaves the link on
  * the text outside it, and formatting the split cuts closes and opens again:
  * `[ab**c**](u)**de**[**f**gh](u)` from `de` in `[ab**cdef**gh](u)`.
- * Reference links and autolinks have no spelling for half a link, so they
- * lose their link as a whole.
+ * References keep their label, spelled out where the text was the label
+ * (`[ab][r]cd[ef][r]`), and an autolink's kept parts link to its address.
  */
 export function unlinkChanges(
   state: EditorState,
@@ -679,37 +679,67 @@ export function unlinkChanges(
   const unlink = (node: SyntaxNode) => {
     // A bare web address links itself, as it does in the rich editor after a reload.
     if (node.name === 'URL') return
-    const text =
-      node.name === 'Autolink'
-        ? node.getChild('URL')
-        : formattingText(state, node)
+    const autolink = node.name === 'Autolink'
+    const text = autolink ? node.getChild('URL') : formattingText(state, node)
     if (!text) return
-    const tail = state.sliceDoc(text.to, node.to)
     const whole = () =>
       changes.push(
         { from: node.from, to: text.from },
         { from: text.to, to: node.to },
       )
-    if (range.empty || node.name !== 'Link' || !tail.startsWith('](')) {
+    if (range.empty) {
       whole()
       return
     }
-    const start = cut(state, tree, node, text, Math.max(range.from, text.from))
-    const end = cut(state, tree, node, text, Math.min(range.to, text.to))
+    const start = autolink
+      ? { at: Math.max(range.from, text.from), close: '', open: '' }
+      : cut(state, tree, node, text, Math.max(range.from, text.from))
+    const end = autolink
+      ? { at: Math.min(range.to, text.to), close: '', open: '' }
+      : cut(state, tree, node, text, Math.min(range.to, text.to))
     if (end.at <= start.at) return
     if (start.at <= text.from && end.at >= text.to) {
       whole()
       return
     }
-    if (start.at > text.from)
-      changes.push({
-        from: start.at,
-        insert: start.close + tail + start.open,
-      })
-    else changes.push({ from: node.from, to: text.from })
-    if (end.at < text.to)
+    // What follows each kept part's text: the link's own destination or
+    // label, a label for a shortcut or collapsed reference, or an
+    // autolink's address.
+    const tail = state.sliceDoc(text.to, node.to)
+    // An autolink's address is literal text, and an address without a
+    // scheme is an email.
+    const literal = (text: string) =>
+      text.replace(/[\\`*_~[\]&$^=|!]/g, (char) =>
+        char === '&' ? '&amp;' : `\\${char}`,
+      )
+    const url = state.sliceDoc(text.from, text.to)
+    const href = literal(
+      /^[a-z][a-z\d+.-]{1,31}:/i.test(url) ? url : `mailto:${url}`,
+    )
+    const after = autolink
+      ? `](${/[\s()]/.test(href) ? `<${href}>` : href})`
+      : tail.startsWith('](') || /^\]\[[^\]]/.test(tail)
+        ? tail
+        : `][${state.sliceDoc(text.from, text.to)}]`
+    const replace = (from: number, to: number, insert: string) => {
+      if (state.sliceDoc(from, to) !== insert)
+        changes.push({ from, to, insert })
+    }
+    // Text from an autolink's address becomes Markdown text.
+    const part = (from: number, to: number) => {
+      if (autolink) replace(from, to, literal(state.sliceDoc(from, to)))
+    }
+    const kept = start.at > text.from
+    replace(node.from, text.from, kept ? '[' : '')
+    part(text.from, start.at)
+    if (kept)
+      changes.push({ from: start.at, insert: start.close + after + start.open })
+    part(start.at, end.at)
+    if (end.at < text.to) {
       changes.push({ from: end.at, insert: `${end.close}[${end.open}` })
-    else changes.push({ from: text.to, to: node.to })
+      part(end.at, text.to)
+      replace(text.to, node.to, after)
+    } else replace(text.to, node.to, '')
   }
   if (range.empty) {
     const link = caretMarks(state, tree, range.from).get('link')

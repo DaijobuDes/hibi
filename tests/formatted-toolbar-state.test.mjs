@@ -269,8 +269,19 @@ test('formatted unlink removes links by their syntax and leaves other text unedi
     ran('unlink', '[a**bc**d](u)', 'bc', 1),
     '[a](u)**b**[**c**d](u)',
   )
-  // References have no spelling for half a link, so they lose it whole.
-  assert.equal(ran('unlink', '[abc][r]\n\n[r]: u', 'abc', 1), 'abc\n\n[r]: u')
+  // References keep their label, and an autolink its address.
+  assert.equal(
+    ran('unlink', '[abc][r]\n\n[r]: u', 'abc', 1),
+    'a[bc][r]\n\n[r]: u',
+  )
+  assert.equal(
+    ran('unlink', '[abc]\n\n[abc]: u', 'abc', 1),
+    'a[bc][abc]\n\n[abc]: u',
+  )
+  assert.equal(
+    ran('unlink', '<https://e.test>', 'e.', 2),
+    '[https://](https://e.test)e.[test](https://e.test)',
+  )
   // Nothing to unlink leaves the note unedited.
   assert.equal(ran('unlink', note, 'pl'), null)
 })
@@ -282,8 +293,10 @@ test('a partial unlink keeps the link and formatting of the text around it, as t
     editor.destroy()
     return json
   }
-  // [note, the text holding the selection, offset, length]: selections in one text node of the rich editor.
-  for (const [input, text, offset, length] of [
+  // [note, the text holding the selection, offset, length, split]:
+  // selections in one text node of the rich editor. Notes with a split are
+  // edited as written, the rest as the rich editor writes them.
+  for (const [input, text, offset, length, split] of [
     ['[ab**cdef**gh](https://example.com)', 'cdef', 1, 2],
     ['[ab*cdef*gh](https://example.com)', 'cdef', 1, 2],
     ['[abcdefgh](https://example.com)', 'abcdefgh', 3, 2],
@@ -295,9 +308,66 @@ test('a partial unlink keeps the link and formatting of the text around it, as t
     ['[a`bcd`e](https://example.com)', 'bcd', 1, 1],
     ['[**abc**](https://example.com)', 'abc', 1, 1],
     ['x [ab**cd**](https://example.com) y', 'cd', 1, 1],
+    [
+      '[abcdef][r]\n\n[r]: https://example.com',
+      'abcdef',
+      2,
+      2,
+      '[ab][r]cd[ef][r]\n\n[r]: https://example.com',
+    ],
+    [
+      '[abcdef]\n\n[abcdef]: https://example.com',
+      'abcdef',
+      2,
+      2,
+      '[ab][abcdef]cd[ef][abcdef]\n\n[abcdef]: https://example.com',
+    ],
+    [
+      '[abcdef][]\n\n[abcdef]: https://example.com',
+      'abcdef',
+      2,
+      2,
+      '[ab][abcdef]cd[ef][abcdef]\n\n[abcdef]: https://example.com',
+    ],
+    [
+      '[ab**cdef**gh][r]\n\n[r]: https://example.com',
+      'cdef',
+      1,
+      2,
+      '[ab**c**][r]**de**[**f**gh][r]\n\n[r]: https://example.com',
+    ],
+    [
+      '<https://example.com>',
+      'https://example.com',
+      11,
+      2,
+      '[https://exa](https://example.com)mp[le.com](https://example.com)',
+    ],
+    [
+      '<https://example.com>',
+      'https://example.com',
+      0,
+      8,
+      'https://[example.com](https://example.com)',
+    ],
+    [
+      '<https://x.com/(a)>',
+      'https://x.com/(a)',
+      8,
+      5,
+      '[https://](<https://x.com/(a)>)x.com[/(a)](<https://x.com/(a)>)',
+    ],
+    [
+      '<https://x.com/*a*&amp;>',
+      'https://x.com/*a*&amp;',
+      8,
+      5,
+      '[https://](https://x.com/\\*a\\*&amp;amp;)x.com[/\\*a\\*&amp;amp;](https://x.com/\\*a\\*&amp;amp;)',
+    ],
+    ['<a@b.co>', 'a@b.co', 2, 4, '[a@](mailto:a@b.co)b.co'],
   ]) {
     const editor = richEditor(input)
-    const source = editor.getMarkdown()
+    const source = split ? input : editor.getMarkdown()
     let from
     editor.state.doc.descendants((node, pos) => {
       if (from === undefined && node.isText && node.text.includes(text))
@@ -322,6 +392,7 @@ test('a partial unlink keeps the link and formatting of the text around it, as t
     }
     assert.equal(sourceFormatting(target).run('unlink'), true)
     const actual = target.state.doc.toString()
+    if (split) assert.equal(actual, split)
     // The same text and marks as the rich editor's, though it spells some with HTML.
     assert.equal(read(actual), JSON.stringify(editor.getJSON()), actual)
     const { from: start, to: end } = target.state.selection.main
