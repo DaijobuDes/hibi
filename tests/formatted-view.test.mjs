@@ -776,3 +776,103 @@ test('behind the switch, an edit from the source pane while composing in a table
   const { markdown } = await page.evaluate(() => window.hibi.getDocument())
   assert.equal(markdown, expected)
 })
+
+test('behind the switch, an echo before the first composition candidate keeps the caret', {
+  timeout: 90000,
+}, async (t) => {
+  const folder = await mkdtemp(join(tmpdir(), 'hibi-formatted-view-'))
+  const file = join(folder, 'notes', 'note.md')
+  const table = '| a | b |\n| - | - |\n| c | d |'
+  const note = `before\n\n${table}\n\nafter\n\n${table}\n\nend`
+  const range = [note.indexOf('| c') + 3, note.indexOf('after') + 2]
+  await mkdir(join(folder, 'notes'))
+  await writeFile(file, note)
+  const app = await electron.launch({
+    args: [resolve('.'), `--user-data-dir=${join(folder, 'profile')}`],
+  })
+  t.after(async () => {
+    await app.close()
+    await rm(folder, { recursive: true, force: true })
+  })
+  await app.evaluate(({ dialog }) => {
+    dialog.showMessageBox = async () => ({ response: 1 })
+  })
+  const page = await app.firstWindow()
+  await waitForDocumentEditor(app, page)
+  await page.evaluate(() =>
+    localStorage.setItem('hibi:formatted-engine', 'codemirror'),
+  )
+  await page.reload()
+  await waitForDocumentEditor(app, page)
+  await app.evaluate(({ dialog }, path) => {
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] })
+  }, file)
+  await pressShortcut(app, `${mod}+o`)
+  await page.locator('.rich-pane .hibi-lp-table').nth(1).waitFor()
+  await page
+    .getByRole('button', { name: /^side-by-side$/i, exact: true })
+    .click()
+  await page.locator('.mode-side-by-side[data-source-ready="true"]').waitFor()
+  const cdp = await page.context().newCDPSession(page)
+  await cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true })
+  await page.locator('.rich-pane .cm-content').evaluate((element, range) => {
+    const { view } = element.cmTile.root
+    view.focus()
+    view.dispatch({ selection: { anchor: range[0], head: range[1] } })
+  }, range)
+  await cdp.send('Input.dispatchKeyEvent', {
+    type: 'rawKeyDown',
+    key: 'k',
+    code: 'KeyK',
+    windowsVirtualKeyCode: 229,
+    nativeVirtualKeyCode: 229,
+  })
+  const candidate = (text) =>
+    cdp.send('Input.imeSetComposition', {
+      text,
+      selectionStart: text.length,
+      selectionEnd: text.length,
+    })
+  await page.waitForFunction(() => {
+    const source = document.querySelector('.source-pane .cm-content').cmTile
+      .root.view
+    const formatted = document.querySelector('.rich-pane .cm-content').cmTile
+      .root.view
+    return source.state.doc.toString() === formatted.state.doc.toString()
+  })
+  // The source pane appends before the first candidate arrives.
+  await page.locator('.source-pane .cm-content').evaluate((element) => {
+    const { view } = element.cmTile.root
+    view.dispatch({
+      changes: { from: view.state.doc.length, insert: '!' },
+      userEvent: 'input.type',
+    })
+  })
+  await page.waitForFunction(() =>
+    document
+      .querySelector('.rich-pane .cm-content')
+      .cmTile.root.view.state.doc.toString()
+      .endsWith('!'),
+  )
+  await page.evaluate(
+    () =>
+      new Promise((done) =>
+        requestAnimationFrame(() => requestAnimationFrame(done)),
+      ),
+  )
+  const focused = await page
+    .getByRole('textbox', { name: 'Document editor', exact: true })
+    .evaluate((element) => document.activeElement === element)
+  await candidate('k')
+  await candidate('か')
+  await cdp.send('Input.insertText', { text: 'か' })
+  const expected = `${note.slice(0, range[0])}か${note.slice(range[1])}!`
+  await waitForAsync(
+    page,
+    async (text) => (await window.hibi.getDocument()).markdown === text,
+    expected,
+  ).catch(() => {})
+  const { markdown } = await page.evaluate(() => window.hibi.getDocument())
+  assert.equal(markdown, expected)
+  assert.equal(focused, true)
+})

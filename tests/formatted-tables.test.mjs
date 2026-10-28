@@ -829,6 +829,91 @@ test('undoing a composition from inside a table to past it shows the tables it r
   await cdp.detach()
 })
 
+test('an echo before the first composition candidate keeps one undo step', {
+  timeout: 30000,
+}, async () => {
+  const cdp = await harness.context().newCDPSession(harness)
+  const doc = `before\n\n${overTableTable}\n\nafter\n\n${overTableTable}\n\nend`
+  const range = [doc.indexOf('| c') + 3, doc.indexOf('after') + 2]
+  await selectRange(doc, range)
+  await cdp.send('Input.dispatchKeyEvent', {
+    type: 'rawKeyDown',
+    key: 'k',
+    code: 'KeyK',
+    windowsVirtualKeyCode: 229,
+    nativeVirtualKeyCode: 229,
+  })
+  await harness.evaluate(() => window.tables.echo('!'))
+  await harness.evaluate(() => window.tables.settle())
+  const focused = await harness.evaluate(() => {
+    const view = window.tables.view()
+    return document.activeElement === view.contentDOM
+  })
+  await compose(cdp, 'k', 'か')
+  await cdp.send('Input.insertText', { text: 'か' })
+  await harness.evaluate(() => window.tables.settle())
+  const expected = `${doc.slice(0, range[0])}か${doc.slice(range[1])}!`
+  assert.equal((await state()).doc, expected)
+  await harness.keyboard.press('ControlOrMeta+z')
+  await harness.evaluate(() => window.tables.settle())
+  assert.equal((await state()).doc, `${doc}!`)
+  assert.equal(focused, true)
+  assert.equal(await harness.locator('.hibi-lp-table').count(), 2)
+  await harness.keyboard.press(
+    process.platform === 'win32' ? 'Control+y' : 'ControlOrMeta+Shift+z',
+  )
+  await harness.evaluate(() => window.tables.settle())
+  assert.equal((await state()).doc, expected)
+  await cdp.detach()
+})
+
+for (const action of ['cancel', 'navigate', 'blur'])
+  test(`an unfinished composition releases its revealed table on ${action}`, {
+    timeout: 30000,
+  }, async () => {
+    const cdp = await harness.context().newCDPSession(harness)
+    const doc = `before\n\n${overTableTable}\n\nafter\n\n${overTableTable}\n\nend`
+    const range = [doc.indexOf('| c') + 3, doc.indexOf('after') + 2]
+    await selectRange(doc, range)
+    await cdp.send('Input.dispatchKeyEvent', {
+      type: 'rawKeyDown',
+      key: 'k',
+      code: 'KeyK',
+      windowsVirtualKeyCode: 229,
+      nativeVirtualKeyCode: 229,
+    })
+    await harness.evaluate(() => window.tables.echo('!'))
+    await harness.evaluate(() => window.tables.settle())
+    if (action === 'cancel')
+      await harness.evaluate(() => {
+        const content = window.tables.view().contentDOM
+        content.dispatchEvent(
+          new CompositionEvent('compositionstart', { bubbles: true }),
+        )
+        content.dispatchEvent(
+          new CompositionEvent('compositionend', { bubbles: true }),
+        )
+      })
+    else if (action === 'navigate') await harness.keyboard.press('Escape')
+    else await harness.evaluate(() => window.tables.view().contentDOM.blur())
+    await harness.waitForFunction(
+      () => document.querySelectorAll('.hibi-lp-table').length === 2,
+    )
+    assert.equal(
+      (await state()).doc,
+      `${doc.slice(0, range[0])}${doc.slice(range[1])}!`,
+    )
+    await harness.evaluate(() => {
+      const view = window.tables.view()
+      view.focus()
+      view.dispatch({ selection: { anchor: 0 } })
+    })
+    await harness.keyboard.press('ControlOrMeta+z')
+    await harness.evaluate(() => window.tables.settle())
+    assert.equal((await state()).doc, `${doc}!`)
+    await cdp.detach()
+  })
+
 test('an edit from elsewhere while composing in a table source waits for the composition to end', {
   timeout: 30000,
 }, async () => {

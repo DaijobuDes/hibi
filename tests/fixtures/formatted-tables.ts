@@ -1,5 +1,5 @@
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
-import { Compartment, EditorState } from '@codemirror/state'
+import { Compartment, EditorState, Transaction } from '@codemirror/state'
 import { EditorView, keymap } from '@codemirror/view'
 import '../../src/renderer/src/styles.css'
 import type { ChunkedMarkdownProbe } from '../../src/renderer/src/chunked-markdown'
@@ -141,6 +141,16 @@ Object.assign(window, {
       await settle()
     },
     view: () => view,
+    /** Apply another view's edit without recording it in this view's history. */
+    echo(insert: string) {
+      if (!view) return
+      view.update([
+        view.state.update({
+          changes: { from: view.state.doc.length, insert },
+          annotations: Transaction.addToHistory.of(false),
+        }),
+      ])
+    },
     settling: () => view && syntax?.settling(view.state),
     second: () => second,
     /** How many column and row positions table size tracking mapped. */

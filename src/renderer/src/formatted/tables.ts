@@ -1938,7 +1938,11 @@ const revealedTable = StateField.define<Revealed | null>({
   ],
 })
 const endStaleReveal = (view: EditorView) => {
-  if (view.state.field(revealedTable, false)?.stale && !view.compositionStarted)
+  if (
+    view.state.field(revealedTable, false)?.stale &&
+    !view.compositionStarted &&
+    !view.state.field(composeCleared, false)
+  )
     view.dispatch({ effects: revealTable.of(null) })
 }
 
@@ -1983,13 +1987,31 @@ const paragraphBelow = (view: EditorView) => {
   }
 }
 
-const composeStart = StateEffect.define<null>()
-/** Whether the selection was cleared for a composition that has not changed the text yet. */
-const composeCleared = StateField.define<boolean>({
-  create: () => false,
-  update: (cleared, tr) =>
-    tr.effects.some((effect) => effect.is(composeStart)) ||
-    (cleared && !tr.docChanged && !tr.selection),
+const composeStart = StateEffect.define<symbol>()
+const composeFinish = StateEffect.define<symbol>()
+/** A composition whose selection was cleared but whose first change has not arrived. */
+const composeCleared = StateField.define<symbol | null>({
+  create: () => null,
+  update(cleared, tr) {
+    for (const effect of tr.effects) {
+      if (effect.is(composeStart)) return effect.value
+      if (effect.is(composeFinish) && effect.value === cleared) return null
+    }
+    if (!cleared) return null
+    const echo = tr.annotation(Transaction.addToHistory) === false
+    if (tr.docChanged && !echo) return null
+    if (
+      tr.selection &&
+      (!echo || !tr.selection.eq(tr.startState.selection.map(tr.changes)))
+    )
+      return null
+    return cleared
+  },
+  provide: (field) =>
+    EditorView.focusChangeEffect.of((state, focusing) => {
+      const cleared = state.field(field)
+      return !focusing && cleared ? composeFinish.of(cleared) : null
+    }),
 })
 
 /**
@@ -2002,7 +2024,7 @@ const composeCleared = StateField.define<boolean>({
 function prepareComposition(event: InputStart, view: EditorView) {
   const { state } = view
   let spec: TransactionSpec
-  const effects: StateEffect<unknown>[] = [composeStart.of(null)]
+  const effects: StateEffect<unknown>[] = [composeStart.of(Symbol())]
   if (overTable(event, view)) {
     spec = state.replaceSelection('')
     // Clearing from inside a table to past it keeps the table before the caret.
@@ -2207,6 +2229,20 @@ export const contribution: FormattedContribution = {
     // Observers run before the view's own one, which clears only selections
     // over several lines, in a history step of their own.
     EditorView.domEventObservers({
+      keydown(event, view) {
+        const cleared = view.state.field(composeCleared)
+        if (
+          cleared &&
+          !view.compositionStarted &&
+          !event.isComposing &&
+          event.keyCode !== 229 &&
+          event.key !== 'Dead' &&
+          !['Alt', 'AltGraph', 'CapsLock', 'Control', 'Meta', 'Shift'].includes(
+            event.key,
+          )
+        )
+          view.dispatch({ effects: composeFinish.of(cleared) })
+      },
       compositionstart(event, view) {
         // One that started there goes on; the view reads its caret there now.
         if (endCompositions.has(view)) return
@@ -2233,8 +2269,14 @@ export const contribution: FormattedContribution = {
         })
       },
       compositionend(event, view) {
-        // After the view has read the composition's last change.
-        setTimeout(() => endStaleReveal(view))
+        const cleared = view.state.field(composeCleared)
+        // After the view has read the composition's last change. A newer
+        // prepared composition must not be cleared by this callback.
+        setTimeout(() => {
+          if (cleared && view.state.field(composeCleared, false) === cleared)
+            view.dispatch({ effects: composeFinish.of(cleared) })
+          endStaleReveal(view)
+        })
         const pending = endCompositions.get(view)
         endCompositions.delete(view)
         if (!pending || pending.doc !== view.state.doc) return
