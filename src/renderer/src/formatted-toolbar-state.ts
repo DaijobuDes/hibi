@@ -703,7 +703,10 @@ export function formattedStates(
 /**
  * Changes that remove the link around a caret, or the links of a range's
  * text, keeping that text. Like the rich editor, a range leaves the link on
- * the text outside it: `[ab](u)cd[ef](u)` from `cd` in `[abcdef](u)`.
+ * the text outside it, and formatting the split cuts closes and opens again:
+ * `[ab**c**](u)**de**[**f**gh](u)` from `de` in `[ab**cdef**gh](u)`.
+ * References keep their label, spelled out where the text was the label
+ * (`[ab][r]cd[ef][r]`), and an autolink's kept parts link to its address.
  */
 export function unlinkChanges(
   state: EditorState,
@@ -714,34 +717,67 @@ export function unlinkChanges(
   const unlink = (node: SyntaxNode) => {
     // A bare web address links itself, as it does in the rich editor after a reload.
     if (node.name === 'URL') return
-    const text =
-      node.name === 'Autolink'
-        ? node.getChild('URL')
-        : formattingText(state, node)
+    const autolink = node.name === 'Autolink'
+    const text = autolink ? node.getChild('URL') : formattingText(state, node)
     if (!text) return
-    const from = Math.max(range.from, text.from),
-      to = Math.min(range.to, text.to)
-    if (!range.empty && to <= from) return
-    const tail = state.sliceDoc(text.to, node.to)
-    // Formatting the selection would cut, and links without an inline
-    // destination, lose their link as a whole.
-    const split =
-      !range.empty &&
-      node.name === 'Link' &&
-      tail.startsWith('](') &&
-      (from > text.from || to < text.to) &&
-      ![from, to].some((at) => cuts(tree, node, at))
-    if (!split) {
+    const whole = () =>
       changes.push(
         { from: node.from, to: text.from },
         { from: text.to, to: node.to },
       )
+    if (range.empty) {
+      whole()
       return
     }
-    if (from > text.from) changes.push({ from, insert: tail })
-    else changes.push({ from: node.from, to: text.from })
-    if (to < text.to) changes.push({ from: to, insert: '[' })
-    else changes.push({ from: text.to, to: node.to })
+    const start = autolink
+      ? { at: Math.max(range.from, text.from), close: '', open: '' }
+      : cut(state, tree, node, text, Math.max(range.from, text.from))
+    const end = autolink
+      ? { at: Math.min(range.to, text.to), close: '', open: '' }
+      : cut(state, tree, node, text, Math.min(range.to, text.to))
+    if (end.at <= start.at) return
+    if (start.at <= text.from && end.at >= text.to) {
+      whole()
+      return
+    }
+    // What follows each kept part's text: the link's own destination or
+    // label, a label for a shortcut or collapsed reference, or an
+    // autolink's address.
+    const tail = state.sliceDoc(text.to, node.to)
+    // An autolink's address is literal text, and an address without a
+    // scheme is an email.
+    const literal = (text: string) =>
+      text.replace(/[\\`*_~[\]&$^=|!]/g, (char) =>
+        char === '&' ? '&amp;' : `\\${char}`,
+      )
+    const url = state.sliceDoc(text.from, text.to)
+    const href = literal(
+      /^[a-z][a-z\d+.-]{1,31}:/i.test(url) ? url : `mailto:${url}`,
+    )
+    const after = autolink
+      ? `](${/[\s()]/.test(href) ? `<${href}>` : href})`
+      : tail.startsWith('](') || /^\]\[[^\]]/.test(tail)
+        ? tail
+        : `][${state.sliceDoc(text.from, text.to)}]`
+    const replace = (from: number, to: number, insert: string) => {
+      if (state.sliceDoc(from, to) !== insert)
+        changes.push({ from, to, insert })
+    }
+    // Text from an autolink's address becomes Markdown text.
+    const part = (from: number, to: number) => {
+      if (autolink) replace(from, to, literal(state.sliceDoc(from, to)))
+    }
+    const kept = start.at > text.from
+    replace(node.from, text.from, kept ? '[' : '')
+    part(text.from, start.at)
+    if (kept)
+      changes.push({ from: start.at, insert: start.close + after + start.open })
+    part(start.at, end.at)
+    if (end.at < text.to) {
+      changes.push({ from: end.at, insert: `${end.close}[${end.open}` })
+      part(end.at, text.to)
+      replace(text.to, node.to, after)
+    } else replace(text.to, node.to, '')
   }
   if (range.empty) {
     const link = caretMarks(state, tree, range.from).get('link')
@@ -763,15 +799,57 @@ export function unlinkChanges(
   return changes
 }
 
-/** Whether `at` falls inside formatting within `link`, which a split there would cut. */
-function cuts(tree: Tree, link: SyntaxNode, at: number) {
+/**
+ * Where a split of `link`'s text at `at` goes, and the formatting it closes
+ * before the split and opens after it, innermost closed first. A cut in a
+ * formatting node's delimiters, or at an edge of its text, moves outside the
+ * node, so the node stays whole and no empty formatting is left behind.
+ */
+function cut(
+  state: EditorState,
+  tree: Tree,
+  link: SyntaxNode,
+  text: { from: number; to: number },
+  at: number,
+) {
+  const formatting = formattingNames(state)
+  for (let moved = true; moved; ) {
+    moved = false
+    for (
+      let node: SyntaxNode | null = tree.resolveInner(at, 1);
+      node && node.from > link.from;
+      node = node.parent
+    ) {
+      if (!formatting.includes(node.name) || node.from >= at || node.to <= at)
+        continue
+      const inner = formattingText(state, node)
+      if (!inner) continue
+      if (at <= inner.from || at >= inner.to) {
+        // The cut is at an edge of this formatting's text: keep it whole.
+        at = at <= inner.from ? node.from : node.to
+        at = Math.min(Math.max(at, text.from), text.to)
+        moved = true
+        break
+      }
+    }
+  }
+  let close = '',
+    open = ''
   for (
     let node: SyntaxNode | null = tree.resolveInner(at, 1);
     node && node.from > link.from;
     node = node.parent
-  )
-    if (node.from < at && at < node.to && node !== link) return true
-  return false
+  ) {
+    if (!formatting.includes(node.name) || node.from >= at || node.to <= at)
+      continue
+    const inner = formattingText(state, node)
+    const first = node.firstChild,
+      last = node.lastChild
+    if (!inner || !first || !last) continue
+    close += state.sliceDoc(last.from, last.to)
+    open = state.sliceDoc(first.from, first.to) + open
+  }
+  return { at, close, open }
 }
 
 /** Changes that turn the fenced code blocks of a selection back into text. */
