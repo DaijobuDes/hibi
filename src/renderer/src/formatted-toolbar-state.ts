@@ -1,5 +1,11 @@
 import type { ChangeSpec, EditorState, SelectionRange } from '@codemirror/state'
-import type { SyntaxNode, SyntaxNodeRef, Tree } from '@lezer/common'
+import {
+  IterMode,
+  type SyntaxNode,
+  type SyntaxNodeRef,
+  type Tree,
+  type TreeCursor,
+} from '@lezer/common'
 import {
   formattedFormatting,
   formattedLiteral,
@@ -11,8 +17,13 @@ import {
  * it, or after it at the start of a block. A range is active for a mark all
  * of its text holds, and for a block that covers it, counted as the rich
  * editor counts positions: one per character of text and one for each
- * block's start and end. A caret reads the syntax around it, and a range
- * reads only the syntax inside it.
+ * block's start and end. Syntax whose feature is off is literal text, an
+ * atom that takes no marks, as the rich editor holds it.
+ *
+ * A caret reads the syntax around it. A range reads the syntax inside it, in
+ * order, and stops once every action's state is known: on a selection of
+ * mixed blocks and marks that is after a few of them, while a selection of
+ * one kind of block, like the rich editor's own check, reads all of them.
  */
 
 /** The toolbar's marks by the syntax that writes them. */
@@ -35,10 +46,10 @@ const actionNodes: Record<string, string> = {
   subscript: 'Subscript',
   'inline-code': 'InlineCode',
   link: 'Link',
+  unlink: 'Link',
   quote: 'Blockquote',
   'bullet-list': 'BulletList',
   'numbered-list': 'OrderedList',
-  checklist: 'BulletList',
   'code-block': 'FencedCode',
   divider: 'HorizontalRule',
   'hard-break': 'HardBreak',
@@ -127,18 +138,35 @@ function listOf(item: SyntaxNode) {
 
 type Block = { node: SyntaxNode | null; kind: string }
 
-function blockOf(node: SyntaxNode | null): Block {
+/** A block whose syntax is shown as text: a literal block of the rich editor. */
+const literalBlock = (node: SyntaxNodeRef, literal: readonly string[]) =>
+  literal.includes(node.name) &&
+  (node.type.is('Block') || containers.includes(node.name))
+
+/** The text block holding `node`, or the outermost literal block around it. */
+function blockOf(node: SyntaxNode | null, literal: readonly string[]): Block {
+  let block: Block = { node: null, kind: '' }
   for (let at = node; at; at = at.parent)
-    if (isLeaf(at)) return { node: at, kind: blockType(at) }
-  return { node: null, kind: '' }
+    if (literalBlock(at, literal)) block = { node: at, kind: 'literal' }
+    else if (!block.node && isLeaf(at))
+      block = { node: at, kind: blockType(at) }
+  return block
 }
 
-/** The block a caret at `pos` types into; a line between blocks takes a paragraph. */
-function blockAt(tree: Tree, pos: number): Block {
-  const after = blockOf(tree.resolveInner(pos, 1))
-  if (after.node) return after
-  const before = blockOf(tree.resolveInner(pos, -1))
-  return before.node ? before : { node: null, kind: 'paragraph' }
+/**
+ * The block at `pos`, looking first to the side `side`; a line between
+ * blocks takes a paragraph.
+ */
+function blockAt(
+  tree: Tree,
+  pos: number,
+  literal: readonly string[],
+  side: -1 | 1 = 1,
+): Block {
+  const first = blockOf(tree.resolveInner(pos, side), literal)
+  if (first.node) return first
+  const other = blockOf(tree.resolveInner(pos, side === 1 ? -1 : 1), literal)
+  return other.node ? other : { node: null, kind: 'paragraph' }
 }
 
 /** Where a text block's text starts, after its own markers. */
@@ -181,8 +209,12 @@ function inlineAt(
   formatting: readonly string[],
 ) {
   const found = new Map<string, SyntaxNode>()
+  // A character in literal syntax belongs to that atom, which holds the marks around it.
+  const atom = literalInline(state, tree, pos, pos + 1)
   for (
-    let node: SyntaxNode | null = tree.resolveInner(pos, 1);
+    let node: SyntaxNode | null = atom
+      ? atom.parent
+      : tree.resolveInner(pos, 1);
     node && !isLeaf(node) && !containers.includes(node.name);
     node = node.parent
   ) {
@@ -197,15 +229,40 @@ function inlineAt(
   return { marks: found }
 }
 
+/** The outermost literal inline syntax that holds `from`-`to`. */
+function literalInline(
+  state: EditorState,
+  tree: Tree,
+  from: number,
+  to: number,
+) {
+  const literal = state.facet(formattedLiteral)
+  if (!literal.length) return null
+  let atom: SyntaxNode | null = null
+  for (
+    let node: SyntaxNode | null = tree.resolveInner(from, 1);
+    node && !isLeaf(node) && !containers.includes(node.name);
+    node = node.parent
+  )
+    if (literal.includes(node.name) && node.from <= from && node.to >= to)
+      atom = node
+  return atom
+}
+
 /**
  * The rich editor's marks at a caret: those of the text before it, or of the
  * text after it at the start of its block. A mark that typing at its end does
  * not extend, like subscript, holds only inside its text.
  */
 export function caretMarks(state: EditorState, tree: Tree, pos: number) {
-  const { node: block, kind } = blockAt(tree, pos)
+  const { node: block, kind } = blockAt(
+    tree,
+    pos,
+    state.facet(formattedLiteral),
+  )
   const none = new Map<string, SyntaxNode>()
-  if (!block || kind === 'code-block' || kind === 'other') return none
+  if (!block || !takesMarks(kind) || insideLiteral(state, tree, pos))
+    return none
   const formatting = formattingNames(state)
   const start = textStart(state, block),
     end = textEnd(block)
@@ -235,48 +292,120 @@ export function caretMarks(state: EditorState, tree: Tree, pos: number) {
   return main
 }
 
+/** Blocks whose text takes marks. */
+const takesMarks = (kind: string) =>
+  kind !== 'code-block' && kind !== 'other' && kind !== 'literal'
+
+/** A caret inside literal inline syntax, whose text takes no marks. */
+function insideLiteral(state: EditorState, tree: Tree, pos: number) {
+  const atom = literalInline(state, tree, pos, pos)
+  return !!atom && atom.from < pos && pos < atom.to
+}
+
+const headings = [1, 2, 3, 4, 5, 6].map((level) => `heading-${level}`)
+/** Block actions with a pressed state, and those that turn text blocks into their kind. */
+const blockKinds = [
+  'paragraph',
+  ...headings,
+  'code-block',
+  'subtext',
+  'quote',
+  ...lists,
+]
+const textKinds = ['paragraph', 'subtext', ...headings, 'code-block']
+const stop = Symbol('stop')
+
 /**
- * What a range holds, counted as the rich editor counts positions: the text
- * that can take marks, the text under each mark, and each block's share of
- * the range.
+ * Walk the nodes that touch `from`-`to` in order, like `Tree.iterate`, until
+ * `enter` or `leave` returns `stop`.
+ */
+function walk(
+  tree: Tree,
+  from: number,
+  to: number,
+  enter: (node: TreeCursor) => boolean | typeof stop | undefined,
+  leave: (node: TreeCursor) => typeof stop | undefined,
+) {
+  const cursor = tree.cursor(IterMode.IncludeAnonymous)
+  for (;;) {
+    let entered = false
+    if (cursor.from <= to && cursor.to >= from) {
+      const go = cursor.type.isAnonymous || enter(cursor)
+      if (go === stop) return
+      if (go !== false) {
+        if (cursor.firstChild()) continue
+        entered = true
+      }
+    }
+    for (;;) {
+      if (entered && !cursor.type.isAnonymous && leave(cursor) === stop) return
+      if (cursor.nextSibling()) break
+      if (!cursor.parent()) return
+      entered = true
+    }
+  }
+}
+
+/**
+ * What a range holds, counted as the rich editor counts positions: whether
+ * text without each mark, and positions outside each kind of block, are in
+ * it, and whether it has text that can take marks and blocks that can
+ * become each text kind. `known` lists the kinds of the containers that hold
+ * the whole range. The walk stops once all of that is known.
  */
 function rangeContent(
   state: EditorState,
   tree: Tree,
   from: number,
   to: number,
+  known: ReadonlySet<string>,
 ) {
+  const literal = state.facet(formattedLiteral)
   const formatting = formattingNames(state)
-  const leaves: SyntaxNode[] = []
-  const covered = new Map<string, number>()
-  const shares = new Map<string, number>()
-  const stack: { type: string; units: number }[] = []
+  const seen = new Set<string>()
+  const absent = new Set<string>()
+  const uncovered = new Set<string>()
+  const convertible = new Set<string>()
+  const stack: string[] = []
   let units = 0,
     markable = 0,
-    plain = 0
+    plain = 0,
+    atoms = 0
   const add = (count: number) => {
+    if (count <= 0) return
     units += count
-    for (const frame of stack) frame.units += count
+    for (const kind of blockKinds)
+      if (!uncovered.has(kind) && !stack.includes(kind)) uncovered.add(kind)
   }
   const open = (type: string, inside: boolean) => {
-    stack.push({ type, units: 0 })
+    stack.push(type)
     if (inside) add(1)
   }
   const close = (inside: boolean) => {
     if (inside) add(1)
-    const frame = stack.pop()
-    if (frame)
-      shares.set(frame.type, (shares.get(frame.type) ?? 0) + frame.units)
+    stack.pop()
   }
   const count = (start: number, end: number, ids: Set<string> | null) => {
     if (end <= start) return
-    const length = end - start
-    add(length)
+    add(end - start)
     if (!ids) return
-    for (const id of ids) covered.set(id, (covered.get(id) ?? 0) + length)
-    markable += length
-    if (!ids.has('inline-code')) plain += length
+    markable += end - start
+    if (!ids.has('inline-code')) plain += end - start
+    // Inline code excludes the other marks, so its text counts for them.
+    for (const id of marks)
+      if (ids.has(id)) seen.add(id)
+      else if (id === 'inline-code' || !ids.has('inline-code')) absent.add(id)
   }
+  const leaf = (node: SyntaxNode, kind: string) => {
+    const item = node.parent?.name === 'ListItem' ? node.parent : null
+    // A list item starts with a paragraph, and literal atoms such as math stay.
+    if (kind !== 'other' && !(item && firstInItem(item)?.from === node.from))
+      for (const type of textKinds) if (type !== kind) convertible.add(type)
+  }
+  const done = () =>
+    marks.every((id) => absent.has(id)) &&
+    blockKinds.every((kind) => uncovered.has(kind) || known.has(kind)) &&
+    textKinds.every((kind) => convertible.has(kind))
   // Text runs between the syntax of the block being read, with their marks,
   // and the closing syntax of open formatting, such as a link's destination.
   let runs: { id: string; to: number }[] = []
@@ -300,24 +429,31 @@ function rangeContent(
       )
     cursor = Math.max(cursor, until)
   }
-  tree.iterate({
+  walk(
+    tree,
     from,
     to,
-    enter: (node) => {
-      if (isLeaf(node)) {
-        const leaf = node.node
-        leaves.push(leaf)
-        const start = textStart(state, leaf),
-          end = textEnd(leaf)
+    (node) => {
+      if (!block && literalBlock(node, literal)) {
+        // A literal block holds text that takes no marks.
+        leaf(node.node, 'literal')
+        open('literal', from < node.from)
+        count(Math.max(node.from, from), Math.min(node.to, to), null)
+        close(to > node.to)
+        return done() ? stop : false
+      }
+      if (!block && isLeaf(node)) {
+        const kind = blockType(node.node)
+        leaf(node.node, kind)
+        const start = textStart(state, node.node),
+          end = textEnd(node.node)
         const cell = node.name === 'TableCell'
         if (cell) open('TableCell', from < start)
-        const kind = blockType(leaf)
         open(kind, from < start)
-        // Code and literal blocks hold text that takes no marks.
-        if (kind === 'code-block' || kind === 'other') {
+        if (!takesMarks(kind)) {
           count(Math.max(start, from), Math.min(end, to), null)
           close(to > end)
-          return false
+          return done() ? stop : false
         }
         block = { from: node.from, to: node.to, end, cell }
         cursor = Math.max(from, start)
@@ -329,6 +465,14 @@ function rangeContent(
         if (node.name !== 'Document' && containers.includes(node.name))
           open(blockType(node.node), node.from > from)
         return undefined
+      }
+      if (literal.includes(node.name)) {
+        // Literal syntax is one atom, which can take marks but holds no marked text.
+        flush(node.from)
+        if (node.to > from && node.from < to) atoms++
+        count(Math.max(node.from, from), Math.min(node.to, to, block.end), null)
+        cursor = Math.max(cursor, node.to)
+        return false
       }
       if (
         blockSyntax(node) ||
@@ -348,29 +492,30 @@ function rangeContent(
       tails.push({ from: inner.to, to: node.to })
       return undefined
     },
-    leave: (node) => {
+    (node) => {
       if (block && node.from === block.from && node.to === block.to) {
         flush(block.end)
         close(to > block.end)
         if (block.cell) close(to > block.end)
         block = null
-        return
+        return done() ? stop : undefined
       }
       if (!block) {
         if (node.name !== 'Document' && containers.includes(node.name))
           close(node.to < to)
-        return
+        return undefined
       }
-      if (!formatting.includes(node.name)) return
+      if (!formatting.includes(node.name)) return undefined
       const inner = formattingText(state, node.node)
-      if (!inner) return
+      if (!inner) return undefined
       flush(inner.to)
       runs = runs.filter((mark) => mark.to !== inner.to)
       tails = tails.filter((tail) => tail.to !== node.to)
       cursor = Math.max(cursor, node.to)
+      return undefined
     },
-  })
-  return { leaves, units, covered, shares, markable, plain }
+  )
+  return { units, markable, plain, atoms, seen, absent, uncovered, convertible }
 }
 
 /** A block's ancestors as the rich editor nests them: a table cell holds its paragraph. */
@@ -394,68 +539,66 @@ export function formattedStates(
   const literal = state.facet(formattedLiteral)
   const unsupported = (id: string) =>
     !!actionNodes[id] && literal.includes(actionNodes[id])
-  const content = range.empty
-    ? null
-    : rangeContent(state, tree, range.from, range.to)
-  // A range of syntax alone is a caret in the rich editor.
-  const caret = !content?.units
-  const leaves: Block[] =
-    !caret && content?.leaves.length
-      ? content.leaves.map((node) => ({ node, kind: blockType(node) }))
-      : [blockAt(tree, range.from)]
-  const first = leaves[0] as Block,
-    last = leaves.at(-1) as Block
-  const atCaret = caret ? caretMarks(state, tree, range.from) : null
+  // The blocks at the selection's ends, as the rich editor ranges blocks.
+  const first = blockAt(tree, range.from, literal)
+  const last = range.empty ? first : blockAt(tree, range.to, literal, -1)
   const chain = ancestors(first.node)
   const holds = (node: SyntaxNode) =>
     !last.node || (node.from <= last.node.from && node.to >= last.node.to)
-  // The node whose children the selection's blocks are, as the rich editor ranges blocks.
+  const known = new Set(chain.filter(holds).map((node) => blockType(node)))
+  const content = range.empty
+    ? null
+    : rangeContent(state, tree, range.from, range.to, known)
+  // A range of syntax alone is a caret in the rich editor.
+  const caret = !content?.units
+  const atCaret = caret ? caretMarks(state, tree, range.from) : null
+  // A selection that starts inside literal syntax and stays in its block.
+  const inAtom =
+    insideLiteral(state, tree, range.from) &&
+    (range.empty ||
+      first.node === last.node ||
+      first.node?.from === last.node?.from)
+  // The node whose children the selection's blocks are.
   const parent =
     chain.find((node) => holds(node) || node.name === 'Document') ?? null
   /** The child of that node that holds the selection's start. */
   const head = parent ? (chain[chain.indexOf(parent) - 1] ?? first.node) : null
   const blockActive = (type: string) =>
-    caret
+    caret || !content
       ? first.kind === type || chain.some((node) => blockType(node) === type)
-      : (content?.shares.get(type) ?? 0) >= (content?.units ?? 0)
-  const markActive = (id: string) => {
-    if (atCaret) return atCaret.has(id)
-    // Code blocks take no marks, so their text does not count; inline code
-    // excludes every other mark, so its text counts for them beside text that holds it.
-    const matched = content?.covered.get(id) ?? 0
-    if (!content?.markable || !matched) return false
-    const excluded =
-      id === 'inline-code' ? 0 : (content.covered.get('inline-code') ?? 0)
-    return matched + excluded >= content.markable
-  }
+      : known.has(type) ||
+        (blockKinds.includes(type) && !content.uncovered.has(type))
+  const markActive = (id: string) =>
+    atCaret
+      ? atCaret.has(id)
+      : !!content?.markable && content.seen.has(id) && !content.absent.has(id)
   const pressed = (id: string): boolean =>
     !unsupported(id) && (marks.includes(id) ? markActive(id) : blockActive(id))
   const canMark = (id: string) => {
     if (atCaret)
       return (
-        first.kind !== 'code-block' &&
-        first.kind !== 'other' &&
+        takesMarks(first.kind) &&
+        !insideLiteral(state, tree, range.from) &&
         (id === 'inline-code' || atCaret.has(id) || !atCaret.has('inline-code'))
       )
+    if (content?.atoms) return true
     return id === 'inline-code'
       ? (content?.markable ?? 0) > 0
       : (content?.plain ?? 0) > 0
   }
   /**
-   * A block of the selection that can become `type`. Literal blocks, such
-   * as math or HTML, are atoms in the rich editor, and a list item starts
-   * with a paragraph.
+   * A block of the selection that can become `type`. Literal atoms, such as
+   * math, stay, and a list item starts with a paragraph.
    */
   const convertible = (type: string) =>
-    leaves.some(
-      ({ node, kind }) =>
-        kind !== type &&
-        kind !== 'other' &&
+    content && !caret
+      ? content.convertible.has(type)
+      : first.kind !== type &&
+        first.kind !== 'other' &&
         !(
-          node?.parent?.name === 'ListItem' &&
-          firstInItem(node.parent)?.from === node.from
-        ),
-    )
+          first.node?.parent?.name === 'ListItem' &&
+          firstInItem(first.node.parent)?.from === first.node.from
+        )
   const listAbove = chain.find(
     (node) => node.name === 'BulletList' || node.name === 'OrderedList',
   )
@@ -475,6 +618,8 @@ export function formattedStates(
     if (id === 'paragraph' || id === 'subtext') return !convertible(id)
     if (id.startsWith('heading-') || id === 'code-block')
       return !pressed(id) && !convertible(id)
+    // From inside literal syntax the rich editor ranges no blocks to wrap or lift.
+    if ((id === 'quote' || lists.includes(id)) && inAtom) return true
     if (id === 'quote') {
       if (pressed(id)) return false
       // A quote wraps the parent's blocks where the parent can hold one.
@@ -517,7 +662,11 @@ export function formattedStates(
   return { pressed, disabled }
 }
 
-/** Changes that remove the links around a caret or inside a range, keeping their text. */
+/**
+ * Changes that remove the link around a caret, or the links of a range's
+ * text, keeping that text. Like the rich editor, a range leaves the link on
+ * the text outside it: `[ab](u)cd[ef](u)` from `cd` in `[abcdef](u)`.
+ */
 export function unlinkChanges(
   state: EditorState,
   tree: Tree,
@@ -531,11 +680,30 @@ export function unlinkChanges(
       node.name === 'Autolink'
         ? node.getChild('URL')
         : formattingText(state, node)
-    if (text)
+    if (!text) return
+    const from = Math.max(range.from, text.from),
+      to = Math.min(range.to, text.to)
+    if (!range.empty && to <= from) return
+    const tail = state.sliceDoc(text.to, node.to)
+    // Formatting the selection would cut, and links without an inline
+    // destination, lose their link as a whole.
+    const split =
+      !range.empty &&
+      node.name === 'Link' &&
+      tail.startsWith('](') &&
+      (from > text.from || to < text.to) &&
+      ![from, to].some((at) => cuts(tree, node, at))
+    if (!split) {
       changes.push(
         { from: node.from, to: text.from },
         { from: text.to, to: node.to },
       )
+      return
+    }
+    if (from > text.from) changes.push({ from, insert: tail })
+    else changes.push({ from: node.from, to: text.from })
+    if (to < text.to) changes.push({ from: to, insert: '[' })
+    else changes.push({ from: text.to, to: node.to })
   }
   if (range.empty) {
     const link = caretMarks(state, tree, range.from).get('link')
@@ -557,6 +725,17 @@ export function unlinkChanges(
   return changes
 }
 
+/** Whether `at` falls inside formatting within `link`, which a split there would cut. */
+function cuts(tree: Tree, link: SyntaxNode, at: number) {
+  for (
+    let node: SyntaxNode | null = tree.resolveInner(at, 1);
+    node && node.from > link.from;
+    node = node.parent
+  )
+    if (node.from < at && at < node.to && node !== link) return true
+  return false
+}
+
 /** Changes that turn the fenced code blocks of a selection back into text. */
 export function unfenceChanges(
   tree: Tree,
@@ -564,7 +743,7 @@ export function unfenceChanges(
 ): ChangeSpec[] | null {
   const fences: SyntaxNode[] = []
   if (range.empty) {
-    const block = blockAt(tree, range.from).node
+    const block = blockAt(tree, range.from, []).node
     if (block) fences.push(block)
   } else
     tree.iterate({

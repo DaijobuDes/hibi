@@ -23,6 +23,7 @@ import {
 } from '../src/renderer/src/formatted-contributions.ts'
 import { markdownConfiguration } from '../src/renderer/src/markdown.ts'
 import { markdownSerializer } from '../src/renderer/src/markdown-serialization.ts'
+import { markdownSyntax } from '../src/renderer/src/markdown-syntax.ts'
 import {
   preserveRichSource,
   sameRichSourceDocument,
@@ -254,6 +255,18 @@ test('formatted unlink removes links by their syntax and leaves other text unedi
     'a\n\n[r]: https://e.test',
   )
   assert.equal(ran('unlink', 'a [b](u) c [d](v) e', 'a', 13), 'a b c d e')
+  // A range unlinks only its own text, as the rich editor does.
+  const link = '[abcdef](https://example.com)'
+  assert.equal(
+    ran('unlink', link, 'cd', 2),
+    '[ab](https://example.com)cd[ef](https://example.com)',
+  )
+  assert.equal(ran('unlink', link, 'ab', 2), 'ab[cdef](https://example.com)')
+  assert.equal(ran('unlink', link, 'ef', 2), '[abcd](https://example.com)ef')
+  assert.equal(ran('unlink', 'x [ab](u) y', 'b](', 1), 'x [a](u)b y')
+  // A split that would cut formatting, or a reference, unlinks the whole link.
+  assert.equal(ran('unlink', '[a**bc**d](u)', 'bc', 1), 'a**bc**d')
+  assert.equal(ran('unlink', '[abc][r]\n\n[r]: u', 'abc', 1), 'abc\n\n[r]: u')
   // Nothing to unlink leaves the note unedited.
   assert.equal(ran('unlink', note, 'pl'), null)
 })
@@ -349,6 +362,32 @@ function richEditor(content) {
     contentType: 'markdown',
   })
 }
+
+// accepted difference toolbar-001: a list or quote is not active for a
+// range with blocks outside every one of them; the rich editor counts the
+// positions of nested lists twice and can report the list.
+const containerTypes = ['bulletList', 'orderedList', 'taskList', 'blockquote']
+/** Whether the rich selection touches a text block outside every `type` node. */
+const outside = (editor, type) => {
+  const { from, to } = editor.state.selection
+  let found = false
+  editor.state.doc.nodesBetween(from, to, (node, pos) => {
+    if (found || !node.isTextblock) return !found
+    const $pos = editor.state.doc.resolve(pos + 1)
+    let inside = false
+    for (let depth = $pos.depth; depth > 0; depth--)
+      if ($pos.node(depth).type.name === type) inside = true
+    if (!inside) found = true
+    return false
+  })
+  return found
+}
+
+/** The rich editor's pressed state for `active`, without the double counting of toolbar-001. */
+const richPressed = (editor, active, attrs) =>
+  !!active &&
+  editor.isActive(active, attrs) &&
+  !(containerTypes.includes(active) && outside(editor, active))
 
 /** A seeded generator from the high bits of a 32-bit LCG. */
 function random(seed) {
@@ -481,7 +520,7 @@ test('formatted toolbar states match the rich toolbar on random selections', () 
             allowed = command(editor.can().chain(), editor).run()
           } catch {}
           const expected = {
-            pressed: active ? editor.isActive(active, attrs) : false,
+            pressed: richPressed(editor, active, attrs),
             disabled: !allowed || (inCell && cellBlocks.includes(id)),
           }
           const { pressed, disabled } = inspection.state(id)
@@ -614,16 +653,217 @@ for (const [name, parse] of [
     assert.ok(large.range - small.range < 64, `${small.range} ${large.range}`)
   })
 
+test('formatted toolbar states match the rich toolbar with syntax features turned off', () => {
+  const features = [
+    'core.bold',
+    'core.italic',
+    'core.inline-code',
+    'core.links',
+    'core.heading-1',
+    'core.code-blocks',
+    'core.quotes',
+    'core.bullet-lists',
+    'core.numbered-lists',
+  ]
+  const documents = [
+    'aa **outerA *innerB* tailC** zz',
+    'aa **boldB** zz',
+    '**boldA**\n\n**boldB**',
+    'aa [**boldB**](https://example.com) zz',
+    'preA `codeB` postC',
+    '# titleA\n\nplainB *italicC*',
+    '```js\ncodeA\n```\n\nplainB',
+    '> quoteA\n\nplainB',
+    '- itemA\n- itemB\n\n1. oneC\n2. twoD',
+    note,
+  ]
+  const actions = [
+    ['bold', 'bold', (c) => c.toggleBold()],
+    ['italic', 'italic', (c) => c.toggleItalic()],
+    ['inline-code', 'code', (c) => c.toggleCode()],
+    ['link', 'link', (c) => c.setLink({ href: 'https://example.com' })],
+    ['unlink', null, (c) => c.unsetLink()],
+    ['paragraph', 'paragraph', (c) => c.setParagraph()],
+    [
+      'heading-2',
+      'heading',
+      (c) => c.toggleHeading({ level: 2 }),
+      { level: 2 },
+    ],
+    ['bullet-list', 'bulletList', (c) => c.toggleBulletList()],
+    ['numbered-list', 'orderedList', (c) => c.toggleOrderedList()],
+    ['quote', 'blockquote', (c) => c.toggleBlockquote()],
+    ['code-block', 'codeBlock', (c) => c.toggleCodeBlock()],
+  ]
+  const next = random(0x552d15ab)
+  const mismatches = []
+  let comparisons = 0
+  for (const feature of features) {
+    markdownSyntax.setEnabled(feature, false)
+    try {
+      const literal = markdownSyntax
+        .snapshot()
+        .find(({ id }) => id === feature).nodes
+      for (const input of documents) {
+        // The note as the rich editor reads its own saved source back.
+        const source = richEditor(input).getMarkdown()
+        const editor = richEditor(source)
+        // Task lists are the GitHub flavor's in the rich editor, whatever bullet lists do.
+        if (feature === 'core.bullet-lists' && /\[[ x]\]/.test(source)) continue
+        const tree = grammar.parse(source)
+        const points = []
+        editor.state.doc.descendants((node, pos, parent) => {
+          if (!node.isText) return
+          const at = source.indexOf(node.text)
+          if (at < 0 || source.indexOf(node.text, at + 1) >= 0) return
+          // A literal atom's text edges are also the positions beside it.
+          const atom = parent?.type.name.startsWith('hibiLiteral')
+          const offsets = atom
+            ? [1, Math.floor(node.text.length / 2), node.text.length - 1]
+            : [0, 1, Math.floor(node.text.length / 2), node.text.length]
+          for (const offset of new Set(offsets))
+            if (!atom || (offset > 0 && offset < node.text.length))
+              points.push({ rich: pos + offset, formatted: at + offset })
+        })
+        for (let round = 0; round < 12 && points.length; round++) {
+          const a = points[Math.floor(next() * points.length)]
+          const b =
+            next() < 0.5 ? a : points[Math.floor(next() * points.length)]
+          editor.commands.setTextSelection({
+            from: Math.min(a.rich, b.rich),
+            to: Math.max(a.rich, b.rich),
+          })
+          const inspection = sourceFormatting({
+            state: EditorState.create({
+              doc: source,
+              selection: {
+                anchor: Math.min(a.formatted, b.formatted),
+                head: Math.max(a.formatted, b.formatted),
+              },
+              extensions: [
+                formattedTree.of(() => tree),
+                literal.map((name) => formattedLiteral.of(name)),
+              ],
+            }),
+          }).inspect()
+          for (const [id, active, command, attrs] of actions) {
+            let allowed = false
+            try {
+              allowed = command(editor.can().chain()).run()
+            } catch {}
+            const expected = {
+              pressed: richPressed(editor, active, attrs),
+              disabled: !allowed,
+            }
+            const { pressed, disabled } = inspection.state(id)
+            comparisons++
+            if (pressed !== expected.pressed || disabled !== expected.disabled)
+              mismatches.push({
+                feature,
+                source,
+                selection: [a.formatted, b.formatted],
+                id,
+                expected,
+              })
+          }
+        }
+        editor.destroy()
+      }
+    } finally {
+      markdownSyntax.reset()
+    }
+  }
+  assert.ok(comparisons > 5000, String(comparisons))
+  assert.deepEqual(mismatches.slice(0, 5), [])
+})
+
+/** A tree for `unit` repeated `count` times, built from one parse of it, as balanced as a parse's. */
+function repeated(unit, count) {
+  const part = markdown.parse(unit)
+  const children = [],
+    positions = []
+  for (let index = 0; index < count; index++)
+    part.children.forEach((child, child_index) => {
+      children.push(child)
+      positions.push(part.positions[child_index] + index * unit.length)
+    })
+  return {
+    doc: unit.repeat(count),
+    tree: new Tree(
+      part.type,
+      children,
+      positions,
+      unit.length * count,
+    ).balance(),
+  }
+}
+
+test('a range of mixed blocks stops reading once every state is known', () => {
+  const ids = [...marks, ...blocks, 'subtext', 'strike', 'subscript']
+  const unit =
+    '# heading\n\nplain **bold** *it* `code` [l](u) text\n\n- one\n- two\n\n> quote\n\n'
+  const steps = (count, end = 0) => {
+    const { doc, tree } = repeated(unit, count)
+    const target = {
+      state: EditorState.create({
+        doc,
+        selection: { anchor: 0, head: doc.length - end },
+        extensions: formattedTree.of(() => tree),
+      }),
+    }
+    const formatting = sourceFormatting(target)
+    return treeSteps(tree, () => states(target, ids, formatting))
+  }
+  // Select all, then shrink by one: the same few blocks are read in a note
+  // of 20 or 20,000 of them, plus a balanced tree's few steps per tenfold growth.
+  for (const end of [0, 1]) {
+    const small = steps(20, end),
+      large = steps(20000, end)
+    assert.ok(small > 20, `${small}`)
+    assert.ok(large - small < 64, `${small} ${large}`)
+  }
+})
+
+test('a range of one kind of block reads it in one pass', () => {
+  const ids = [...marks, ...blocks, 'subtext', 'strike', 'subscript']
+  for (const count of [2000, 20000]) {
+    const { doc, tree } = repeated('plain text\n\n', count)
+    const target = {
+      state: EditorState.create({
+        doc,
+        selection: { anchor: 0, head: doc.length },
+        extensions: formattedTree.of(() => tree),
+      }),
+    }
+    const formatting = sourceFormatting(target)
+    const inspection = treeSteps(tree, () => states(target, ids, formatting))
+    // The rich editor checks every block of such a selection too; one walk over them is the floor.
+    const pass = treeSteps(tree, () =>
+      tree.iterate({ from: 0, to: doc.length, enter() {} }),
+    )
+    assert.ok(inspection >= pass / 2, `${inspection} ${pass}`)
+    // Each block's own markers are read once more, so a few steps per block.
+    assert.ok(inspection <= 3 * pass, `${inspection} ${pass}`)
+  }
+})
+
 /** Characters read from documents and syntax tree lookups while `run` inspects. */
 function counted(run) {
   const reads = { chars: 0, resolves: 0, scans: 0 }
   const restore = []
+  // A large document's text reads its parts' text: count only the outermost call.
+  let depth = 0
   const patch = (target, name, count) => {
     const original = target[name]
     target[name] = function (...args) {
-      const result = original.apply(this, args)
-      count(result)
-      return result
+      depth++
+      try {
+        const result = original.apply(this, args)
+        if (depth === 1) count(result)
+        return result
+      } finally {
+        depth--
+      }
     }
     restore.push(() => {
       target[name] = original
@@ -675,6 +915,36 @@ test('formatted toolbar inspection reads the same text and syntax in a 50 MiB no
     // A caret walks up from its position; only a range reads its syntax in order.
     if (length === undefined && text !== null) assert.equal(expected.scans, 0)
   }
+  // A note of 50 MiB of headings, formatting, lists and quotes.
+  const unit =
+    '# heading\n\nplain **bold** *it* `code` [l](u) text\n\n- one\n- two\n\n> quote\n\n'
+  const rich = repeated(unit, Math.ceil((50 * 1024 * 1024) / unit.length))
+  const brief = repeated(unit, 3)
+  for (const [anchor, head] of [
+    [unit.indexOf('**bold') + 4],
+    [unit.indexOf('[l') + 2],
+    [unit.indexOf('two') + 1],
+    [unit.indexOf('plain'), unit.indexOf('one')],
+    [0, null],
+  ]) {
+    const inspect = ({ doc, tree }) => {
+      const target = {
+        state: EditorState.create({
+          doc,
+          selection: {
+            anchor,
+            head: head === null ? doc.length : (head ?? anchor),
+          },
+          extensions: formattedTree.of(() => tree),
+        }),
+      }
+      const formatting = sourceFormatting(target)
+      return counted(() => states(target, ids, formatting))
+    }
+    const expected = inspect(brief)
+    assert.ok(expected.chars > 0, `${anchor}`)
+    assert.deepEqual(inspect(rich), expected, `${anchor} ${head}`)
+  }
 })
 
 /**
@@ -702,6 +972,7 @@ test("formatted toolbar actions write the rich editor's source", async (t) => {
     ['mixed-range', 'plainB', 0, 13],
     ['inline-code', 'codeF'],
     ['link', 'linkG'],
+    ['partial-link', 'linkG', 1, 3],
     ['first-item', 'oneH'],
     ['second-item', 'twoI'],
     ['nested', 'nestedJ'],
