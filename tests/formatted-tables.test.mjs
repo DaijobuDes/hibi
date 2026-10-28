@@ -1180,6 +1180,75 @@ end`
   assert.equal((await state()).doc, doc.replace(String.raw`al\|pha`, 'XY'))
 })
 
+for (const [label, content, pickedText, source] of [
+  ['named entity', 'left &amp; right', '&', '&amp;'],
+  ['scalar entity', 'left &#169; right', '©', '&#169;'],
+  ['astral entity', 'left &#x1F600; right', '😀', '&#x1F600;'],
+  ['combined entity', 'left &NotEqualTilde; right', '≂̸', '&NotEqualTilde;'],
+  ['escaped pipe', String.raw`al\|pha`, '|', String.raw`\|`],
+  ['escaped punctuation', String.raw`al\*pha`, '*', String.raw`\*`],
+  ['plain astral text', 'a😀z', '😀', '😀'],
+  ['entity and escape', String.raw`**a&amp;\|z**`, '&|', String.raw`&amp;\|`],
+  ['text before escape', String.raw`al\|pha`, 'al', 'al'],
+  ['text after escape', String.raw`al\|pha`, 'pha', 'pha'],
+]) {
+  for (const backward of [false, true]) {
+    test(`a ${backward ? 'backward' : 'forward'} read-only pick maps ${label} to complete source units`, {
+      timeout: 30000,
+    }, async () => {
+      const doc = `before\n\n> | h | other |\n> | - | - |\n> | ${content} | beta |\n\nafter`
+      await mount(doc)
+      await harness.evaluate(() => window.tables.setEditable(false))
+      await harness.locator('.hibi-lp-table td').first().click()
+      const native = await harness.evaluate(
+        ({ pickedText, backward }) => {
+          const cell = document.querySelector('.hibi-lp-table td p')
+          const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT)
+          const nodes = []
+          for (let node = walker.nextNode(); node; node = walker.nextNode())
+            nodes.push(node)
+          const point = (at, end) => {
+            for (const node of nodes) {
+              const length = node.textContent.length
+              if (at < length || (end && at === length)) return [node, at]
+              at -= length
+            }
+            throw new Error('The selected text has no DOM position.')
+          }
+          const from = cell.textContent.indexOf(pickedText)
+          if (from < 0) throw new Error('The selected text is not rendered.')
+          const start = point(from, false)
+          const end = point(from + pickedText.length, true)
+          const [anchor, head] = backward ? [end, start] : [start, end]
+          getSelection().setBaseAndExtent(...anchor, ...head)
+          return getSelection().toString()
+        },
+        { pickedText, backward },
+      )
+      assert.equal(native, pickedText)
+      await harness.evaluate(() => window.tables.settle())
+      const from = doc.indexOf(source)
+      const to = from + source.length
+      const picked = await state()
+      assert.deepEqual(
+        [picked.anchor, picked.head],
+        backward ? [to, from] : [from, to],
+      )
+      await harness.keyboard.type('BLOCKED')
+      assert.equal((await state()).doc, doc)
+      await harness.evaluate(() => window.tables.setEditable(true))
+      await harness.evaluate(() => window.tables.settle())
+      await harness.keyboard.type('XY')
+      assert.equal(
+        (await state()).doc,
+        `${doc.slice(0, from)}XY${doc.slice(to)}`,
+      )
+      await harness.keyboard.press(undoKey)
+      assert.equal((await state()).doc, doc)
+    })
+  }
+}
+
 test('a backward native table selection keeps both cell positions while read-only', {
   timeout: 30000,
 }, async () => {

@@ -227,6 +227,13 @@ test('cell decorations nest as spans in one sweep, linear in their number', () =
       '</>',
     ],
   )
+  assert.deepEqual(
+    ops.filter((op) => op.type === 'widget'),
+    [
+      { type: 'widget', widget: 'mark', from: 6, to: 6 },
+      { type: 'widget', widget: 'br', from: 8, to: 9 },
+    ],
+  )
   // Count property reads of `n` emphasis spans with hidden markers.
   const reads = (n) => {
     let count = 0

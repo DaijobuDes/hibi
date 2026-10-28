@@ -393,7 +393,7 @@ export type InlineOp<W> =
   | { type: 'open'; mark: InlineMark }
   | { type: 'close' }
   | { type: 'text'; from: number; to: number }
-  | { type: 'widget'; widget: W }
+  | { type: 'widget'; widget: W; from: number; to: number }
 
 /**
  * A cell's decorations as nested spans, text and widgets in order, from one
@@ -466,14 +466,24 @@ export function planInline<W>(
     }
     for (; insert < inserts.length && inserts[insert]!.at === at; insert++) {
       enter()
-      ops.push({ type: 'widget', widget: inserts[insert]!.widget })
+      ops.push({
+        type: 'widget',
+        widget: inserts[insert]!.widget,
+        from: at,
+        to: at,
+      })
     }
     for (; gap < gaps.length && gaps[gap]!.from <= at; gap++) {
       const range = gaps[gap]!
       hiddenTo = Math.max(hiddenTo, range.to)
       if (range.widget !== null && range.from === at) {
         enter()
-        ops.push({ type: 'widget', widget: range.widget })
+        ops.push({
+          type: 'widget',
+          widget: range.widget,
+          from: range.from,
+          to: range.to,
+        })
       }
     }
     if (end === undefined || hiddenTo >= end) continue

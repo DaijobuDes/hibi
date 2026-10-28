@@ -45,7 +45,7 @@ import {
   markStarts,
   padding,
   renderInline,
-  textStarts,
+  textPosition,
   writable,
 } from './table-cells.ts'
 import {
@@ -1722,19 +1722,16 @@ class TableView {
       column = [...row.children].indexOf(cell)
     const source = this.widget.line(line)
     const parsed = this.widget.row(line)
-    const range = parsed.cells[column]
     const span = cellSpan(parsed, column, source.text.length)
     let offset: number | 'end' = 'end'
-    if (range && span) {
+    if (span) {
       const caret = document.caretPositionFromPoint(
         event.clientX,
         event.clientY,
       )
-      const text = caret && textStarts.get(caret.offsetNode)
-      if (caret && text != null && cell.contains(caret.offsetNode)) {
-        const content = cellContent(source.text.slice(range.from, range.to))
-        offset = range.from - span.from + content.source[text + caret.offset]!
-      }
+      const at = caret && this.position(caret.offsetNode, caret.offset)
+      if (caret && at != null && cell.contains(caret.offsetNode))
+        offset = at - this.now(source.from + span.from)
     }
     if (event.shiftKey) {
       const head = span
@@ -1787,7 +1784,7 @@ class TableView {
         NodeFilter.SHOW_TEXT,
         {
           acceptNode: (node) =>
-            textStarts.has(node)
+            textPosition(node, 0) !== null
               ? NodeFilter.FILTER_ACCEPT
               : NodeFilter.FILTER_SKIP,
         },
@@ -1798,10 +1795,10 @@ class TableView {
           : ((before ? text.firstChild() : text.lastChild()) ?? child)
       offset = before ? 0 : (node.textContent?.length ?? 0)
     }
-    const start = textStarts.get(node)
+    const at = textPosition(node, offset)
     const cell = node.parentElement?.closest('th, td')
-    if (start === undefined || !cell || !this.table.contains(cell)) return null
-    return this.cellPosition(cell, start + offset)
+    if (at === null || !cell || !this.table.contains(cell)) return null
+    return this.cellPosition(cell, at)
   }
 
   /** A rendered cell offset, including escaped pipes and hidden inline syntax. */
@@ -1820,7 +1817,7 @@ class TableView {
       const middle = Math.floor((low + high) / 2)
       const skipped = content.skipped[middle]
       if (skipped === undefined) return null
-      if (skipped <= at) low = middle + 1
+      if (skipped < at) low = middle + 1
       else high = middle
     }
     return this.now(source.from + range.from + at + low)
