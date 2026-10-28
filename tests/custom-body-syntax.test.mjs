@@ -70,7 +70,7 @@ test('custom body preference scopes match native text', {
     await page.reload()
     await waitForDocumentEditor(app, page)
     const file = join(profile, `body-${index++}.md`)
-    await writeFile(file, source + '\n\ntail')
+    await writeFile(file, `${source}\n\ntail`)
     await app.evaluate(({ dialog }, file) => {
       dialog.showOpenDialog = async () => ({
         canceled: false,
@@ -81,7 +81,7 @@ test('custom body preference scopes match native text', {
     await waitForDocumentEditor(app, page)
     await page.waitForFunction(
       async (source) => (await window.hibi.getDocument()).markdown === source,
-      source + '\n\ntail',
+      `${source}\n\ntail`,
     )
     const editor = page.getByRole('textbox', {
       name: 'Document editor',
@@ -127,7 +127,7 @@ test('custom body preference scopes match native text', {
         for (const [source, text] of entry.bodies)
           assert.equal(
             await render(entry.feature, source),
-            text + ' tail',
+            `${text} tail`,
             source,
           )
       },
