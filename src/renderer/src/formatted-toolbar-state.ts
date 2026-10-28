@@ -676,6 +676,16 @@ export function unlinkChanges(
   range: SelectionRange,
 ): ChangeSpec[] {
   const changes: { from: number; to?: number; insert?: string }[] = []
+  // Where escaped punctuation is turned off, a backslash would show, so a
+  // character reference spells the character instead.
+  const escapes = !state.facet(formattedLiteral).includes('Escape')
+  const reference = (char: string) => `&#${char.codePointAt(0)};`
+  const literal = (from: number, char: string) =>
+    char === '&'
+      ? { from: from + 1, insert: 'amp;' }
+      : escapes
+        ? { from, insert: '\\' }
+        : { from, to: from + char.length, insert: reference(char) }
   const unlink = (node: SyntaxNode) => {
     // A bare web address links itself, as it does in the rich editor after a reload.
     if (node.name === 'URL') return
@@ -710,11 +720,7 @@ export function unlinkChanges(
       if (at < to) parts.push([at, to])
       for (const [start, end] of parts)
         for (const match of state.sliceDoc(start, end).matchAll(syntax))
-          changes.push(
-            match[0] === '&'
-              ? { from: start + match.index + 1, insert: 'amp;' }
-              : { from: start + match.index, insert: '\\' },
-          )
+          changes.push(literal(start + match.index, match[0]))
     }
     const whole = () => {
       changes.push({ from: node.from, to: text.from })
@@ -778,7 +784,7 @@ export function unlinkChanges(
     const href = (
       /^[a-z][a-z\d+.-]{1,31}:/i.test(url) ? url : `mailto:${url}`
     ).replace(/[\\`*_~[\]&$^=|!]/g, (char) =>
-      char === '&' ? '&amp;' : `\\${char}`,
+      char === '&' ? '&amp;' : escapes ? `\\${char}` : reference(char),
     )
     const after = autolink
       ? `](${/[\s()]/.test(href) ? `<${href}>` : href})`
@@ -910,17 +916,28 @@ const literalSyntax = [
 function codeText(state: EditorState, node: SyntaxNode) {
   const inner = formattingText(state, node)
   const text = inner && state.sliceDoc(inner.from, inner.to).replace(/\n/g, ' ')
-  return inner && text && /^ .*[^ ].* $/s.test(text)
+  return inner && text && padded(text)
     ? { from: inner.from + 1, to: inner.to - 1 }
     : inner
 }
 
+/** Whether inline code drops a space at each end of `text`. */
+const padded = (text: string) =>
+  text.length > 2 &&
+  text.startsWith(' ') &&
+  text.endsWith(' ') &&
+  /[^ ]/.test(text)
+
 /** The fence and padding that spell `text` as inline code. */
 function codeFence(text: string) {
   const plain = text.replace(/\n/g, ' ')
-  const runs = plain.match(/`+/g)?.map((run) => run.length) ?? []
-  const fence = '`'.repeat(Math.max(0, ...runs) + 1)
-  const pad = /^`|`$|^ .*[^ ].* $/s.test(plain) ? ' ' : ''
+  // A fence longer than any run of backticks in the text.
+  let longest = 0
+  for (const run of plain.matchAll(/`+/g))
+    longest = Math.max(longest, run[0].length)
+  const fence = '`'.repeat(longest + 1)
+  const pad =
+    plain.startsWith('`') || plain.endsWith('`') || padded(plain) ? ' ' : ''
   return { open: fence + pad, close: pad + fence }
 }
 

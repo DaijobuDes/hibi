@@ -533,6 +533,101 @@ test('a partial unlink keeps the link and formatting of the text around it, as t
   assert.equal(crossing.state.doc.toString(), '[a](u)b**c**[**d**ef](u)')
 })
 
+test('with escaped punctuation turned off, unlinked text spells punctuation as character references', () => {
+  markdownSyntax.setEnabled('core.escapes', false)
+  try {
+    // [note, the text holding the selection, offset, length, result]
+    for (const [input, text, offset, length, result] of [
+      [
+        '[www.example.com](https://else.test)',
+        'www.example.com',
+        0,
+        15,
+        'www&#46;example.com',
+      ],
+      ['[a@b.co](https://else.test)', 'a@b.co', 0, 6, 'a&#64;b.co'],
+      [
+        '[https://e.test/path](https://else.test)',
+        'https://e.test/path',
+        0,
+        16,
+        'https&#58;//e.test/p[ath](https://else.test)',
+      ],
+      [
+        '<https://x.com/*a*>',
+        'https://x.com/*a*',
+        8,
+        5,
+        '[https://](https://x.com/&#42;a&#42;)x.com[/&#42;a&#42;](https://x.com/&#42;a&#42;)',
+      ],
+    ]) {
+      const editor = richEditor(input)
+      let from
+      editor.state.doc.descendants((node, pos) => {
+        if (from === undefined && node.isText && node.text.includes(text))
+          from = pos + node.text.indexOf(text) + offset
+      })
+      editor.commands.setTextSelection({ from, to: from + length })
+      editor.commands.unsetLink()
+      const anchor = input.indexOf(text) + offset
+      const target = {
+        state: EditorState.create({
+          doc: input,
+          selection: { anchor, head: anchor + length },
+          extensions: [
+            history(),
+            formattedLiteral.of('Escape'),
+            formattedTree.of((state) => markdown.parse(state.doc.toString())),
+          ],
+        }),
+        dispatch(spec) {
+          target.state = target.state.update(spec).state
+        },
+        focus() {},
+      }
+      assert.equal(sourceFormatting(target).run('unlink'), true)
+      const actual = target.state.doc.toString()
+      assert.equal(actual, result)
+      // The rich editor reads the same text and marks, with no backslash shown.
+      const read = editor.schema.nodeFromJSON(editor.markdown.parse(actual))
+      assert.ok(sameRichSourceDocument(read, editor.state.doc, true), actual)
+      assert.equal(undoDepth(target.state), 1)
+      undo(target)
+      assert.equal(target.state.doc.toString(), input)
+      editor.destroy()
+    }
+  } finally {
+    markdownSyntax.reset()
+  }
+})
+
+test('a code label with many backtick runs splits within the call stack', () => {
+  const source = `[\`\`${'a`'.repeat(131072)}z\`\`](https://e.test)`
+  const target = {
+    state: EditorState.create({
+      doc: source,
+      selection: { anchor: 6, head: 7 },
+      extensions: [
+        history(),
+        formattedTree.of((state) => markdown.parse(state.doc.toString())),
+      ],
+    }),
+    dispatch(spec) {
+      target.state = target.state.update(spec).state
+    },
+    focus() {},
+  }
+  assert.equal(sourceFormatting(target).run('unlink'), true)
+  const actual = target.state.doc.toString()
+  assert.ok(
+    actual.startsWith('[``a`a``](https://e.test)`` ` ``[``a`a`'),
+    actual.slice(0, 60),
+  )
+  assert.ok(actual.endsWith('a`z``](https://e.test)'), actual.slice(-30))
+  undo(target)
+  assert.equal(target.state.doc.toString(), source)
+})
+
 test('the pressed code block action turns fenced code back into text', () => {
   assert.equal(ran('code-block', '```js\ncodeA\n```', 'co'), 'codeA')
   assert.equal(ran('code-block', '> ```\n> a\n> b\n> ```', '> a'), '> a\n> b')
