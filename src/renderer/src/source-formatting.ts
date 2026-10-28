@@ -11,11 +11,9 @@ import {
   EditorSelection,
   type EditorState,
   Facet,
-  type SelectionRange,
   Transaction,
 } from '@codemirror/state'
 import type { EditorView, KeyBinding } from '@codemirror/view'
-import type { SyntaxNode, Tree } from '@lezer/common'
 import type {
   DocumentEdit,
   DocumentFormat,
@@ -23,6 +21,11 @@ import type {
 } from '../../addons/api'
 import type { MediaAttachment } from '../../shared/media'
 import { formattedSyntaxTree } from './formatted-contributions.ts'
+import {
+  formattedStates,
+  unfenceChanges,
+  unlinkChanges,
+} from './formatted-toolbar-state.ts'
 
 /** Same format actions as the toolbar; addon keymaps (including vim) run first. */
 const formatBindings: [string, string][] = [
@@ -93,55 +96,6 @@ const prefixes: Record<string, string> = {
   quote: '> ',
   subtext: '-# ',
 }
-/** The toolbar's marks by the formatted view's syntax for them. */
-const markIds: Record<string, string> = {
-  StrongEmphasis: 'bold',
-  Emphasis: 'italic',
-  Strikethrough: 'strike',
-  Subscript: 'subscript',
-  InlineCode: 'inline-code',
-  Link: 'link',
-  Autolink: 'link',
-}
-const containers = [
-  'Document',
-  'Blockquote',
-  'BulletList',
-  'OrderedList',
-  'ListItem',
-  'ContainerHTML',
-]
-
-/**
- * The marks around `from`-`to` and their nodes: formatting whose text holds
- * a caret, which typing there extends, or whose syntax holds a range.
- */
-function marksAt(state: EditorState, tree: Tree, from: number, to: number) {
-  const found = new Map<string, SyntaxNode>()
-  for (
-    let node: SyntaxNode | null = tree.resolveInner(from, 1);
-    node && !node.type.is('Block');
-    node = node.parent
-  ) {
-    const id = markIds[node.name]
-    if (!id || found.has(id)) continue
-    const first = node.firstChild
-    const last =
-      node.name === 'Link'
-        ? node
-            .getChildren('LinkMark')
-            .find((mark) => state.sliceDoc(mark.from, mark.to) === ']')
-        : node.lastChild
-    if (
-      from < to
-        ? node.from <= from && to <= node.to
-        : !!first && !!last && first.to <= from && from <= last.from
-    )
-      found.set(id, node)
-  }
-  return found
-}
-
 /** Delimiters the toolbar opened at the caret, with no text between them yet. */
 function opened(state: EditorState, pos: number, token: string) {
   const before = state.sliceDoc(Math.max(0, pos - token.length - 1), pos)
@@ -152,132 +106,6 @@ function opened(state: EditorState, pos: number, token: string) {
     before.at(-token.length - 1) !== token[0] &&
     after[token.length] !== token[0]
   )
-}
-
-type Block = {
-  /** The action that makes this kind of block, or `other` for literal blocks such as HTML. */
-  kind: string
-  /** The innermost list item. */
-  item: SyntaxNode | null
-  /** The actions of the lists around the block. */
-  lists: Set<string>
-  quote: boolean
-}
-
-function blockKind(name: string) {
-  // The rich editor's table cells and task items hold paragraphs.
-  if (name === 'Paragraph' || name === 'Task' || name === 'Table')
-    return 'paragraph'
-  if (/^(?:ATX|Setext)Heading[1-6]$/.test(name))
-    return `heading-${name.slice(-1)}`
-  if (name === 'FencedCode' || name === 'CodeBlock') return 'code-block'
-  return name === 'Subtext' ? 'subtext' : 'other'
-}
-
-/** The block at `pos`, read up its ancestors; a line between blocks takes a paragraph. */
-function blockAt(tree: Tree, pos: number, side: -1 | 1): Block {
-  const read = (side: -1 | 1) => {
-    const block: Block = {
-      kind: '',
-      item: null,
-      lists: new Set(),
-      quote: false,
-    }
-    for (
-      let node: SyntaxNode | null = tree.resolveInner(pos, side);
-      node;
-      node = node.parent
-    ) {
-      const { name } = node
-      if (name === 'ListItem') {
-        block.item ??= node
-        const mark = node.firstChild
-        block.lists.add(
-          node.parent?.name === 'OrderedList'
-            ? 'numbered-list'
-            : mark && node.childAfter(mark.to)?.name === 'Task'
-              ? 'checklist'
-              : 'bullet-list',
-        )
-      } else if (name === 'Blockquote') block.quote = true
-      else if (
-        !block.kind &&
-        node.type.is('Block') &&
-        !containers.includes(name)
-      )
-        block.kind = blockKind(name)
-    }
-    return block
-  }
-  const block = read(side)
-  if (block.kind) return block
-  const other = read(side === 1 ? -1 : 1)
-  return other.kind ? other : { ...block, kind: 'paragraph' }
-}
-
-/**
- * Toolbar states from the formatted view's syntax tree. A range reads the
- * blocks at its two ends, so no selection reads the blocks between them.
- */
-function formattedStates(
-  state: EditorState,
-  tree: Tree,
-  range: SelectionRange,
-) {
-  const start = blockAt(tree, range.from, 1)
-  const end = range.empty ? start : blockAt(tree, range.to, -1)
-  const inline = marksAt(state, tree, range.from, range.to)
-  const both = (test: (block: Block) => boolean) => test(start) && test(end)
-  const literal = both(({ kind }) => kind === 'code-block' || kind === 'other')
-  const listed = both(({ item }) => !!item)
-  const pressed = (id: string) =>
-    Object.values(markIds).includes(id)
-      ? inline.has(id) ||
-        (range.empty && !!marks[id] && opened(state, range.from, marks[id]))
-      : id === 'quote'
-        ? both(({ quote }) => quote)
-        : id === 'bullet-list' || id === 'numbered-list' || id === 'checklist'
-          ? both(({ lists }) => lists.has(id))
-          : both(({ kind }) => kind === id)
-  const disabled = (id: string) => {
-    switch (id) {
-      case 'bold':
-      case 'italic':
-      case 'strike':
-      case 'subscript':
-      case 'link':
-        return literal || inline.has('inline-code')
-      case 'inline-code':
-        return literal
-      case 'paragraph':
-        return pressed(id)
-      case 'subtext':
-        return pressed(id) || listed
-      case 'quote':
-      case 'code-block':
-        return listed
-      case 'bullet-list':
-      case 'numbered-list':
-      case 'checklist':
-        // A list item starts with a paragraph.
-        return !both(({ kind }) => kind === 'paragraph')
-      case 'indent': {
-        // An item indents under the item before it, in the same list.
-        const list = start.item?.parent
-        return !(
-          start.item &&
-          list &&
-          start.item.from > list.from &&
-          end.item?.parent?.from === list.from
-        )
-      }
-      case 'outdent':
-        return !listed
-      default:
-        return id.startsWith('heading-') && listed
-    }
-  }
-  return { pressed, disabled }
 }
 
 const fenceLength = (text: string, minimum = 0) =>
@@ -402,6 +230,29 @@ export function sourceFormatting(
         .some((actions) => actions.run(view, id))
     const range = view.state.selection.main
     const doc = view.state.doc
+    const tree = format === 'markdown' ? formattedSyntaxTree(view.state) : null
+    // The formatted view removes links and code fences by their syntax, as the rich editor does.
+    const structural =
+      tree && id === 'unlink'
+        ? unlinkChanges(view.state, tree, range)
+        : tree &&
+            id === 'code-block' &&
+            formattedStates(view.state, tree, range).pressed(id)
+          ? unfenceChanges(tree, range)
+          : null
+    if (structural) {
+      if (!structural.length) return false
+      view.dispatch({
+        changes: structural,
+        annotations: [
+          Transaction.userEvent.of('input.format'),
+          isolateHistory.of('full'),
+        ],
+        scrollIntoView: true,
+      })
+      view.focus()
+      return true
+    }
     let from = range.from,
       to = range.to
     const selected = doc.sliceString(from, to)
@@ -501,16 +352,7 @@ export function sourceFormatting(
       insert = `${id === 'image' ? '!' : ''}[${label}](${url})`
       end = insert.length
     } else if (id === 'unlink') {
-      // Like the rich editor, a caret in a link removes that link.
-      const tree = range.empty ? formattedSyntaxTree(view.state) : null
-      const link = tree && marksAt(view.state, tree, from, to).get('link')
-      if (link) {
-        from = link.from
-        to = link.to
-      }
-      insert = doc
-        .sliceString(from, to)
-        .replace(/\[([^\]]+)\]\((?:\\.|[^)])*\)/g, '$1')
+      insert = selected.replace(/\[([^\]]+)\]\((?:\\.|[^)])*\)/g, '$1')
       end = insert.length
     } else {
       const fence = '`'.repeat(fenceLength(selected, 2))
@@ -603,7 +445,12 @@ export function sourceFormatting(
           pressed:
             checkPressed &&
             (formatted
-              ? formatted.pressed(id)
+              ? formatted.pressed(id) ||
+                // Delimiters typed in code are its text, not an open mark.
+                (range.empty &&
+                  !!marks[id] &&
+                  !formatted.disabled(id) &&
+                  opened(state, range.from, marks[id]))
               : format === 'markdown'
                 ? marked(id) || blockActive
                 : (format?.isActive?.(id, { ...selected() }) ?? false)),

@@ -75,6 +75,7 @@ accepted differences are not gaps; their tests assert each engine. the codemirro
 | input-056 | [editor-input.test.mjs:3034](editor-input.test.mjs#L3034) | native enter preserves four line feeds between paragraphs | 8a: native input, structure and toolbar state |
 | input-073 | [editor-input.test.mjs:3459](editor-input.test.mjs#L3459) | native bold typing keeps bold action pressed | 8a: native input, structure and toolbar state |
 | input-074 | [editor-input.test.mjs:3473](editor-input.test.mjs#L3473) | native bold typing renders strong text in canonical source | 8a: native input, structure and toolbar state |
+| input-075 | [formatted-toolbar-state.test.mjs:259](formatted-toolbar-state.test.mjs#L259) | the code block action at a caret turns its paragraph into code | 8a: native input, structure and toolbar state |
 | semantics-001 | [editor-plugins.test.mjs:67](editor-plugins.test.mjs#L67) | source-view word counts must include markdown characters | 9: outline semantics and diagram lifecycle |
 | find-001 | [formatted-find.test.mjs:210](formatted-find.test.mjs#L210) | formatted find must match rendered phrases across hidden marks | 4a: rendered find projection |
 | find-002 | [formatted-find.test.mjs:339](formatted-find.test.mjs#L339) | undo must restore matches without a current find result | 4b: find wiring and navigation |
