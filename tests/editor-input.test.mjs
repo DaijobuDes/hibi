@@ -3829,3 +3829,125 @@ test('codemirror: a toolbar click before refresh formats the newly selected live
   )
   assert.equal((await toolbarSnapshot(page)).bold.pressed, 'false')
 })
+
+test('a separately typed cell space retains its caret and next word', {
+  timeout: 30000,
+}, async (t) => {
+  for (const [spelling, source] of [
+    [
+      'padded',
+      '# table space\n\n| direction | value |\n| --------- | ----- |\n| south     | east  |\n\nafter\n',
+    ],
+    [
+      'raw',
+      '# table space\n\n|direction|value|\n|---|---|\n|south|east|\n\nafter\n',
+    ],
+  ]) {
+    await t.test(spelling, async (t) => {
+      const { app, page, rich, file } = await launchInputFixture(t, source)
+      const before = await acceptedInput(page)
+      assert.equal(before.markdown, source)
+      const end = source.indexOf('south') + 5
+      await rich.evaluate((element, anchor) => {
+        element.cmTile.root.view.focus()
+        element.cmTile.root.view.dispatch({ selection: { anchor } })
+      }, end)
+      const cell = page.getByRole('textbox', {
+        name: 'Table cell',
+        exact: true,
+      })
+      await cell.waitFor()
+      await cell.evaluate((element) => element.cmTile.root.view.focus())
+      const checkCaret = async (position) => {
+        await page.evaluate(async () => {
+          await new Promise(requestAnimationFrame)
+          await new Promise(requestAnimationFrame)
+        })
+        const actual = await rich.evaluate((element) => {
+          const content = element.querySelector(
+            '.hibi-lp-cell-editor .cm-content',
+          )
+          const view = content.cmTile.root.view
+          const selection = getSelection()
+          const main = element.cmTile.root.view.state.selection.main
+          return [
+            document.activeElement === content,
+            content.contains(selection?.focusNode) &&
+              view.posAtDOM(selection.focusNode, selection.focusOffset) ===
+                view.state.selection.main.head,
+            main.anchor,
+            main.head,
+          ]
+        })
+        assert.deepEqual(actual, [true, true, position, position])
+      }
+      await checkCaret(end)
+      await inputWorkProbe(rich)
+      await page.keyboard.press('Space')
+      const spaced = await acceptedInput(page)
+      assert.equal(spaced.markdown, source.replace('south', 'south '))
+      assert.equal(spaced.contentVersion, before.contentVersion + 1)
+      await checkCaret(end + 1)
+      await page.keyboard.type('border')
+      const typed = await acceptedInput(page)
+      assert.equal(typed.markdown, source.replace('south', 'south border'))
+      assert.equal(await cell.innerText(), 'south border')
+      await checkCaret(end + ' border'.length)
+      assert.equal(
+        typed.contentVersion,
+        before.contentVersion + ' border'.length,
+      )
+      const work = await page.evaluate(() => window.cmInputWork)
+      assert.deepEqual(
+        work.inputs,
+        [...' border'].map((data) => ({ type: 'insertText', data })),
+      )
+      assert.equal(work.beforeinput.length, ' border'.length)
+      assert.equal(work.changes, ' border'.length)
+      assert.equal(
+        await page
+          .getByText('Edit could not be applied', { exact: true })
+          .count(),
+        0,
+      )
+      const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
+      await pressShortcut(app, mod + '+z')
+      assert.equal((await acceptedInput(page)).markdown, source)
+      await pressShortcut(
+        app,
+        process.platform === 'win32' ? 'Control+y' : mod + '+Shift+z',
+      )
+      const redone = await acceptedInput(page)
+      assert.equal(redone.markdown, typed.markdown)
+      await checkCaret(end + ' border'.length)
+      const receipt = await page.evaluate(() => window.hibi.saveDocument(false))
+      assert.equal(receipt.saveReceipt, true)
+      assert.equal(receipt.savedVersion, redone.contentVersion)
+      assert.equal(await readFile(file, 'utf8'), typed.markdown)
+      await page.keyboard.press('Space')
+      const externalBefore = await acceptedInput(page)
+      const signals = await page.evaluate(
+        () => window.cmInputWork.inputs.length,
+      )
+      await rich.evaluate((element, from) => {
+        element.cmTile.root.view.dispatch({ changes: { from, to: from + 1 } })
+      }, end + ' border'.length)
+      const external = await acceptedInput(page)
+      assert.equal(external.markdown, typed.markdown)
+      assert.equal(external.contentVersion, externalBefore.contentVersion + 1)
+      assert.equal(
+        await page.evaluate(() => window.cmInputWork.inputs.length),
+        signals,
+      )
+      await checkCaret(end + ' border'.length)
+      await page.keyboard.type('Q')
+      const next = await acceptedInput(page)
+      assert.equal(
+        next.markdown,
+        typed.markdown.replace('south border', 'south borderQ'),
+      )
+      assert.equal(next.contentVersion, external.contentVersion + 1)
+      await checkCaret(end + ' borderQ'.length)
+    })
+  }
+})

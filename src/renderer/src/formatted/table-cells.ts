@@ -414,7 +414,13 @@ function editorDecorations(
     atomic.push(range)
   }
   // Spaces around the content are the cell's padding, not its text.
-  const { start, end } = padding(text)
+  let { start, end } = padding(text)
+  // Newly typed whitespace must keep the caret in visible cell text.
+  if (view.hasFocus)
+    for (const range of view.state.selection.ranges) {
+      start = Math.min(start, range.from)
+      end = Math.max(end, range.to)
+    }
   hide(0, start, null)
   hide(end, text.length, null)
   if (from !== undefined)
@@ -929,9 +935,19 @@ export class CellEditor {
       doc[doc.length - 1 - end] === text[text.length - 1 - end]
     )
       end++
+    const span = this.host.span()
+    const selected = this.host.main.state.selection.main
+    const selection =
+      span && selected.from >= span.from && selected.to <= span.to
+        ? {
+            anchor: selected.anchor - span.from,
+            head: selected.head - span.from,
+          }
+        : undefined
     this.remote = true
     try {
       this.view.dispatch({
+        selection,
         changes: {
           from: start,
           to: doc.length - end,

@@ -2944,3 +2944,98 @@ test('in the app, undo and redo in a cell do nothing while the view takes no inp
   await page.keyboard.press(undoKey)
   await saved(/\| value 2 \| value 3 \|/)
 })
+
+test('typed cell padding follows selection, blur, readonly and a source change', {
+  timeout: 30000,
+}, async (t) => {
+  const doc = 'before\n\n| h |\n| - |\n| south     |\n\nafter'
+  const end = doc.indexOf('south') + 5
+  for (const action of ['selection', 'blur', 'readonly', 'source']) {
+    await t.test(action, async () => {
+      await mount(doc)
+      const cell = harness.locator('.hibi-lp-table td', { hasText: 'south' })
+      await cell.click()
+      await harness.keyboard.press('End')
+      await harness.keyboard.press('Space')
+      await harness.evaluate(() => window.tables.settle())
+      assert.equal(await cell.innerText(), 'south ')
+      assert.equal((await state()).doc, doc.replace('south', 'south '))
+      await harness.evaluate(
+        ({ action, end }) => {
+          const view = window.tables.view()
+          if (action === 'selection') {
+            const content = document.querySelector(
+              '.hibi-lp-cell-editor .cm-content',
+            )
+            const cellView = content.cmTile.root.view
+            cellView.dispatch({
+              selection: {
+                anchor: cellView.state.doc.toString().indexOf('south') + 5,
+              },
+            })
+          } else if (action === 'blur') {
+            const button = document.createElement('button')
+            button.dataset.cellSpaceFocus = ''
+            document.body.append(button)
+            button.focus()
+          } else if (action === 'readonly') window.tables.setEditable(false)
+          else view.dispatch({ changes: { from: end, to: end + 1 } })
+        },
+        { action, end },
+      )
+      await harness.evaluate(() => window.tables.settle())
+      const after = await state()
+      assert.equal(
+        await cell.innerText(),
+        action === 'readonly' ? 'south ' : 'south',
+        action,
+      )
+      assert.equal(
+        after.doc,
+        action === 'source' ? doc : doc.replace('south', 'south '),
+      )
+      if (action === 'blur' || action === 'readonly')
+        assert.deepEqual([after.anchor, after.head], [end + 1, end + 1])
+      if (action !== 'blur')
+        assert.equal(
+          await harness.evaluate(
+            () =>
+              document.querySelector('.hibi-lp-cell-editor .cm-content').cmTile
+                .root.view.state.selection.main.head,
+          ),
+          after.head - (doc.indexOf('south') - 1),
+        )
+      if (action === 'readonly') {
+        await harness.keyboard.type('BLOCKED')
+        assert.equal((await state()).doc, after.doc)
+        await harness.evaluate(() => window.tables.settle())
+        const blocked = await state()
+        assert.deepEqual([blocked.anchor, blocked.head], [end + 1, end + 1])
+        await harness.evaluate(() => window.tables.setEditable(true))
+      }
+      if (action === 'source' || action === 'readonly') {
+        await harness.keyboard.type('Q')
+        const expected =
+          action === 'source'
+            ? doc.replace('south', 'southQ')
+            : doc.replace('south', 'south Q')
+        assert.equal((await state()).doc, expected)
+        const next = await harness.evaluate(() => {
+          const content = document.querySelector(
+            '.hibi-lp-cell-editor .cm-content',
+          )
+          const view = content.cmTile.root.view
+          const selection = getSelection()
+          return [
+            view.state.selection.main.head,
+            view.posAtDOM(selection.focusNode, selection.focusOffset),
+          ]
+        })
+        assert.equal(next[0], next[1])
+      }
+      await harness.evaluate(() =>
+        document.querySelector('[data-cell-space-focus]')?.remove(),
+      )
+    })
+  }
+})
