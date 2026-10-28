@@ -754,6 +754,10 @@ test("formatted toolbar actions write the rich editor's source", async (t) => {
   // Each difference's cause, by action and selection.
   const causes = [
     [
+      'formatted gap action-008: the link action at a caret inserts a link beside formatting, or edits the link around the caret',
+      (id, _label, caret) => caret && id === 'link',
+    ],
+    [
       'formatted gap action-001: a caret mark action formats the text typed next instead of writing empty delimiters',
       (id, label, caret) => caret && marks.includes(id) && label !== 'cell',
     ],
