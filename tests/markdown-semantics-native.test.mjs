@@ -110,10 +110,6 @@ const formattedGaps = {
     'formatted gap corpus-009: quoted reference titles must hide definitions and resolve labels',
   '1/lazy definition/0':
     'formatted gap corpus-010: disabled syntax must preserve native lazy reference rendering',
-  '1/gfm/0':
-    'formatted gap corpus-011: disabled heading syntax must preserve bold formatting inside alerts',
-  '1/extras/0':
-    'formatted gap corpus-012: disabled heading syntax must preserve bold formatting inside subtext',
   '1/references/0':
     'formatted gap corpus-013: disabled heading syntax must still hide reference definitions',
   '1/forward references/0':
