@@ -89,6 +89,7 @@ accepted differences are not gaps; their tests assert each engine. the codemirro
 | input-072 | [editor-input.test.mjs:2475](editor-input.test.mjs#L2475) | toolbar states match live whole document selection | 8a: native input, structure and toolbar state |
 | input-051 | [editor-input.test.mjs:2761](editor-input.test.mjs#L2761) | native multiline input exits empty list and preserves following paragraph | 8a: native input, structure and toolbar state |
 | input-073 | [editor-input.test.mjs:3437](editor-input.test.mjs#L3437) | native bold typing keeps bold action pressed | 8a: native input, structure and toolbar state |
+| input-blank-tail-001 | [formatted-commands.test.mjs:832](formatted-commands.test.mjs#L832) | unparsed space/tab tails longer than 4096 units must retain the same empty paragraph as a complete parse | 8a: native input, trailing-whitespace index (#559) |
 | input-074 | [editor-input.test.mjs:3451](editor-input.test.mjs#L3451) | native bold typing renders strong text in canonical source | 8a: native input, structure and toolbar state |
 | semantics-001 | [editor-plugins.test.mjs:67](editor-plugins.test.mjs#L67) | source-view word counts must include markdown characters | 9: outline semantics and diagram lifecycle |
 | find-001 | [formatted-find.test.mjs:328](formatted-find.test.mjs#L328) | formatted find must match rendered phrases across hidden marks | 4a: rendered find projection |
