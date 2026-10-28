@@ -829,6 +829,40 @@ test('undoing a composition from inside a table to past it shows the tables it r
   await cdp.detach()
 })
 
+test('an edit from elsewhere while composing in a table source waits for the composition to end', {
+  timeout: 30000,
+}, async () => {
+  const cdp = await harness.context().newCDPSession(harness)
+  const doc = `before\n\n${overTableTable}\n\nafter\n\n${overTableTable}\n\nend`
+  const range = [doc.indexOf('| c') + 3, doc.indexOf('after') + 2]
+  await selectRange(doc, range)
+  await cdp.send('Input.dispatchKeyEvent', {
+    type: 'rawKeyDown',
+    key: 'k',
+    code: 'KeyK',
+    windowsVirtualKeyCode: 229,
+    nativeVirtualKeyCode: 229,
+  })
+  await compose(cdp, 'k')
+  // Another view's edit arrives without an input event.
+  await harness.evaluate(() => {
+    const view = window.tables.view()
+    view.dispatch({ changes: { from: view.state.doc.length, insert: '!' } })
+  })
+  await compose(cdp, 'か')
+  await cdp.send('Input.insertText', { text: 'か' })
+  await harness.evaluate(() => window.tables.settle())
+  assert.equal(
+    (await state()).doc,
+    `${doc.slice(0, range[0])}か${doc.slice(range[1])}!`,
+  )
+  // Once the composition ends, the source shows as tables again.
+  await harness.waitForFunction(
+    () => document.querySelectorAll('.hibi-lp-table').length === 2,
+  )
+  await cdp.detach()
+})
+
 test('a note that is only a table takes text and compositions without a key over its selection', {
   timeout: 30000,
 }, async () => {

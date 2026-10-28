@@ -1901,25 +1901,29 @@ const tableEnd = Decoration.widget({
   side: 1,
 })
 
-const revealTable = StateEffect.define<{ from: number; to: number } | null>()
+type Revealed = { from: number; to: number; stale: boolean }
+const revealTable = StateEffect.define<Revealed | null>()
 /**
  * A table that shows its source while a composition that cleared a
  * selection into it goes on, as no text of a table widget takes input, until
  * the selection leaves it or the view loses focus.
  */
-const revealedTable = StateField.define<{ from: number; to: number } | null>({
+const revealedTable = StateField.define<Revealed | null>({
   create: () => null,
   update(range, tr) {
     for (const effect of tr.effects)
       if (effect.is(revealTable)) return effect.value
-    // Text that undo, redo or another view brings back may hold more tables:
-    // they all show as tables again.
-    if (!range || (tr.docChanged && !tr.isUserEvent('input'))) return null
+    if (!range) return null
     const from = tr.changes.mapPos(range.from, -1),
       to = tr.changes.mapPos(range.to, 1)
     const { head } = tr.state.selection.main
     if (head < from || head > to) return null
-    return from === range.from && to === range.to ? range : { from, to }
+    // Text that undo, redo or another view brings back may hold more tables:
+    // they all show as tables again once no composition writes in the source.
+    const stale = range.stale || (tr.docChanged && !tr.isUserEvent('input'))
+    return from === range.from && to === range.to && stale === range.stale
+      ? range
+      : { from, to, stale }
   },
   provide: (field) => [
     EditorView.focusChangeEffect.of((state, focusing) =>
@@ -1927,8 +1931,16 @@ const revealedTable = StateField.define<{ from: number; to: number } | null>({
     ),
     // Layouts are kept per chunk; a reveal lays them out again.
     formattedRenderInputs.compute([field], (state) => !!state.field(field)),
+    EditorView.updateListener.of((update) => {
+      if (update.state.field(field)?.stale)
+        queueMicrotask(() => endStaleReveal(update.view))
+    }),
   ],
 })
+const endStaleReveal = (view: EditorView) => {
+  if (view.state.field(revealedTable, false)?.stale && !view.compositionStarted)
+    view.dispatch({ effects: revealTable.of(null) })
+}
 
 /** The editable place below a table that ends the note, while it shows as a table. */
 const tableEnds = StateField.define<DecorationSet>({
@@ -2001,7 +2013,7 @@ function prepareComposition(event: InputStart, view: EditorView) {
       node = node.parent
     )
       if (node.name === 'Table' && node.from < at) {
-        effects.push(revealTable.of({ from: node.from, to: at }))
+        effects.push(revealTable.of({ from: node.from, to: at, stale: false }))
         break
       }
   } else if (belowTable(event, view)) spec = paragraphBelow(view)
@@ -2221,6 +2233,8 @@ export const contribution: FormattedContribution = {
         })
       },
       compositionend(event, view) {
+        // After the view has read the composition's last change.
+        setTimeout(() => endStaleReveal(view))
         const pending = endCompositions.get(view)
         endCompositions.delete(view)
         if (!pending || pending.doc !== view.state.doc) return
