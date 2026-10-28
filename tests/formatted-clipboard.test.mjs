@@ -383,6 +383,30 @@ test('copied raw html, raw-text bodies included, is its literal source', {
         assert.match(element, literalElements, source)
       assert.equal(copied.text.trim(), source)
     }
+    // Image descriptions stay plain text.
+    await setFixture('![before <kbd>x</kbd> after](image.png)')
+    const image = await clipboardEvent('copy', 0, null)
+    assert.equal(
+      await page.evaluate(
+        (html) =>
+          new DOMParser()
+            .parseFromString(html, 'text/html')
+            .querySelector('img')?.alt,
+        image.html,
+      ),
+      'before <kbd>x</kbd> after',
+    )
+    // Every break the view draws copies as one.
+    for (const space of ['', ' ', '\v', '\u00a0', '\u2028']) {
+      const source = `a<br${space}/>b`
+      await setFixture(source)
+      const { html } = await clipboardEvent('copy', 0, null)
+      assert.deepEqual(
+        (await copiedDom(html)).elements,
+        ['div data-hibi-markdown=', 'p', 'br'],
+        JSON.stringify(source),
+      )
+    }
   } finally {
     await setFixture(note)
   }

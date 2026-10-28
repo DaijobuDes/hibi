@@ -34,26 +34,34 @@ export function renderMarkdown(
     for (const extension of flavor.export?.extensions ?? [])
       parser.use(extension)
   }
-  if (literalHtml)
+  if (literalHtml) {
+    // Image descriptions stay plain text, as marked renders them.
+    const descriptions = new WeakSet<object>()
     parser.use({
       walkTokens(token) {
-        // Text inside inline `<pre>`, `<code>`, `<kbd>` and `<script>` is
-        // passed through as markup too. A `<br>` the formatted view draws as
-        // a line break stays one.
-        const block = token.type === 'html' && token.block
-        if (
-          token.type === 'html'
-            ? block ||
-              !/^<br\s*\/?>$/i.test(token.raw) ||
-              !markdownSyntax.enabled('core.line-breaks')
-            : token.type === 'text' && token.escaped
-        )
-          Object.assign(token, {
-            type: block ? 'hibiLiteralBlock' : 'hibiLiteralInline',
-            text: block ? token.raw.replace(/\n+$/, '') : token.raw,
-          })
+        if (token.type === 'image' || descriptions.has(token)) {
+          if ('tokens' in token)
+            for (const child of token.tokens ?? []) descriptions.add(child)
+        } else if (token.type === 'html') {
+          // A `<br>` the formatted view draws as a line break stays one.
+          if (
+            !token.block &&
+            /^<br\s*\/?>$/i.test(token.raw) &&
+            markdownSyntax.enabled('core.line-breaks')
+          )
+            token.text = '<br>'
+          else
+            Object.assign(token, {
+              type: token.block ? 'hibiLiteralBlock' : 'hibiLiteralInline',
+              text: token.block ? token.raw.replace(/\n+$/, '') : token.raw,
+            })
+        } else if (token.type === 'text' && token.escaped)
+          // Marked passes text inside inline `<pre>`, `<code>`, `<kbd>` and
+          // `<script>` through as markup.
+          Object.assign(token, { type: 'hibiLiteralInline', text: token.raw })
       },
     })
+  }
   return {
     html: parser.parse(source, { async: false }),
     css:
