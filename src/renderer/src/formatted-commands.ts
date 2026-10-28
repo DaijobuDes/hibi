@@ -12,6 +12,7 @@ import {
   type TransactionSpec,
 } from '@codemirror/state'
 import type { SyntaxNode, Tree } from '@lezer/common'
+import { uncovered } from './chunked-markdown.ts'
 import { formattedFormatting } from './formatted-contributions.ts'
 import { codeIndentLines, detectIndentUnit, tabIndent } from './indentation.ts'
 
@@ -326,12 +327,18 @@ export function blockBreak(
     }
     // A blank line between blocks gains another empty line. After the last
     // block, blank lines show in pairs as empty paragraphs, as in the rich
-    // view, so it gains a pair.
+    // view, so it gains a pair. The tree says where the last block ends; while
+    // text after it is not parsed yet, the line counts as between blocks.
     if (blank(line.text)) {
-      let number = line.number + 1
-      while (number <= state.doc.lines && blank(state.doc.line(number).text))
-        number++
-      return insert(number > state.doc.lines ? '\n\n' : '\n')
+      let last = tree.topNode.lastChild
+      while (last && !last.type.is('Block')) last = last.prevSibling
+      const end = last?.to ?? 0
+      const after =
+        line.from >= end &&
+        (!last || line.from > end) &&
+        tree.length >= state.doc.length &&
+        !uncovered(tree, end, state.doc.length)
+      return insert(after ? '\n\n' : '\n')
     }
     const { close, open, at, end } = range.empty
       ? reopened(state, tree, pos)

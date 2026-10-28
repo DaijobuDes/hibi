@@ -779,3 +779,40 @@ test('enter on a blank line after the last block adds an empty paragraph, and on
   assert.equal(run('first\n\n|\n', blockBreak), 'first\n\n\n\n|\n')
   assert.equal(run('a\n\n|\n\nb', blockBreak), 'a\n\n\n|\n\nb')
 })
+
+test('enter on a blank line after the last block reads no more of a 50 MiB blank tail', () => {
+  // Before, it read every blank line after the caret: 12,800 lines, 52,416,000 units.
+  const doc = `x\n\n${`${' '.repeat(4095)}\n`.repeat(12800)}`
+  const sample = markdown.parse('x')
+  const tree = new Tree(
+    sample.type,
+    [new Tree(sample.topNode.firstChild.type, [], [], 1)],
+    [0],
+    doc.length,
+  )
+  const state = EditorState.create({ doc, selection: { anchor: 2 } })
+  const prototype = Object.getPrototypeOf(state.doc)
+  const originals = Object.fromEntries(
+    ['sliceString', 'lineAt', 'line'].map((name) => [name, prototype[name]]),
+  )
+  let lines = 0,
+    units = 0
+  for (const name of Object.keys(originals))
+    prototype[name] = function (...args) {
+      const value = originals[name].apply(this, args)
+      if (name !== 'sliceString') lines++
+      units += value.length
+      return value
+    }
+  let spec
+  try {
+    spec = blockBreak(state, tree)
+  } finally {
+    Object.assign(prototype, originals)
+  }
+  assert.ok(lines >= 1 && lines <= 4, `${lines} lines read`)
+  assert.ok(units <= 4096, `${units} units read`)
+  const next = state.update(spec).state.doc
+  assert.equal(next.length, doc.length + 2)
+  assert.equal(next.sliceString(0, 5), 'x\n\n\n\n')
+})
