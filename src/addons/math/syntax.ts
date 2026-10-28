@@ -12,7 +12,7 @@ export function inlineMath(source: string) {
 export const blockMathStart = blockStart(/ {0,3}\$\$/)
 export function blockMath(source: string) {
   const match =
-    /^ {0,3}\$\$[ \t]*\n?((?:\\[\s\S]|(?!\$\$)[^\\])+?)\$\$(?:[ \t]*(?:\n|$))/.exec(
+    /^ {0,3}\$\$[ \t]*\n?((?:\\[\s\S]|(?!\$\$)[^\\]){1,10000}?)\$\$(?:[ \t]*(?:\n|$))/.exec(
       source,
     )
   if (!match?.[1]?.trim() || match[1].length > 10000) return

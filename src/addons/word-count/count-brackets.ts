@@ -123,8 +123,7 @@ export class CountBrackets {
           prefix = `[count]: /x ${title}x`,
           probe = `${prefix}\n${text}`,
           match = rule.exec(`${probe}\n`)
-        const next =
-          this.#gfm && !match?.[3] ? this.#source.lineStart(number + 1) : null
+        const next = this.#gfm ? this.#source.lineStart(number + 1) : null
         const continuation =
           next === null
             ? text
@@ -169,6 +168,15 @@ export class CountBrackets {
       lines.add(this.#source.lineAt(from)!.number - baseLine)
       return this.#source.sliceRaw(from, to)
     }
+    const nextLine = this.#gfm ? this.#source.lineStart(line.number + 1) : null
+    if (
+      nextLine !== null &&
+      endsReferenceTitle(
+        `${read(line.from, line.to)}\n${read(nextLine, this.#source.lineAt(nextLine)!.to)}`,
+        Lexer.rules.block.gfm.paragraph,
+      )
+    )
+      return false
     const prefix = `[count${read(closing.to - 1, line.to)}`
     const match = countDefinition(`${prefix}\n`, this.#gfm)
         ? rule.exec(`${prefix}\n`)

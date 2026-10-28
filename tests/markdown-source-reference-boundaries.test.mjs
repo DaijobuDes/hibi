@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { GFM, parser } from '@lezer/markdown'
+import { micromark } from 'micromark'
 import { FrontmatterSourceModel } from '../src/shared/frontmatter-source-model.ts'
 import { markdownLink } from '../src/shared/markdown-link.ts'
 import { MarkdownSourceModel } from '../src/shared/markdown-source-model.ts'
@@ -364,11 +365,33 @@ test('reference lookup follows edits to multiline title closing delimiters', (t)
   assert.equal(f.references.lookup('other'), null)
   f.edit(close, close + 1, '')
   f.checkDefinitions(['ref', 'other'])
-  assert.equal(f.references.lookup('other').href, '/inside')
+  // A failed title remains a paragraph that another definition cannot interrupt.
+  assert.match(
+    micromark(text.slice(0, close) + text.slice(close + 1)),
+    /<p>\[other\]<\/p>/,
+  )
+  assert.equal(f.references.lookup('other'), null)
   f.edit(close, close, '"')
   f.checkDefinitions(['ref', 'other'])
   assert.equal(f.references.lookup('other'), null)
   assert.equal(f.references.lookup('ref').title, 'title\n[other]: /inside\nend')
+})
+
+test('indented reference table titles survive delimiter edits and undo', (t) => {
+  for (const indent of ['    ', '\t'])
+    for (const eol of ['\n', '\r\n']) {
+      const text = ['[ref]: /x', `${indent}"a | b"`, '--|--', '', '[ref]'].join(
+        eol,
+      )
+      const f = fixture(t, text)
+      const expected = { href: '/x', title: 'a | b' }
+      assert.deepEqual(f.references.lookup('ref'), expected, text)
+      const from = text.indexOf('--|--')
+      f.edit(from, from + 5, 'plain')
+      assert.deepEqual(f.references.lookup('ref'), expected)
+      f.edit(from, from + 5, '--|--')
+      assert.deepEqual(f.references.lookup('ref'), expected)
+    }
 })
 
 test('paragraph interruptions end indented titles and expose following references', (t) => {

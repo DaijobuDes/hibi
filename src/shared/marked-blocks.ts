@@ -46,9 +46,10 @@ export function endsReferenceTitle(
     paragraphRule(marked.Lexer.rules.block.normal.paragraph)?.test(source)
   )
     return true
-  // The GFM paragraph rule only finds table candidates; cell counts must agree.
+  // Match block precedence on container-relative text before checking cell counts.
   const end = source.indexOf('\n', source.indexOf('\n') + 1)
-  return !!tableTokenizer.table(end < 0 ? source : source.slice(0, end))
+  const lines = end < 0 ? source : source.slice(0, end)
+  return !tableTokenizer.code(lines) && !!tableTokenizer.table(lines)
 }
 
 export function lexMarkdown(source: string) {
@@ -116,28 +117,64 @@ function blockToken<Result>(
 
 export class BlockTokenizer extends Tokenizer {
   override def(source: string, read = Tokenizer.prototype.def) {
-    const token = read.call(this, source)
-    if (!token?.title) return token
-    const title = this.rules.block.def.exec(token.raw)?.[3]
-    if (!title) return token
-    const from = token.raw.lastIndexOf(title)
-    for (
-      let end = title.indexOf('\n');
-      end >= 0;
-      end = title.indexOf('\n', end + 1)
-    ) {
-      // Interruptions need at most this line and the next (a table header and
-      // its delimiter row); a longer window rescans the rest of the title.
-      const next = title.indexOf('\n', end + 1)
-      const window = next < 0 ? -1 : title.indexOf('\n', next + 1)
-      if (
-        endsReferenceTitle(
-          title.slice(end + 1, window < 0 ? undefined : window),
-          this.rules.block.paragraph,
-        )
-      )
-        // A failed next-line title can leave a destination-only definition.
-        return read.call(this, source.slice(0, from + end))
+    let token = read.call(this, source)
+    const title = token?.title && this.rules.block.def.exec(token.raw)?.[3]
+    if (title && token) {
+      const from = token.raw.lastIndexOf(title)
+      let boundary = from + title.length
+      // A definition can hold block syntax even inside a list's text context.
+      const top = this.lexer.state.top
+      this.lexer.state.top = true
+      try {
+        // Extension starts are candidates; only a real block ends the title.
+        for (const start of this.options.extensions?.startBlock ?? []) {
+          for (let offset = 0; offset < title.length; ) {
+            const at = start.call({ lexer: this.lexer }, title.slice(offset))
+            if (typeof at !== 'number' || at < 0) break
+            offset += at
+            if (
+              this.options.extensions?.block?.some((read) =>
+                read.call(
+                  { lexer: this.lexer },
+                  source.slice(from + offset),
+                  [],
+                ),
+              )
+            ) {
+              boundary = Math.min(boundary, from + offset)
+              break
+            }
+            offset++
+          }
+        }
+      } finally {
+        this.lexer.state.top = top
+      }
+      const line = source.lastIndexOf('\n', from - 1) + 1
+      for (let at = line; at < boundary; ) {
+        // Include the first title line and the delimiter after its closing line.
+        // Only this line and the next can establish a table interruption.
+        const end = source.indexOf('\n', at)
+        const next = end < 0 ? -1 : source.indexOf('\n', end + 1)
+        if (
+          endsReferenceTitle(
+            source.slice(at, next < 0 ? undefined : next),
+            this.rules.block.paragraph,
+          )
+        ) {
+          boundary = at
+          break
+        }
+        if (end < 0) break
+        at = end + 1
+      }
+      if (boundary < from + title.length)
+        token = read.call(this, source.slice(0, boundary))
+    }
+    if (token && !token.title) {
+      // The failed optional title still belongs to the definition's paragraph.
+      const indent = /^\n[ \t]+(?=["'(])/.exec(source.slice(token.raw.length))
+      if (indent) token.raw += indent[0]
     }
     return token
   }
