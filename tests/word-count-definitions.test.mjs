@@ -123,6 +123,7 @@ test('regional definitions retain first and closing table title boundaries', (t)
         for (const source of [
           `[ref]: /x\n${open}a | b\n--|--\nlast${close}\n\n[ref]`,
           `[ref]: /x ${open}one\na | b${close}\n--|--\n\n[ref]`,
+          `[ref]: /x ${open}a | b${close}\n--|--\n\n[ref]`,
         ]) {
           const text = source.replaceAll('\n', eol)
           const f = fixture(t, text, { ...syntax, gfm })

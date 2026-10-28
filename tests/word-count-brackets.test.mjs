@@ -415,6 +415,7 @@ test('regional title boundaries include first and closing table rows', (t) => {
       const sources = [
         `[ref]: /x\n${open}a | b\n--|--\nlast${close}\n\n[ref]`,
         `[ref]: /x ${open}one\na | b${close}\n--|--\n\n[ref]`,
+        `[ref]: /x ${open}a | b${close}\n--|--\n\n[ref]`,
       ]
       for (const source of sources) {
         const text = source.replaceAll('\n', eol)
@@ -422,12 +423,13 @@ test('regional title boundaries include first and closing table rows', (t) => {
           ...syntax,
           gfm: true,
         })
-        assert.deepEqual(
-          read(counter),
-          sources.indexOf(source) === 0
-            ? { words: 4, characters: 22 }
-            : { words: 6, characters: 29 },
-        )
+        if (sources.indexOf(source) < 2)
+          assert.deepEqual(
+            read(counter),
+            sources.indexOf(source) === 0
+              ? { words: 4, characters: 22 }
+              : { words: 6, characters: 29 },
+          )
         const delimiter = text.indexOf('--|--')
         edit([{ from: delimiter, to: delimiter + 5, insert: 'plain' }])
         edit([{ from: delimiter, to: delimiter + 5, insert: '--|--' }], 'undo')

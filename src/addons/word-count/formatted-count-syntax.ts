@@ -110,6 +110,22 @@ export function countMarkdownSyntax(
         parse(cx, line) {
           // container blocks already provide one outer semantic owner.
           if (cx.depth !== 1 || !/^ {0,3}\[/.test(line.text)) return false
+          if (
+            syntax.gfm &&
+            endsReferenceTitle(
+              `${line.text}\n${cx.peekLine()}`,
+              rules.paragraph,
+            )
+          ) {
+            // Keep the table header and delimiter ahead of LinkReference.
+            const from = cx.lineStart
+            cx.nextLine()
+            cx.addElement(
+              cx.elt('CountDefinition', from, cx.lineStart + line.text.length),
+            )
+            cx.nextLine()
+            return true
+          }
           const start = cx.lineStart,
             opener = start + line.pos
           const isFootnote = syntax.gfm && footnote(line.text)

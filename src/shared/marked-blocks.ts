@@ -139,12 +139,7 @@ export class BlockTokenizer extends Tokenizer {
         }
       }
       const line = source.lastIndexOf('\n', from - 1) + 1
-      for (
-        let at = /^[ \t]*$/.test(source.slice(line, from))
-          ? line
-          : source.indexOf('\n', from) + 1;
-        at > 0 && at < boundary;
-      ) {
+      for (let at = line; at < boundary; ) {
         // Include the first title line and the delimiter after its closing line.
         // Only this line and the next can establish a table interruption.
         const end = source.indexOf('\n', at)

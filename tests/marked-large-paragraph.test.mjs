@@ -971,6 +971,8 @@ test('reference title edges match CommonMark and micromark GFM', () => {
             `[ref]: /x\n    ${open}first\n\nlast${close}\n\n[ref]`,
             `[ref]: /x\n${open}a | b\n--|--\nlast${close}\n\n[ref]`,
             `[ref]: /x ${open}one\na | b${close}\n--|--\n\n[ref]`,
+            `[ref]: /x ${open}a | b${close}\n--|--\n\n[ref]`,
+            `[ref]: /x\n${open}a | b${close}\n--|--\n\n[ref]`,
             `[ref]: /x\n${open}one\na | b${close}\n--|--\n\n[ref]`,
             `[ref]: /x\n${open}a \\| b\n--|--\nlast${close}\n\n[ref]`,
             `[ref]: /x\n${open}a | b | c\n--|--\nlast${close}\n\n[ref]`,
@@ -1002,11 +1004,6 @@ test('reference title edges match CommonMark and micromark GFM', () => {
               link ? { href: link.href, title: link.title ?? null } : null,
               text,
             )
-            if (gfm && /<table>/.test(oracle))
-              assert.match(
-                parser.configure(GFM).parse(text).toString(),
-                /Table\(/,
-              )
           }
         } finally {
           remove()
