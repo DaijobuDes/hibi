@@ -5,6 +5,11 @@
 .hibi-formatted .hibi-lp-table {
   contain: inline-size;
 }
+/* The editable place below a table that ends the note takes no space, as notes end in the rich view, but shows a composition in it. */
+.hibi-formatted .hibi-lp-table-end:has(> br:only-child) {
+  height: 0;
+  overflow: hidden;
+}
 /* In quotes and lists the table sits on its container's line, without the line's own height. */
 .hibi-formatted .hibi-lp-table-inline {
   display: inline-block;

@@ -98,6 +98,8 @@ type CellDecorations = {
   /** Hidden syntax delimiters, which the caret crosses together where they touch. */
   delimiter?(from: number, to: number): void
   widget(at: number, widget: WidgetType, side: number): void
+  /** The visible character and hidden backslash of an escape share a source unit. */
+  escape?(at: number, from: number): void
 }
 
 /**
@@ -181,6 +183,8 @@ function decorateCell(
   cursor.iterate((node) => {
     // Syntax whose setting is off shows as written, its children too.
     if (literal.has(node.name)) return false
+    if (node.name === 'Escape')
+      out.escape?.(local(node.from + 1), local(node.from))
     const revealed = revealedFor(node)
     const nodeOut = sink(revealed)
     let skip = false
@@ -290,9 +294,24 @@ function decorateCell(
   }
 }
 
-/** Where rendered text nodes and mark elements start in their cell's content. */
-export const textStarts = new WeakMap<Node, number>()
+/** Source boundaries of rendered text in its cell's content. */
+const textPositions = new WeakMap<
+  Node,
+  { from: number; start?: number; to?: number }
+>()
 export const markStarts = new WeakMap<Element, number>()
+
+/** Replacement glyphs and escaped characters include their complete source unit. */
+export function textPosition(node: Node, offset: number): number | null {
+  for (let current: Node | null = node; current; current = current.parentNode) {
+    const range = textPositions.get(current)
+    if (range)
+      return offset === 0
+        ? (range.start ?? range.from)
+        : (range.to ?? range.from + offset)
+  }
+  return null
+}
 
 /** A cell's inline Markdown as static DOM, as the formatted view renders text it does not reveal. */
 export function renderInline(
@@ -305,6 +324,7 @@ export function renderInline(
   const marks: InlineMark[] = [],
     hidden: { from: number; to: number; widget: WidgetType | null }[] = [],
     widgets: { at: number; widget: WidgetType; side: number }[] = []
+  const escapes = new Map<number, number>()
   decorateCell(
     view.state,
     text,
@@ -314,6 +334,7 @@ export function renderInline(
       hide: (from, to, widget) => hidden.push({ from, to, widget }),
       marker() {},
       widget: (at, widget, side) => widgets.push({ at, widget, side }),
+      escape: (at, from) => escapes.set(at, from),
     },
     () => false,
     from,
@@ -331,10 +352,16 @@ export function renderInline(
       parent.append(element)
       parents.push(element)
     } else if (op.type === 'close') parents.pop()
-    else if (op.type === 'widget') parent.append(op.widget.toDOM(view))
-    else {
+    else if (op.type === 'widget') {
+      const dom = op.widget.toDOM(view)
+      textPositions.set(dom, { from: op.from, to: op.to })
+      parent.append(dom)
+    } else {
       const node = document.createTextNode(text.slice(op.from, op.to))
-      textStarts.set(node, op.from)
+      textPositions.set(node, {
+        from: op.from,
+        start: escapes.get(op.from) ?? op.from,
+      })
       parent.append(node)
     }
   }
@@ -442,6 +469,8 @@ export type CellHost = {
   move(move: CellMove): boolean
   /** Leave the table, after it or before it, back to the formatted view. */
   leave(after: boolean): void
+  /** Leave for a paragraph below a table that ends the note, as Mod-Enter does after a final block; false elsewhere. */
+  exit(): boolean
   /** Focus left the editor for something outside it. */
   blurred(editor: CellEditor): void
 }
@@ -647,7 +676,10 @@ export class CellEditor {
               },
               { key: 'End', run: edge(true, false), shift: edge(true, true) },
               { key: 'Enter', run: cellLineBreak, shift: cellLineBreak },
-              { key: 'Mod-Enter', run: cellLineBreak },
+              {
+                key: 'Mod-Enter',
+                run: (view) => host.exit() || cellLineBreak(view),
+              },
               {
                 key: 'Escape',
                 run: () => {

@@ -80,6 +80,7 @@ import {
   referenceLinks,
 } from './formatted-references'
 import type { FormattedSyntax } from './formatted-syntax'
+import { nativeDOMSelection } from './native-dom-selection'
 import './formatted'
 import './live-preview.css'
 
@@ -2095,6 +2096,7 @@ export function livePreview(
     },
   )
   return [
+    nativeDOMSelection,
     contributions.of(formattedContributions.extension(options.flavors)),
     formattedTree.of(syntax.tree),
     follow,
