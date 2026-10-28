@@ -1131,3 +1131,127 @@ test('select-all code input keeps matching fences as literal code', () => {
     assert.equal(doc.content[0].content[0].text, normalized)
   }
 })
+
+test('enter on a blank line after the last block adds an empty paragraph, and one line between blocks', () => {
+  // Before, it added one line break, which the rich view shows as nothing.
+  assert.equal(run('first\n\n|', blockBreak), 'first\n\n\n\n|')
+  assert.equal(run('first\n\n|\n', blockBreak), 'first\n\n\n\n|\n')
+  assert.equal(run('a\n\n|\n\nb', blockBreak), 'a\n\n\n|\n\nb')
+  // The note's end is where it ends once the selection is gone.
+  assert.equal(run('first\n\n^\n\nsecond|', blockBreak), 'first\n\n\n\n|')
+})
+
+test('enter on a blank line after the last block reads no more of a 50 MiB blank tail', () => {
+  // Before, it read every blank line after the caret: 12,800 lines, 52,416,000 units.
+  const doc = `x\n\n${`${' '.repeat(4095)}\n`.repeat(12800)}`
+  const sample = markdown.parse('x')
+  const tree = new Tree(
+    sample.type,
+    [new Tree(sample.topNode.firstChild.type, [], [], 1)],
+    [0],
+    doc.length,
+  )
+  const state = EditorState.create({ doc, selection: { anchor: 2 } })
+  const prototype = Object.getPrototypeOf(state.doc)
+  const originals = Object.fromEntries(
+    ['sliceString', 'lineAt', 'line'].map((name) => [name, prototype[name]]),
+  )
+  let lines = 0,
+    units = 0
+  for (const name of Object.keys(originals))
+    prototype[name] = function (...args) {
+      const value = originals[name].apply(this, args)
+      if (name !== 'sliceString') lines++
+      units += value.length
+      return value
+    }
+  let spec
+  try {
+    spec = blockBreak(state, tree)
+  } finally {
+    Object.assign(prototype, originals)
+  }
+  assert.ok(lines >= 1 && lines <= 4, `${lines} lines read`)
+  assert.ok(units <= 4096, `${units} units read`)
+  const next = state.update(spec).state.doc
+  assert.equal(next.length, doc.length + 2)
+  assert.equal(next.sliceString(0, 5), 'x\n\n\n\n')
+})
+
+for (const [name, tail, todo] of [
+  ['no suffix', ''],
+  ['4096 line feeds', '\n'.repeat(4096)],
+  ['4097 line feeds', '\n'.repeat(4097)],
+  ['8192 line feeds', '\n'.repeat(8192)],
+  ['8192 line feeds before text', `${'\n'.repeat(8192)}last`],
+  [
+    '4098 spaces and tabs',
+    ' \t\n'.repeat(1366),
+    'formatted gap input-blank-tail-001: unparsed space and tab tails retain empty paragraphs',
+  ],
+]) {
+  test(`enter before ${name} agrees with a complete parse`, { todo }, () => {
+    const prefix = `first\n\n${'old tail\n\n'.repeat(20000)}`
+    const doc = prefix + tail
+    const parse = new ChunkedMarkdownParser(
+      markdown,
+      markdown,
+    ).startChunkedParse(
+      {
+        length: doc.length,
+        lineChunks: false,
+        chunk: (from) => doc.slice(from, from + 4096),
+        read: (from, to) => doc.slice(from, to),
+      },
+      [],
+      { from: 0, to: 8192 },
+    )
+    let partial = parse.advance()
+    while (!partial) partial = parse.advance()
+    assert.ok(partial.topNode.lastChild.to < 20000, 'parsed only at the start')
+    const state = EditorState.create({
+      doc,
+      selection: { anchor: prefix.length },
+    })
+    let units = 0
+    const slice = state.sliceDoc.bind(state)
+    state.sliceDoc = (...args) => {
+      const value = slice(...args)
+      units += value.length
+      return value
+    }
+    const actual = state.update(blockBreak(state, partial)).state
+    const expected = state.update(blockBreak(state, markdown.parse(doc))).state
+    assert.ok(actual.doc.eq(expected.doc))
+    assert.ok(actual.selection.eq(expected.selection))
+    assert.equal(actual.doc.length, doc.length + (/\S/.test(tail) ? 1 : 2))
+    assert.ok(units <= 4096, `${units} source units read`)
+  })
+}
+
+test('enter on a blank line keeps the same pairs while the note is partly parsed', () => {
+  // Before, a caret after text not parsed yet always gained one line break.
+  const doc = `first\n\n${'old tail\n\n'.repeat(20000)}`
+  const chunked = new ChunkedMarkdownParser(markdown, markdown)
+  const parse = chunked.startChunkedParse(
+    {
+      length: doc.length,
+      lineChunks: false,
+      chunk: (from) => doc.slice(from, from + 4096),
+      read: (from, to) => doc.slice(from, to),
+    },
+    [],
+    { from: 0, to: 8192 },
+  )
+  let partial = parse.advance()
+  while (!partial) partial = parse.advance()
+  assert.ok(partial.topNode.lastChild.to < 20000, 'parsed only at the start')
+  const complete = markdown.parse(doc)
+  // At the end, and on a blank line followed by text not parsed yet.
+  for (const caret of [doc.length, doc.indexOf('\n\nold', 100000) + 1]) {
+    const state = EditorState.create({ doc, selection: { anchor: caret } })
+    const added = (tree) =>
+      state.update(blockBreak(state, tree)).state.doc.length - doc.length
+    assert.equal(added(partial), added(complete), String(caret))
+  }
+})

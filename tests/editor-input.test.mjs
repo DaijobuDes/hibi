@@ -2950,9 +2950,6 @@ test('codemirror: blank paragraphs and a typed trailing space survive tab switch
   const typed = await acceptedInput(page)
   await t.test(
     'native Enter retains the historical exact four-LF source',
-    {
-      todo: 'formatted gap input-056: native enter preserves four line feeds between paragraphs',
-    },
     () => {
       assert.equal(typed.markdown, 'first\n\n\n\nsecond ')
       assert.doesNotMatch(typed.markdown, /&nbsp;|\u00a0/)

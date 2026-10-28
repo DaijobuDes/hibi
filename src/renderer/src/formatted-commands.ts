@@ -261,6 +261,10 @@ function nextMarker(state: EditorState, item: SyntaxNode) {
   return `${indent}${ordered ? `${Number(ordered[1]) + 1}${ordered[2]}` : text} ${task ? '[ ] ' : ''}`
 }
 
+/** Longest unparsed suffix read when the line count cannot prove it blank. */
+// ponytail: longer unparsed space/tab tails need an indexed whitespace proof.
+const unparsedLimit = 4096
+
 /** Enter: split paragraphs and headings, continue or leave lists and quotes, newline in code. */
 export function blockBreak(
   state: EditorState,
@@ -353,8 +357,26 @@ export function blockBreak(
         : spanned(state, tree, range.from, range.to)
       return insert(`${close}\n${prefix}${open}`, at, end)
     }
-    // A blank line between blocks gains another empty line.
-    if (blank(line.text)) return insert('\n')
+    // A blank line between blocks gains another empty line. After the last
+    // block, blank lines show in pairs as empty paragraphs, as in the rich
+    // view, so it gains a pair. The tree says whether a block ends after the
+    // selection; the line index proves any length of newline-only suffix
+    // blank without reading it. Other unparsed text needs a bounded read.
+    if (blank(line.text)) {
+      let last = tree.topNode.lastChild
+      while (last && !last.type.is('Block')) last = last.prevSibling
+      const rest = state.doc.length - range.to
+      const unparsed =
+        tree.length < state.doc.length ||
+        uncovered(tree, range.to, state.doc.length)
+      const after =
+        (!last || last.to <= range.to) &&
+        (!unparsed ||
+          rest === state.doc.lines - state.doc.lineAt(range.to).number ||
+          (rest <= unparsedLimit &&
+            !/\S/.test(state.sliceDoc(range.to, state.doc.length))))
+      return insert(after ? '\n\n' : '\n')
+    }
     const { close, open, at, end } = range.empty
       ? reopened(state, tree, pos)
       : spanned(state, tree, range.from, range.to)
