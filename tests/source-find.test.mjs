@@ -3,6 +3,7 @@ import test from 'node:test'
 import { EditorSelection, EditorState } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import {
+  formattedFindViewport,
   renderedFindHighlights,
   sourceFindHighlights,
 } from '../src/renderer/src/source-find.ts'
@@ -84,6 +85,27 @@ test('rendered highlights mark contributing segments and the selected offscreen 
     [0, 6, 'cm-searchMatch'],
     [8, 13, 'cm-searchMatch'],
   ])
+})
+
+test('formatted highlight window clamps stale layouts to the current document', () => {
+  const original = globalThis.window
+  globalThis.window = { innerHeight: 100 }
+  try {
+    const view = {
+      state: EditorState.create({ doc: 'x'.repeat(31) }),
+      contentDOM: {
+        getBoundingClientRect: () => ({ top: 0, bottom: 0 }),
+        parentElement: null,
+      },
+      viewport: { from: 0, to: 43 },
+    }
+    assert.deepEqual(formattedFindViewport(view), { from: 0, to: 31 })
+    view.viewport = { from: 40, to: 43 }
+    assert.deepEqual(formattedFindViewport(view), { from: 31, to: 31 })
+  } finally {
+    if (original === undefined) delete globalThis.window
+    else globalThis.window = original
+  }
 })
 
 test('rendered highlights discard ranges after a document edit', () => {

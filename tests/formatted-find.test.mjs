@@ -6,8 +6,7 @@ import test from 'node:test'
 import { renderedReplaceEdits } from '../src/shared/rendered-replace.ts'
 import { electron, waitForDocumentEditor } from './electron.mjs'
 import { selectFormattedEngine } from './formatted-engine.mjs'
-import { pressShortcut, replaceSourceText } from './keyboard.mjs'
-import { clickMenu } from './menu.mjs'
+import { clickMenu, pressShortcut, replaceSourceText } from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
 
 const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
@@ -314,6 +313,7 @@ async function openFind(
         JSON.stringify({
           expected,
           actual: await bar.locator('output').textContent(),
+          status: await bar.locator('output').getAttribute('aria-label'),
           query: await input.inputValue(),
         }),
       )
@@ -459,7 +459,7 @@ test('formatted find follows the active syntax configuration', {
   timeout: 45000,
 }, async (t) => {
   const markdown = 'hello **world** and hello world.'
-  const { app, page, input, count } = await openFind(t, markdown)
+  const { app, page, rich, input, count } = await openFind(t, markdown)
   await input.fill('hello world')
   await count('1/2')
   for (const enabled of [false, true]) {
@@ -472,8 +472,29 @@ test('formatted find follows the active syntax configuration', {
       .getByRole('button', { name: /^back to app$/i, exact: true })
       .click()
     await pressShortcut(app, `${mod}+f`)
-    await input.press('Enter')
-    await count(enabled ? '1/2' : '1/1')
+    const ranges = enabled
+      ? [
+          [0, 13],
+          [20, 31],
+        ]
+      : [[20, 31]]
+    await waitForAsync(
+      page,
+      (total) =>
+        document
+          .querySelector('.find-bar output')
+          ?.textContent.endsWith(`/${total}`),
+      ranges.length,
+    )
+    const selected = await rich.evaluate((element) => {
+      const { from, to } = element.cmTile.root.view.state.selection.main
+      return [from, to]
+    })
+    const current =
+      ranges.findIndex(
+        ([from, to]) => from === selected[0] && to === selected[1],
+      ) + 1
+    await count(`${current}/${ranges.length}`)
   }
   assert.equal(
     (await page.evaluate(() => window.hibi.getDocument())).markdown,

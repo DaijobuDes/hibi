@@ -143,12 +143,19 @@ const formattedWindow = StateField.define<FindRange | null>({
 
 /** The formatted highlight window, measured before its first worker request. */
 export function formattedFindViewport(view: EditorView): FindRange {
-  const shown = view.state.field(formattedWindow, false)
-  if (shown) return shown
-  const visible = visibleRange(view.contentDOM, (node, offset) =>
-    view.posAtDOM(node, offset),
-  )
-  return visible ? findWindow(visible, view.state.doc.length) : view.viewport
+  let shown = view.state.field(formattedWindow, false)
+  if (!shown) {
+    const visible = visibleRange(view.contentDOM, (node, offset) =>
+      view.posAtDOM(node, offset),
+    )
+    shown = visible ? findWindow(visible, view.state.doc.length) : view.viewport
+  }
+  // Layout can still describe the previous document during an edit.
+  const length = view.state.doc.length
+  return {
+    from: Math.min(length, shown.from),
+    to: Math.min(length, shown.to),
+  }
 }
 
 /** The highlight window changed by an update, if any. */
