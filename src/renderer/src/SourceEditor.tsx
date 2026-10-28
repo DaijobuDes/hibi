@@ -1014,6 +1014,10 @@ export function SourceEditor({
             'aria-label': 'Document editor',
             'aria-description': 'Press Escape, then Tab, to leave the editor.',
           }),
+          // CodeMirror only marks read-only views; like the rich editor, also say when editing resumes.
+          EditorView.contentAttributes.of((view) => ({
+            'aria-readonly': String(view.state.readOnly),
+          })),
         ]
       parsedFlavors = flavorConfigs()
       const support =
@@ -2465,6 +2469,7 @@ export function SourceEditor({
       viewId as ViewId,
       kind,
       {
+        surface: () => editor.contentDOM,
         read: () => {
           const source = bridge.snapshot()
           if (
