@@ -5,6 +5,7 @@ import { DocumentSession } from '../src/shared/document-session.ts'
 import { DocumentWorkerService } from '../src/shared/document-worker-service.ts'
 import { MarkdownBoundaryIndex } from '../src/shared/markdown-boundary-index.ts'
 import { renderedConfig } from './rendered-config.mjs'
+import { waitForProgress } from './worker-progress.mjs'
 
 class TestWorker {
   messages = []
@@ -317,6 +318,68 @@ test('two pane boundary streams retain paged acknowledgement and sequence owners
     f.workers[0].messages.filter(({ type }) => type === 'boundary-ack').length,
     sequences[0].length + sequences[1].length,
   )
+})
+
+test('pooled code coverage preserves pane subscriptions and disposal', async (t) => {
+  const f = fixture(t, '~~~\nbody\n~~~\n\n'.repeat(300))
+  const first = f.connect(),
+    second = f.connect()
+  const a = [],
+    b = []
+  const until = (predicate) =>
+    waitForProgress(
+      predicate,
+      () => f.workers[0]?.messages.length ?? 0,
+      2000,
+      () =>
+        JSON.stringify({
+          a: a.length,
+          b: b.length,
+          recent: f.workers[0]?.messages
+            .slice(-4)
+            .map((message) => message.type),
+        }),
+    )
+  first.subscribeCodeExtents((page) => a.push(page))
+  const stop = second.subscribeCodeExtents((page) => b.push(page))
+  const boundaries = () => {
+    const pages = []
+    second.boundaries(
+      config,
+      (page, acknowledge) => {
+        pages.push(page)
+        acknowledge()
+      },
+      assert.fail,
+    )
+    return until(() => pages.at(-1)?.done).then(() => pages)
+  }
+  await boundaries()
+  await until(() =>
+    b.some(
+      (page) =>
+        page.version === 0 && page.to === f.session.snapshot().normalizedLength,
+    ),
+  )
+  assert.equal(a.flatMap((page) => page.records).length, 300)
+  assert.deepEqual(a, b)
+  first.dispose()
+  const firstCount = a.length
+  f.session.edit([{ from: 4, to: 8, insert: 'changed' }], 'source', 'code')
+  await until(() => b.some((page) => page.version === 1))
+  assert.equal(a.length, firstCount)
+  assert.ok(b.some((page) => page.version === 1))
+  stop()
+  stop()
+  first.subscribeCodeExtents(() => assert.fail('disposed pane received code'))()
+  const secondCount = b.length
+  f.session.edit([{ from: 4, to: 11, insert: 'again' }], 'source', 'code')
+  const pages = await boundaries()
+  assert.ok(pages.every((page) => page.code === undefined))
+  assert.equal(a.length, firstCount)
+  assert.equal(b.length, secondCount)
+  assert.equal(f.workers.length, 1)
+  assert.equal(f.session.counters().materializations, 0)
 })
 
 test('two panes stream 50 mib once and a local edit sends one operation without rereading source', async (t) => {

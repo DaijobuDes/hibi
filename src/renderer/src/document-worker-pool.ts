@@ -12,6 +12,7 @@ export type DocumentWorkerConnection = Pick<
   | 'releaseMetadata'
   | 'boundaries'
   | 'releaseBoundaries'
+  | 'subscribeCodeExtents'
   | 'dispose'
 >
 type FindJob = {
@@ -174,6 +175,7 @@ function workerGroup(session: DocumentSession, initial: ClientOptions) {
   const group = {
     connect(owner: ClientOptions): DocumentWorkerConnection {
       owners.add(owner)
+      const codeSubscriptions = new Set<() => void>()
       let disposed = false
       return {
         find(...args) {
@@ -197,9 +199,25 @@ function workerGroup(session: DocumentSession, initial: ClientOptions) {
           nextBoundaries()
         },
         releaseBoundaries: (retain) => releaseBoundaries(owner, retain),
+        subscribeCodeExtents(receive) {
+          if (disposed) return () => {}
+          let active = true
+          const unsubscribe = client.subscribeCodeExtents((page) => {
+            if (active && !disposed) receive(page)
+          })
+          const stop = () => {
+            if (!active) return
+            active = false
+            codeSubscriptions.delete(stop)
+            unsubscribe()
+          }
+          codeSubscriptions.add(stop)
+          return stop
+        },
         dispose() {
           if (disposed) return
           disposed = true
+          for (const stop of codeSubscriptions) stop()
           owners.delete(owner)
           releaseMetadata(owner)
           releaseBoundaries(owner)
