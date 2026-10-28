@@ -1113,6 +1113,38 @@ test('a cell editor whose row is deleted leaves focus that moved out of the edit
   assert.equal((await state()).editor, null)
 })
 
+test('a native selection in a read-only table becomes the editing selection', {
+  timeout: 30000,
+}, async () => {
+  const doc = 'before\n\n| h | other |\n| - | - |\n| alpha | beta |\n\nafter'
+  await mount(doc)
+  await harness.evaluate(() => window.tables.setEditable(false))
+  await harness
+    .locator('.hibi-lp-table td', { hasText: 'alpha' })
+    .dblclick({ position: { x: 8, y: 8 } })
+  assert.equal(await harness.evaluate(() => getSelection().toString()), 'alpha')
+  await harness.evaluate(() => window.tables.settle())
+  const picked = await state()
+  const from = doc.indexOf('alpha')
+  assert.deepEqual(
+    [
+      Math.min(picked.anchor, picked.head),
+      Math.max(picked.anchor, picked.head),
+    ],
+    [from, from + 5],
+  )
+  await harness.keyboard.type('BLOCKED')
+  assert.equal((await state()).doc, doc)
+  await harness.evaluate(() => window.tables.setEditable(true))
+  await harness.evaluate(() => window.tables.settle())
+  await harness.keyboard.type('XY')
+  assert.equal((await state()).doc, doc.replace('alpha', 'XY'))
+  await harness.keyboard.press(
+    process.platform === 'darwin' ? 'Meta+z' : 'Control+z',
+  )
+  assert.equal((await state()).doc, doc)
+})
+
 test('cell editors take no input while the formatted view takes none', {
   timeout: 30000,
 }, async () => {
