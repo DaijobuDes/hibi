@@ -38,8 +38,8 @@ accepted differences are not gaps; their tests assert each engine. the codemirro
 | find-001 | [formatted-find.test.mjs:401](formatted-find.test.mjs#L401) | formatted find must match rendered phrases across hidden marks | 4a: rendered find projection |
 | find-003 | [formatted-find.test.mjs:664](formatted-find.test.mjs#L664) | formatted phrase counts must include matches across marks | 4a: rendered find projection |
 | find-005 | [formatted-find.test.mjs:916](formatted-find.test.mjs#L916) | wide code matches must scroll horizontally with their start visible | 4b: find wiring and navigation |
-| corpus-011 | [markdown-semantics-native.test.mjs:98](markdown-semantics-native.test.mjs#L98) | disabled heading syntax must preserve bold formatting inside alerts | 9: outline semantics and diagram lifecycle |
-| corpus-012 | [markdown-semantics-native.test.mjs:100](markdown-semantics-native.test.mjs#L100) | disabled heading syntax must preserve bold formatting inside subtext | 9: outline semantics and diagram lifecycle |
+| corpus-011 | [markdown-semantics-native.test.mjs:105](markdown-semantics-native.test.mjs#L105) | disabled heading syntax must preserve bold formatting inside alerts | 9: outline semantics and diagram lifecycle |
+| corpus-012 | [markdown-semantics-native.test.mjs:107](markdown-semantics-native.test.mjs#L107) | disabled heading syntax must preserve bold formatting inside subtext | 9: outline semantics and diagram lifecycle |
 | export-002 | [marked-large-paragraph.test.mjs:856](marked-large-paragraph.test.mjs#L856) | an indented failed reference title must remain paragraph text instead of code | 10a: shared reference definition parsing |
 | export-003 | [marked-large-paragraph.test.mjs:287](marked-large-paragraph.test.mjs#L287) | a block math interruption must end a reference title | 10a: shared reference definition parsing |
 | export-004 | [marked-large-paragraph.test.mjs:911](marked-large-paragraph.test.mjs#L911) | a gfm table at the first title line must leave a destination-only definition | 10a: shared reference definition parsing |

@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { build } from 'esbuild'
+import { formattedMarkdownParser } from '../src/shared/formatted-markdown.ts'
 import { markdownSourceParser } from '../src/shared/markdown-source-references.ts'
 import {
   electron,
@@ -91,6 +92,12 @@ const cases = [
     source: '- [ ] todo\n- [x] done\n\n# after',
     compatibility: true,
   },
+  { name: 'intraword non-bmp symbol', source: 'ab**😀cd**ef' },
+  { name: 'intraword non-bmp punctuation', source: 'ab**𐩐cd**ef' },
+  {
+    name: 'non-bmp emphasis controls',
+    source: 'ab**cd**ef **😀cd** ab**€cd**ef',
+  },
 ]
 
 const formattedGaps = {
@@ -99,6 +106,22 @@ const formattedGaps = {
   '1/extras/0':
     'formatted gap corpus-012: disabled heading syntax must preserve bold formatting inside subtext',
 }
+
+for (const fixture of cases.filter((item) =>
+  item.name.startsWith('intraword non-bmp'),
+))
+  test(`formatted syntax keeps ${fixture.name} delimiters literal`, () => {
+    const tokens = markdownSourceParser({ gfm: true }).lexer(fixture.source)
+    assert.equal(
+      tokens[0].tokens.some((token) => token.type === 'strong'),
+      false,
+    )
+    assert.equal(
+      formattedMarkdownParser([]).parse(fixture.source).toString(),
+      'Document(Paragraph)',
+      'CommonMark punctuation includes Unicode P and S code points',
+    )
+  })
 
 // A reference in a subtext line resolves against later definitions too, an
 // accepted difference: the native schema reads subtext before them.
@@ -109,6 +132,21 @@ const formattedDifferences = {
 
 // Frozen outcomes are shared by both engines and checked by the native control.
 const formattedOutcomes = {
+  '0/intraword non-bmp symbol/0': {
+    text: 'ab**😀cd**ef',
+    headings: [],
+    counts: { words: 3, characters: 11 },
+  },
+  '0/intraword non-bmp punctuation/0': {
+    text: 'ab**𐩐cd**ef',
+    headings: [],
+    counts: { words: 3, characters: 11 },
+  },
+  '0/non-bmp emphasis controls/0': {
+    text: 'abcdef 😀cd ab**€cd**ef',
+    headings: [],
+    counts: { words: 5, characters: 22 },
+  },
   '0/empty/0': { text: '', headings: [], counts: { words: 0, characters: 0 } },
   '0/whitespace/0': {
     text: '\n',
@@ -224,6 +262,21 @@ const formattedOutcomes = {
     text: '\n\ntodo\n\ndone\nafter',
     headings: ['after'],
     counts: { words: 3, characters: 18 },
+  },
+  '1/intraword non-bmp symbol/0': {
+    text: 'ab**😀cd**ef',
+    headings: [],
+    counts: { words: 3, characters: 11 },
+  },
+  '1/intraword non-bmp punctuation/0': {
+    text: 'ab**𐩐cd**ef',
+    headings: [],
+    counts: { words: 3, characters: 11 },
+  },
+  '1/non-bmp emphasis controls/0': {
+    text: 'ab**cd**ef **😀cd** ab**€cd**ef',
+    headings: [],
+    counts: { words: 7, characters: 30 },
   },
   '1/empty/0': { text: '', headings: [], counts: { words: 0, characters: 0 } },
   '1/whitespace/0': {
@@ -632,6 +685,62 @@ test('tiptap: paginated worker semantics match native schema text, headings and 
         }
       }
     })
+    for (const fixture of cases.filter((item) =>
+      item.name.includes('non-bmp'),
+    )) {
+      const file = join(root, `${disabled.length}-${fixture.name}.md`)
+      await writeFile(file, fixture.source)
+      await app.evaluate(({ dialog }, file) => {
+        dialog.showOpenDialog = async () => ({
+          canceled: false,
+          filePaths: [file],
+        })
+      }, file)
+      await clickMenu(app, 'Open…')
+      await waitForAsync(
+        page,
+        async (source) => (await window.hibi.getDocument()).markdown === source,
+        fixture.source,
+      )
+      await page.waitForFunction(
+        (expected) =>
+          document.querySelector('.tiptap')?.editor.state.doc.textContent ===
+          expected,
+        formattedOutcomes[`${disabled.length ? 1 : 0}/${fixture.name}/0`].text,
+      )
+      const actual = await page.locator('.tiptap').evaluate((element) => {
+        const bold = []
+        element.editor.state.doc.descendants((node) => {
+          if (
+            node.isText &&
+            node.marks.some((mark) => mark.type.name === 'bold')
+          )
+            bold.push(node.text)
+        })
+        return {
+          text: element.editor.state.doc.textContent,
+          bold,
+          domBold: [...element.querySelectorAll('strong')].map(
+            (node) => node.textContent,
+          ),
+        }
+      })
+      const bold =
+        !disabled.length && fixture.name === 'non-bmp emphasis controls'
+          ? ['cd', '😀cd']
+          : []
+      assert.deepEqual(
+        actual,
+        {
+          text: formattedOutcomes[
+            `${disabled.length ? 1 : 0}/${fixture.name}/0`
+          ].text,
+          bold,
+          domBold: bold,
+        },
+        `Live native model and DOM: ${fixture.name}`,
+      )
+    }
   }
 })
 
@@ -648,7 +757,7 @@ test('codemirror: semantic fixtures preserve source, headings and formatted coun
     join(profile, 'addons.json'),
     JSON.stringify({ 'word-count': true }),
   )
-  assert.equal(Object.keys(formattedOutcomes).length, 48)
+  assert.equal(Object.keys(formattedOutcomes).length, 54)
   const app = await electron.launch({
     args: [resolve('.'), `--user-data-dir=${profile}`],
   })
@@ -929,6 +1038,14 @@ test('codemirror: semantic fixtures preserve source, headings and formatted coun
               expectedText,
               'visible formatted text matches the native text oracle',
             )
+            if (fixture.name.includes('non-bmp'))
+              assert.deepEqual(
+                await rich.locator('.hibi-lp-strong').allInnerTexts(),
+                !disabled.length && fixture.name === 'non-bmp emphasis controls'
+                  ? ['cd', '😀cd']
+                  : [],
+                `Visible strong marks: ${fixture.name}`,
+              )
             assert.deepEqual(actual.headings, expectedHeadings)
           },
         )
