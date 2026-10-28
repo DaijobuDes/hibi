@@ -93,13 +93,6 @@ const cases = [
   },
 ]
 
-const formattedGaps = {
-  '1/gfm/0':
-    'formatted gap corpus-011: disabled heading syntax must preserve bold formatting inside alerts',
-  '1/extras/0':
-    'formatted gap corpus-012: disabled heading syntax must preserve bold formatting inside subtext',
-}
-
 // A reference in a subtext line resolves against later definitions too, an
 // accepted difference: the native schema reads subtext before them.
 const formattedDifferences = {
@@ -840,7 +833,6 @@ test('codemirror: semantic fixtures preserve source, headings and formatted coun
         )
         await t.test(
           `${fixture.name}, pass ${pass}, ${disabled.length ? 'disabled' : 'default'} syntax`,
-          { todo: formattedGaps[`${configuration}/${fixture.name}/${pass}`] },
           async (t) => {
             // Outline labels settle independently from word-count replies.
             await page.waitForFunction(
@@ -897,15 +889,11 @@ test('codemirror: semantic fixtures preserve source, headings and formatted coun
                   .getByRole('heading', { name: 'after', exact: true })
                   .waitFor()
             }
-            const counts = () =>
-              assert.equal(
-                actual.counts,
-                formattedCount,
-                'formatted counts exclude Markdown syntax, as in the native Tiptap oracle',
-              )
-            const countGap = formattedGaps[`${key}/counts`]
-            if (countGap) await t.test('counts', { todo: countGap }, counts)
-            else counts()
+            assert.equal(
+              actual.counts,
+              formattedCount,
+              'formatted counts exclude Markdown syntax, as in the native Tiptap oracle',
+            )
             await rich.evaluate((element) => element.blur())
             /** The view's visible text, or whether it is `expected`. */
             const visible = (expected) => {
