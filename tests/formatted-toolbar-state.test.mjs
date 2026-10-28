@@ -2546,6 +2546,73 @@ test('replacing a formatted inline range retains its first marks, source and his
     }
 })
 
+test('table range typing keeps its metadata and one source-history group through padding changes', () => {
+  const editor = richEditor(
+    '| a | b |\n| --- | --- |\n| **long** rest | tail |',
+  )
+  const source = editor.getMarkdown(),
+    from = source.indexOf('long'),
+    to = source.indexOf('rest') + 4
+  const { target, bridge, session, dispose } = sessionTyping(source, from)
+  target.dispatch({ selection: { anchor: from, head: to } })
+  const originalSelection = target.state.selection,
+    events = [],
+    update = target.update
+  target.update = (transactions) => {
+    for (const transaction of transactions)
+      if (transaction.docChanged)
+        events.push(transaction.isUserEvent('input.type'))
+    update(transactions)
+  }
+  try {
+    const position = (word, end) => {
+      let found
+      editor.state.doc.descendants((node, pos) => {
+        if (found === undefined && node.isText && node.text.includes(word))
+          found = pos + node.text.indexOf(word) + end
+      })
+      assert.notEqual(found, undefined)
+      return found
+    }
+    editor.commands.setTextSelection({
+      from: position('long', 0),
+      to: position('rest', 4),
+    })
+    editor.view.dispatch(editor.state.tr.insertText('Z'))
+    target.type('Z')
+    const first = session.snapshot().materialize()
+    const header = (markdown) =>
+      markdown.split('\n').find((line) => line.startsWith('|'))
+    assert.ok(header(source))
+    assert.notEqual(header(first), header(source))
+    assert.equal(first, editor.getMarkdown())
+    assert.deepEqual(events, [true])
+    editor.view.dispatch(editor.state.tr.insertText('Q'))
+    target.type('Q')
+    const typed = first.replace('**Z**', '**ZQ**'),
+      caret = target.state.selection
+    assert.equal(session.snapshot().materialize(), typed)
+    assert.equal(session.snapshot().version, 2)
+    assert.deepEqual(events, [true, true])
+    assert.ok(
+      sameRichSourceDocument(
+        editor.schema.nodeFromJSON(editor.markdown.parse(typed)),
+        editor.state.doc,
+        true,
+      ),
+    )
+    assert.equal(bridge.undo(), true)
+    assert.equal(session.snapshot().materialize(), source)
+    assert.ok(target.state.selection.eq(originalSelection))
+    assert.equal(bridge.redo(), true)
+    assert.equal(session.snapshot().materialize(), typed)
+    assert.ok(target.state.selection.eq(caret))
+  } finally {
+    dispose()
+    editor.destroy()
+  }
+})
+
 test('inline range input leaves composition, structural input and plain text on their existing paths', () => {
   for (const kind of [
     'readonly',

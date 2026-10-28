@@ -612,6 +612,7 @@ function normalizeTables(
   if (!changes.length) return spec
   const second = next.update({ changes })
   return {
+    ...spec,
     changes: first.changes.compose(second.changes),
     selection: first.newSelection.map(second.changes),
   }
