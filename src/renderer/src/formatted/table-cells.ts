@@ -358,7 +358,10 @@ export function renderInline(
       parent.append(dom)
     } else {
       const node = document.createTextNode(text.slice(op.from, op.to))
-      textPositions.set(node, { from: op.from, start: escapes.get(op.from) })
+      textPositions.set(node, {
+        from: op.from,
+        start: escapes.get(op.from) ?? op.from,
+      })
       parent.append(node)
     }
   }
