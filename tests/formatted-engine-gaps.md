@@ -73,7 +73,7 @@ accepted differences are not gaps; their tests assert each engine. the codemirro
 | input-055 | [editor-input.test.mjs:2441](editor-input.test.mjs#L2441) | native 1000 line input into select all preserves literal blocks | 8a: native input, structure and toolbar state |
 | input-051 | [editor-input.test.mjs:2728](editor-input.test.mjs#L2728) | native multiline input exits empty list and preserves following paragraph | 8a: native input, structure and toolbar state |
 | input-056 | [editor-input.test.mjs:3034](editor-input.test.mjs#L3034) | native enter preserves four line feeds between paragraphs | 8a: native input, structure and toolbar state |
-| input-075 | [formatted-toolbar-state.test.mjs:261](formatted-toolbar-state.test.mjs#L261) | the code block action at a caret turns its paragraph into code | 8a: native input, structure and toolbar state |
+| input-075 | [formatted-toolbar-state.test.mjs:263](formatted-toolbar-state.test.mjs#L263) | the code block action at a caret turns its paragraph into code | 8a: native input, structure and toolbar state |
 | semantics-001 | [editor-plugins.test.mjs:67](editor-plugins.test.mjs#L67) | source-view word counts must include markdown characters | 9: outline semantics and diagram lifecycle |
 | find-001 | [formatted-find.test.mjs:210](formatted-find.test.mjs#L210) | formatted find must match rendered phrases across hidden marks | 4a: rendered find projection |
 | find-002 | [formatted-find.test.mjs:339](formatted-find.test.mjs#L339) | undo must restore matches without a current find result | 4b: find wiring and navigation |
