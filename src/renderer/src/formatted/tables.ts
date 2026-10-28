@@ -28,6 +28,7 @@ import {
   formattedRenderInputs,
   formattedViews,
 } from '../formatted-contributions.ts'
+import { registerDOMPositions } from '../native-dom-selection.ts'
 import { tableActions } from '../source-formatting.ts'
 import {
   readTableLayouts,
@@ -371,6 +372,11 @@ class TableView {
   private stored: string | null = null
   /** Where the table is after the change being applied, while its state is handed over. */
   private place: Place | null = null
+  private cellText = new WeakMap<
+    Element,
+    { length: number; skipped: number[] }
+  >()
+  private unregisterPositions: () => void
 
   readonly view: EditorView
   private widget: TableWidget
@@ -378,6 +384,11 @@ class TableView {
     this.view = view
     this.widget = widget
     this.dom.className = 'tableWrapper hibi-lp-table'
+    this.unregisterPositions = registerDOMPositions(
+      view,
+      this.dom,
+      (node, offset) => this.position(node, offset),
+    )
     this.dom.addEventListener('mousedown', this.select)
     this.dom.addEventListener('mousemove', this.hover)
     this.dom.addEventListener('mouseleave', this.leaveHandle)
@@ -538,6 +549,15 @@ class TableView {
     const content = cell
       ? cellContent(line.text.slice(cell.from, cell.to))
       : null
+    if (content) {
+      // Keep only where an escaped pipe skipped a source character, not an
+      // offset for every character of a long cell.
+      const skipped: number[] = []
+      if (content.source.at(-1) !== content.text.length)
+        for (const [at, source] of content.source.entries())
+          while (skipped.length < source - at) skipped.push(at)
+      this.cellText.set(element, { length: content.text.length, skipped })
+    }
     if (content?.text && cell)
       renderInline(
         this.view,
@@ -1754,6 +1774,58 @@ class TableView {
       event.preventDefault()
   }
 
+  /** A native point in rendered cell text, where its source is now. */
+  private position(node: Node, offset: number): number | null {
+    if (!this.current || this.editing?.editor.view.dom.contains(node))
+      return null
+    if (node.nodeType !== Node.TEXT_NODE) {
+      const child = node.childNodes[offset] ?? node.childNodes[offset - 1]
+      if (!child) return null
+      const before = offset < node.childNodes.length
+      const text = this.dom.ownerDocument.createTreeWalker(
+        child,
+        NodeFilter.SHOW_TEXT,
+        {
+          acceptNode: (node) =>
+            textStarts.has(node)
+              ? NodeFilter.FILTER_ACCEPT
+              : NodeFilter.FILTER_SKIP,
+        },
+      )
+      node =
+        child.nodeType === Node.TEXT_NODE
+          ? child
+          : ((before ? text.firstChild() : text.lastChild()) ?? child)
+      offset = before ? 0 : (node.textContent?.length ?? 0)
+    }
+    const start = textStarts.get(node)
+    const cell = node.parentElement?.closest('th, td')
+    if (start === undefined || !cell || !this.table.contains(cell)) return null
+    return this.cellPosition(cell, start + offset)
+  }
+
+  /** A rendered cell offset, including escaped pipes and hidden inline syntax. */
+  private cellPosition(cell: Element, at: number) {
+    const row = cell.parentElement
+    const index = row?.getAttribute('data-line')
+    const content = this.cellText.get(cell)
+    if (!row || index == null || !content) return null
+    const line = Number(index)
+    const source = this.widget.line(line)
+    const range = this.widget.row(line).cells[[...row.children].indexOf(cell)]
+    if (!range || at < 0 || at > content.length) return null
+    let low = 0,
+      high = content.skipped.length
+    while (low < high) {
+      const middle = Math.floor((low + high) / 2)
+      const skipped = content.skipped[middle]
+      if (skipped === undefined) return null
+      if (skipped <= at) low = middle + 1
+      else high = middle
+    }
+    return this.now(source.from + range.from + at + low)
+  }
+
   /** Where the text of a cell's link starts in the document now. */
   private linkStart(link: Element) {
     const editing = this.editing
@@ -1775,18 +1847,11 @@ class TableView {
       start = markStarts.get(wrapper)
       if (start !== undefined) break
     }
-    const line = Number(index)
-    const source = this.widget.line(line)
-    const range = this.widget.row(line).cells[[...row.children].indexOf(cell)]
-    if (start === undefined || !range) return null
-    const content = cellContent(source.text.slice(range.from, range.to))
-    const offset = content.source[start]
-    return offset === undefined
-      ? null
-      : this.now(source.from + range.from + offset)
+    return start === undefined ? null : this.cellPosition(cell, start)
   }
 
   destroy() {
+    this.unregisterPositions()
     this.stopEditing(false)
     if (this.saving) this.save()
     this.unsubscribe?.()
