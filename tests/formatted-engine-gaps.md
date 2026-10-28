@@ -45,6 +45,13 @@ accepted differences are not gaps; their tests assert each engine. the codemirro
 | input-075 | [formatted-commands.test.mjs:1043](formatted-commands.test.mjs#L1043) | multi-line input with backticks inside inline code keeps the code span | 8a: native input, structure and toolbar state |
 | input-space-001 | [formatted-multiline-regressions.test.mjs:241](formatted-multiline-regressions.test.mjs#L241) | multiline input after a long formatted space run must retain native paragraph boundaries; the bounded fallback currently inserts a soft break | 8a: native input, structure and toolbar state |
 | input-blank-tail-001 | [formatted-commands.test.mjs:1190](formatted-commands.test.mjs#L1190) | unparsed space/tab tails longer than 4096 units must retain the same empty paragraph as a complete parse | 8a: native input, trailing-whitespace index (#559) |
+| corpus-022 | [custom-body-syntax.test.mjs:21](custom-body-syntax.test.mjs#L21) | custom alert and subtext bodies must preserve native italic parsing | 9: outline semantics and diagram lifecycle |
+| corpus-023 | [custom-body-syntax.test.mjs:29](custom-body-syntax.test.mjs#L29) | custom alert and subtext bodies must preserve native strike parsing | 9: outline semantics and diagram lifecycle |
+| corpus-024 | [custom-body-syntax.test.mjs:37](custom-body-syntax.test.mjs#L37) | custom alert and subtext bodies must preserve native link parsing | 9: outline semantics and diagram lifecycle |
+| corpus-025 | [custom-body-syntax.test.mjs:42](custom-body-syntax.test.mjs#L42) | custom alert bodies must preserve native heading parsing | 9: outline semantics and diagram lifecycle |
+| corpus-026 | [word-count-formatted.test.mjs:393](word-count-formatted.test.mjs#L393) | custom subscript bodies must preserve native inline mark parsing | 9: outline semantics and diagram lifecycle |
+| corpus-027 | [custom-body-syntax.test.mjs:245](custom-body-syntax.test.mjs#L245) | task items inside alerts must retain native bold parsing and counts | 9: outline semantics and diagram lifecycle |
+| corpus-028 | [custom-body-syntax.test.mjs:238](custom-body-syntax.test.mjs#L238) | alerts directly in list items must retain native body parsing and counts | 9: outline semantics and diagram lifecycle |
 
 ## accepted differences
 

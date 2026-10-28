@@ -31,6 +31,7 @@ import {
   type Tree,
 } from '@lezer/common'
 import { highlightTree } from '@lezer/highlight'
+import { customBody } from '../../shared/formatted-custom-body.ts'
 import {
   formattedDefinitionRange,
   formattedListStart,
@@ -168,6 +169,15 @@ const noBlocks: Blocks = {
   shapes: () => undefined,
 }
 let blocks = noBlocks
+
+/** Native custom bodies drop unsupported bold marks while keeping their text. */
+function customBold(node: SyntaxNodeRef, literal: ReadonlySet<string>) {
+  return (
+    node.name === 'StrongEmphasis' &&
+    literal.has(node.name) &&
+    customBody(node.node)
+  )
+}
 
 /** Blocks the view lays out; link reference definitions take no space. */
 const isBlock = (node: SyntaxNode) =>
@@ -720,7 +730,9 @@ function inline(
         const owned = legacyParent?.views ?? legacy.get(name)
         if (!legacyParent && owned?.size)
           legacyParent = { to: ref.to, views: owned }
-        let skip = literal.has(name) && (!legacy.has(name) || !owned?.size)
+        let skip =
+          literal.has(name) &&
+          (legacy.has(name) ? !owned?.size : !customBold(ref, literal))
         if (!skip) {
           const matched = views(ref.type)
           const contributed = owned
@@ -836,7 +848,7 @@ function inline(
         mark('hibi-lp-em', ref.from, ref.to)
         return
       case 'StrongEmphasis':
-        mark('hibi-lp-strong', ref.from, ref.to)
+        if (!literal.has(ref.name)) mark('hibi-lp-strong', ref.from, ref.to)
         return
       case 'EmphasisMark': {
         const parent = ref.node.parent
@@ -1387,7 +1399,10 @@ function chunkLayout(
         const owned = legacyParent?.views ?? legacy.get(ref.name)
         if (!legacyParent && owned?.size)
           legacyParent = { to: ref.to, views: owned }
-        if (literal.has(ref.name) && (!legacy.has(ref.name) || !owned?.size))
+        if (
+          literal.has(ref.name) &&
+          (legacy.has(ref.name) ? !owned?.size : !customBold(ref, literal))
+        )
           return false
         const matched = views(ref.type).views
         const contributed = owned

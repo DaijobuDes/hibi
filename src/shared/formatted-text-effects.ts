@@ -1,10 +1,12 @@
 import {
   IterMode,
   type SyntaxNode,
+  type SyntaxNodeRef,
   type Tree,
   type TreeCursor,
 } from '@lezer/common'
 import type { MarkdownParser } from '@lezer/markdown'
+import { customBody } from './formatted-custom-body.ts'
 import {
   type FormattedTextInput,
   formattedAtomic,
@@ -41,6 +43,13 @@ const leafNames = new Set([
   'BlockMath',
 ])
 
+function literalText(node: SyntaxNodeRef, literal: ReadonlySet<string>) {
+  return (
+    literal.has(node.name) &&
+    !(node.name === 'StrongEmphasis' && customBody(node.node))
+  )
+}
+
 /** Whether a candidate leaf contributes separator evidence; opaque widgets still do. */
 export function formattedTextLeafVisible(
   node: SyntaxNode,
@@ -48,7 +57,7 @@ export function formattedTextLeafVisible(
 ) {
   if (node.name !== 'LinkReference') return true
   for (let parent: SyntaxNode | null = node; parent; parent = parent.parent)
-    if (literal.has(parent.name)) return true
+    if (literalText(parent, literal)) return true
   return false
 }
 
@@ -63,7 +72,7 @@ export function formattedTextWindow(
     let work = 0
     while (++work <= 64) {
       const leaf =
-        literal.has(cursor.name) ||
+        literalText(cursor, literal) ||
         cursor.type.is('LeafBlock') ||
         leafNames.has(cursor.name) ||
         cursor.name === 'Table'
@@ -207,7 +216,7 @@ export function* formattedTextEffects(
     scopeEnd = cursor.to
   let inheritedLiteral: string | undefined
   for (let parent = cursor.node.parent; parent; parent = parent.parent)
-    if (literal.has(parent.name)) inheritedLiteral = parent.name
+    if (literalText(parent, literal)) inheritedLiteral = parent.name
   let descend = true,
     work = 0,
     selectedLeaf: SyntaxNode | null = null
@@ -242,7 +251,7 @@ export function* formattedTextEffects(
     const node = cursor.node,
       name = node.name,
       outside = to <= selected.from || from >= selected.to
-    const literalName = literal.has(name) ? name : inheritedLiteral
+    const literalName = literalText(node, literal) ? name : inheritedLiteral
     if (literalName) {
       // The surrounding quote's own markers still hide in literal child blocks.
       if (literalName !== 'Blockquote' && !outside) {
@@ -502,6 +511,15 @@ export function* formattedTextEffects(
       descend = false
     }
     if (name === 'Table' && features.has('markdown.tables')) {
+      const cellConfig =
+        literal.has('StrongEmphasis') && customBody(node)
+          ? {
+              ...config,
+              literal: config.literal.filter(
+                (name) => name !== 'StrongEmphasis',
+              ),
+            }
+          : config
       const firstRow = input.lineAt(from),
         delimiter = input.lineAt(firstRow.to + 1)
       let row = input.lineAt(Math.max(from, selected.from))
@@ -549,7 +567,7 @@ export function* formattedTextEffects(
               0,
               local,
               { from: 0, to: content.text.length },
-              config,
+              cellConfig,
               inline,
               definitions,
               resolveFootnotes,

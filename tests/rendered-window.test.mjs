@@ -42,13 +42,31 @@ const config = {
   ],
   textFeatures: [...textFeatures],
 }
-function build(text) {
+function build(text, syntax = config) {
   const store = new SourceStore(text, { tabId: 'window', revision: 0 })
-  const index = new RenderedTextIndex(store.snapshot(), 0, config)
+  const index = new RenderedTextIndex(store.snapshot(), 0, syntax)
   for (const _ of index.build()) {
   }
   return index
 }
+for (const [name, source, custom] of [
+  ['alert', '> [!TIP]\n> **x** y', true],
+  ['subtext', '-# **x** y', true],
+  ['list inside alert', '> [!TIP]\n> - **x** y', true],
+  ['alert table', '> [!TIP]\n> | h |\n> |---|\n> | **x** y |', true],
+  ['paragraph', '**x** y', false],
+  ['table', '| h |\n|---|\n| **x** y |', false],
+  ['direct list alert', '- > [!TIP]\n  > **x** y', false],
+  ['task inside alert', '> [!TIP]\n> - [ ] **x** y', false],
+])
+  test(`rendered find follows native custom bold scope in ${name}`, () => {
+    const index = build(source, { ...config, literal: ['StrongEmphasis'] })
+    const matches = (query) =>
+      [...searchRenderedLiteral(index, query)].flatMap((batch) => batch.matches)
+    assert.equal(matches('x y').length, custom ? 1 : 0)
+    assert.equal(matches('**').length, custom ? 0 : 2)
+  })
+
 function inputFor(text) {
   return {
     length: text.length,

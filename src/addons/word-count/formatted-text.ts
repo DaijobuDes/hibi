@@ -43,6 +43,12 @@ export function countParser(syntax: CountSyntax) {
     if (syntax.textExtras) parser.use(textExtrasMarkdown)
     if (syntax.math) parser.use(mathTokens)
     if (syntax.typst) parser.use(typstTokens)
+    // Custom tokenizers own child traversal; body masking below keeps the view's scope.
+    const children = parser.defaults.extensions?.childTokens
+    if (children) {
+      children.githubAlert = []
+      children.subtext = []
+    }
     parsers.set(key, parser)
   }
   return parser
@@ -152,6 +158,14 @@ function maskDisabled(tokens: Token[], syntax: CountSyntax) {
         type: block ? 'hibiLiteralBlock' : 'hibiLiteralInline',
         text: block ? token.raw.replace(/\n+$/, '') : token.raw,
         tokens: [],
+      })
+    } else if (token.type === 'githubAlert' || token.type === 'subtext') {
+      // Only bold has matching custom-body rendering; other native gaps are ledgered.
+      maskDisabled(token.tokens ?? [], {
+        ...syntax,
+        disabledFeatures: syntax.disabledFeatures.filter(
+          (feature) => feature !== 'core.bold',
+        ),
       })
     }
     return []
