@@ -115,7 +115,12 @@ const opener = (state: EditorState, { first }: Formatting) =>
  * opens again after the break. Markers of formatting whose text the
  * selection takes from one side are replaced with it.
  */
-function spanned(state: EditorState, tree: Tree, from: number, to: number) {
+export function spanned(
+  state: EditorState,
+  tree: Tree,
+  from: number,
+  to: number,
+) {
   let close = '',
     open = '',
     at = from,
@@ -135,7 +140,7 @@ function spanned(state: EditorState, tree: Tree, from: number, to: number) {
   return { close, open, at, end }
 }
 
-function reopened(state: EditorState, tree: Tree, pos: number) {
+export function reopened(state: EditorState, tree: Tree, pos: number) {
   let close = '',
     open = '',
     at = pos
@@ -511,7 +516,7 @@ function itemMarker(state: EditorState, item: SyntaxNode) {
 }
 
 /** Quote markers and list indentation that put a line inside `node`, outermost first. */
-function prefixOf(state: EditorState, node: SyntaxNode | null) {
+export function prefixOf(state: EditorState, node: SyntaxNode | null) {
   const containers: SyntaxNode[] = []
   for (; node; node = node.parent)
     if (node.name === 'Blockquote' || node.name === 'ListItem')

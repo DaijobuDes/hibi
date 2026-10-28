@@ -6,7 +6,7 @@ import {
   EditorState,
   Facet,
   Prec,
-  type StateEffect,
+  StateEffect,
   Text,
   Transaction,
   type TransactionSpec,
@@ -36,6 +36,11 @@ export const sourceOperationEcho = Annotation.define<string>()
 /** View state restored alongside the session's text and selection history. */
 export const sourceHistoryEffects =
   Facet.define<(state: EditorState) => readonly StateEffect<unknown>[]>()
+/** A view may restore the selection kind its history effects describe. */
+export const sourceHistorySelection =
+  StateEffect.define<
+    (state: EditorState, selection: EditorSelection) => EditorSelection
+  >()
 
 export type SourceEditorTextTask = Readonly<{
   sourceUnits: number
@@ -574,6 +579,12 @@ export function createSourceSession(
       flush = () => {
         if (!pending || failed) return
         try {
+          for (const effect of effects)
+            if (effect.is(sourceHistorySelection))
+              selection = effect.value(
+                view.state,
+                selection ?? view.state.selection.map(pending),
+              )
           const transaction = view.state.update({
             changes: pending,
             ...(selection ? { selection } : {}),

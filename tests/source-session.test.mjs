@@ -18,6 +18,8 @@ import {
   firstStateRead,
   reconfiguration,
   sourceEditTransaction,
+  sourceHistoryEffects,
+  sourceHistorySelection,
   transactionState,
 } from '../src/renderer/src/source-session.ts'
 import { DocumentSession } from '../src/shared/document-session.ts'
@@ -310,6 +312,50 @@ test('two source views share text and history but keep separate selections', () 
   assert.equal(f.session.selection('right').ranges[0].head, 4)
   left.dispose()
   right.dispose()
+  f.session.dispose()
+})
+
+test('history selection effects stay local to the view that captured them', () => {
+  const f = fixture('abcd', {}, [
+    sourceHistoryEffects.of(() => [
+      sourceHistorySelection.of((_state, selection) =>
+        EditorSelection.single(selection.main.to),
+      ),
+    ]),
+  ])
+  const formatted = f.attach('formatted'),
+    source = f.attach('source')
+  formatted.dispatch({ selection: { anchor: 1, head: 3 } })
+  source.dispatch({ selection: { anchor: 0 } })
+  formatted.dispatch({
+    changes: { from: 1, to: 3, insert: 'X' },
+    selection: { anchor: 2 },
+    userEvent: 'input.type',
+  })
+  assert.equal(formatted.bridge.undo(), true)
+  assert.equal(formatted.view.state.doc.toString(), 'abcd')
+  assert.deepEqual(
+    formatted.view.state.selection.main,
+    EditorSelection.cursor(3),
+  )
+  assert.deepEqual(
+    source.view.state.selection.toJSON(),
+    EditorSelection.single(0).toJSON(),
+  )
+  assert.equal(formatted.bridge.redo(), true)
+  assert.equal(formatted.view.state.doc.toString(), 'aXd')
+  assert.deepEqual(
+    formatted.view.state.selection.main,
+    EditorSelection.cursor(2),
+  )
+  assert.deepEqual(
+    source.view.state.selection.toJSON(),
+    EditorSelection.single(0).toJSON(),
+  )
+  assert.equal(f.session.snapshot().version, 3)
+  assert.deepEqual(f.errors, [])
+  formatted.dispose()
+  source.dispose()
   f.session.dispose()
 })
 

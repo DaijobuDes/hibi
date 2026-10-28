@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { history, undo, undoDepth } from '@codemirror/commands'
 import { DocInput } from '@codemirror/language'
-import { EditorState, Text } from '@codemirror/state'
+import { EditorState, StateEffect, Text } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { Tree } from '@lezer/common'
 import { GFM, parser } from '@lezer/markdown'
@@ -1501,7 +1501,7 @@ test("formatted toolbar actions write the rich editor's source", async (t) => {
   // Each difference's cause, by action and selection.
   const causes = [
     [
-      'formatted gap action-008: the link action at a caret inserts a link beside formatting, or edits the link around the caret',
+      'the link action at a caret inserts a link beside formatting, or edits the link around the caret',
       (id, _label, caret) => caret && id === 'link',
     ],
     [
@@ -1509,27 +1509,27 @@ test("formatted toolbar actions write the rich editor's source", async (t) => {
       (id, label, caret) => caret && marks.includes(id) && label !== 'cell',
     ],
     [
-      'formatted gap action-002: a caret mark action in a table cell formats the text typed next',
+      'a caret mark action in a table cell formats the text typed next',
       (id, _label, caret) => caret && marks.includes(id),
     ],
     [
-      'formatted gap action-003: a mark action over a range across other formatting writes the delimiters the rich editor writes',
+      'a mark action over a range across other formatting writes the delimiters the rich editor writes',
       (id) => marks.includes(id),
     ],
     [
-      'formatted gap action-004: divider and line break actions split the surrounding block and formatting as the rich editor does',
+      'divider and line break actions split the surrounding block and formatting as the rich editor does',
       (id) => id === 'divider' || id === 'hard-break',
     ],
     [
-      'formatted gap action-005: the table action inserts the table the rich editor inserts and splits the surrounding block',
+      'the table action inserts the table the rich editor inserts and splits the surrounding block',
       (id) => id === 'table',
     ],
     [
-      'formatted gap input-076: the code block action turns the selected blocks into code',
+      'the code block action turns the selected blocks into code',
       (id) => id === 'code-block',
     ],
     [
-      'formatted gap action-007: list actions renumber, nest and convert items as the rich editor does',
+      'list actions renumber, nest and convert items as the rich editor does',
       (id) =>
         [
           'bullet-list',
@@ -1540,7 +1540,7 @@ test("formatted toolbar actions write the rich editor's source", async (t) => {
         ].includes(id),
     ],
     [
-      'formatted gap action-006: block actions convert each selected block and keep its containers as the rich editor does',
+      'block actions convert each selected block and keep its containers as the rich editor does',
       () => true,
     ],
   ]
@@ -1587,6 +1587,7 @@ test("formatted toolbar actions write the rich editor's source", async (t) => {
         }
       }
       const cell = label === 'cell'
+      let cellView = null
       const tree = grammar.parse(source)
       const view = {
         state: EditorState.create({
@@ -1598,8 +1599,11 @@ test("formatted toolbar actions write the rich editor's source", async (t) => {
             formattedTree.of(() => tree),
             tableActions.of({
               active: () => cell,
-              run: (target, action) =>
-                action === 'hard-break' ? cellLineBreak(target) : false,
+              run: (target, action, values) =>
+                action === 'hard-break'
+                  ? cellLineBreak(target)
+                  : (cellView?.formatting.run(action, values) ?? false),
+              state: (_target, id) => cellView?.formatting.state(id) ?? null,
             }),
           ],
         }),
@@ -1607,6 +1611,25 @@ test("formatted toolbar actions write the rich editor's source", async (t) => {
           view.state = view.state.update(spec).state
         },
         focus() {},
+      }
+      if (cell) {
+        let node = tree.resolveInner(anchor, 1)
+        while (node && node.name !== 'TableCell') node = node.parent
+        assert.ok(node)
+        const start = node.from
+        cellView = typing(source.slice(start, node.to), anchor - start)
+        const dispatch = cellView.dispatch.bind(cellView)
+        cellView.dispatch = (spec) => {
+          const transaction = cellView.state.update(spec)
+          dispatch(spec)
+          if (transaction.docChanged) {
+            const changes = []
+            transaction.changes.iterChanges((from, to, _a, _b, insert) =>
+              changes.push({ from: start + from, to: start + to, insert }),
+            )
+            view.dispatch({ changes, annotations: transaction.annotations })
+          }
+        }
       }
       const formatting = sourceFormatting(view)
       if (formatting.inspect().state(id).disabled) continue
@@ -1655,12 +1678,7 @@ test("formatted toolbar actions write the rich editor's source", async (t) => {
     JSON.stringify({
       compared,
       differences: Object.fromEntries(
-        [...differences].map(([todo, rows]) => [
-          todo.startsWith('formatted gap ')
-            ? todo.split(':')[0].replace('formatted gap ', '')
-            : 'caret marks',
-          rows.length,
-        ]),
+        [...differences].map(([name, rows]) => [name, rows.length]),
       ),
     }),
   )
@@ -1668,14 +1686,107 @@ test("formatted toolbar actions write the rich editor's source", async (t) => {
     assert.ok(compared > 250, String(compared))
     assert.deepEqual(undone, [])
   })
-  for (const [todo] of causes)
-    await t.test(
-      todo.replace(/^formatted gap [a-z0-9-]+: /, ''),
-      todo.startsWith('formatted gap ') ? { todo } : {},
-      () => {
-        assert.deepEqual(differences.get(todo), [])
-      },
+  for (const [name] of causes)
+    await t.test(name, () => {
+      assert.deepEqual(differences.get(name), [])
+    })
+})
+
+test('ranges ending in a table format every selected block when no cell editor owns them', () => {
+  for (const [first, offset, last, end] of [
+    ['plain', 0, 'cell', 2],
+    ['aa', 1, 'tail', 2],
+  ]) {
+    const editor = richEditor(
+      'plain\n\n| aa | bb |\n| --- | --- |\n| cell | tail |',
     )
+    try {
+      const source = editor.getMarkdown()
+      const position = (word, offset) => {
+        let found
+        editor.state.doc.descendants((node, pos) => {
+          if (found === undefined && node.isText && node.text.includes(word))
+            found = pos + node.text.indexOf(word) + offset
+        })
+        assert.notEqual(found, undefined)
+        return found
+      }
+      editor.commands.setTextSelection({
+        from: position(first, offset),
+        to: position(last, end),
+      })
+      const before = editor.state.doc.toJSON()
+      editor.commands.toggleBold()
+      assert.notDeepEqual(editor.state.doc.toJSON(), before)
+      const target = view(source, first, 0)
+      target.dispatch = target.dispatch.bind(target)
+      target.state = target.state.update({
+        selection: {
+          anchor: source.indexOf(first) + offset,
+          head: source.indexOf(last) + end,
+        },
+        effects: StateEffect.appendConfig.of([
+          history(),
+          tableActions.of({ active: () => true, run: () => false }),
+        ]),
+      }).state
+      assert.equal(sourceFormatting(target).run('bold'), true)
+      const actual = target.state.doc.toString()
+      assert.equal(actual, editor.getMarkdown())
+      assert.ok(
+        sameRichSourceDocument(
+          editor.schema.nodeFromJSON(editor.markdown.parse(actual)),
+          editor.state.doc,
+          true,
+        ),
+      )
+      assert.equal(undo(target), true)
+      assert.equal(target.state.doc.toString(), source)
+    } finally {
+      editor.destroy()
+    }
+  }
+})
+
+test('inline actions keep existing link destinations and reference syntax', () => {
+  for (const source of [
+    'plain [label](https://example.com "title") end',
+    'plain [label][ref] end\n\n[ref]: https://example.com "title"',
+    'plain [label](https://example.com/a\\(b\\)) end',
+  ]) {
+    const target = view(source, 'plain', 5)
+    assert.equal(sourceFormatting(target).run('bold'), true)
+    assert.equal(target.state.doc.toString(), `**plain**${source.slice(5)}`)
+    const label = view(source, 'label', 5)
+    assert.equal(sourceFormatting(label).run('bold'), true)
+    assert.equal(
+      label.state.doc.toString(),
+      source.replace('[label]', '[**label**]'),
+    )
+    for (const [from, formatted] of [
+      [1, target],
+      [7, label],
+    ]) {
+      const editor = richEditor(source)
+      try {
+        const before = editor.state.doc
+        editor.commands.setTextSelection({ from, to: from + 5 })
+        editor.commands.toggleBold()
+        assert.equal(editor.state.doc.eq(before), false)
+        assert.ok(
+          sameRichSourceDocument(
+            editor.schema.nodeFromJSON(
+              editor.markdown.parse(formatted.state.doc.toString()),
+            ),
+            editor.state.doc,
+            true,
+          ),
+        )
+      } finally {
+        editor.destroy()
+      }
+    }
+  }
 })
 
 const extras = parser.configure([GFM, subscriptSyntax])
@@ -1745,6 +1856,8 @@ test('a formatted caret action stores its mark for the text typed next', () => {
   assert.equal(joined.pressed('subscript'), false)
   joined.formatting.run('subscript')
   assert.equal(joined.type('X'), 'a ~subX~ b')
+  assert.equal(joined.pressed('subscript'), false)
+  assert.equal(joined.type('Q'), 'a ~subX~Q b')
   // Two marks open together, and a gap line between blocks becomes a paragraph.
   const gap = typing('a\n\nb', 2)
   gap.formatting.run('bold')
@@ -1759,6 +1872,35 @@ test('a formatted caret action stores its mark for the text typed next', () => {
   assert.equal(code.pressed('bold'), false)
   assert.equal(code.formatting.inspect().state('bold').disabled, true)
   assert.equal(code.type('x'), 'a `x`')
+})
+
+test('formatting a table caret or a neighboring block reads no other table rows', () => {
+  const work = (rows, cell) => {
+    const doc = `plain **bold**\n\n| head |\n| --- |\n${'| cell |\n'.repeat(rows)}`
+    const target = view(doc, cell ? 'c' : 'plain', cell ? undefined : 5)
+    const nested = typing('cell', 1)
+    target.state = target.state.update({
+      effects: StateEffect.appendConfig.of(
+        tableActions.of({
+          active: () => cell,
+          run: (_view, id, values) => nested.formatting.run(id, values),
+          state: (_view, id) => nested.formatting.state(id),
+        }),
+      ),
+    }).state
+    const formatting = sourceFormatting(target)
+    const reads = counted(() => {
+      formatting.run('italic')
+      if (cell) nested.type('X')
+    })
+    assert.equal(
+      cell ? nested.state.doc.toString() : target.state.sliceDoc(0, 7),
+      cell ? 'c*X*ell' : '*plain*',
+    )
+    return reads
+  }
+  for (const cell of [false, true])
+    assert.deepEqual(work(200, cell), work(2, cell))
 })
 
 test('stored marks drop when the caret moves or the text has lines', () => {

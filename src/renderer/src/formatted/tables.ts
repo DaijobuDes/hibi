@@ -32,12 +32,13 @@ import {
   formattedFollowLink,
   formattedLiteral,
   formattedMarkdown,
+  formattedRefresh,
   formattedRenderInputs,
   formattedSyntaxTree,
   formattedViews,
 } from '../formatted-contributions.ts'
 import { registerDOMPositions } from '../native-dom-selection.ts'
-import { tableActions } from '../source-formatting.ts'
+import { type InsertValues, tableActions } from '../source-formatting.ts'
 import {
   readTableLayouts,
   storedTableLayouts,
@@ -1259,6 +1260,11 @@ class TableView {
     return this.editing?.editor.view.hasFocus ?? false
   }
 
+  /** The pending formatting of the cell that owns the current selection. */
+  formattingState(id: string) {
+    return this.editing?.editor.formatting.state(id) ?? null
+  }
+
   /** Let the cell editor take input as the formatted view does. */
   reconfigure() {
     this.editing?.editor.reconfigure(this.view.state)
@@ -1333,11 +1339,28 @@ class TableView {
   }
 
   /** Run a toolbar table action on the edited cell, or on the cell at the selection. */
-  run(id: string): boolean {
+  run(id: string, values?: InsertValues): boolean {
     if (!this.current || !writable(this.view.state)) return false
     const cell =
       this.editing ?? this.locate(this.view.state.selection.main.head)
     if (!cell) return false
+    if (
+      [
+        'bold',
+        'italic',
+        'strike',
+        'subscript',
+        'inline-code',
+        'link',
+        'unlink',
+      ].includes(id)
+    ) {
+      const { anchor, head } = this.view.state.selection.main
+      if (!this.editing && !this.editAt(anchor, head)) return false
+      const done = this.editing?.editor.formatting.run(id, values) ?? false
+      this.view.dispatch({ effects: formattedRefresh.of(null) })
+      return done
+    }
     if (id === 'hard-break') {
       // A cell's line break is `<br>`, typed in the cell's editor.
       const { anchor, head } = this.view.state.selection.main
@@ -2415,8 +2438,11 @@ export const contribution: FormattedContribution = {
     }),
     tableActions.of({
       active: (view) => !!tableAt(view, view.state.selection.main.head),
-      run: (view, id) =>
-        tableAt(view, view.state.selection.main.head)?.run(id) ?? false,
+      run: (view, id, values) =>
+        tableAt(view, view.state.selection.main.head)?.run(id, values) ?? false,
+      state: (view, id) =>
+        tableAt(view, view.state.selection.main.head)?.formattingState(id) ??
+        null,
     }),
   ],
 }

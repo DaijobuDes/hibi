@@ -41,6 +41,7 @@ import {
   formattedMarkdown,
   formattedNodeViews,
   formattedRefresh,
+  formattedTree,
   showMarkdownMarkers,
 } from '../formatted-contributions.ts'
 import { drawReference, referenceLink } from '../formatted-references.ts'
@@ -48,6 +49,7 @@ import {
   formattingKeymap,
   type SourceFormatting,
   sourceFormatting,
+  storedMarkInput,
 } from '../source-formatting.ts'
 import { cellFixes, type InlineMark, planInline } from './table-source.ts'
 
@@ -502,6 +504,7 @@ export type CellHost = {
  */
 export class CellEditor {
   readonly view: EditorView
+  readonly formatting: SourceFormatting
   /** A change from the formatted view is being applied. */
   private remote = false
   private access = new Compartment()
@@ -620,7 +623,7 @@ export class CellEditor {
     const move = (to: CellMove) => () => host.move(to)
     // Inline formatting shortcuts format the cell's source; block ones do nothing in a cell.
     let formatting: SourceFormatting | null = null
-    const inline = ['bold', 'italic', 'strike', 'inline-code']
+    const inline = ['bold', 'italic', 'strike', 'subscript', 'inline-code']
     /** Put the caret at the content's start or end, inside the cell's padding. */
     const edge = (end: boolean, extend: boolean) => (view: EditorView) => {
       const { start, end: last } = content(view)
@@ -639,6 +642,11 @@ export class CellEditor {
         selection: { anchor, head },
         extensions: [
           preview,
+          storedMarkInput,
+          formattedTree.of((state) =>
+            cellParser(host.main.state).parse(state.doc.toString()),
+          ),
+          main.facet(formattedLiteral).map((name) => formattedLiteral.of(name)),
           main
             .facet(formattedCellExtensions)
             .map((extension) => extension(host.main)),
@@ -789,7 +797,7 @@ export class CellEditor {
       dispatchTransactions: (transactions, view) =>
         this.dispatch(transactions, view),
     })
-    formatting = sourceFormatting(this.view)
+    this.formatting = formatting = sourceFormatting(this.view)
   }
 
   /** Apply the editor's transactions, and send each change and selection to the formatted view. */
