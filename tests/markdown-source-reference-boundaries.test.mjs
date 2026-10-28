@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { GFM, parser } from '@lezer/markdown'
+import { micromark } from 'micromark'
 import { FrontmatterSourceModel } from '../src/shared/frontmatter-source-model.ts'
 import { markdownLink } from '../src/shared/markdown-link.ts'
 import { MarkdownSourceModel } from '../src/shared/markdown-source-model.ts'
@@ -364,7 +365,12 @@ test('reference lookup follows edits to multiline title closing delimiters', (t)
   assert.equal(f.references.lookup('other'), null)
   f.edit(close, close + 1, '')
   f.checkDefinitions(['ref', 'other'])
-  assert.equal(f.references.lookup('other').href, '/inside')
+  // A failed title remains a paragraph that another definition cannot interrupt.
+  assert.match(
+    micromark(text.slice(0, close) + text.slice(close + 1)),
+    /<p>\[other\]<\/p>/,
+  )
+  assert.equal(f.references.lookup('other'), null)
   f.edit(close, close, '"')
   f.checkDefinitions(['ref', 'other'])
   assert.equal(f.references.lookup('other'), null)
