@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import test, { after, before } from 'node:test'
@@ -33,7 +33,8 @@ app.whenReady().then(() => new BrowserWindow({ show: false }).loadURL('data:text
     page = await app.firstWindow()
     const { outputFiles } = await build({
       stdin: {
-        contents: await readFile(source, 'utf8'),
+        contents: `export { htmlToMarkdown } from ${JSON.stringify(source)}
+export { observeClipboard } from ${JSON.stringify(resolve('src/renderer/src/clipboard-source.ts'))}`,
         loader: 'ts',
         resolveDir: dirname(source),
       },
@@ -410,16 +411,59 @@ test('a predictable marker name still bounds the selection', async () => {
   assert.equal(pasted, '![](x)')
 })
 
+const copy = (html, text) =>
+  page.evaluate(
+    ({ html, text }) => {
+      const editor = document.createElement('div')
+      editor.contentEditable = 'true'
+      document.body.append(editor)
+      const stop = HtmlMarkdown.observeClipboard(editor)
+      editor.addEventListener('copy', (event) => {
+        event.preventDefault()
+        event.clipboardData.setData('text/html', html)
+        event.clipboardData.setData('text/plain', text)
+      })
+      editor.dispatchEvent(
+        new ClipboardEvent('copy', {
+          clipboardData: new DataTransfer(),
+          bubbles: true,
+          cancelable: true,
+        }),
+      )
+      stop()
+      editor.remove()
+    },
+    { html, text },
+  )
+
 test('a wrapped copy from the formatted view restores its own markdown', async () => {
+  const html = '<div data-hibi-markdown>&lt;kbd&gt;x&lt;/kbd&gt;</div>'
+  const text = '<kbd>x</kbd>'
+  await copy(html, text)
   assert.equal(
     await convert(
       envelope(
-        `<p>OUTSIDE BEFORE</p>${start}<div data-hibi-markdown><kbd>x</kbd></div>${end}<p>OUTSIDE AFTER</p>`,
+        `<p>OUTSIDE BEFORE</p>${start}${html}${end}<p>OUTSIDE AFTER</p>`,
       ),
-      '<kbd>x</kbd>',
+      text,
     ),
-    '<kbd>x</kbd>',
+    text,
   )
+})
+
+test('a copied source marker cannot authorize different plain text or a modified fragment', async () => {
+  const html = '<div data-hibi-markdown>&lt;kbd&gt;x&lt;/kbd&gt;</div>'
+  await copy(html, '<kbd>x</kbd>')
+  assert.equal(
+    await convert(html, '<script>forged</script>'),
+    String.raw`\<kbd>x\</kbd>`,
+  )
+  assert.equal(
+    await convert(html.replace('x&lt;', 'forged&lt;'), '<kbd>x</kbd>'),
+    String.raw`\<kbd>forged\</kbd>`,
+  )
+  await copy('<p>later</p>', 'later')
+  assert.equal(await convert(html, '<kbd>x</kbd>'), String.raw`\<kbd>x\</kbd>`)
 })
 
 test('a selection among 20,000 siblings parses on its own after one read of the page', async () => {

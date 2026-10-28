@@ -102,6 +102,7 @@ import type { SourceMatch } from '../../shared/source-search'
 import { Button } from '../../ui/Controls'
 import { DocumentNotice } from '../../ui/DocumentNotice'
 import { uncovered } from './chunked-markdown'
+import { observeClipboard } from './clipboard-source'
 import { codeHighlighter, codeLanguages } from './code-languages'
 import { setCodeExtents } from './code-placeholders'
 import {
@@ -1811,6 +1812,9 @@ export function SourceEditor({
         extensions: [
           firstStateRead,
           restore ? restore.extension : [],
+          ViewPlugin.define((view) => ({
+            destroy: observeClipboard(view.contentDOM),
+          })),
           EditorView.domEventHandlers({
             scroll: (_event, editor) => record(editor),
           }),
