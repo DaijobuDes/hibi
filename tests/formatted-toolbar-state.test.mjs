@@ -248,7 +248,7 @@ test('formatted unlink removes links by their syntax and leaves other text unedi
   assert.equal(ran('unlink', '[a\\]b](https://example.com)', '[a'), 'a\\]b')
   assert.equal(
     ran('unlink', '<https://example.com>', '<http'),
-    'https://example.com',
+    'https\\://example.com',
   )
   assert.equal(
     ran('unlink', '[a][r]\n\n[r]: https://e.test', '[a'),
@@ -348,7 +348,43 @@ test('a partial unlink keeps the link and formatting of the text around it, as t
       'https://example.com',
       0,
       8,
-      'https://[example.com](https://example.com)',
+      'https\\://[example.com](https://example.com)',
+    ],
+    // Unlinked text from an address does not read as one again.
+    [
+      '<https://e.test/path>',
+      'https://e.test/path',
+      0,
+      17,
+      'https\\://e.test/pa[th](https://e.test/path)',
+    ],
+    [
+      '<https://e.test/path>',
+      'https://e.test/path',
+      0,
+      19,
+      'https\\://e.test/path',
+    ],
+    [
+      '<HTTPS://EXAMPLE.COM/a>',
+      'HTTPS://EXAMPLE.COM/a',
+      0,
+      10,
+      'HTTPS\\://EX[AMPLE.COM/a](HTTPS://EXAMPLE.COM/a)',
+    ],
+    [
+      '<https://www.example.com>',
+      'https://www.example.com',
+      8,
+      15,
+      '[https://](https://www.example.com)www\\.example.com',
+    ],
+    [
+      '<a_b.c@example.com>',
+      'a_b.c@example.com',
+      1,
+      14,
+      '[a](mailto:a\\_b.c@example.com)\\_b.c\\@example.c[om](mailto:a\\_b.c@example.com)',
     ],
     [
       '<https://x.com/(a)>',
@@ -396,7 +432,22 @@ test('a partial unlink keeps the link and formatting of the text around it, as t
     // The same text and marks as the rich editor's, though it spells some with HTML.
     assert.equal(read(actual), JSON.stringify(editor.getJSON()), actual)
     const { from: start, to: end } = target.state.selection.main
-    assert.equal(actual.slice(start, end), text.slice(offset, offset + length))
+    assert.equal(
+      actual.slice(start, end).replace(/\\(.)/g, '$1'),
+      text.slice(offset, offset + length),
+    )
+    // The formatted view reads no link in the unlinked text either.
+    markdown.parse(actual).iterate({
+      from: start,
+      to: end,
+      enter: (node) =>
+        assert.ok(
+          !/^(Link|Autolink|URL)$/.test(node.name) ||
+            node.to <= start ||
+            node.from >= end,
+          actual,
+        ),
+    })
     assert.equal(undoDepth(target.state), 1)
     undo(target)
     assert.equal(target.state.doc.toString(), source)
