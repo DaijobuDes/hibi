@@ -258,7 +258,7 @@ test('the pressed code block action turns fenced code back into text', () => {
 })
 
 test('the code block action at a caret makes its paragraph code', {
-  todo: 'formatted gap input-075: the code block action at a caret turns its paragraph into code',
+  todo: 'formatted gap input-076: the code block action at a caret turns its paragraph into code',
 }, () => {
   assert.equal(ran('code-block', 'a', 'a'), '```\na\n```')
 })
