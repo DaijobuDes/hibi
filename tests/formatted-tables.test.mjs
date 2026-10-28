@@ -1591,6 +1591,202 @@ test('a cell editor whose row is deleted leaves focus that moved out of the edit
   assert.equal((await state()).editor, null)
 })
 
+test('a native selection in a read-only table becomes the editing selection', {
+  timeout: 30000,
+}, async () => {
+  const doc = 'before\n\n| h | other |\n| - | - |\n| alpha | beta |\n\nafter'
+  await mount(doc)
+  await harness.evaluate(() => window.tables.setEditable(false))
+  await harness
+    .locator('.hibi-lp-table td', { hasText: 'alpha' })
+    .dblclick({ position: { x: 8, y: 8 } })
+  assert.equal(await harness.evaluate(() => getSelection().toString()), 'alpha')
+  await harness.evaluate(() => window.tables.settle())
+  const picked = await state()
+  const from = doc.indexOf('alpha')
+  assert.deepEqual(
+    [
+      Math.min(picked.anchor, picked.head),
+      Math.max(picked.anchor, picked.head),
+    ],
+    [from, from + 5],
+  )
+  await harness.keyboard.type('BLOCKED')
+  assert.equal((await state()).doc, doc)
+  await harness.evaluate(() => window.tables.setEditable(true))
+  await harness.evaluate(() => window.tables.settle())
+  await harness.keyboard.type('XY')
+  assert.equal((await state()).doc, doc.replace('alpha', 'XY'))
+  await harness.keyboard.press(
+    process.platform === 'darwin' ? 'Meta+z' : 'Control+z',
+  )
+  assert.equal((await state()).doc, doc)
+})
+
+test('a read-only cell pick maps hidden marks, escaped pipes and quote prefixes', {
+  timeout: 30000,
+}, async () => {
+  const doc = String.raw`before
+
+> | head | other |
+> | --- | --- |
+> | **al\|pha** | beta |
+
+end`
+  await mount(doc)
+  await harness.evaluate(() => window.tables.setEditable(false))
+  await harness.locator('.hibi-lp-table td', { hasText: 'al|pha' }).click()
+  await harness.evaluate(() => {
+    const cell = [...document.querySelectorAll('.hibi-lp-table td')].find(
+      (cell) => cell.textContent === 'al|pha',
+    )
+    const paragraph = cell.firstElementChild
+    getSelection().setBaseAndExtent(
+      paragraph,
+      0,
+      paragraph,
+      paragraph.childNodes.length,
+    )
+  })
+  await harness.evaluate(() => window.tables.settle())
+  const picked = await state()
+  const from = doc.indexOf(String.raw`al\|pha`)
+  assert.deepEqual([picked.anchor, picked.head], [from, from + 7])
+  await harness.evaluate(() => window.tables.setEditable(true))
+  await harness.evaluate(() => window.tables.settle())
+  await harness.keyboard.type('XY')
+  assert.equal((await state()).doc, doc.replace(String.raw`al\|pha`, 'XY'))
+})
+
+for (const [label, content, pickedText, source] of [
+  ['named entity', 'left &amp; right', '&', '&amp;'],
+  ['scalar entity', 'left &#169; right', '©', '&#169;'],
+  ['astral entity', 'left &#x1F600; right', '😀', '&#x1F600;'],
+  ['combined entity', 'left &NotEqualTilde; right', '≂̸', '&NotEqualTilde;'],
+  ['escaped pipe', String.raw`al\|pha`, '|', String.raw`\|`],
+  ['escaped punctuation', String.raw`al\*pha`, '*', String.raw`\*`],
+  ['plain astral text', 'a😀z', '😀', '😀'],
+  ['entity and escape', String.raw`**a&amp;\|z**`, '&|', String.raw`&amp;\|`],
+  ['text before escape', String.raw`al\|pha`, 'al', 'al'],
+  ['text after escape', String.raw`al\|pha`, 'pha', 'pha'],
+]) {
+  for (const backward of [false, true]) {
+    test(`a ${backward ? 'backward' : 'forward'} read-only pick maps ${label} to complete source units`, {
+      timeout: 30000,
+    }, async () => {
+      const doc = `before\n\n> | h | other |\n> | - | - |\n> | ${content} | beta |\n\nafter`
+      await mount(doc)
+      await harness.evaluate(() => window.tables.setEditable(false))
+      await harness.locator('.hibi-lp-table td').first().click()
+      const native = await harness.evaluate(
+        ({ pickedText, backward }) => {
+          const cell = document.querySelector('.hibi-lp-table td p')
+          const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT)
+          const nodes = []
+          for (let node = walker.nextNode(); node; node = walker.nextNode())
+            nodes.push(node)
+          const point = (at, end) => {
+            for (const node of nodes) {
+              const length = node.textContent.length
+              if (at < length || (end && at === length)) return [node, at]
+              at -= length
+            }
+            throw new Error('The selected text has no DOM position.')
+          }
+          const from = cell.textContent.indexOf(pickedText)
+          if (from < 0) throw new Error('The selected text is not rendered.')
+          const start = point(from, false)
+          const end = point(from + pickedText.length, true)
+          const [anchor, head] = backward ? [end, start] : [start, end]
+          getSelection().setBaseAndExtent(...anchor, ...head)
+          return getSelection().toString()
+        },
+        { pickedText, backward },
+      )
+      assert.equal(native, pickedText)
+      await harness.evaluate(() => window.tables.settle())
+      const from = doc.indexOf(source)
+      const to = from + source.length
+      const picked = await state()
+      assert.deepEqual(
+        [picked.anchor, picked.head],
+        backward ? [to, from] : [from, to],
+      )
+      await harness.keyboard.type('BLOCKED')
+      assert.equal((await state()).doc, doc)
+      await harness.evaluate(() => window.tables.setEditable(true))
+      await harness.evaluate(() => window.tables.settle())
+      await harness.keyboard.type('XY')
+      assert.equal(
+        (await state()).doc,
+        `${doc.slice(0, from)}XY${doc.slice(to)}`,
+      )
+      await harness.keyboard.press(undoKey)
+      assert.equal((await state()).doc, doc)
+    })
+  }
+}
+
+test('a backward native table selection keeps both cell positions while read-only', {
+  timeout: 30000,
+}, async () => {
+  const doc = 'before\n\n| h | other |\n| - | - |\n| alpha | beta |\n\nafter'
+  await mount(doc)
+  await harness.evaluate(() => window.tables.setEditable(false))
+  await harness.locator('.hibi-lp-table td', { hasText: 'alpha' }).click()
+  await harness.evaluate(() => {
+    const cells = [...document.querySelectorAll('.hibi-lp-table td')]
+    const text = (value) =>
+      document
+        .createTreeWalker(
+          cells.find((cell) => cell.textContent === value),
+          NodeFilter.SHOW_TEXT,
+        )
+        .firstChild()
+    getSelection().setBaseAndExtent(text('beta'), 4, text('alpha'), 0)
+  })
+  await harness.evaluate(() => window.tables.settle())
+  const picked = await state()
+  assert.deepEqual(
+    [picked.anchor, picked.head],
+    [doc.indexOf('beta') + 4, doc.indexOf('alpha')],
+  )
+  assert.equal(picked.doc, doc)
+})
+
+test('unlocking a picked table leaves focus that moved outside the view', {
+  timeout: 30000,
+}, async (t) => {
+  const doc = '| h |\n| - |\n| alpha |'
+  await mount(doc)
+  await harness.evaluate(() => window.tables.setEditable(false))
+  await harness.locator('.hibi-lp-table td', { hasText: 'alpha' }).dblclick({
+    position: { x: 8, y: 8 },
+  })
+  await harness.evaluate(() => {
+    const input = document.createElement('input')
+    input.id = 'readonly-table-outside'
+    input.style.cssText = 'position:fixed;top:20px;left:600px;z-index:1000'
+    document.body.append(input)
+  })
+  t.after(() =>
+    harness.evaluate(() =>
+      document.getElementById('readonly-table-outside')?.remove(),
+    ),
+  )
+  const outside = harness.locator('#readonly-table-outside')
+  await outside.click()
+  await harness.evaluate(() => window.tables.setEditable(true))
+  await harness.evaluate(() => window.tables.settle())
+  assert.equal(
+    await harness.evaluate(() => document.activeElement.id),
+    'readonly-table-outside',
+  )
+  await harness.keyboard.type('outside')
+  assert.equal(await outside.inputValue(), 'outside')
+  assert.equal((await state()).doc, doc)
+})
+
 test('cell editors take no input while the formatted view takes none', {
   timeout: 30000,
 }, async () => {
