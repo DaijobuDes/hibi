@@ -578,6 +578,484 @@ test('physical typing replaces a selection over a table and undo restores it', a
   }
 })
 
+test('composed, option and altgr text replaces a selection over a table in one undo step', {
+  timeout: 30000,
+}, async () => {
+  const table = '| a | b |\n| - | - |\n| c | d |'
+  const cdp = await harness.context().newCDPSession(harness)
+  const select = async (doc) => {
+    await mount(doc)
+    await harness.evaluate(() => window.tables.view().focus())
+    await harness.keyboard.press('ControlOrMeta+a')
+  }
+  const undone = async (doc, label) => {
+    await harness.keyboard.press('ControlOrMeta+z')
+    assert.equal((await state()).doc, doc, label)
+  }
+  for (const doc of [table, `before\n\n${table}\n\nafter`]) {
+    // An IME takes the key that starts a composition: keyCode 229, not yet composing.
+    await select(doc)
+    await cdp.send('Input.dispatchKeyEvent', {
+      type: 'rawKeyDown',
+      key: 'k',
+      code: 'KeyK',
+      windowsVirtualKeyCode: 229,
+      nativeVirtualKeyCode: 229,
+    })
+    await cdp.send('Input.imeSetComposition', {
+      text: 'k',
+      selectionStart: 1,
+      selectionEnd: 1,
+    })
+    await cdp.send('Input.insertText', { text: 'か' })
+    await cdp.send('Input.dispatchKeyEvent', {
+      type: 'keyUp',
+      key: 'k',
+      code: 'KeyK',
+      windowsVirtualKeyCode: 229,
+    })
+    await harness.evaluate(() => window.tables.settle())
+    assert.equal((await state()).doc, 'か')
+    await undone(doc, 'composition')
+    // Option (Alt) characters on macOS; AltGr is Control and Alt on Windows.
+    for (const [modifiers, text, code] of [
+      [1, 'å', 'KeyA'],
+      [3, '@', 'KeyQ'],
+    ]) {
+      await select(doc)
+      await cdp.send('Input.dispatchKeyEvent', {
+        type: 'keyDown',
+        key: text,
+        code,
+        text,
+        unmodifiedText: code.at(-1).toLowerCase(),
+        modifiers,
+        windowsVirtualKeyCode: code.charCodeAt(3),
+      })
+      await cdp.send('Input.dispatchKeyEvent', {
+        type: 'keyUp',
+        key: text,
+        code,
+        modifiers,
+        windowsVirtualKeyCode: code.charCodeAt(3),
+      })
+      assert.equal((await state()).doc, text)
+      await undone(doc, text)
+    }
+  }
+  await cdp.detach()
+})
+
+/** Selects `range` (the whole note by default) in a focused harness editor. */
+const selectRange = async (doc, range = [0, doc.length]) => {
+  await mount(doc)
+  await harness.evaluate((range) => {
+    const view = window.tables.view()
+    view.focus()
+    view.dispatch({ selection: { anchor: range[0], head: range[1] } })
+  }, range)
+}
+/** The range replaced by `text`, then one undo restores the note and redo the text. */
+const replacedOnce = async (doc, [from, to], text, label) => {
+  await harness.evaluate(() => window.tables.settle())
+  const typed = doc.slice(0, from) + text + doc.slice(to)
+  assert.equal((await state()).doc, typed, label)
+  await harness.keyboard.press('ControlOrMeta+z')
+  assert.equal((await state()).doc, doc, label)
+  await harness.keyboard.press('ControlOrMeta+Shift+z')
+  assert.equal((await state()).doc, typed, label)
+}
+const compose = async (cdp, ...candidates) => {
+  for (const text of candidates)
+    await cdp.send('Input.imeSetComposition', {
+      text,
+      selectionStart: text.length,
+      selectionEnd: text.length,
+    })
+}
+const overTableTable = '| a | b |\n| - | - |\n| c | d |'
+const overTableNotes = [
+  overTableTable,
+  `before\n\n${overTableTable}\n\nafter`,
+  `${overTableTable}\n\nafter`,
+]
+
+test('a dead key composes over a selection over a table in one undo step', {
+  timeout: 30000,
+}, async () => {
+  const cdp = await harness.context().newCDPSession(harness)
+  for (const doc of overTableNotes) {
+    await selectRange(doc)
+    // A dead key starts a composition with its own key code, not 229.
+    await cdp.send('Input.dispatchKeyEvent', {
+      type: 'rawKeyDown',
+      key: 'Dead',
+      code: 'Quote',
+      windowsVirtualKeyCode: 222,
+      nativeVirtualKeyCode: 222,
+    })
+    await compose(cdp, '´', 'é')
+    await cdp.send('Input.insertText', { text: 'é' })
+    await replacedOnce(doc, [0, doc.length], 'é', doc)
+  }
+  await cdp.detach()
+})
+
+test('a composition that starts without a key replaces a selection over a table in one undo step', {
+  timeout: 30000,
+}, async () => {
+  const cdp = await harness.context().newCDPSession(harness)
+  for (const doc of overTableNotes) {
+    await selectRange(doc)
+    await harness.evaluate(() =>
+      window.tables
+        .view()
+        .contentDOM.dispatchEvent(
+          new CompositionEvent('compositionstart', { bubbles: true }),
+        ),
+    )
+    await compose(cdp, '´', 'é')
+    await cdp.send('Input.insertText', { text: 'é' })
+    await replacedOnce(doc, [0, doc.length], 'é', `compositionstart ${doc}`)
+  }
+  // The table alone selected: the view's own observer clears only selections over several lines.
+  const doc = `before\n\n${overTableTable}\n\nafter`
+  const table = [doc.indexOf('|'), doc.lastIndexOf('|') + 1]
+  await selectRange(doc, table)
+  await compose(cdp, 'n', 'ni', '你')
+  await cdp.send('Input.insertText', { text: '你' })
+  await replacedOnce(doc, table, '你', 'table')
+  await cdp.detach()
+})
+
+test('text without a key, as from dictation, replaces a selection over a table', {
+  timeout: 30000,
+}, async () => {
+  const cdp = await harness.context().newCDPSession(harness)
+  for (const doc of overTableNotes.slice(1)) {
+    await selectRange(doc)
+    await cdp.send('Input.insertText', { text: '👍' })
+    await replacedOnce(doc, [0, doc.length], '👍', doc)
+  }
+  await cdp.detach()
+})
+
+test('a late first candidate keeps a composition over a table one undo step', {
+  timeout: 30000,
+}, async () => {
+  const cdp = await harness.context().newCDPSession(harness)
+  for (const doc of overTableNotes) {
+    await selectRange(doc)
+    await cdp.send('Input.dispatchKeyEvent', {
+      type: 'rawKeyDown',
+      key: 'k',
+      code: 'KeyK',
+      windowsVirtualKeyCode: 229,
+      nativeVirtualKeyCode: 229,
+    })
+    // History groups edits by their time; the IME answers a second later.
+    await harness.evaluate(() => {
+      const now = Date.now
+      Date.now = () => now() + 1000
+      window.restoreNow = () => {
+        Date.now = now
+      }
+    })
+    try {
+      await compose(cdp, 'k', 'か')
+      await cdp.send('Input.insertText', { text: 'か' })
+      await replacedOnce(doc, [0, doc.length], 'か', doc)
+    } finally {
+      await harness.evaluate(() => window.restoreNow())
+    }
+  }
+  await cdp.detach()
+})
+
+test('a composition from inside a table to past it composes in the table source at the caret, in one undo step', {
+  timeout: 30000,
+}, async () => {
+  const cdp = await harness.context().newCDPSession(harness)
+  const doc = `before\n\n${overTableTable}\n\nafter`
+  const inner = doc.indexOf('| c') + 3
+  // To the end of the note, and into the text after the table.
+  for (const range of [
+    [inner, doc.length],
+    [inner, doc.length - 2],
+  ]) {
+    await selectRange(doc, range)
+    await cdp.send('Input.dispatchKeyEvent', {
+      type: 'rawKeyDown',
+      key: 'k',
+      code: 'KeyK',
+      windowsVirtualKeyCode: 229,
+      nativeVirtualKeyCode: 229,
+    })
+    await compose(cdp, 'k', 'か')
+    await cdp.send('Input.insertText', { text: 'か' })
+    await replacedOnce(doc, range, 'か', `${range}`)
+    // The table shows its source while the caret is in it, as a table again after.
+    await harness.evaluate(() =>
+      window.tables.view().dispatch({ selection: { anchor: 0 } }),
+    )
+    await harness.evaluate(() => window.tables.settle())
+    assert.equal(await harness.locator('.hibi-lp-table').count(), 1)
+  }
+  await cdp.detach()
+})
+
+test('undoing a composition from inside a table to past it shows the tables it restores', {
+  timeout: 30000,
+}, async () => {
+  const cdp = await harness.context().newCDPSession(harness)
+  const doc = `before\n\n${overTableTable}\n\nafter\n\n${overTableTable}\n\nend`
+  const range = [doc.indexOf('| c') + 3, doc.length]
+  await selectRange(doc, range)
+  await cdp.send('Input.dispatchKeyEvent', {
+    type: 'rawKeyDown',
+    key: 'k',
+    code: 'KeyK',
+    windowsVirtualKeyCode: 229,
+    nativeVirtualKeyCode: 229,
+  })
+  await compose(cdp, 'k', 'か')
+  await cdp.send('Input.insertText', { text: 'か' })
+  await harness.evaluate(() => window.tables.settle())
+  assert.equal((await state()).doc, `${doc.slice(0, range[0])}か`)
+  await harness.keyboard.press('ControlOrMeta+z')
+  await harness.evaluate(() => window.tables.settle())
+  assert.equal((await state()).doc, doc)
+  assert.equal(await harness.locator('.hibi-lp-table').count(), 2)
+  await cdp.detach()
+})
+
+test('an echo before the first composition candidate keeps one undo step', {
+  timeout: 30000,
+}, async () => {
+  const cdp = await harness.context().newCDPSession(harness)
+  const doc = `before\n\n${overTableTable}\n\nafter\n\n${overTableTable}\n\nend`
+  const range = [doc.indexOf('| c') + 3, doc.indexOf('after') + 2]
+  await selectRange(doc, range)
+  await cdp.send('Input.dispatchKeyEvent', {
+    type: 'rawKeyDown',
+    key: 'k',
+    code: 'KeyK',
+    windowsVirtualKeyCode: 229,
+    nativeVirtualKeyCode: 229,
+  })
+  await harness.evaluate(() => window.tables.echo('!'))
+  await harness.evaluate(() => window.tables.settle())
+  const focused = await harness.evaluate(() => {
+    const view = window.tables.view()
+    return document.activeElement === view.contentDOM
+  })
+  await compose(cdp, 'k', 'か')
+  await cdp.send('Input.insertText', { text: 'か' })
+  await harness.evaluate(() => window.tables.settle())
+  const expected = `${doc.slice(0, range[0])}か${doc.slice(range[1])}!`
+  assert.equal((await state()).doc, expected)
+  await harness.keyboard.press('ControlOrMeta+z')
+  await harness.evaluate(() => window.tables.settle())
+  assert.equal((await state()).doc, `${doc}!`)
+  assert.equal(focused, true)
+  assert.equal(await harness.locator('.hibi-lp-table').count(), 2)
+  await harness.keyboard.press(
+    process.platform === 'win32' ? 'Control+y' : 'ControlOrMeta+Shift+z',
+  )
+  await harness.evaluate(() => window.tables.settle())
+  assert.equal((await state()).doc, expected)
+  await cdp.detach()
+})
+
+for (const action of ['cancel', 'navigate', 'blur'])
+  test(`an unfinished composition releases its revealed table on ${action}`, {
+    timeout: 30000,
+  }, async () => {
+    const cdp = await harness.context().newCDPSession(harness)
+    const doc = `before\n\n${overTableTable}\n\nafter\n\n${overTableTable}\n\nend`
+    const range = [doc.indexOf('| c') + 3, doc.indexOf('after') + 2]
+    await selectRange(doc, range)
+    await cdp.send('Input.dispatchKeyEvent', {
+      type: 'rawKeyDown',
+      key: 'k',
+      code: 'KeyK',
+      windowsVirtualKeyCode: 229,
+      nativeVirtualKeyCode: 229,
+    })
+    await harness.evaluate(() => window.tables.echo('!'))
+    await harness.evaluate(() => window.tables.settle())
+    if (action === 'cancel')
+      await harness.evaluate(() => {
+        const content = window.tables.view().contentDOM
+        content.dispatchEvent(
+          new CompositionEvent('compositionstart', { bubbles: true }),
+        )
+        content.dispatchEvent(
+          new CompositionEvent('compositionend', { bubbles: true }),
+        )
+      })
+    else if (action === 'navigate') await harness.keyboard.press('Escape')
+    else await harness.evaluate(() => window.tables.view().contentDOM.blur())
+    await harness.waitForFunction(
+      () => document.querySelectorAll('.hibi-lp-table').length === 2,
+    )
+    assert.equal(
+      (await state()).doc,
+      `${doc.slice(0, range[0])}${doc.slice(range[1])}!`,
+    )
+    await harness.evaluate(() => {
+      const view = window.tables.view()
+      view.focus()
+      view.dispatch({ selection: { anchor: 0 } })
+    })
+    await harness.keyboard.press('ControlOrMeta+z')
+    await harness.evaluate(() => window.tables.settle())
+    assert.equal((await state()).doc, `${doc}!`)
+    await cdp.detach()
+  })
+
+test('an edit from elsewhere while composing in a table source waits for the composition to end', {
+  timeout: 30000,
+}, async () => {
+  const cdp = await harness.context().newCDPSession(harness)
+  const doc = `before\n\n${overTableTable}\n\nafter\n\n${overTableTable}\n\nend`
+  const range = [doc.indexOf('| c') + 3, doc.indexOf('after') + 2]
+  await selectRange(doc, range)
+  await cdp.send('Input.dispatchKeyEvent', {
+    type: 'rawKeyDown',
+    key: 'k',
+    code: 'KeyK',
+    windowsVirtualKeyCode: 229,
+    nativeVirtualKeyCode: 229,
+  })
+  await compose(cdp, 'k')
+  // Another view's edit arrives without an input event.
+  await harness.evaluate(() => {
+    const view = window.tables.view()
+    view.dispatch({ changes: { from: view.state.doc.length, insert: '!' } })
+  })
+  await compose(cdp, 'か')
+  await cdp.send('Input.insertText', { text: 'か' })
+  await harness.evaluate(() => window.tables.settle())
+  assert.equal(
+    (await state()).doc,
+    `${doc.slice(0, range[0])}か${doc.slice(range[1])}!`,
+  )
+  // Once the composition ends, the source shows as tables again.
+  await harness.waitForFunction(
+    () => document.querySelectorAll('.hibi-lp-table').length === 2,
+  )
+  await cdp.detach()
+})
+
+test('a note that is only a table takes text and compositions without a key over its selection', {
+  timeout: 30000,
+}, async () => {
+  const cdp = await harness.context().newCDPSession(harness)
+  for (const [candidates, text] of [
+    [[], '👍'],
+    [['n', 'ni', '你'], '你'],
+  ]) {
+    await mount(overTableTable)
+    await harness.evaluate(() => window.tables.view().focus())
+    await harness.keyboard.press('ControlOrMeta+a')
+    await compose(cdp, ...candidates)
+    await cdp.send('Input.insertText', { text })
+    await replacedOnce(overTableTable, [0, overTableTable.length], text, text)
+  }
+  await cdp.detach()
+})
+
+test('typing and composing below a table that ends the note starts a paragraph below it', {
+  timeout: 30000,
+}, async () => {
+  const cdp = await harness.context().newCDPSession(harness)
+  for (const doc of [overTableTable, `before\n\n${overTableTable}`]) {
+    for (const composed of [false, true]) {
+      await mount(doc)
+      const below = await harness.evaluate(() => {
+        const { left, bottom } = document
+          .querySelector('.hibi-lp-table')
+          .getBoundingClientRect()
+        return { x: left + 20, y: bottom + 8 }
+      })
+      await harness.mouse.click(below.x, below.y)
+      assert.equal((await state()).head, doc.length, doc)
+      if (composed) {
+        await cdp.send('Input.dispatchKeyEvent', {
+          type: 'rawKeyDown',
+          key: 'k',
+          code: 'KeyK',
+          windowsVirtualKeyCode: 229,
+          nativeVirtualKeyCode: 229,
+        })
+        await compose(cdp, 'k', 'か')
+        await cdp.send('Input.insertText', { text: 'か' })
+      } else await harness.keyboard.type('xy')
+      await replacedOnce(
+        doc,
+        [doc.length, doc.length],
+        composed ? '\n\nか' : '\n\nxy',
+        `${doc} ${composed}`,
+      )
+    }
+  }
+  await cdp.detach()
+})
+
+test('typing replaces a selection from inside a table to past it, and keys still move over a selected table', {
+  timeout: 30000,
+}, async () => {
+  const doc = 'before\n\n| a | b |\n| - | - |\n| c | d |\n\nafter'
+  // A selection a find match could leave, from a row to the end.
+  const from = doc.indexOf('| c')
+  await mount(doc)
+  await harness.evaluate((from) => {
+    const view = window.tables.view()
+    view.focus()
+    view.dispatch({ selection: { anchor: from, head: view.state.doc.length } })
+  }, from)
+  await harness.keyboard.press('r')
+  assert.equal((await state()).doc, `${doc.slice(0, from)}r`)
+  await harness.keyboard.press('ControlOrMeta+z')
+  assert.equal((await state()).doc, doc)
+  // Shortcuts and arrows over a selected table type nothing.
+  for (const [key, at] of [
+    ['ArrowLeft', 0],
+    ['ArrowRight', doc.length],
+  ]) {
+    await harness.keyboard.press('ControlOrMeta+a')
+    await harness.keyboard.press(key)
+    const now = await state()
+    assert.deepEqual([now.doc, now.anchor, now.head], [doc, at, at], key)
+  }
+})
+
+test('mod-enter in a table that ends the note leaves it for a paragraph below, as in the rich editor', {
+  timeout: 30000,
+}, async () => {
+  const doc = 'before\n\n| a | b |\n| - | - |\n| c | d |'
+  for (const cell of ['a', 'c']) {
+    await mount(doc)
+    await harness
+      .locator('.hibi-lp-table :is(td, th)', { hasText: cell })
+      .click()
+    await harness.keyboard.press('ControlOrMeta+Enter')
+    const now = await state()
+    assert.deepEqual(
+      [now.doc, now.head, now.editor],
+      [`${doc}\n\n`, doc.length + 2, null],
+      cell,
+    )
+    await harness.keyboard.press('ControlOrMeta+z')
+    assert.equal((await state()).doc, doc, cell)
+  }
+  await harness.locator('.hibi-lp-table td', { hasText: 'd' }).click()
+  await harness.keyboard.press('ControlOrMeta+Enter')
+  await harness.keyboard.type('AFTER')
+  assert.equal((await state()).doc, `${doc}\n\nAFTER`)
+})
+
 test('a selection in a table edits the cell it is in once the table has redrawn', {
   timeout: 30000,
 }, async () => {

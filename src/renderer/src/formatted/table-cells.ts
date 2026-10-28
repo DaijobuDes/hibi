@@ -442,6 +442,8 @@ export type CellHost = {
   move(move: CellMove): boolean
   /** Leave the table, after it or before it, back to the formatted view. */
   leave(after: boolean): void
+  /** Leave for a paragraph below a table that ends the note, as Mod-Enter does after a final block; false elsewhere. */
+  exit(): boolean
   /** Focus left the editor for something outside it. */
   blurred(editor: CellEditor): void
 }
@@ -647,7 +649,10 @@ export class CellEditor {
               },
               { key: 'End', run: edge(true, false), shift: edge(true, true) },
               { key: 'Enter', run: cellLineBreak, shift: cellLineBreak },
-              { key: 'Mod-Enter', run: cellLineBreak },
+              {
+                key: 'Mod-Enter',
+                run: (view) => host.exit() || cellLineBreak(view),
+              },
               {
                 key: 'Escape',
                 run: () => {
