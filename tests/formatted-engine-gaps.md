@@ -139,6 +139,5 @@ accepted differences are not gaps; their tests assert each engine. the codemirro
 | api-005 | [rich-edit-api.test.mjs:295](rich-edit-api.test.mjs#L295) | rich source edits must reject structural markup changes | 6: verbatim projections and selection contracts |
 | marker-007 | [sidebar-views.test.mjs:105](sidebar-views.test.mjs#L105) | outline navigation must expose rendered heading text | 8b: hidden markers and math caret placement |
 | syntax-005 | [sideload.test.mjs:283](sideload.test.mjs#L283) | disabling an addon must remove its formatted syntax colors | 8c: highlighting and grammar lifecycle |
-| projection-002 | [source-preservation.test.mjs:105](source-preservation.test.mjs#L105) | formatted body edits must preserve custom source prefixes and line endings | 6: verbatim projections and selection contracts |
 | semantics-002 | [source-reference-navigation.test.mjs:160](source-reference-navigation.test.mjs#L160) | formatted and source references must reuse one document worker | 9: outline semantics and diagram lifecycle |
 | addon-001 | [source-reference-navigation.test.mjs:185](source-reference-navigation.test.mjs#L185) | rich-only addon syntax must retain native editing and source reference isolation | 2b: legacy feature notices and literal fallback |
