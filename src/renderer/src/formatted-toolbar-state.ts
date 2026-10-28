@@ -675,7 +675,7 @@ export function unlinkChanges(
   tree: Tree,
   range: SelectionRange,
 ): ChangeSpec[] {
-  const changes: ChangeSpec[] = []
+  const changes: { from: number; to?: number; insert?: string }[] = []
   const unlink = (node: SyntaxNode) => {
     // A bare web address links itself, as it does in the rich editor after a reload.
     if (node.name === 'URL') return
@@ -683,19 +683,38 @@ export function unlinkChanges(
     const text = autolink ? node.getChild('URL') : formattingText(state, node)
     if (!text) return
     // An autolink's address is literal text. As Markdown text it needs its
-    // Markdown characters escaped, and where it is no longer linked, also
-    // what would make it a web address or email again.
+    // Markdown characters escaped. Text no longer linked also needs escaped
+    // what would make it a web address or email again, outside code and
+    // other literal syntax.
     const escapeText = (from: number, to: number, linked: boolean) => {
-      if (!autolink) return
-      const syntax = linked
-        ? /[\\`*_~[\]&$^=|!]/g
-        : /[\\`*_~[\]&$^=|!@]|(?<=https?|ftp):(?=\/\/)|(?<=www)\./gi
-      for (const match of state.sliceDoc(from, to).matchAll(syntax))
-        changes.push(
-          match[0] === '&'
-            ? { from: from + match.index + 1, insert: 'amp;' }
-            : { from: from + match.index, insert: '\\' },
-        )
+      const syntax = autolink
+        ? linked
+          ? /[\\`*_~[\]&$^=|!]/g
+          : /[\\`*_~[\]&$^=|!@]|(?<=https?|ftp):(?=\/\/)|(?<=www)\./gi
+        : !linked && /@|(?<=https?|ftp):(?=\/\/)|(?<=www)\./gi
+      if (!syntax) return
+      const parts: [number, number][] = []
+      let at = from
+      if (!autolink)
+        tree.iterate({
+          from,
+          to,
+          enter: (node) => {
+            if (node.to <= at || node.from >= to) return false
+            if (!literalSyntax.includes(node.name)) return undefined
+            if (node.from > at) parts.push([at, node.from])
+            at = node.to
+            return false
+          },
+        })
+      if (at < to) parts.push([at, to])
+      for (const [start, end] of parts)
+        for (const match of state.sliceDoc(start, end).matchAll(syntax))
+          changes.push(
+            match[0] === '&'
+              ? { from: start + match.index + 1, insert: 'amp;' }
+              : { from: start + match.index, insert: '\\' },
+          )
     }
     const whole = () => {
       changes.push({ from: node.from, to: text.from })
@@ -707,16 +726,50 @@ export function unlinkChanges(
       return
     }
     const start = autolink
-      ? { at: Math.max(range.from, text.from), close: '', open: '' }
+      ? {
+          at: Math.max(range.from, text.from),
+          close: '',
+          open: '',
+          code: null,
+          spaces: [],
+        }
       : cut(state, tree, node, text, Math.max(range.from, text.from))
     const end = autolink
-      ? { at: Math.min(range.to, text.to), close: '', open: '' }
+      ? {
+          at: Math.min(range.to, text.to),
+          close: '',
+          open: '',
+          code: null,
+          spaces: [],
+        }
       : cut(state, tree, node, text, Math.min(range.to, text.to))
     if (end.at <= start.at) return
     if (start.at <= text.from && end.at >= text.to) {
       whole()
       return
     }
+    const replace = (from: number, to: number, insert: string) => {
+      if (state.sliceDoc(from, to) !== insert)
+        changes.push({ from, to, insert })
+    }
+    // A cut in code ends the code and starts it again, each part with the
+    // fence and padding that keep its text.
+    const same = start.code && start.code.from === end.code?.from
+    for (const side of [start, end]) {
+      const code = side.code
+      const inner = code && codeText(state, code)
+      if (!code || !inner) continue
+      const from = side === end && same ? start.at : inner.from
+      const to = side === start && same ? end.at : inner.to
+      const left = codeFence(state.sliceDoc(from, side.at))
+      const right = codeFence(state.sliceDoc(side.at, to))
+      side.close = left.close + side.close
+      side.open += right.open
+      if (from === inner.from) replace(code.from, inner.from, left.open)
+      if (to === inner.to) replace(inner.to, code.to, right.close)
+    }
+    for (const at of new Set([...start.spaces, ...end.spaces]))
+      replace(at, at + 1, `&#${state.sliceDoc(at, at + 1).codePointAt(0)};`)
     // What follows each kept part's text: the link's own destination or
     // label, a label for a shortcut or collapsed reference, or an
     // autolink's address, where one without a scheme is an email.
@@ -732,10 +785,6 @@ export function unlinkChanges(
       : tail.startsWith('](') || /^\]\[[^\]]/.test(tail)
         ? tail
         : `][${state.sliceDoc(text.from, text.to)}]`
-    const replace = (from: number, to: number, insert: string) => {
-      if (state.sliceDoc(from, to) !== insert)
-        changes.push({ from, to, insert })
-    }
     const kept = start.at > text.from
     replace(node.from, text.from, kept ? '[' : '')
     escapeText(text.from, start.at, true)
@@ -765,14 +814,18 @@ export function unlinkChanges(
       return undefined
     },
   })
-  return changes
+  // Changes in the order of the text, so ones at the same place keep theirs.
+  return changes.sort(
+    (a, b) => a.from - b.from || (a.to ?? a.from) - (b.to ?? b.from),
+  )
 }
 
 /**
  * Where a split of `link`'s text at `at` goes, and the formatting it closes
  * before the split and opens after it, innermost closed first. A cut in a
  * formatting node's delimiters, or at an edge of its text, moves outside the
- * node, so the node stays whole and no empty formatting is left behind.
+ * node, so the node stays whole and no empty formatting is left behind, and
+ * a cut does not split an escape or other literal syntax.
  */
 function cut(
   state: EditorState,
@@ -789,9 +842,17 @@ function cut(
       node && node.from > link.from;
       node = node.parent
     ) {
-      if (!formatting.includes(node.name) || node.from >= at || node.to <= at)
-        continue
-      const inner = formattingText(state, node)
+      if (node.from >= at || node.to <= at) continue
+      if (node.name !== 'InlineCode' && literalSyntax.includes(node.name)) {
+        at = node.from
+        moved = true
+        break
+      }
+      if (!formatting.includes(node.name)) continue
+      const inner =
+        node.name === 'InlineCode'
+          ? codeText(state, node)
+          : formattingText(state, node)
       if (!inner) continue
       if (at <= inner.from || at >= inner.to) {
         // The cut is at an edge of this formatting's text: keep it whole.
@@ -803,7 +864,8 @@ function cut(
     }
   }
   let close = '',
-    open = ''
+    open = '',
+    code: SyntaxNode | null = null
   for (
     let node: SyntaxNode | null = tree.resolveInner(at, 1);
     node && node.from > link.from;
@@ -811,6 +873,11 @@ function cut(
   ) {
     if (!formatting.includes(node.name) || node.from >= at || node.to <= at)
       continue
+    // Code is spelled again around the cut by its caller.
+    if (node.name === 'InlineCode') {
+      code = node
+      continue
+    }
     const inner = formattingText(state, node)
     const first = node.firstChild,
       last = node.lastChild
@@ -818,7 +885,43 @@ function cut(
     close += state.sliceDoc(last.from, last.to)
     open = state.sliceDoc(first.from, first.to) + open
   }
-  return { at, close, open }
+  // Delimiters next to a space would not close or open formatting, so the
+  // caller spells that space as a character reference.
+  const spaces: number[] = []
+  if (!code) {
+    if (close && /[^\S\n]/.test(state.sliceDoc(at - 1, at))) spaces.push(at - 1)
+    if (open && /[^\S\n]/.test(state.sliceDoc(at, at + 1))) spaces.push(at)
+  }
+  return { at, close, open, code, spaces }
+}
+
+/** Syntax inside a link's text that stays as written when it is unlinked. */
+const literalSyntax = [
+  'InlineCode',
+  'Escape',
+  'Entity',
+  'HTMLTag',
+  'Comment',
+  'Image',
+  'Autolink',
+]
+
+/** The text of inline code, inside the spaces that pad it. */
+function codeText(state: EditorState, node: SyntaxNode) {
+  const inner = formattingText(state, node)
+  const text = inner && state.sliceDoc(inner.from, inner.to).replace(/\n/g, ' ')
+  return inner && text && /^ .*[^ ].* $/s.test(text)
+    ? { from: inner.from + 1, to: inner.to - 1 }
+    : inner
+}
+
+/** The fence and padding that spell `text` as inline code. */
+function codeFence(text: string) {
+  const plain = text.replace(/\n/g, ' ')
+  const runs = plain.match(/`+/g)?.map((run) => run.length) ?? []
+  const fence = '`'.repeat(Math.max(0, ...runs) + 1)
+  const pad = /^`|`$|^ .*[^ ].* $/s.test(plain) ? ' ' : ''
+  return { open: fence + pad, close: pad + fence }
 }
 
 /** Changes that turn the fenced code blocks of a selection back into text. */

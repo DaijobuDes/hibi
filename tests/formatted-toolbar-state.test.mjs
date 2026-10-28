@@ -282,6 +282,8 @@ test('formatted unlink removes links by their syntax and leaves other text unedi
     ran('unlink', '<https://e.test>', 'e.', 2),
     '[https://](https://e.test)e.[test](https://e.test)',
   )
+  // A range does not split an escape.
+  assert.equal(ran('unlink', '[a\\@b c](u)', '@', 1), '[a](u)\\@[b c](u)')
   // Nothing to unlink leaves the note unedited.
   assert.equal(ran('unlink', note, 'pl'), null)
 })
@@ -401,6 +403,44 @@ test('a partial unlink keeps the link and formatting of the text around it, as t
       '[https://](https://x.com/\\*a\\*&amp;amp;)x.com[/\\*a\\*&amp;amp;](https://x.com/\\*a\\*&amp;amp;)',
     ],
     ['<a@b.co>', 'a@b.co', 2, 4, '[a@](mailto:a@b.co)b.co'],
+    // So does unlinked text of a link that reads as an address.
+    [
+      '[https://e.test/path](https://else.test)',
+      'https://e.test/path',
+      0,
+      16,
+      'https\\://e.test/p[ath](https://else.test)',
+    ],
+    [
+      '[mail a@b.co](https://e.test)',
+      'mail a@b.co',
+      5,
+      6,
+      '[mail ](https://e.test)a\\@b.co',
+    ],
+    // Code split by the range is fenced and padded again around its text.
+    [
+      '[abc` DEFghi `jkl](https://e.test)',
+      'DEFghi',
+      0,
+      3,
+      '[abc](https://e.test)`DEF`[`ghi`jkl](https://e.test)',
+    ],
+    [
+      '[``a`b``](https://e.test)',
+      'a`b',
+      1,
+      1,
+      '[`a`](https://e.test)`` ` ``[`b`](https://e.test)',
+    ],
+    // A delimiter next to a space spells the space as a character reference.
+    [
+      '[*a `b c` d*](https://e.test)',
+      'a',
+      0,
+      1,
+      '*a*[*&#32;`b c` d*](https://e.test)',
+    ],
   ]) {
     const editor = richEditor(input)
     const source = split ? input : editor.getMarkdown()
