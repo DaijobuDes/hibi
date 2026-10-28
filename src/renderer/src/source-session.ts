@@ -4,6 +4,7 @@ import {
   ChangeSet,
   EditorSelection,
   EditorState,
+  Facet,
   Prec,
   type StateEffect,
   Text,
@@ -31,6 +32,9 @@ import {
 import type { SourceSelection } from '../../shared/source-selection.ts'
 
 export const sourceOperationEcho = Annotation.define<string>()
+/** View state restored alongside the session's text and selection history. */
+export const sourceHistoryEffects =
+  Facet.define<(state: EditorState) => readonly StateEffect<unknown>[]>()
 
 export type SourceEditorTextTask = Readonly<{
   sourceUnits: number
@@ -387,6 +391,12 @@ export function createSourceSession(
   viewId = 'default',
 ) {
   let snapshot = session.snapshot()
+  const historyEffects = {
+    undo: new WeakMap<object, readonly StateEffect<unknown>[]>(),
+    redo: new WeakMap<object, readonly StateEffect<unknown>[]>(),
+  }
+  const captureHistory = (state: EditorState) =>
+    state.facet(sourceHistoryEffects).flatMap((capture) => capture(state))
   const lineBreak = preferredLineBreak(snapshot)
   let group = '',
     lastEvent = '',
@@ -487,6 +497,8 @@ export function createSourceSession(
       snapshot.version,
       viewId,
     )
+    const beforeIdentity = session.historyIdentity()
+    const beforeEffects = captureHistory(view.state)
     session.edit(
       exactChanges ?? sourceChanges(changes),
       event.includes('compose')
@@ -496,6 +508,11 @@ export function createSourceSession(
           : 'source',
       group,
       (prepared) => {
+        historyEffects.undo.set(beforeIdentity, beforeEffects)
+        historyEffects.redo.set(
+          session.historyIdentity(),
+          captureHistory(state),
+        )
         snapshot = prepared.after
         rememberSourceHistory(state, session.historyDepth(), history)
         update(view, transactions)
@@ -549,13 +566,15 @@ export function createSourceSession(
       // A waiting view gets the caret immediate echoes would have left: the
       // session selection, or its own caret mapped through each operation.
       let echo = '',
-        selection: EditorSelection | null = null
+        selection: EditorSelection | null = null,
+        effects: readonly StateEffect<unknown>[] = []
       flush = () => {
         if (!pending || failed) return
         try {
           const transaction = view.state.update({
             changes: pending,
             ...(selection ? { selection } : {}),
+            effects,
             annotations: [
               sourceOperationEcho.of(echo),
               Transaction.addToHistory.of(false),
@@ -563,6 +582,7 @@ export function createSourceSession(
             filter: false,
           })
           pending = selection = null
+          effects = []
           rememberSourceHistory(
             reachedState(transaction),
             session.historyDepth(),
@@ -599,6 +619,13 @@ export function createSourceSession(
           )
         pending = pending ? pending.compose(changes) : changes
         echo = prepared.operation.operationId
+        effects =
+          prepared.operation.origin === 'undo' ||
+          prepared.operation.origin === 'redo'
+            ? (historyEffects[prepared.operation.origin].get(
+                session.historyIdentity(),
+              ) ?? [])
+            : []
         snapshot = prepared.after
         group = ''
         if (visible) flush()

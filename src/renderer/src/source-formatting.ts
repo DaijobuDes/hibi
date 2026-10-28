@@ -14,7 +14,6 @@ import {
   Facet,
   StateEffect,
   StateField,
-  type Text,
   Transaction,
   type TransactionSpec,
 } from '@codemirror/state'
@@ -41,6 +40,7 @@ import {
   unfenceChanges,
   unlinkChanges,
 } from './formatted-toolbar-state.ts'
+import { sourceHistoryEffects } from './source-session.ts'
 
 /** Same format actions as the toolbar; addon keymaps (including vim) run first. */
 const formatBindings: [string, string][] = [
@@ -131,7 +131,7 @@ function opened(state: EditorState, pos: number, token: string) {
 type StoredMarks = {
   pos: number
   marks: readonly string[]
-  composition?: { before: StoredMarks; doc: Text; changes: ChangeSet }
+  composition?: { before: StoredMarks; state: EditorState; changes: ChangeSet }
   inline?: { close: string; tail: string }
   code?: {
     from: number
@@ -146,13 +146,17 @@ type StoredMarks = {
     longest: number
   }
 }
-const storeMarks = StateEffect.define<StoredMarks>()
+const storeMarks = StateEffect.define<StoredMarks | null>()
 const markComposition = StateEffect.define<boolean>()
 const storedMarks = StateField.define<StoredMarks | null>({
   create: () => null,
   update(value, transaction) {
     for (const effect of transaction.effects) {
-      if (effect.is(storeMarks)) return effect.value
+      if (effect.is(storeMarks))
+        return transaction.newSelection.main.empty &&
+          transaction.newSelection.main.head === effect.value?.pos
+          ? effect.value
+          : null
       if (effect.is(markComposition)) {
         if (!value) return null
         if (effect.value)
@@ -160,7 +164,7 @@ const storedMarks = StateField.define<StoredMarks | null>({
             ...value,
             composition: {
               before: value,
-              doc: transaction.startState.doc,
+              state: transaction.startState,
               changes: transaction.changes,
             },
           }
@@ -168,7 +172,8 @@ const storedMarks = StateField.define<StoredMarks | null>({
         if (!composition) return value
         let changed = false
         composition.changes.iterChanges((from, to, _a, _b, inserted) => {
-          if (!inserted.eq(composition.doc.slice(from, to))) changed = true
+          if (!inserted.eq(composition.state.doc.slice(from, to)))
+            changed = true
         })
         return !changed &&
           transaction.newSelection.main.head === composition.before.pos
@@ -177,7 +182,15 @@ const storedMarks = StateField.define<StoredMarks | null>({
       }
     }
     const { main } = transaction.newSelection
-    if (value?.composition)
+    if (value?.composition) {
+      if (
+        (transaction.docChanged &&
+          !transaction.isUserEvent('input.type.compose')) ||
+        (transaction.selection &&
+          !transaction.docChanged &&
+          main.head !== value.pos)
+      )
+        return null
       return {
         ...value,
         pos: main.head,
@@ -186,6 +199,7 @@ const storedMarks = StateField.define<StoredMarks | null>({
           changes: value.composition.changes.compose(transaction.changes),
         },
       }
+    }
     return value &&
       !transaction.docChanged &&
       main.empty &&
@@ -519,29 +533,75 @@ function storedInput(
   }
 }
 
+/** Format only the committed native composition, without redrawing its candidates. */
+function finishStoredComposition(view: EditorView) {
+  const composition = view.state.field(storedMarks)?.composition
+  if (!composition || view.composing || view.compositionStarted) return
+  const { before, state, changes } = composition
+  let text = '',
+    valid = true
+  changes.iterChanges((from, to, _a, _b, inserted) => {
+    if (from !== before.pos || from !== to) valid = false
+    text += inserted.toString()
+  })
+  const { main } = view.state.selection
+  const tree = formattedSyntaxTree(state)
+  const spec =
+    valid &&
+    text &&
+    !/[\r\n]/.test(text) &&
+    !view.state.readOnly &&
+    main.empty &&
+    main.head === before.pos + text.length &&
+    tree
+      ? storedInput(state, tree, before, text)
+      : null
+  if (!spec) {
+    view.dispatch({ effects: markComposition.of(false) })
+    return
+  }
+  view.dispatch({
+    ...spec,
+    changes: changes.invert(state.doc).compose(state.changes(spec.changes)),
+    userEvent: 'input.type.compose',
+  })
+}
+
 /** Stored marks for a formatted view, which wrap the text typed next at their caret. */
 export const storedMarkInput = [
   storedMarks,
+  sourceHistoryEffects.of((state) => {
+    const stored = state.field(storedMarks)
+    return [storeMarks.of(stored?.composition?.before ?? stored)]
+  }),
   ViewPlugin.fromClass(
     class {
       frame = 0
       destroy() {
         cancelAnimationFrame(this.frame)
+        this.frame = 0
       }
     },
     {
       eventObservers: {
         compositionstart(_event, view) {
           cancelAnimationFrame(this.frame)
+          this.frame = 0
           if (view.state.field(storedMarks))
             view.dispatch({ effects: markComposition.of(true) })
         },
         compositionend(_event, view) {
-          this.frame = requestAnimationFrame(() => {
+          const frame = requestAnimationFrame(() => {
             this.frame = 0
-            if (view.state.field(storedMarks)?.composition)
-              view.dispatch({ effects: markComposition.of(false) })
+            finishStoredComposition(view)
           })
+          this.frame = frame
+          // The native observer flushes its last candidate after this event.
+          queueMicrotask(() =>
+            queueMicrotask(() => {
+              if (this.frame === frame) finishStoredComposition(view)
+            }),
+          )
         },
       },
     },
@@ -555,8 +615,9 @@ export const storedMarkInput = [
       from === to &&
       from === stored.pos
     ) {
-      view.dispatch({ effects: markComposition.of(false) })
+      finishStoredComposition(view)
       stored = view.state.field(storedMarks)
+      from = to = view.state.selection.main.head
     }
     const tree = formattedSyntaxTree(view.state)
     if (
