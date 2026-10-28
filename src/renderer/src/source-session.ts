@@ -29,6 +29,7 @@ import {
   sourceChangesFromEditor,
 } from '../../shared/source-projection.ts'
 import type { SourceSelection } from '../../shared/source-selection.ts'
+import { bindSourceText } from './source-whitespace.ts'
 
 export const sourceOperationEcho = Annotation.define<string>()
 
@@ -100,7 +101,7 @@ export async function sourceEditorTextCooperatively(
       from = to
       if (from < source.utf16Length) await pause()
     }
-    return current() ? text : null
+    return current() ? bindSourceText(text, source) : null
   } finally {
     channel?.port1.close()
     channel?.port2.close()
@@ -497,6 +498,7 @@ export function createSourceSession(
       group,
       (prepared) => {
         snapshot = prepared.after
+        bindSourceText(state.doc, snapshot)
         rememberSourceHistory(state, session.historyDepth(), history)
         update(view, transactions)
       },
@@ -544,6 +546,7 @@ export function createSourceSession(
         throw new Error('The source editor is synchronizing.')
       snapshot = session.snapshot()
       attached = view
+      bindSourceText(view.state.doc, snapshot)
       const unregister = registerSourceHistory(view, history)
       rememberSourceHistory(view.state, session.historyDepth(), history)
       // A waiting view gets the caret immediate echoes would have left: the
@@ -563,6 +566,7 @@ export function createSourceSession(
             filter: false,
           })
           pending = selection = null
+          bindSourceText(transaction.newDoc, snapshot)
           rememberSourceHistory(
             reachedState(transaction),
             session.historyDepth(),

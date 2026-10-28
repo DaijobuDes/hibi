@@ -677,6 +677,21 @@ export class SourceSnapshot {
   materialize() {
     return this.sliceRaw(0, this.utf16Length)
   }
+  /** Whitespace proof from indexed counts; reads only the range's edge strides. */
+  isWhitespace(
+    from: number,
+    to = this.utf16Length,
+    kind: 'whitespace' | 'horizontal' = 'whitespace',
+  ): boolean {
+    this.#range(from, to)
+    const root = roots.get(this)!
+    const metric =
+      kind === 'horizontal' ? 'nonHorizontalUnits' : 'nonWhitespaceUnits'
+    return (
+      this.#tree.prefix(root, from)[metric] ===
+      this.#tree.prefix(root, to)[metric]
+    )
+  }
   #seam(position: number) {
     if (position <= 0 || position >= this.utf16Length) return ''
     return this.sliceRaw(

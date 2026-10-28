@@ -33,6 +33,8 @@ function oracle(source) {
     normalizedUnits: normalized.length,
     utf8Bytes: Buffer.byteLength(source),
     breaks: normalized.split('\n').length - 1,
+    nonWhitespaceUnits: source.replace(/\s/g, '').length,
+    nonHorizontalUnits: source.replace(/[ \t]/g, '').length,
     firstUnit: source.length ? source.charCodeAt(0) : -1,
     lastUnit: source.length ? source.charCodeAt(source.length - 1) : -1,
   }
@@ -47,6 +49,7 @@ function randomSource(random, count = 20) {
     '\r',
     '\n',
     '\uFEFF',
+    ' \t\u00a0\u2028\u3000',
     'e\u0301',
     '👩🏽‍💻',
   ]
@@ -79,6 +82,11 @@ function checkSnapshot(snapshot, source) {
     assert.equal(snapshot.lineStart(++line), offset)
   }
   for (let at = 0; at <= source.length; at++) {
+    assert.equal(snapshot.isWhitespace(at), !/\S/.test(source.slice(at)))
+    assert.equal(
+      snapshot.isWhitespace(at, source.length, 'horizontal'),
+      !/[^ \t]/.test(source.slice(at)),
+    )
     const crlf = source.slice(at - 1, at + 1) === '\r\n'
     const paired =
       /[\uD800-\uDBFF]/.test(source.charAt(at - 1)) &&
