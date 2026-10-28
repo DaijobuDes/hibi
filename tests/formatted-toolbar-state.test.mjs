@@ -2431,6 +2431,180 @@ test('formatted link candidates retain source and history when the native source
   }
 })
 
+test('replacing a formatted inline range retains its first marks, source and history', () => {
+  for (const [source, all] of [
+    ['**take** rest', false],
+    ['__take__ rest', true],
+    ['> **take** rest', false],
+    ['- **take** rest', false],
+    ['**α😀** rest\r\n\r\nuntouched __tail__', false],
+  ])
+    for (const reverse of all ? [false] : [false, true]) {
+      const word = source.includes('α😀') ? 'α😀' : 'take',
+        start = source.indexOf(word),
+        end = source.indexOf('rest') + 4
+      const { target, bridge, session, dispose } = sessionTyping(source, start)
+      target.dispatch({
+        selection: {
+          anchor: all ? 0 : reverse ? end : start,
+          head: reverse ? start : end,
+        },
+      })
+      const editor = richEditor(source)
+      try {
+        const position = (word, offset) => {
+          let found
+          editor.state.doc.descendants((node, pos) => {
+            if (found === undefined && node.isText && node.text.includes(word))
+              found = pos + node.text.indexOf(word) + offset
+          })
+          assert.notEqual(found, undefined)
+          return found
+        }
+        if (all) editor.commands.selectAll()
+        else {
+          const from = position(word, 0),
+            to = position('rest', 4)
+          editor.commands.setTextSelection(
+            reverse ? { from: to, to: from } : { from, to },
+          )
+        }
+        assert.equal(editor.commands.toggleItalic(), true)
+        assert.equal(target.formatting.run('italic'), true)
+        const actionSource = session.snapshot().materialize(),
+          actionSelection = target.state.selection
+        assert.equal(session.snapshot().version, 1)
+        const prefix = source.startsWith('> ')
+            ? '> '
+            : source.startsWith('- ')
+              ? '- '
+              : '',
+          suffix = source.slice(end)
+        for (const text of ['Z', 'Q']) {
+          editor.view.dispatch(editor.state.tr.insertText(text))
+          target.type(text)
+          const typed =
+            prefix + (text === 'Z' ? '***Z***' : '***ZQ***') + suffix
+          assert.equal(session.snapshot().materialize(), typed)
+          assert.equal(
+            target.state.doc.toString(),
+            typed.replace(/\r\n/g, '\n'),
+          )
+          const parsed = editor.schema.nodeFromJSON(
+            editor.markdown.parse(typed),
+          )
+          if (all) {
+            const value = text === 'Z' ? 'Z' : 'ZQ'
+            // A headless insertText over AllSelection is plain. The actual browser
+            // input, checked in formatted-actions-native, retains the first run's marks.
+            assert.deepEqual(editor.getJSON(), {
+              type: 'doc',
+              content: [
+                { type: 'paragraph', content: [{ type: 'text', text: value }] },
+              ],
+            })
+            assert.deepEqual(parsed.toJSON(), {
+              type: 'doc',
+              content: [
+                {
+                  type: 'paragraph',
+                  content: [
+                    {
+                      type: 'text',
+                      marks: [{ type: 'bold' }, { type: 'italic' }],
+                      text: value,
+                    },
+                  ],
+                },
+              ],
+            })
+          } else
+            assert.ok(sameRichSourceDocument(parsed, editor.state.doc, true))
+          const { head, empty } = target.state.selection.main
+          assert.equal(empty, true)
+          assert.equal(
+            target.state.sliceDoc(head - (text === 'Z' ? 1 : 2), head),
+            text === 'Z' ? 'Z' : 'ZQ',
+          )
+        }
+        const typed = session.snapshot().materialize()
+        assert.equal(session.snapshot().version, 3)
+        assert.equal(bridge.undo(), true)
+        assert.equal(session.snapshot().materialize(), actionSource)
+        assert.equal(bridge.redo(), true)
+        assert.equal(session.snapshot().materialize(), typed)
+        assert.equal(bridge.undo(), true)
+        assert.equal(bridge.undo(), true)
+        assert.equal(session.snapshot().materialize(), source)
+        assert.equal(bridge.redo(), true)
+        assert.equal(session.snapshot().materialize(), actionSource)
+        assert.ok(target.state.selection.eq(actionSelection))
+      } finally {
+        dispose()
+        editor.destroy()
+      }
+    }
+})
+
+test('inline range input leaves composition, structural input and plain text on their existing paths', () => {
+  for (const kind of [
+    'readonly',
+    'composing',
+    'starting composition',
+    'multiline',
+    'blocks',
+  ]) {
+    const target = typing(
+      kind === 'blocks' ? '**one**\n\n**two**' : '**one** rest',
+      2,
+    )
+    target.dispatch({ selection: { anchor: 2, head: target.state.doc.length } })
+    if (kind === 'readonly')
+      target.dispatch({
+        effects: StateEffect.appendConfig.of(EditorState.readOnly.of(true)),
+      })
+    target.composing = kind === 'composing'
+    target.compositionStarted = kind === 'starting composition'
+    const before = target.state,
+      { from, to } = before.selection.main
+    assert.equal(
+      before
+        .facet(EditorView.inputHandler)
+        .some((handler) =>
+          handler(
+            target,
+            from,
+            to,
+            kind === 'multiline' ? 'Z\nQ' : 'Z',
+            () => null,
+          ),
+        ),
+      false,
+      kind,
+    )
+    assert.equal(target.state, before, kind)
+  }
+  const work = (words) => {
+    const target = view(
+      'plain ' + 'rest '.repeat(words) + '**bold**',
+      'plain',
+      5,
+    )
+    target.state = target.state.update({
+      effects: StateEffect.appendConfig.of(storedMarkInput),
+    }).state
+    return counted(() =>
+      assert.equal(
+        target.state
+          .facet(EditorView.inputHandler)
+          .some((handler) => handler(target, 0, 5, 'Z', () => null)),
+        false,
+      ),
+    )
+  }
+  assert.deepEqual(work(200), work(2))
+})
+
 test('ranges ending in a table format every selected block when no cell editor owns them', () => {
   for (const [first, offset, last, end] of [
     ['plain', 0, 'cell', 2],
@@ -2556,7 +2730,10 @@ function typing(doc, anchor) {
             .facet(EditorView.inputHandler)
             .some((handler) => handler(this, from, to, character, insert))
         )
-          this.state = insert().state
+          this.dispatch({
+            ...this.state.replaceSelection(character),
+            userEvent: 'input.type',
+          })
       }
       return this.state.doc.toString()
     },

@@ -33,7 +33,6 @@ import type { MediaAttachment } from '../../shared/media'
 import { gapInput } from './formatted-commands.ts'
 import {
   formattedDocument,
-  formattedLiteral,
   formattedPrefix,
   formattedSyntaxTree,
 } from './formatted-contributions.ts'
@@ -48,10 +47,12 @@ import {
 import {
   blockAction,
   inlineAction,
+  inlineInput,
   listAction,
   preserveActionSelection,
   quoteAction,
   splitAction,
+  typedLiteral,
 } from './source-formatting-actions.ts'
 import {
   sourceHistoryEffects,
@@ -248,20 +249,6 @@ function codeRuns(text: string, tail = 0) {
     last = match.index + match[0].length === text.length ? length : 0
   }
   return { longest, tail: last }
-}
-
-function typedLiteral(state: EditorState, text: string) {
-  // Escape an ampersand before later input can complete an entity reference.
-  const literal = text
-    .split('&')
-    .map((part) => markdownLiteral(part, '='))
-    .join('&amp;')
-  return state.facet(formattedLiteral).includes('Escape')
-    ? literal.replace(
-        /\\(.)/gu,
-        (_, char: string) => `&#${char.codePointAt(0)};`,
-      )
-    : literal
 }
 
 /** Keep trailing spaces outside delimiters until more marked text follows. */
@@ -767,6 +754,13 @@ export const storedMarkInput = [
       from = to = view.state.selection.main.head
     }
     const tree = formattedSyntaxTree(view.state)
+    if (tree && !view.composing && !view.compositionStarted) {
+      const spec = inlineInput(view.state, tree, from, to, text)
+      if (spec) {
+        view.dispatch(spec)
+        return true
+      }
+    }
     if (
       !stored ||
       !tree ||

@@ -212,6 +212,7 @@ const cases = [
   },
   {
     name: 'canonical wide italic span',
+    nextCharacter: true,
     source: '**take** rest',
     text: 'take',
     offset: 0,
@@ -221,6 +222,7 @@ const cases = [
   },
   {
     name: 'genuine select-all may replace noncanonical source',
+    nextCharacter: true,
     source: '__take__ rest',
     all: true,
     action: 'italic',
@@ -936,7 +938,10 @@ for (const engine of ['tiptap', 'codemirror'])
         }
         await focus()
         const typingVersion = (await snapshot(page)).version
-        const typedText = item.cell || item.action === 'table' ? 'ZQ' : 'Z'
+        const typedText =
+          item.nextCharacter || item.cell || item.action === 'table'
+            ? 'ZQ'
+            : 'Z'
         if (item.physical) await page.keyboard.type(typedText)
         else
           for (const character of typedText)

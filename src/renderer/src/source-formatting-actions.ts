@@ -92,7 +92,7 @@ function inlineRuns(
   from: number,
   to: number,
   split: readonly number[] = [],
-  keepOutside?: { from: number; to: number; id: string },
+  keepOutside?: { from: number; to: number; id?: string },
 ) {
   const runs: Run[] = []
   const text = (from: number, to: number, marks: Mark[], literal = false) => {
@@ -141,7 +141,7 @@ function inlineRuns(
           // Keep existing wrappers when only the style inside them changes.
           if (
             keepOutside &&
-            tokens[keepOutside.id] &&
+            (keepOutside.id === undefined || tokens[keepOutside.id]) &&
             own.id !== keepOutside.id &&
             child.from <= keepOutside.from &&
             child.to >= keepOutside.to
@@ -320,6 +320,95 @@ function leaves(tree: Tree, range: SelectionRange, state: EditorState) {
     },
   })
   return result
+}
+
+export function typedLiteral(state: EditorState, text: string) {
+  // Escape an ampersand before later input can complete an entity reference.
+  const literal = text
+    .split('&')
+    .map((part) => markdownLiteral(part, '='))
+    .join('&amp;')
+  return state.facet(formattedLiteral).includes('Escape')
+    ? literal.replace(
+        /\\(.)/gu,
+        (_, char: string) => `&#${char.codePointAt(0)};`,
+      )
+    : literal
+}
+
+/** Replace an inline selection with its first text's marks, keeping balanced wrappers. */
+export function inlineInput(
+  state: EditorState,
+  tree: Tree,
+  from: number,
+  to: number,
+  text: string,
+): TransactionSpec | null {
+  if (
+    from === to ||
+    state.selection.ranges.length !== 1 ||
+    from !== state.selection.main.from ||
+    to !== state.selection.main.to ||
+    /[\r\n]/.test(text)
+  )
+    return null
+  const blocks = leaves(tree, state.selection.main, state)
+  const leaf = blocks[0]
+  if (
+    blocks.length !== 1 ||
+    !leaf ||
+    leaf.name === 'FencedCode' ||
+    leaf.name === 'CodeBlock' ||
+    from < leaf.from ||
+    to > leaf.to
+  )
+    return null
+  let marked = false
+  tree.iterate({
+    from,
+    to,
+    enter(ref) {
+      if (
+        markNames[ref.name] &&
+        !state.facet(formattedLiteral).includes(ref.name)
+      ) {
+        marked = true
+        return false
+      }
+      return undefined
+    },
+  })
+  if (!marked) return null
+  const start = textStart(state, leaf),
+    end = textEnd(leaf)
+  const runs = inlineRuns(state, leaf, start, end, [from, to], { from, to })
+  const first = runs.findIndex((run) => run.to > from && run.from < to),
+    last = runs.findLastIndex((run) => run.to > from && run.from < to)
+  if (first < 0 || !runs.slice(first, last + 1).some((run) => run.marks.length))
+    return null
+  const after = runs.find((run) => run.from <= to && run.to > to)
+  const marks = runs[first]!.marks.filter(
+    (mark) =>
+      mark.id !== 'subscript' ||
+      after?.marks.some((other) => sameMark(mark, other)),
+  )
+  runs.splice(first, last - first + 1, {
+    from,
+    to,
+    text,
+    marks,
+    source: marks.some((mark) => mark.id === 'inline-code')
+      ? text
+      : typedLiteral(state, text),
+  })
+  const value = render(runs),
+    inserted = value.spans.find((span) => span.from === from && span.to === to)
+  if (!inserted) return null
+  return normalizeTables(state, tree, {
+    changes: { from: start, to: end, insert: value.source },
+    selection: EditorSelection.cursor(start + inserted.end),
+    userEvent: 'input.type',
+  })
 }
 
 export function inlineAction(
