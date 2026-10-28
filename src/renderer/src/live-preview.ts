@@ -913,8 +913,7 @@ function inline(
         syntax(ref.from, ref.from + 1, touched(ref.from, ref.to))
         return
       case 'HardBreak':
-        if (doc.sliceString(ref.from, ref.from + 1) === '\\')
-          hideRange(ref.from, ref.from + 1)
+        hideRange(ref.from, Math.min(ref.to, doc.lineAt(ref.from).to))
         return
       case 'Blockquote':
         eachLine(doc, ref.from, ref.to, range, (current) => {

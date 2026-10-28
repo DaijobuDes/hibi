@@ -9,6 +9,16 @@ const undo: typeof nativeCommands.undo = (view) =>
   runSourceHistory(view, 'undo') ?? nativeCommands.undo(view)
 const redo: typeof nativeCommands.redo = (view) =>
   runSourceHistory(view, 'redo') ?? nativeCommands.redo(view)
+/** Keep select-all intent distinct from a text range with the same endpoints. */
+const selectAll: typeof nativeCommands.selectAll = ({ state, dispatch }) => {
+  dispatch(
+    state.update({
+      selection: { anchor: 0, head: state.doc.length },
+      userEvent: 'select.all',
+    }),
+  )
+  return true
+}
 /** A host view keeps native selection steps; its text history is its session's. */
 const selectionHistory =
   (
@@ -38,22 +48,30 @@ const hosted = new Map<unknown, typeof undo>([
   [nativeCommands.redo, redo],
   [nativeCommands.undoSelection, undoSelection],
   [nativeCommands.redoSelection, redoSelection],
+  [nativeCommands.selectAll, selectAll],
 ])
+const hostedKeymap = (bindings: typeof nativeCommands.defaultKeymap) =>
+  bindings.map((binding) => ({
+    ...binding,
+    ...(binding.run ? { run: hosted.get(binding.run) ?? binding.run } : {}),
+    ...(binding.shift
+      ? { shift: hosted.get(binding.shift) ?? binding.shift }
+      : {}),
+  }))
 export const commands = {
   ...nativeCommands,
   undo,
   redo,
   undoSelection,
   redoSelection,
+  selectAll,
   undoDepth: (state: Parameters<typeof nativeCommands.undoDepth>[0]) =>
     sourceHistoryDepth(state, 'undo') ?? nativeCommands.undoDepth(state),
   redoDepth: (state: Parameters<typeof nativeCommands.redoDepth>[0]) =>
     sourceHistoryDepth(state, 'redo') ?? nativeCommands.redoDepth(state),
-  historyKeymap: nativeCommands.historyKeymap.map((binding) => ({
-    ...binding,
-    run: (binding.run && hosted.get(binding.run)) ?? binding.run,
-    shift: (binding.shift && hosted.get(binding.shift)) ?? binding.shift,
-  })),
+  historyKeymap: hostedKeymap(nativeCommands.historyKeymap),
+  defaultKeymap: hostedKeymap(nativeCommands.defaultKeymap),
+  standardKeymap: hostedKeymap(nativeCommands.standardKeymap),
 }
 export * as language from '@codemirror/language'
 export * as state from '@codemirror/state'
