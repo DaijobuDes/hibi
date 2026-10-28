@@ -39,7 +39,7 @@ export function observeClipboard(dom: HTMLElement) {
       (event as ClipboardEvent).clipboardData ??
       (event as DragEvent).dataTransfer
     lastCopiedHtml = clipboardHtml(data?.getData('text/html') ?? '')
-    lastCopiedText = data?.getData('text/plain') ?? ''
+    lastCopiedText = lastCopiedHtml ? (data?.getData('text/plain') ?? '') : ''
   }
   const events = ['copy', 'cut', 'dragstart']
   const document = dom.ownerDocument
