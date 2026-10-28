@@ -2661,37 +2661,6 @@ const cmCaretText = (rich) =>
     return inCell ? [text[0].split('\n').at(-1), text[1].split('\n')[0]] : text
   })
 
-const multilineInputGaps = {
-  cell: {
-    input:
-      'formatted gap input-015: native table cell input emits one signal with inserted text',
-  },
-  cells: {
-    selection:
-      'formatted gap input-026: native table cells selection preserves both source endpoints',
-    structure:
-      'formatted gap input-027: native multiline cells preserves literal text and block structure',
-    cells:
-      'formatted gap input-028: native table cells input preserves rendered cells',
-    input:
-      'formatted gap input-029: native table cells input emits one signal with inserted text',
-    version:
-      'formatted gap input-030: native table cells input advances source version once',
-    caret:
-      'formatted gap input-031: native multiline cells keeps inserted caret and following text',
-  },
-  'into a table': {
-    selection:
-      'formatted gap input-043: native table into a table selection preserves both source endpoints',
-    structure:
-      'formatted gap input-044: native multiline into a table preserves literal text and block structure',
-    cells:
-      'formatted gap input-045: native table into a table input preserves rendered cells',
-    caret:
-      'formatted gap input-046: native multiline into a table keeps inserted caret and following text',
-  },
-}
-
 // Accepted differences (formatted-engine-gaps.md): the rich editor kept these
 // browser results, which the formatted view does not repeat.
 const formattedInputOutcomes = {
@@ -2751,7 +2720,6 @@ async function selectNativeInputTable(t, page, rich, what, oracle) {
   }, what)
   await t.test(
     'native table selection retains both historical source endpoints',
-    { todo: multilineInputGaps[what]?.selection },
     async () => {
       assert.equal(
         rendered,
@@ -2849,7 +2817,6 @@ for (const [what, , text, select] of multilineInputCases) {
       formattedInputOutcomes[what]?.caret ?? oracle.result.caret
     await t.test(
       'formatted structure and marks preserve the historical browser outcome',
-      { todo: multilineInputGaps[what]?.structure },
       () => {
         assert.deepEqual(inputOutcome(actual.markdown), inputOutcome(expected))
       },
@@ -2857,7 +2824,6 @@ for (const [what, , text, select] of multilineInputCases) {
     if (tableInput) {
       await t.test(
         'native table input preserves the historical rendered cells',
-        { todo: multilineInputGaps[what]?.cells },
         async () => {
           const expectedCells = {
             cell: [
@@ -2921,16 +2887,11 @@ for (const [what, , text, select] of multilineInputCases) {
           assert.deepEqual(work.prevented, [/[\r\n]/.test(text)])
         },
       )
-    await t.test(
-      'one native input signal retains the inserted text',
-      { todo: multilineInputGaps[what]?.input },
-      () => {
-        assert.deepEqual(work.inputs, [{ type: 'insertText', data: text }])
-      },
-    )
+    await t.test('one native input signal retains the inserted text', () => {
+      assert.deepEqual(work.inputs, [{ type: 'insertText', data: text }])
+    })
     await t.test(
       'one accepted source edit advances the content version once',
-      { todo: multilineInputGaps[what]?.version },
       () => {
         assert.equal(work.changes, 1)
         assert.equal(actual.contentVersion, before.contentVersion + 1)
@@ -2938,7 +2899,6 @@ for (const [what, , text, select] of multilineInputCases) {
     )
     await t.test(
       'the native caret follows the inserted text and keeps its tail',
-      { todo: multilineInputGaps[what]?.caret },
       async () => {
         const caret = await cmCaretText(rich)
         assert.ok(caret)
