@@ -1912,11 +1912,11 @@ const revealedTable = StateField.define<{ from: number; to: number } | null>({
   update(range, tr) {
     for (const effect of tr.effects)
       if (effect.is(revealTable)) return effect.value
-    if (!range) return null
-    // Input at the caret extends the table; text restored after it, as by
-    // undo, does not.
+    // Text that undo, redo or another view brings back may hold more tables:
+    // they all show as tables again.
+    if (!range || (tr.docChanged && !tr.isUserEvent('input'))) return null
     const from = tr.changes.mapPos(range.from, -1),
-      to = tr.changes.mapPos(range.to, tr.isUserEvent('input') ? 1 : -1)
+      to = tr.changes.mapPos(range.to, 1)
     const { head } = tr.state.selection.main
     if (head < from || head > to) return null
     return from === range.from && to === range.to ? range : { from, to }
