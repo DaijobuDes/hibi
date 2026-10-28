@@ -816,9 +816,13 @@ for (const engine of ['tiptap', 'codemirror'])
           assert.equal(before.selectionDebug.type, 'text')
           assert.deepEqual(guard.attempted, [
             {
-              model: oracle.schema
-                .nodeFromJSON(oracle.markdown.parse(item.intended))
-                .toJSON(),
+              model: JSON.parse(
+                JSON.stringify(
+                  oracle.schema
+                    .nodeFromJSON(oracle.markdown.parse(item.intended))
+                    .toJSON(),
+                ),
+              ),
               selection: before.selectionDebug,
             },
           ])
