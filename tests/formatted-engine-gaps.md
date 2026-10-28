@@ -19,7 +19,6 @@ accepted differences are not gaps; their tests assert each engine. the codemirro
 | input-044 | [editor-input.test.mjs:2305](editor-input.test.mjs#L2305) | native multiline into a table preserves literal text and block structure | 8a: native input, structure and toolbar state |
 | input-045 | [editor-input.test.mjs:2307](editor-input.test.mjs#L2307) | native table into a table input preserves rendered cells | 8a: native input, structure and toolbar state |
 | input-046 | [editor-input.test.mjs:2309](editor-input.test.mjs#L2309) | native multiline into a table keeps inserted caret and following text | 8a: native input, structure and toolbar state |
-| semantics-001 | [editor-plugins.test.mjs:67](editor-plugins.test.mjs#L67) | source-view word counts must include markdown characters | 9: outline semantics and diagram lifecycle |
 | input-075 | [formatted-commands.test.mjs:1045](formatted-commands.test.mjs#L1045) | multi-line input with backticks inside inline code keeps the code span | 8a: native input, structure and toolbar state |
 | input-space-001 | [formatted-multiline-regressions.test.mjs:241](formatted-multiline-regressions.test.mjs#L241) | multiline input after a long formatted space run must retain native paragraph boundaries; the bounded fallback currently inserts a soft break | 8a: native input, structure and toolbar state |
 | action-008 | [formatted-toolbar-state.test.mjs:1504](formatted-toolbar-state.test.mjs#L1504) | the link action at a caret inserts a link beside formatting, or edits the link around the caret | 8a: native input, structure and toolbar state |
@@ -32,12 +31,10 @@ accepted differences are not gaps; their tests assert each engine. the codemirro
 | action-006 | [formatted-toolbar-state.test.mjs:1543](formatted-toolbar-state.test.mjs#L1543) | block actions convert each selected block and keep its containers as the rich editor does | 8a: native input, structure and toolbar state |
 | corpus-011 | [markdown-semantics-native.test.mjs:105](markdown-semantics-native.test.mjs#L105) | disabled heading syntax must preserve bold formatting inside alerts | 9: outline semantics and diagram lifecycle |
 | corpus-012 | [markdown-semantics-native.test.mjs:107](markdown-semantics-native.test.mjs#L107) | disabled heading syntax must preserve bold formatting inside subtext | 9: outline semantics and diagram lifecycle |
-| semantics-003 | [outline-navigation.test.mjs:320](outline-navigation.test.mjs#L320) | formatted and source outlines must reuse one document worker | 9: outline semantics and diagram lifecycle |
 | contracts-003 | [raw-html-editor.test.mjs:1244](raw-html-editor.test.mjs#L1244) | modified inline html copies must fall back without restoring raw markup | 3c: clipboard fragments and trusted source |
 | contracts-004 | [raw-html-editor.test.mjs:1246](raw-html-editor.test.mjs#L1246) | superseded inline html copies must fall back without restoring raw markup | 3c: clipboard fragments and trusted source |
 | contracts-005 | [raw-html-editor.test.mjs:1250](raw-html-editor.test.mjs#L1250) | modified block html copies must fall back without restoring raw markup | 3c: clipboard fragments and trusted source |
 | contracts-006 | [raw-html-editor.test.mjs:1252](raw-html-editor.test.mjs#L1252) | superseded block html copies must fall back without restoring raw markup | 3c: clipboard fragments and trusted source |
-| semantics-002 | [source-reference-navigation.test.mjs:161](source-reference-navigation.test.mjs#L161) | formatted and source references must reuse one document worker | 9: outline semantics and diagram lifecycle |
 
 ## accepted differences
 

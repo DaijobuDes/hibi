@@ -155,21 +155,15 @@ test('source reference links use current definitions and coexist with find', {
     const workers = page
       .workers()
       .filter((worker) => worker.url().includes('/document.worker-'))
-    await t.test(
-      'source references reuse one document worker',
-      {
-        todo: 'formatted gap semantics-002: formatted and source references must reuse one document worker',
-      },
-      async () => {
-        assert.equal(workers.length, 1)
-        for (const worker of establishedWorkers)
-          assert.ok(workers.includes(worker))
-        assert.equal(
-          await page.evaluate(() => window.documentWorkers.length),
-          1 - establishedWorkers.length,
-        )
-      },
-    )
+    await t.test('source references reuse one document worker', async () => {
+      assert.equal(workers.length, 1)
+      for (const worker of establishedWorkers)
+        assert.ok(workers.includes(worker))
+      assert.equal(
+        await page.evaluate(() => window.documentWorkers.length),
+        1 - establishedWorkers.length,
+      )
+    })
   }
   assert.equal(
     (await page.evaluate(() => window.hibi.getDocument())).markdown,

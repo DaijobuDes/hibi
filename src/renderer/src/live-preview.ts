@@ -31,6 +31,7 @@ import {
   type Tree,
 } from '@lezer/common'
 import { highlightTree } from '@lezer/highlight'
+import { literalText } from '../../shared/formatted-custom-body.ts'
 import {
   formattedDefinitionRange,
   formattedListStart,
@@ -137,9 +138,9 @@ const definitionRange = (value: Decoration) =>
 
 /** Margins of a block in px, as in the formatted view's document styles. */
 function blockSpace(name: string): { top: number; bottom: number } {
-  const heading = /^(?:ATX|Setext)Heading(\d)$/.exec(name)
+  const heading = headingLevel(name)
   if (heading) {
-    const size = [30, 24, 20, 17, 17, 17][Number(heading[1]) - 1]!
+    const size = [30, 24, 20, 17, 17, 17][heading - 1]!
     return { top: size * 1.4, bottom: size * 0.6 }
   }
   switch (name) {
@@ -169,6 +170,17 @@ const noBlocks: Blocks = {
   shapes: () => undefined,
 }
 let blocks = noBlocks
+
+/** Native heading DOM falls back to its first enabled level. */
+function headingLevel(name: string) {
+  const heading = /^(?:ATX|Setext)Heading(\d)$/.exec(name)
+  if (!heading) return undefined
+  return blocks.literal.has(name)
+    ? [1, 2, 3, 4, 5, 6].find(
+        (level) => !blocks.literal.has(`ATXHeading${level}`),
+      )
+    : Number(heading[1])
+}
 
 /** Blocks the view lays out; link reference definitions take no space. */
 const isBlock = (node: SyntaxNode) =>
@@ -247,7 +259,7 @@ function shownLine(doc: Text, node: SyntaxNode) {
 /** A block's margins in its container: list items and the blocks inside them sit closer. */
 function margins(node: SyntaxNode): { top: number; bottom: number } {
   // Syntax shown as written keeps a paragraph's 1em margins on both sides.
-  if (blocks.literal.has(node.name)) return { top: 16, bottom: 16 }
+  if (literalText(node, blocks.literal)) return { top: 16, bottom: 16 }
   const parent = node.parent
   // Items and nested lists sit 0.3em apart; blocks after the first in an item one line apart.
   if (parent?.name === 'ListItem')
@@ -593,11 +605,12 @@ function inline(
         doc.lineAt(close.from).number === doc.lineAt(node.to).number
       )
         syntax(range.from, range.to, revealed)
-    linkText(
-      open.to,
-      close.from,
-      answer?.title ? { title: answer.title } : undefined,
-    )
+    if (!literal.has('Link'))
+      linkText(
+        open.to,
+        close.from,
+        answer?.title ? { title: answer.title } : undefined,
+      )
     return undefined
   }
 
@@ -721,7 +734,9 @@ function inline(
         const owned = legacyParent?.views ?? legacy.get(name)
         if (!legacyParent && owned?.size)
           legacyParent = { to: ref.to, views: owned }
-        let skip = literal.has(name) && (!legacy.has(name) || !owned?.size)
+        let skip = legacy.has(name)
+          ? !owned?.size
+          : literalText(ref.node, literal)
         if (!skip) {
           const matched = views(ref.type)
           const contributed = owned
@@ -802,6 +817,8 @@ function inline(
     }
     const heading = /^(ATX|Setext)Heading(\d)$/.exec(name)
     if (heading) {
+      const level = headingLevel(name)
+      if (!level) return
       if (!headings.has(ref.from))
         headings.set(ref.from, {
           from: ref.from,
@@ -816,10 +833,7 @@ function inline(
           current.from > ref.from
         )
           return
-        line(current.from).classes.push(
-          'hibi-lp-heading',
-          `hibi-lp-h${heading[2]}`,
-        )
+        line(current.from).classes.push('hibi-lp-heading', `hibi-lp-h${level}`)
       })
       return
     }
@@ -834,10 +848,10 @@ function inline(
         return
       }
       case 'Emphasis':
-        mark('hibi-lp-em', ref.from, ref.to)
+        if (!literal.has(ref.name)) mark('hibi-lp-em', ref.from, ref.to)
         return
       case 'StrongEmphasis':
-        mark('hibi-lp-strong', ref.from, ref.to)
+        if (!literal.has(ref.name)) mark('hibi-lp-strong', ref.from, ref.to)
         return
       case 'EmphasisMark': {
         const parent = ref.node.parent
@@ -871,12 +885,13 @@ function inline(
           doc.sliceString(from, to),
         ))
           syntax(range.from, range.to, revealed)
-        linkText(url.from, url.to)
+        if (!literal.has('Autolink')) linkText(url.from, url.to)
         return false
       }
       case 'URL': {
         const parent = ref.node.parent?.name
         if (
+          !literal.has('URL') &&
           parent !== 'Link' &&
           parent !== 'Image' &&
           parent !== 'LinkReference'
@@ -1388,7 +1403,9 @@ function chunkLayout(
         const owned = legacyParent?.views ?? legacy.get(ref.name)
         if (!legacyParent && owned?.size)
           legacyParent = { to: ref.to, views: owned }
-        if (literal.has(ref.name) && (!legacy.has(ref.name) || !owned?.size))
+        if (
+          legacy.has(ref.name) ? !owned?.size : literalText(ref.node, literal)
+        )
           return false
         const matched = views(ref.type).views
         const contributed = owned

@@ -355,6 +355,27 @@ test('configuration changes supersede in-flight pages and unknown versions decli
   assert.deepEqual(f.errors, [])
 })
 
+test('released boundary ids do not suppress a fresh replica', async (t) => {
+  const f = fixture(t, '# title\n\nbody')
+  f.request()
+  await f.until(() => f.pages.at(-1)?.done)
+  const old = f.pages[0]
+  const epoch = old.epoch
+  f.client.releaseBoundaries(true)
+  f.session.reidentify({ tabId: 'boundary', revision: 1 })
+  f.request()
+  await f.until(() =>
+    f.transports[1]?.replies.some(({ type }) => type === 'boundaries'),
+  )
+  await new Promise(setImmediate)
+  assert.equal(f.transports.length, 2)
+  assert.notEqual(f.pages.at(-1).epoch, epoch)
+  assert.equal(f.transports[0].terminated, true)
+  f.transports[0].onmessage({ data: old })
+  assert.deepEqual(f.declined, [])
+  assert.deepEqual(f.errors, [])
+})
+
 test('close cancels scan, transfer ownership and further replies while another note opens', async (t) => {
   const f = fixture(t),
     g = fixture(t, '# other note\n\nready\n')
@@ -1296,4 +1317,30 @@ test('a held bootstrap reply stays held when a later turn releases the gate', as
 
 test('boundary fixtures restore the parser observer after earlier tests', () => {
   assert.equal(MarkdownBoundaryIndex.prototype.advance, originalBoundaryAdvance)
+})
+
+test('retaining an active code watch delivers its remaining pages on the same request', async (t) => {
+  const f = fixture(t, '~~~\nbody\n~~~\n\n'.repeat(300))
+  f.request()
+  await f.until(() => f.pages.at(-1)?.done)
+  const code = []
+  let retained = false
+  const stop = f.client.subscribeCodeExtents((page) => {
+    code.push(page)
+    if (!retained && page.records.length) {
+      retained = true
+      f.client.releaseBoundaries(true)
+    }
+  })
+  t.after(stop)
+  await f.until(() => code.flatMap((page) => page.records).length === 300)
+  const requests = f.transports[0].messages.filter(
+    (message) => message.type === 'boundaries' && message.codeOnly,
+  )
+  assert.equal(requests.length, 1)
+  assert.ok(code.length > 1)
+  assert.equal(f.transports.length, 1)
+  assert.equal(f.session.counters().materializations, 0)
+  assert.deepEqual(f.declined, [])
+  assert.deepEqual(f.errors, [])
 })

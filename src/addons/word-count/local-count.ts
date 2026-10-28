@@ -7,6 +7,9 @@ import { countText } from './count.ts'
 // these characters can change Markdown ownership, references or inline tokens.
 const syntax = /[\r\n\t\\`&*_!#[\]<>~^$+=|-]/
 
+/** Literal line endings separate words and graphemes; never split a CRLF pair. */
+export const sourceCountBoundary = / (?=[a-zA-Z0-9])|\n|\r(?=[^\n])/g
+
 /** count proven plain source without materializing it or passing it to marked's block regexps. */
 export function plainSource(source: SourceSnapshot, from: number, to: number) {
   if (source.lineAt(from)?.to !== to) return null
@@ -91,6 +94,8 @@ export function localCount(
   insert: string,
   base: number,
   spans: number | SourceOwners,
+  literal = false,
+  maximumUnits = Number.POSITIVE_INFINITY,
 ) {
   const span =
     typeof spans === 'number'
@@ -104,15 +109,22 @@ export function localCount(
   if (span?.owner.kind !== 'plain') return null
   const start = base + span.from,
     end = base + span.to
-  if (from < start || to > end || syntax.test(insert)) return null
-  // ponytail: a run without stable spaces needs its whole segmentation context;
-  // composable unicode segmentation summaries would bound edits within that run.
+  if (
+    from < start ||
+    to > end ||
+    (!literal && syntax.test(insert)) ||
+    to - from + insert.length > maximumUnits
+  )
+    return null
+  // Defer unbounded context to a scheduled read instead of cutting Unicode runs.
+  const boundary = literal ? sourceCountBoundary : / (?=[a-zA-Z0-9])/g
   let left = from,
     right = to
   while (left > start) {
+    if (right - left + insert.length > maximumUnits) return null
     const at = Math.max(start, left - 256)
     const text = source.sliceRaw(at, Math.min(end, left + 1))
-    const cuts = [...text.matchAll(/ (?=[a-zA-Z0-9])/g)]
+    const cuts = [...text.matchAll(boundary)]
     const cut = cuts.findLast((match) => at + match.index + 1 < from)
     if (cut) {
       left = at + cut.index + 1
@@ -121,10 +133,11 @@ export function localCount(
     left = at
   }
   while (right < end) {
+    if (right - left + insert.length > maximumUnits) return null
     const at = Math.max(start, right - 1)
     const limit = Math.min(end, right + 256)
     const text = source.sliceRaw(at, limit)
-    const cut = [...text.matchAll(/ (?=[a-zA-Z0-9])/g)].find(
+    const cut = [...text.matchAll(boundary)].find(
       (match) => at + match.index + 1 > to,
     )
     if (cut) {
@@ -140,25 +153,30 @@ export function localCount(
       span.to < (typeof spans === 'number' ? spans : spans.length))
   )
     return null
+  if (right - left + insert.length > maximumUnits) return null
   const before = source.sliceRaw(left, right)
   const after = `${before.slice(0, from - left)}${insert}${before.slice(to - left)}`
   // indentation, punctuation or deletion can change paragraph ownership.
   if (
+    !literal &&
     left === base &&
     (!/^\S/.test(after) || /^\d{1,9}[.)](?:\s|$)/.test(after))
   )
     return null
   // url/email recognition can change when ordinary letters are edited beside these.
   if (
-    /[:@]/.test(before) ||
-    /[:@]/.test(insert) ||
-    /www\./i.test(before) ||
-    /www\./i.test(after)
+    !literal &&
+    (/[:@]/.test(before) ||
+      /[:@]/.test(insert) ||
+      /www\./i.test(before) ||
+      /www\./i.test(after))
   )
     return null
   const oldCount = countText(before),
     newCount = countText(after)
   return {
+    from: left,
+    to: right,
     words: newCount.words - oldCount.words,
     characters: newCount.characters - oldCount.characters,
     units: before.length + after.length,

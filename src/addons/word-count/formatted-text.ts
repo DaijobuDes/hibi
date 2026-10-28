@@ -1,6 +1,7 @@
 import { decodeHTMLStrict } from 'entities'
 import type { Marked, Token, TokenizerExtension, Tokens } from 'marked'
 import { markedGithubFootnote } from 'marked-github-footnote'
+import { customBodyFeatures } from '../../shared/formatted-custom-body.ts'
 import { BlockTokenizer } from '../../shared/marked-blocks.ts'
 import {
   disabledToken,
@@ -43,6 +44,13 @@ export function countParser(syntax: CountSyntax) {
     if (syntax.textExtras) parser.use(textExtrasMarkdown)
     if (syntax.math) parser.use(mathTokens)
     if (syntax.typst) parser.use(typstTokens)
+    // Custom tokenizers own child traversal; body masking below keeps the view's scope.
+    const children = parser.defaults.extensions?.childTokens
+    if (children) {
+      children.githubAlert = []
+      children.subtext = []
+      children.subscript = []
+    }
     parsers.set(key, parser)
   }
   return parser
@@ -152,6 +160,18 @@ function maskDisabled(tokens: Token[], syntax: CountSyntax) {
         type: block ? 'hibiLiteralBlock' : 'hibiLiteralInline',
         text: block ? token.raw.replace(/\n+$/, '') : token.raw,
         tokens: [],
+      })
+    } else if (
+      token.type === 'githubAlert' ||
+      token.type === 'subtext' ||
+      token.type === 'subscript'
+    ) {
+      // Custom tokenizers parse their children before schema preferences apply.
+      maskDisabled(token.tokens ?? [], {
+        ...syntax,
+        disabledFeatures: syntax.disabledFeatures.filter(
+          (feature) => !customBodyFeatures.has(feature),
+        ),
       })
     }
     return []
@@ -272,12 +292,33 @@ function orderedItem(
   syntax: ProjectionSyntax,
   out: string[],
 ) {
+  // Native ordered items parse a leading alert marker apart from following quotes.
+  if (tokens[0]?.type === 'githubAlert') {
+    const [first, ...rest] = tokens
+    const end = first.raw.indexOf('\n')
+    out.push('\n')
+    block({ ...first, tokens: [] }, syntax, out)
+    if (end >= 0)
+      children(lex(first.raw.slice(end + 1), syntax), syntax, out, true)
+    children(rest, syntax, out, true)
+    return
+  }
   let checkbox = ''
   const firstParagraph = tokens.findIndex(
     (token) => token.type === 'text' || token.type === 'paragraph',
   )
   for (const [index, original] of tokens.entries()) {
     let token = original
+    if (token.type === 'githubAlert')
+      token = {
+        ...token,
+        tokens: lex(token.text, {
+          ...syntax,
+          disabledFeatures: syntax.disabledFeatures.filter(
+            (feature) => !customBodyFeatures.has(feature),
+          ),
+        }),
+      }
     // the native ordered tokenizer trims its main paragraph before inline lexing.
     if (index === firstParagraph && 'tokens' in token && token.tokens) {
       token = {
@@ -403,7 +444,17 @@ function block(token: Token, syntax: ProjectionSyntax, out: string[]) {
     case 'githubAlert': {
       out.push('\n')
       const start = out.length
-      children(token.tokens ?? [], syntax, out, false)
+      children(
+        token.tokens ?? [],
+        {
+          ...syntax,
+          disabledFeatures: syntax.disabledFeatures.filter(
+            (feature) => !customBodyFeatures.has(feature),
+          ),
+        },
+        out,
+        false,
+      )
       if (out.length === start) out.push('\n')
       return
     }

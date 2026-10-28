@@ -22,6 +22,10 @@ import {
 } from '@codemirror/view'
 import { type SyntaxNodeRef, Tree } from '@lezer/common'
 import type { MarkdownConfig, MarkdownParser } from '@lezer/markdown'
+import {
+  literalText,
+  customBody as nativeBody,
+} from '../../../shared/formatted-custom-body.ts'
 import { formattedInlineParser } from '../../../shared/formatted-markdown.ts'
 import { runSourceHistory } from '../../../shared/source-history.ts'
 import {
@@ -114,6 +118,7 @@ function decorateCell(
   touched: (from: number, to: number) => boolean,
   from: number,
   source?: readonly number[],
+  customBody = false,
 ) {
   const to = from + (source?.[text.length] ?? text.length)
   const views = formattedNodeViews(state)
@@ -182,7 +187,8 @@ function decorateCell(
   cursor.firstChild()
   cursor.iterate((node) => {
     // Syntax whose setting is off shows as written, its children too.
-    if (literal.has(node.name)) return false
+    if (literalText(node.node, literal, customBody || nativeBody(node.node)))
+      return false
     if (node.name === 'Escape')
       out.escape?.(local(node.from + 1), local(node.from))
     const revealed = revealedFor(node)
@@ -211,10 +217,10 @@ function decorateCell(
       out.mark(from, to, { class: name })
     switch (node.name) {
       case 'Emphasis':
-        style('hibi-lp-em', node.from, node.to)
+        if (!literal.has(node.name)) style('hibi-lp-em', node.from, node.to)
         return
       case 'StrongEmphasis':
-        style('hibi-lp-strong', node.from, node.to)
+        if (!literal.has(node.name)) style('hibi-lp-strong', node.from, node.to)
         return
       case 'EmphasisMark': {
         const parent = node.node.parent
@@ -254,11 +260,12 @@ function decorateCell(
         if (reference && !answer) return
         out.syntax(node.from, open.to)
         out.syntax(close.from, node.to)
-        out.link(
-          open.to,
-          close.from,
-          answer?.title ? { title: answer.title } : undefined,
-        )
+        if (!literal.has('Link'))
+          out.link(
+            open.to,
+            close.from,
+            answer?.title ? { title: answer.title } : undefined,
+          )
         return
       }
       case 'Autolink': {
@@ -266,12 +273,13 @@ function decorateCell(
         if (!url) return false
         out.syntax(node.from, url.from)
         out.syntax(url.to, node.to)
-        out.link(url.from, url.to)
+        if (!literal.has('Autolink')) out.link(url.from, url.to)
         return false
       }
       case 'URL': {
         const parent = node.node.parent?.name
         if (
+          !literal.has('URL') &&
           parent !== 'Link' &&
           parent !== 'Image' &&
           parent !== 'LinkReference'
@@ -320,6 +328,7 @@ export function renderInline(
   into: HTMLElement,
   from = 0,
   source?: readonly number[],
+  customBody = false,
 ) {
   const marks: InlineMark[] = [],
     hidden: { from: number; to: number; widget: WidgetType | null }[] = [],
@@ -339,6 +348,7 @@ export function renderInline(
     () => false,
     from,
     source,
+    customBody,
   )
   // Text between decoration boundaries, inside spans for the marks over it.
   const parents: HTMLElement[] = [into]
@@ -382,7 +392,12 @@ export function padding(text: string) {
 }
 
 /** Decorations of a cell editor: hidden padding, and the cell's Markdown rendered with markers under the selection. */
-function editorDecorations(main: EditorState, view: EditorView, from?: number) {
+function editorDecorations(
+  main: EditorState,
+  view: EditorView,
+  from?: number,
+  customBody = false,
+) {
   const text = view.state.doc.toString()
   const reveal =
     view.hasFocus && main.facet(showMarkdownMarkers)
@@ -425,6 +440,8 @@ function editorDecorations(main: EditorState, view: EditorView, from?: number) {
       (from, to) =>
         reveal.some((range) => range.from <= to && range.to >= from),
       from,
+      undefined,
+      customBody,
     )
   return {
     decorations: Decoration.set(decorations, true),
@@ -459,6 +476,8 @@ export type CellMove = 'next' | 'previous' | 'up' | 'down' | 'left' | 'right'
 export type CellHost = {
   /** The formatted view. */
   readonly main: EditorView
+  /** Whether native custom-body syntax surrounds the table. */
+  customBody(): boolean
   /** Whether the table's cell spans describe the current document. */
   current(): boolean
   /** The cell's text between its delimiters in the formatted view's document now; null while its row ends before it. */
@@ -508,7 +527,12 @@ export class CellEditor {
             decorations: this.decorations,
             atomic: this.atomic,
             runs: this.runs,
-          } = editorDecorations(host.main.state, view, host.span()?.from))
+          } = editorDecorations(
+            host.main.state,
+            view,
+            host.span()?.from,
+            host.customBody(),
+          ))
         }
         update(update: ViewUpdate) {
           // Local input reaches the parent after view.update. Keep mapped
@@ -532,6 +556,7 @@ export class CellEditor {
               host.main.state,
               update.view,
               host.span()?.from,
+              host.customBody(),
             ))
         }
       },

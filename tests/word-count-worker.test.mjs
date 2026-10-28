@@ -78,6 +78,11 @@ test('worker cancels stale counts, separates document streams and closes cleanly
     (await next((message) => message.kind === 'count')).result,
     value(b),
   )
+  send({ kind: 'count', streamId: 'a', version: 0, syntax, mode: 'source' })
+  assert.deepEqual(
+    (await next((message) => message.kind === 'count')).result,
+    countText(a),
+  )
   read('a')
   const from = a.indexOf('old')
   send({
@@ -98,6 +103,11 @@ test('worker cancels stale counts, separates document streams and closes cleanly
   assert.deepEqual(
     (await next((message) => message.kind === 'count')).result,
     value(a.replace('old', 'fresh')),
+  )
+  send({ kind: 'count', streamId: 'a', version: 1, syntax, mode: 'source' })
+  assert.deepEqual(
+    (await next((message) => message.kind === 'count')).result,
+    countText(a.replace('old', 'fresh')),
   )
   read('a', 0)
   assert.equal((await next((message) => message.kind === 'count')).result, null)
