@@ -4,6 +4,7 @@ import { connectDocumentWorker } from '../src/renderer/src/document-worker-pool.
 import { DocumentSession } from '../src/shared/document-session.ts'
 import { DocumentWorkerService } from '../src/shared/document-worker-service.ts'
 import { MarkdownBoundaryIndex } from '../src/shared/markdown-boundary-index.ts'
+import { renderedConfig } from './rendered-config.mjs'
 
 class TestWorker {
   messages = []
@@ -135,6 +136,31 @@ test('panes serialize find results for each requesting pane', async (t) => {
   assert.equal(await done.promise, 1)
   assert.deepEqual(first, [2])
   assert.equal(f.workers.length, 1)
+})
+
+test('an unsupported rendered query preserves its reason and queued source search', async (t) => {
+  const f = fixture(t, 'hello [label][hidden]\n\n[hidden]: /url')
+  const refused = Promise.withResolvers(),
+    found = Promise.withResolvers()
+  const sourceErrors = []
+  const formatted = f.connect({
+    error: (...args) => refused.resolve(args),
+  })
+  const source = f.connect({
+    error: (...args) => sourceErrors.push(args),
+    result: (location) => found.resolve(location.total),
+  })
+  formatted.find('hidden', 0, 0, null, {
+    mode: 'rendered',
+    config: renderedConfig,
+  })
+  source.find('hidden', 0, 0)
+  const [, reason] = await refused.promise
+  assert.equal(reason, 'unsupported')
+  assert.deepEqual(sourceErrors, [])
+  assert.equal(await found.promise, 2)
+  assert.equal(f.workers.length, 1)
+  assert.equal(f.workers[0].terminated, false)
 })
 
 test('boundary pages keep their acknowledgement owner while panes queue and dispose', async (t) => {

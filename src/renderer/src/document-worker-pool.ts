@@ -144,7 +144,14 @@ function workerGroup(session: DocumentSession, initial: ClientOptions) {
       job?.owner.result(...args)
       nextFind()
     },
-    error(message) {
+    error(message, reason) {
+      if (reason === 'unsupported') {
+        const job = find
+        find = null
+        job?.owner.error(message, reason)
+        nextFind()
+        return
+      }
       clear()
       client.dispose()
       if (groups.get(session) === group) groups.delete(session)
