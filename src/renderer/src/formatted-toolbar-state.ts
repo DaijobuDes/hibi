@@ -573,6 +573,7 @@ export function formattedStates(
   state: EditorState,
   tree: Tree,
   range: SelectionRange,
+  pending?: readonly string[] | null,
 ) {
   const literal = state.facet(formattedLiteral)
   const unsupported = (id: string) =>
@@ -606,9 +607,11 @@ export function formattedStates(
       ? first.kind === type || chain.some((node) => blockType(node) === type)
       : known.has(type) ||
         (blockKinds.includes(type) && !content.uncovered.has(type))
+  const caretHas = (id: string) =>
+    range.empty && pending ? pending.includes(id) : !!atCaret?.has(id)
   const markActive = (id: string) =>
     atCaret
-      ? atCaret.has(id)
+      ? caretHas(id)
       : !!content?.markable && content.seen.has(id) && !content.absent.has(id)
   const pressed = (id: string): boolean =>
     !unsupported(id) && (marks.includes(id) ? markActive(id) : blockActive(id))
@@ -617,7 +620,7 @@ export function formattedStates(
       return (
         takesMarks(first.kind) &&
         !insideLiteral(state, tree, range.from) &&
-        (id === 'inline-code' || atCaret.has(id) || !atCaret.has('inline-code'))
+        (id === 'inline-code' || caretHas(id) || !caretHas('inline-code'))
       )
     if (content?.atoms) return true
     return id === 'inline-code'

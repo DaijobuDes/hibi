@@ -74,6 +74,7 @@ accepted differences are not gaps; their tests assert each engine. the codemirro
 | input-051 | [editor-input.test.mjs:2728](editor-input.test.mjs#L2728) | native multiline input exits empty list and preserves following paragraph | 8a: native input, structure and toolbar state |
 | input-056 | [editor-input.test.mjs:3034](editor-input.test.mjs#L3034) | native enter preserves four line feeds between paragraphs | 8a: native input, structure and toolbar state |
 | input-076 | [formatted-toolbar-state.test.mjs:1528](formatted-toolbar-state.test.mjs#L1528) | the code block action turns the selected blocks into code | 8a: native input, structure and toolbar state |
+| action-009 | [formatted-stored-marks-native.test.mjs:206](formatted-stored-marks-native.test.mjs#L206) | committed ime text keeps pending marks | 8a: native input, structure and toolbar state |
 | action-002 | [formatted-toolbar-state.test.mjs:1512](formatted-toolbar-state.test.mjs#L1512) | a caret mark action in a table cell formats the text typed next | 8a: native input, structure and toolbar state |
 | action-003 | [formatted-toolbar-state.test.mjs:1516](formatted-toolbar-state.test.mjs#L1516) | a mark action over a range across other formatting writes the delimiters the rich editor writes | 8a: native input, structure and toolbar state |
 | action-004 | [formatted-toolbar-state.test.mjs:1520](formatted-toolbar-state.test.mjs#L1520) | divider and line break actions split the surrounding block and formatting as the rich editor does | 8a: native input, structure and toolbar state |

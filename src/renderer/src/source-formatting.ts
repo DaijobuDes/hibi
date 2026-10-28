@@ -8,24 +8,30 @@ import {
   undoDepth,
 } from '@codemirror/commands'
 import {
+  type ChangeSet,
   EditorSelection,
   type EditorState,
   Facet,
   StateEffect,
   StateField,
+  type Text,
   Transaction,
   type TransactionSpec,
 } from '@codemirror/state'
-import { EditorView, type KeyBinding } from '@codemirror/view'
+import { EditorView, type KeyBinding, ViewPlugin } from '@codemirror/view'
 import type { Tree } from '@lezer/common'
 import type {
   DocumentEdit,
   DocumentFormat,
   DocumentSelection,
 } from '../../addons/api'
+import { markdownLiteral } from '../../shared/markdown-literal.ts'
 import type { MediaAttachment } from '../../shared/media'
 import { gapInput } from './formatted-commands.ts'
-import { formattedSyntaxTree } from './formatted-contributions.ts'
+import {
+  formattedLiteral,
+  formattedSyntaxTree,
+} from './formatted-contributions.ts'
 import {
   caretMarks,
   formattedStates,
@@ -118,17 +124,63 @@ function opened(state: EditorState, pos: number, token: string) {
 
 /**
  * The marks text typed at the formatted view's caret takes, which a toolbar
- * action at the caret sets like the rich editor's stored marks. Moving the
- * caret or any edit drops them.
+ * action at the caret sets like the rich editor's stored marks. Typing keeps
+ * them; moving the caret or an unrelated edit drops them.
  */
-type StoredMarks = { pos: number; marks: readonly string[] }
+type StoredMarks = {
+  pos: number
+  marks: readonly string[]
+  composition?: { before: StoredMarks; doc: Text; changes: ChangeSet }
+  inline?: { close: string; tail: string }
+  code?: {
+    from: number
+    fence: number
+    pad: boolean
+    firstTick: boolean
+    tail: number
+    longest: number
+  }
+}
 const storeMarks = StateEffect.define<StoredMarks>()
+const markComposition = StateEffect.define<boolean>()
 const storedMarks = StateField.define<StoredMarks | null>({
   create: () => null,
   update(value, transaction) {
-    for (const effect of transaction.effects)
+    for (const effect of transaction.effects) {
       if (effect.is(storeMarks)) return effect.value
+      if (effect.is(markComposition)) {
+        if (!value) return null
+        if (effect.value)
+          return {
+            ...value,
+            composition: {
+              before: value,
+              doc: transaction.startState.doc,
+              changes: transaction.changes,
+            },
+          }
+        const composition = value.composition
+        if (!composition) return value
+        let changed = false
+        composition.changes.iterChanges((from, to, _a, _b, inserted) => {
+          if (!inserted.eq(composition.doc.slice(from, to))) changed = true
+        })
+        return !changed &&
+          transaction.newSelection.main.head === composition.before.pos
+          ? composition.before
+          : null
+      }
+    }
     const { main } = transaction.newSelection
+    if (value?.composition)
+      return {
+        ...value,
+        pos: main.head,
+        composition: {
+          ...value.composition,
+          changes: value.composition.changes.compose(transaction.changes),
+        },
+      }
     return value &&
       !transaction.docChanged &&
       main.empty &&
@@ -147,6 +199,92 @@ function storedAt(state: EditorState) {
   return stored && main.empty && main.head === stored.pos ? stored.marks : null
 }
 
+/** Only inspect new text, retaining the run that may join its first backtick. */
+function codeRuns(text: string, tail = 0) {
+  let longest = 0,
+    last = 0
+  for (const match of text.matchAll(/`+/g)) {
+    const length = match[0].length + (match.index === 0 ? tail : 0)
+    longest = Math.max(longest, length)
+    last = match.index + match[0].length === text.length ? length : 0
+  }
+  return { longest, tail: last }
+}
+
+function typedLiteral(state: EditorState, text: string) {
+  // Escape an ampersand before later input can complete an entity reference.
+  const literal = text
+    .split('&')
+    .map((part) => markdownLiteral(part, '='))
+    .join('&amp;')
+  return state.facet(formattedLiteral).includes('Escape')
+    ? literal.replace(
+        /\\(.)/gu,
+        (_, char: string) => `&#${char.codePointAt(0)};`,
+      )
+    : literal
+}
+
+/** Keep trailing spaces outside delimiters until more marked text follows. */
+function continueInline(
+  state: EditorState,
+  stored: StoredMarks,
+  text: string,
+): TransactionSpec {
+  const { close, tail } = stored.inline!
+  const combined = tail + text
+  const trailing = combined.match(/\s+$/u)?.[0] ?? ''
+  const value = typedLiteral(
+    state,
+    combined.slice(0, combined.length - trailing.length),
+  )
+  const from = stored.pos - tail.length - (tail ? close.length : 0)
+  const pos =
+    from + value.length + (trailing ? close.length + trailing.length : 0)
+  return {
+    changes: {
+      from,
+      to: stored.pos + (tail ? 0 : close.length),
+      insert: value + close + trailing,
+    },
+    selection: EditorSelection.cursor(pos),
+    effects: storeMarks.of({
+      ...stored,
+      pos,
+      inline: { close, tail: trailing },
+    }),
+    userEvent: 'input.type',
+    scrollIntoView: true,
+  }
+}
+
+/** Extend our code span by editing only its fences and the text at the caret. */
+function continueCode(stored: StoredMarks, text: string): TransactionSpec {
+  const code = stored.code!
+  const runs = codeRuns(text, code.tail)
+  const longest = Math.max(code.longest, runs.longest)
+  const fence = Math.max(code.fence, longest + 1)
+  const pad = code.firstTick || text.endsWith('`')
+  const open = '`'.repeat(fence) + (pad ? ' ' : '')
+  const close = (pad ? ' ' : '') + '`'.repeat(fence)
+  const oldOpen = code.fence + Number(code.pad)
+  const pos = stored.pos + text.length + open.length - oldOpen
+  return {
+    changes: [
+      { from: code.from, to: code.from + oldOpen, insert: open },
+      { from: stored.pos, to: stored.pos + oldOpen, insert: text + close },
+    ],
+    selection: EditorSelection.cursor(pos),
+    effects: storeMarks.of({
+      ...stored,
+      pos,
+      code: { ...code, fence, pad, longest, tail: runs.tail },
+    }),
+    userEvent: 'input.type',
+    scrollIntoView: true,
+  }
+}
+
 /**
  * `text` typed with the caret's stored marks. Formatting the text leaves
  * closes before it and opens again after it; formatting it takes wraps it,
@@ -158,11 +296,32 @@ function storedInput(
   stored: StoredMarks,
   text: string,
 ): TransactionSpec | null {
+  if (stored.code) return continueCode(stored, text)
+  if (stored.inline) return continueInline(state, stored, text)
   let at = stored.pos,
     close = '',
     reopen = '',
     kept = false
   const current = formattingAt(state, tree, at)
+  if (
+    !current.has('inline-code') &&
+    stored.marks.every((id) => current.has(id))
+  ) {
+    let end = at,
+      suffix = ''
+    for (const [id, node] of current) {
+      const last = node.lastChild
+      if (!stored.marks.includes(id) || last?.from !== end) break
+      suffix += state.sliceDoc(last.from, last.to)
+      end = last.to
+    }
+    if (suffix)
+      return continueInline(
+        state,
+        { ...stored, inline: { close: suffix, tail: '' } },
+        text,
+      )
+  }
   // Innermost first, like the formatting a line break closes and opens.
   for (const [id, node] of current) {
     if (stored.marks.includes(id)) {
@@ -195,35 +354,46 @@ function storedInput(
   }
   const lead = core ? text.slice(0, text.indexOf(core)) : text
   const trail = core ? text.slice(lead.length + core.length) : ''
-  const pad = add.includes('inline-code') && /^`|`$/.test(core) ? ' ' : ''
+  const code = add.includes('inline-code') && !!core
+  const value = code
+    ? text.slice(lead.length)
+    : stored.marks.includes('inline-code')
+      ? core
+      : typedLiteral(state, core)
+  const pad = code && (value.startsWith('`') || value.endsWith('`')) ? ' ' : ''
   const delimiters = add.map((id) =>
-    id === 'inline-code' ? '`'.repeat(fenceLength(core)) : marks[id],
+    id === 'inline-code' ? '`'.repeat(fenceLength(value)) : marks[id],
   )
   const open = delimiters.join('') + pad
   const shut = pad + delimiters.toReversed().join('')
-  const typed = core ? lead + open + core + shut + trail : text
+  const typed = core ? lead + open + value + shut + (code ? '' : trail) : text
   const insert = close + typed + reopen
-  // The caret stays in the formatting it opened, for the text typed next;
-  // spaces after it keep the marks stored.
-  const keep = add.length > 0 && (!core || !!trail)
-  const caret =
+  const keep = !code && add.length > 0 && (!core || !!trail)
+  let caret =
     at + close.length + (keep ? typed.length : typed.length - shut.length)
-  const effects = keep ? storeMarks.of({ pos: caret, marks: stored.marks }) : []
-  const gap = gapInput(state, tree, at, at, insert)
-  if (gap)
-    return {
-      ...gap,
-      selection: EditorSelection.cursor(
-        state.doc.lineAt(at).from + 1 + caret - at,
-      ),
-      effects,
-      scrollIntoView: true,
+  const pending: StoredMarks = { pos: caret, marks: stored.marks }
+  if (core && shut && !code) pending.inline = { close: shut, tail: trail }
+  if (code) {
+    const runs = codeRuns(value)
+    pending.code = {
+      from: at + close.length + lead.length,
+      fence: fenceLength(value),
+      pad: !!pad,
+      firstTick: value.startsWith('`'),
+      ...runs,
     }
+  }
+  const gap = gapInput(state, tree, at, at, insert)
+  if (gap) {
+    const shift = state.doc.lineAt(at).from + 1 - at
+    caret += shift
+    pending.pos = caret
+    if (pending.code) pending.code.from += shift
+  }
   return {
-    changes: { from: at, insert },
+    ...(gap ?? { changes: { from: at, insert }, userEvent: 'input.type' }),
     selection: EditorSelection.cursor(caret),
-    effects,
-    userEvent: 'input.type',
+    effects: storeMarks.of(pending),
     scrollIntoView: true,
   }
 }
@@ -231,13 +401,48 @@ function storedInput(
 /** Stored marks for a formatted view, which wrap the text typed next at their caret. */
 export const storedMarkInput = [
   storedMarks,
+  ViewPlugin.fromClass(
+    class {
+      frame = 0
+      destroy() {
+        cancelAnimationFrame(this.frame)
+      }
+    },
+    {
+      eventObservers: {
+        compositionstart(_event, view) {
+          cancelAnimationFrame(this.frame)
+          if (view.state.field(storedMarks))
+            view.dispatch({ effects: markComposition.of(true) })
+        },
+        compositionend(_event, view) {
+          this.frame = requestAnimationFrame(() => {
+            this.frame = 0
+            if (view.state.field(storedMarks)?.composition)
+              view.dispatch({ effects: markComposition.of(false) })
+          })
+        },
+      },
+    },
+  ),
   EditorView.inputHandler.of((view, from, to, text) => {
-    const stored = view.state.field(storedMarks)
+    let stored = view.state.field(storedMarks)
+    if (
+      stored?.composition &&
+      !view.composing &&
+      !view.compositionStarted &&
+      from === to &&
+      from === stored.pos
+    ) {
+      view.dispatch({ effects: markComposition.of(false) })
+      stored = view.state.field(storedMarks)
+    }
     const tree = formattedSyntaxTree(view.state)
     if (
       !stored ||
       !tree ||
       view.composing ||
+      view.compositionStarted ||
       from !== stored.pos ||
       to !== from ||
       /[\r\n]/.test(text)
@@ -381,7 +586,12 @@ export function sourceFormatting(
       !inTable(view)
     ) {
       // Like the rich editor, a caret action formats the text typed next.
-      if (formattedStates(view.state, tree, range).disabled(id)) return false
+      if (
+        formattedStates(view.state, tree, range, storedAt(view.state)).disabled(
+          id,
+        )
+      )
+        return false
       const current = storedAt(view.state) ?? [
         ...caretMarks(view.state, tree, range.head).keys(),
       ]
@@ -390,7 +600,9 @@ export function sourceFormatting(
           pos: range.head,
           marks: current.includes(id)
             ? current.filter((mark) => mark !== id)
-            : [...current, id],
+            : id === 'inline-code'
+              ? [id]
+              : [...current, id],
         }),
       })
       view.focus()
@@ -576,20 +788,8 @@ export function sourceFormatting(
     const range = state.selection.main
     const tree = format === 'markdown' ? formattedSyntaxTree(state) : null
     // The formatted view reads its syntax tree; a source pane reads the selection's line.
-    const formatted = tree && formattedStates(state, tree, range)
-    // Stored marks are the caret's marks until text is typed, as in the rich editor.
-    const stored = formatted ? storedAt(state) : null
-    const storedState = (id: string) => {
-      if (!stored || !storable.includes(id)) return null
-      const pressed = stored.includes(id)
-      return {
-        pressed,
-        disabled:
-          !pressed &&
-          (formatted?.disabled(id) ||
-            (id !== 'inline-code' && stored.includes('inline-code'))),
-      }
-    }
+    const stored = tree ? storedAt(state) : null
+    const formatted = tree && formattedStates(state, tree, range, stored)
     const line =
       format === 'markdown' && !formatted
         ? state.doc.lineAt(range.from).text.trimStart()
@@ -629,9 +829,10 @@ export function sourceFormatting(
           pressed:
             checkPressed &&
             (formatted
-              ? (storedState(id)?.pressed ?? formatted.pressed(id)) ||
+              ? formatted.pressed(id) ||
                 // Delimiters typed in code are its text, not an open mark.
-                (range.empty &&
+                (!stored &&
+                  range.empty &&
                   !!marks[id] &&
                   !formatted.disabled(id) &&
                   opened(state, range.from, marks[id]))
@@ -648,7 +849,7 @@ export function sourceFormatting(
               : id === 'redo'
                 ? !(history ? history.state().canRedo : redoDepth(state))
                 : formatted
-                  ? (storedState(id)?.disabled ?? formatted.disabled(id))
+                  ? formatted.disabled(id)
                   : id === 'unlink' &&
                     !/\[[^\]]+\]\(/.test(state.sliceDoc(range.from, range.to))),
         }
