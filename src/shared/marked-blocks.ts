@@ -121,22 +121,33 @@ export class BlockTokenizer extends Tokenizer {
     if (title && token) {
       const from = token.raw.lastIndexOf(title)
       let boundary = from + title.length
-      // Extension starts are candidates; only a real block ends the title.
-      for (const start of this.options.extensions?.startBlock ?? []) {
-        for (let offset = 0; offset < title.length; ) {
-          const at = start.call({ lexer: this.lexer }, title.slice(offset))
-          if (typeof at !== 'number' || at < 0) break
-          offset += at
-          if (
-            this.options.extensions?.block?.some((read) =>
-              read.call({ lexer: this.lexer }, source.slice(from + offset), []),
-            )
-          ) {
-            boundary = Math.min(boundary, from + offset)
-            break
+      // A definition can hold block syntax even inside a list's text context.
+      const top = this.lexer.state.top
+      this.lexer.state.top = true
+      try {
+        // Extension starts are candidates; only a real block ends the title.
+        for (const start of this.options.extensions?.startBlock ?? []) {
+          for (let offset = 0; offset < title.length; ) {
+            const at = start.call({ lexer: this.lexer }, title.slice(offset))
+            if (typeof at !== 'number' || at < 0) break
+            offset += at
+            if (
+              this.options.extensions?.block?.some((read) =>
+                read.call(
+                  { lexer: this.lexer },
+                  source.slice(from + offset),
+                  [],
+                ),
+              )
+            ) {
+              boundary = Math.min(boundary, from + offset)
+              break
+            }
+            offset++
           }
-          offset++
         }
+      } finally {
+        this.lexer.state.top = top
       }
       const line = source.lastIndexOf('\n', from - 1) + 1
       for (let at = line; at < boundary; ) {

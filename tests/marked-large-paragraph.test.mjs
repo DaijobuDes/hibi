@@ -323,6 +323,39 @@ test('math block interruptions end reference titles', () => {
         }
 })
 
+test('math interruptions retain reference semantics inside lists and quotes', () => {
+  for (const separator of [' ', '\n'])
+    for (const prefix of ['- ', '> ']) {
+      const body = `[ref]: /x${separator}"one\n$$\nx^2\n$$\nlast"`
+      const source =
+        body
+          .split('\n')
+          .map(
+            (line, index) =>
+              `${index === 0 || prefix === '> ' ? prefix : '  '}${line}`,
+          )
+          .join('\n') + '\n\n[ref]'
+      const markdown = new Marked({ gfm: false }, mathTokens, blockMarkdown)
+      const tokens = markdown.lexer(source)
+      assert.equal(
+        tokens.links.ref?.href ?? null,
+        separator === ' ' ? null : '/x',
+        source,
+      )
+      assert.equal(tokens.links.ref?.title ?? null, null, source)
+      assert.equal(
+        references(source, false, true)?.href ?? null,
+        separator === ' ' ? null : '/x',
+        source,
+      )
+      let math = false
+      markdown.walkTokens(tokens, (token) => {
+        math ||= token.type === 'blockMath'
+      })
+      assert.equal(math, true, source)
+    }
+})
+
 test('reference titles keep invalid math candidates and stop for math closed after the title', () => {
   for (const body of ['$$\nunclosed', `$$\n${'x'.repeat(10001)}\n$$`]) {
     const source = `[ref]: /x "one\n${body}\nlast"\n\n[ref]`
