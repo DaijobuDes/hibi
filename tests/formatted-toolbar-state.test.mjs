@@ -412,6 +412,21 @@ test('a partial unlink keeps the link and formatting of the text around it, as t
       'https\\://e.test/p[ath](https://else.test)',
     ],
     [
+      '[https://e.test/path][r]\n\n[r]: https://else.test',
+      'https://e.test/path',
+      0,
+      16,
+      'https\\://e.test/p[ath][r]\n\n[r]: https://else.test',
+    ],
+    [
+      '[www.example.com](https://else.test)',
+      'www.example.com',
+      0,
+      15,
+      'www\\.example.com',
+    ],
+    ['[a@b.co](https://else.test)', 'a@b.co', 0, 6, 'a\\@b.co'],
+    [
       '[mail a@b.co](https://e.test)',
       'mail a@b.co',
       5,
@@ -425,6 +440,13 @@ test('a partial unlink keeps the link and formatting of the text around it, as t
       0,
       3,
       '[abc](https://e.test)`DEF`[`ghi`jkl](https://e.test)',
+    ],
+    [
+      '[abc`  DEFghi  `jkl](https://e.test)',
+      'DEFghi',
+      0,
+      3,
+      '[abc` `](https://e.test)`DEF`[`ghi `jkl](https://e.test)',
     ],
     [
       '[``a`b``](https://e.test)',
