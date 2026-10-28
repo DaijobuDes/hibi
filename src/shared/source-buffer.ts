@@ -678,18 +678,12 @@ export class SourceSnapshot {
     return this.sliceRaw(0, this.utf16Length)
   }
   /** Whitespace proof from indexed counts; reads only the range's edge strides. */
-  isWhitespace(
-    from: number,
-    to = this.utf16Length,
-    kind: 'whitespace' | 'horizontal' = 'whitespace',
-  ): boolean {
+  isWhitespace(from: number, to = this.utf16Length): boolean {
     this.#range(from, to)
     const root = roots.get(this)!
-    const metric =
-      kind === 'horizontal' ? 'nonHorizontalUnits' : 'nonWhitespaceUnits'
     return (
-      this.#tree.prefix(root, from)[metric] ===
-      this.#tree.prefix(root, to)[metric]
+      this.#tree.prefix(root, from).nonWhitespaceUnits ===
+      this.#tree.prefix(root, to).nonWhitespaceUnits
     )
   }
   #seam(position: number) {

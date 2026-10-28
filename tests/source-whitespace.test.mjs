@@ -17,7 +17,7 @@ const textFor = (snapshot) =>
     yieldTask: nextTask,
   })
 
-test('source whitespace distinguishes every JavaScript whitespace unit from spaces and tabs', async () => {
+test('source whitespace matches every JavaScript whitespace unit and normalized endpoint', async () => {
   const whitespace =
     '\t\n\v\f\r \u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff'
   const raw = `😀\ud800x\r\n${whitespace}\r\n\udfffz \t`
@@ -32,17 +32,9 @@ test('source whitespace distinguishes every JavaScript whitespace unit from spac
     for (let to = from; to <= normalized.length; to++) {
       const range = normalized.slice(from, to)
       assert.equal(sourceWhitespace(text, from, to), !/\S/.test(range))
-      assert.equal(
-        sourceWhitespace(text, from, to, 'horizontal'),
-        !/[^ \t]/.test(range),
-      )
     }
   const clone = SourceStore.fromSnapshot(store.snapshot())
   assert.equal(clone.snapshot().isWhitespace(6, 6 + whitespace.length), true)
-  assert.equal(
-    clone.snapshot().isWhitespace(6, 6 + whitespace.length, 'horizontal'),
-    false,
-  )
 })
 
 test('source whitespace follows admitted edits, hidden echoes and undo without changing older snapshots', async () => {
@@ -81,10 +73,6 @@ test('source whitespace follows admitted edits, hidden echoes and undo without c
   check(false)
   bridge.setVisible(true)
   check(true)
-  assert.equal(
-    sourceWhitespace(view.state.doc, 2, undefined, 'horizontal'),
-    false,
-  )
   detach()
   session.dispose()
 })

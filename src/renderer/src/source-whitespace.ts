@@ -9,17 +9,11 @@ export function bindSourceText(text: Text, source: SourceSnapshot): Text {
   return text
 }
 
-/** JavaScript whitespace (or spaces/tabs), unknown outside a source session. */
-export function sourceWhitespace(
-  text: Text,
-  from: number,
-  to = text.length,
-  kind: 'whitespace' | 'horizontal' = 'whitespace',
-) {
+/** JavaScript whitespace, or unknown outside a source session. */
+export function sourceWhitespace(text: Text, from: number, to = text.length) {
   const source = sources.get(text)?.deref()
   return source?.isWhitespace(
     source.editorToRaw(from)!,
     to === text.length ? source.utf16Length : source.editorToRaw(to)!,
-    kind,
   )
 }
