@@ -9,9 +9,9 @@ accepted differences are not gaps; their tests assert each engine. the codemirro
 | gap id | test file:line | behavior | owning slice |
 | --- | --- | --- | --- |
 | reload-001 | [addon-reload.test.mjs:783](addon-reload.test.mjs#L783) | addon reload must retain selection and document focus | 3b: addon reload selection and focus |
-| reload-004 | [addon-reload.test.mjs:924](addon-reload.test.mjs#L924) | unlocked formatted editor must expose aria-readonly false | 3b: addon reload selection and focus |
-| reload-002 | [addon-reload.test.mjs:951](addon-reload.test.mjs#L951) | addon reload must retain selection moved while read-only | 3b: addon reload selection and focus |
-| reload-003 | [addon-reload.test.mjs:969](addon-reload.test.mjs#L969) | typing must resume at retained selection after addon reload | 3b: addon reload selection and focus |
+| reload-004 | [addon-reload.test.mjs:929](addon-reload.test.mjs#L929) | unlocked formatted editor must expose aria-readonly false | 3b: addon reload selection and focus |
+| reload-002 | [addon-reload.test.mjs:956](addon-reload.test.mjs#L956) | addon reload must retain selection moved while read-only | 3b: addon reload selection and focus |
+| reload-003 | [addon-reload.test.mjs:974](addon-reload.test.mjs#L974) | typing must resume at retained selection after addon reload | 3b: addon reload selection and focus |
 | api-001 | [addon-toolbar-command.test.mjs:149](addon-toolbar-command.test.mjs#L149) | api 2 rich selection must report rendered text | 6: verbatim projections and selection contracts |
 | completion-001 | [autocomplete-addon.test.mjs:369](autocomplete-addon.test.mjs#L369) | a fresh rich completion list must accept the word with tab | 8a: native input, structure and toolbar state |
 | syntax-004 | [code-syntax-settings.test.mjs:238](code-syntax-settings.test.mjs#L238) | code blocks must retain horizontal scrolling | 8c: highlighting and grammar lifecycle |
@@ -92,28 +92,22 @@ accepted differences are not gaps; their tests assert each engine. the codemirro
 | input-073 | [editor-input.test.mjs:3440](editor-input.test.mjs#L3440) | native bold typing keeps bold action pressed | 8a: native input, structure and toolbar state |
 | input-074 | [editor-input.test.mjs:3454](editor-input.test.mjs#L3454) | native bold typing renders strong text in canonical source | 8a: native input, structure and toolbar state |
 | semantics-001 | [editor-plugins.test.mjs:67](editor-plugins.test.mjs#L67) | source-view word counts must include markdown characters | 9: outline semantics and diagram lifecycle |
-| find-001 | [formatted-find.test.mjs:210](formatted-find.test.mjs#L210) | formatted find must match rendered phrases across hidden marks | 4a: rendered find projection |
-| find-002 | [formatted-find.test.mjs:339](formatted-find.test.mjs#L339) | undo must restore matches without a current find result | 4b: find wiring and navigation |
-| find-006 | [formatted-find.test.mjs:384](formatted-find.test.mjs#L384) | increasing total matches must preserve the viewport highlight budget | 4b: find wiring and navigation |
-| find-003 | [formatted-find.test.mjs:451](formatted-find.test.mjs#L451) | formatted phrase counts must include matches across marks | 4a: rendered find projection |
-| find-005 | [formatted-find.test.mjs:703](formatted-find.test.mjs#L703) | wide code matches must scroll horizontally with their start visible | 4b: find wiring and navigation |
-| release-001 | [formatted-hidden-source.test.mjs:167](formatted-hidden-source.test.mjs#L167) | reopening source must restore its saved scroll position | 2c: hidden source release and mapped bookmarks |
-| release-002 | [formatted-hidden-source.test.mjs:188](formatted-hidden-source.test.mjs#L188) | formatted edits must map the saved source scroll position | 2c: hidden source release and mapped bookmarks |
+| find-001 | [formatted-find.test.mjs:401](formatted-find.test.mjs#L401) | formatted find must match rendered phrases across hidden marks | 4a: rendered find projection |
+| find-003 | [formatted-find.test.mjs:664](formatted-find.test.mjs#L664) | formatted phrase counts must include matches across marks | 4a: rendered find projection |
+| find-005 | [formatted-find.test.mjs:916](formatted-find.test.mjs#L916) | wide code matches must scroll horizontally with their start visible | 4b: find wiring and navigation |
 | corpus-008 | [markdown-semantics-native.test.mjs:98](markdown-semantics-native.test.mjs#L98) | a quoted title with a blank line must not define a reference | 5a: shared reference definition parsing |
 | corpus-020 | [markdown-semantics-native.test.mjs:100](markdown-semantics-native.test.mjs#L100) | counts must include a definition whose quoted title holds a blank line | 5a: shared reference definition parsing |
 | corpus-021 | [markdown-semantics-native.test.mjs:104](markdown-semantics-native.test.mjs#L104) | disabled heading syntax counts must include a blank-line title definition | 5a: shared reference definition parsing |
 | export-001 | [marked-large-paragraph.test.mjs:597](marked-large-paragraph.test.mjs#L597) | export must keep a blank-line title definition and its heading as visible text | 5a: shared reference definition parsing |
 | corpus-018 | [markdown-semantics-native.test.mjs:102](markdown-semantics-native.test.mjs#L102) | disabled heading syntax must keep a blank-line title definition literal | 5a: shared reference definition parsing |
 | semantics-003 | [outline-navigation.test.mjs:320](outline-navigation.test.mjs#L320) | formatted and source outlines must reuse one document worker | 9: outline semantics and diagram lifecycle |
-| contracts-001 | [raw-html-editor.test.mjs:1147](raw-html-editor.test.mjs#L1147) | clipboard html must exclude markup outside the selected fragment | 3c: clipboard fragments and trusted source |
-| contracts-002 | [raw-html-editor.test.mjs:1156](raw-html-editor.test.mjs#L1156) | a clipboard fragment must restore its exact selected markdown source | 3c: clipboard fragments and trusted source |
-| contracts-003 | [raw-html-editor.test.mjs:1241](raw-html-editor.test.mjs#L1241) | modified inline html copies must fall back without restoring raw markup | 3c: clipboard fragments and trusted source |
-| contracts-004 | [raw-html-editor.test.mjs:1243](raw-html-editor.test.mjs#L1243) | superseded inline html copies must fall back without restoring raw markup | 3c: clipboard fragments and trusted source |
-| contracts-005 | [raw-html-editor.test.mjs:1247](raw-html-editor.test.mjs#L1247) | modified block html copies must fall back without restoring raw markup | 3c: clipboard fragments and trusted source |
-| contracts-006 | [raw-html-editor.test.mjs:1249](raw-html-editor.test.mjs#L1249) | superseded block html copies must fall back without restoring raw markup | 3c: clipboard fragments and trusted source |
-| api-005 | [rich-edit-api.test.mjs:295](rich-edit-api.test.mjs#L295) | rich source edits must reject structural markup changes | 6: verbatim projections and selection contracts |
+| contracts-003 | [raw-html-editor.test.mjs:1225](raw-html-editor.test.mjs#L1225) | modified inline html copies must fall back without restoring raw markup | 3c: clipboard fragments and trusted source |
+| contracts-004 | [raw-html-editor.test.mjs:1227](raw-html-editor.test.mjs#L1227) | superseded inline html copies must fall back without restoring raw markup | 3c: clipboard fragments and trusted source |
+| contracts-005 | [raw-html-editor.test.mjs:1231](raw-html-editor.test.mjs#L1231) | modified block html copies must fall back without restoring raw markup | 3c: clipboard fragments and trusted source |
+| contracts-006 | [raw-html-editor.test.mjs:1233](raw-html-editor.test.mjs#L1233) | superseded block html copies must fall back without restoring raw markup | 3c: clipboard fragments and trusted source |
 | semantics-002 | [source-reference-navigation.test.mjs:160](source-reference-navigation.test.mjs#L160) | formatted and source references must reuse one document worker | 9: outline semantics and diagram lifecycle |
 | addon-001 | [source-reference-navigation.test.mjs:185](source-reference-navigation.test.mjs#L185) | rich-only addon syntax must retain native editing and source reference isolation | 2b: legacy feature notices and literal fallback |
+
 | corpus-022 | [custom-body-syntax.test.mjs:21](custom-body-syntax.test.mjs#L21) | custom alert and subtext bodies must preserve native italic parsing | 9: outline semantics and diagram lifecycle |
 | corpus-023 | [custom-body-syntax.test.mjs:29](custom-body-syntax.test.mjs#L29) | custom alert and subtext bodies must preserve native strike parsing | 9: outline semantics and diagram lifecycle |
 | corpus-024 | [custom-body-syntax.test.mjs:37](custom-body-syntax.test.mjs#L37) | custom alert and subtext bodies must preserve native link parsing | 9: outline semantics and diagram lifecycle |
@@ -128,8 +122,10 @@ api-004: typing context uses opaque editor-local positions in API 1, 2, and 3. `
 
 API 1/2 and the public docs promised ProseMirror numbering for `rich`; this difference is accepted because no known addon depends on it. The API 2 declaration at `8bd8d8bda86d54cbd3fc0ad6a004ec83c69d71f8` distinguished CodeMirror and ProseMirror positions. The pinned public guide at docs revision `de79e8e0fb6066a155a96482f690e3a543239b46`, `development/addons/adding-functionality.md:74`, still says ProseMirror positions in rich view. Update that page in hibigarden/docs and bump the pinned revision before changing the default engine. The addon starter uses no positions. The published catalog's five extensions (fatass-horse, fnaf-jumpscare, oneko, typing-speed, and hibi-doom at `446296f572ba80ba6290fba864f104412794bca2`) use no selection/completion position APIs; its six themes use no editor positions. Bundled autocomplete compares changes with captured selections, and writing-suggestions derives ranges from selection.head; neither requires ProseMirror numbering.
 
-corpus-004, corpus-014: a reference in a `-# ` subtext line resolves against a definition later in the note in the formatted view ([markdown-semantics-native.test.mjs:114](markdown-semantics-native.test.mjs#L114), [markdown-semantics-native.test.mjs:115](markdown-semantics-native.test.mjs#L115)). The native schema reads subtext text before later definitions exist, so the rich view, export and word count leave it literal. Each engine asserts its own outcome; word count and export keep the native reading.
+corpus-004, corpus-014: a reference in a `-# ` subtext line resolves against a definition later in the note in the formatted view ([markdown-semantics-native.test.mjs:118](markdown-semantics-native.test.mjs#L118), [markdown-semantics-native.test.mjs:119](markdown-semantics-native.test.mjs#L119)). The native schema reads subtext text before later definitions exist, so the rich view, export and word count leave it literal. Each engine asserts its own outcome; word count and export keep the native reading.
 
 marker-005: copying from the formatted view puts the selection's exact Markdown on the clipboard as text, as a Markdown editor does, and its rendered HTML as HTML ([markdown-markers.test.mjs:867](markdown-markers.test.mjs#L867)). The rich editor copies rendered text. A formatted-view copy pastes back as the same Markdown; formatted-clipboard.test.mjs covers that contract.
 
 marker-007: with markers shown, the formatted view reveals a focused heading's `# ` as editable text, so the heading's text content includes it; the heading's name in the accessibility tree is the rendered heading text ([sidebar-views.test.mjs:103](sidebar-views.test.mjs#L103)). The rich editor draws the marker as generated content outside the text. Each engine asserts its own outcome.
+
+find-002: with the find bar open, undoing an edit that replaced the selected match restores that selection in the formatted view, so the restored match is the current one (1/10000), as in source view; the find count reflects the selection it is given ([formatted-find.test.mjs:531](formatted-find.test.mjs#L531)). The rich editor leaves a caret after the restored text, so it shows 0/10000. After closing the bar, typing and undoing, reopening it searches again from the selection, and both engines show the first match as current (1/10000).

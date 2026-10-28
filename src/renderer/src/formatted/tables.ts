@@ -13,6 +13,7 @@ import {
   WidgetType,
 } from '@codemirror/view'
 import { type MarkdownConfig, Table } from '@lezer/markdown'
+import { customBody } from '../../../shared/formatted-custom-body.ts'
 import {
   type TableLayout,
   tableSizeChanges,
@@ -36,7 +37,6 @@ import {
   tableKey,
   updateTableLayouts,
 } from '../table-layout-store.ts'
-import { customBody } from './custom-body.ts'
 import {
   CellEditor,
   type CellHost,
