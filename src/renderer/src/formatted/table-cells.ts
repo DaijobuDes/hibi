@@ -27,6 +27,7 @@ import {
   customBody as nativeBody,
 } from '../../../shared/formatted-custom-body.ts'
 import { formattedInlineParser } from '../../../shared/formatted-markdown.ts'
+import { markdownLiteral } from '../../../shared/markdown-literal.ts'
 import { runSourceHistory } from '../../../shared/source-history.ts'
 import {
   blockMarkedNodes,
@@ -413,7 +414,13 @@ function editorDecorations(
     atomic.push(range)
   }
   // Spaces around the content are the cell's padding, not its text.
-  const { start, end } = padding(text)
+  let { start, end } = padding(text)
+  // Newly typed whitespace must keep the caret in visible cell text.
+  if (view.hasFocus)
+    for (const range of view.state.selection.ranges) {
+      start = Math.min(start, range.from)
+      end = Math.max(end, range.to)
+    }
   hide(0, start, null)
   hide(end, text.length, null)
   if (from !== undefined)
@@ -759,8 +766,43 @@ export class CellEditor {
                 /^[yz]$/i.test(event.key) &&
                 (!writable(host.main.state) ||
                   runScopeHandlers(host.main, event, 'editor')),
-              beforeinput: (event) => {
-                const { inputType } = event
+              beforeinput: (event, view) => {
+                const { inputType, data } = event
+                if (
+                  inputType === 'insertText' &&
+                  data &&
+                  /[\r\n]/.test(data) &&
+                  !event.isComposing &&
+                  !view.composing &&
+                  writable(host.main.state) &&
+                  host.current()
+                ) {
+                  event.preventDefault()
+                  const { from, to } = view.state.selection.main
+                  const text = view.state.toText(data).toString()
+                  const insert = () =>
+                    view.state.update(
+                      view.state.replaceSelection(markdownLiteral(text)),
+                      {
+                        userEvent: 'input.type',
+                        scrollIntoView: true,
+                      },
+                    )
+                  if (
+                    !view.state
+                      .facet(EditorView.inputHandler)
+                      .some((handler) => handler(view, from, to, text, insert))
+                  )
+                    view.dispatch(insert())
+                  view.contentDOM.dispatchEvent(
+                    new InputEvent('input', {
+                      inputType,
+                      data,
+                      bubbles: true,
+                    }),
+                  )
+                  return true
+                }
                 if (inputType !== 'historyUndo' && inputType !== 'historyRedo')
                   return false
                 if (writable(host.main.state))
@@ -893,9 +935,19 @@ export class CellEditor {
       doc[doc.length - 1 - end] === text[text.length - 1 - end]
     )
       end++
+    const span = this.host.span()
+    const selected = this.host.main.state.selection.main
+    const selection =
+      span && selected.from >= span.from && selected.to <= span.to
+        ? {
+            anchor: selected.anchor - span.from,
+            head: selected.head - span.from,
+          }
+        : undefined
     this.remote = true
     try {
       this.view.dispatch({
+        selection,
         changes: {
           from: start,
           to: doc.length - end,
