@@ -233,6 +233,9 @@ function nextMarker(state: EditorState, item: SyntaxNode) {
   return `${indent}${ordered ? `${Number(ordered[1]) + 1}${ordered[2]}` : text} ${task ? '[ ] ' : ''}`
 }
 
+/** Longest text not yet parsed after the caret that Enter reads to tell it is blank. */
+const unparsedLimit = 4096
+
 /** Enter: split paragraphs and headings, continue or leave lists and quotes, newline in code. */
 export function blockBreak(
   state: EditorState,
@@ -327,21 +330,21 @@ export function blockBreak(
     }
     // A blank line between blocks gains another empty line. After the last
     // block, blank lines show in pairs as empty paragraphs, as in the rich
-    // view, so it gains a pair. The tree says where the last block ends,
-    // leaving out blocks the selection replaces; while text after it is not
-    // parsed yet, the line counts as between blocks.
+    // view, so it gains a pair. The tree says whether a block ends after the
+    // selection; text it has not parsed there counts as a block unless it is
+    // a short blank run.
     if (blank(line.text)) {
       let last = tree.topNode.lastChild
-      while (
-        last &&
-        (!last.type.is('Block') ||
-          (last.from >= range.from && last.to <= range.to))
-      )
-        last = last.prevSibling
+      while (last && !last.type.is('Block')) last = last.prevSibling
+      const rest = state.doc.length - range.to
+      const unparsed =
+        tree.length < state.doc.length ||
+        uncovered(tree, range.to, state.doc.length)
       const after =
-        (!last || line.from > last.to) &&
-        tree.length >= state.doc.length &&
-        !uncovered(tree, last?.to ?? 0, state.doc.length)
+        (!last || last.to <= range.to) &&
+        (!unparsed ||
+          (rest <= unparsedLimit &&
+            !/\S/.test(state.sliceDoc(range.to, state.doc.length))))
       return insert(after ? '\n\n' : '\n')
     }
     const { close, open, at, end } = range.empty

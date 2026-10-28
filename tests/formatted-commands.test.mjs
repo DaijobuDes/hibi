@@ -6,6 +6,7 @@ import { Decoration, WidgetType } from '@codemirror/view'
 import { Tree } from '@lezer/common'
 import { GFM, parser } from '@lezer/markdown'
 import { MarkdownManager } from '@tiptap/markdown'
+import { ChunkedMarkdownParser } from '../src/renderer/src/chunked-markdown.ts'
 import {
   blockBreak,
   codeIndent,
@@ -817,4 +818,31 @@ test('enter on a blank line after the last block reads no more of a 50 MiB blank
   const next = state.update(spec).state.doc
   assert.equal(next.length, doc.length + 2)
   assert.equal(next.sliceString(0, 5), 'x\n\n\n\n')
+})
+
+test('enter on a blank line keeps the same pairs while the note is partly parsed', () => {
+  // Before, a caret after text not parsed yet always gained one line break.
+  const doc = `first\n\n${'old tail\n\n'.repeat(20000)}`
+  const chunked = new ChunkedMarkdownParser(markdown, markdown)
+  const parse = chunked.startChunkedParse(
+    {
+      length: doc.length,
+      lineChunks: false,
+      chunk: (from) => doc.slice(from, from + 4096),
+      read: (from, to) => doc.slice(from, to),
+    },
+    [],
+    { from: 0, to: 8192 },
+  )
+  let partial = parse.advance()
+  while (!partial) partial = parse.advance()
+  assert.ok(partial.topNode.lastChild.to < 20000, 'parsed only at the start')
+  const complete = markdown.parse(doc)
+  // At the end, and on a blank line followed by text not parsed yet.
+  for (const caret of [doc.length, doc.indexOf('\n\nold', 100000) + 1]) {
+    const state = EditorState.create({ doc, selection: { anchor: caret } })
+    const added = (tree) =>
+      state.update(blockBreak(state, tree)).state.doc.length - doc.length
+    assert.equal(added(partial), added(complete), String(caret))
+  }
 })
