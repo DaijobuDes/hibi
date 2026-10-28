@@ -720,11 +720,26 @@ export function unlinkChanges(
     const autolink = node.name === 'Autolink'
     const text = autolink ? node.getChild('URL') : formattingText(state, node)
     if (!text) return
-    const whole = () =>
-      changes.push(
-        { from: node.from, to: text.from },
-        { from: text.to, to: node.to },
-      )
+    // An autolink's address is literal text. As Markdown text it needs its
+    // Markdown characters escaped, and where it is no longer linked, also
+    // what would make it a web address or email again.
+    const escapeText = (from: number, to: number, linked: boolean) => {
+      if (!autolink) return
+      const syntax = linked
+        ? /[\\`*_~[\]&$^=|!]/g
+        : /[\\`*_~[\]&$^=|!@]|(?<=https?|ftp):(?=\/\/)|(?<=www)\./gi
+      for (const match of state.sliceDoc(from, to).matchAll(syntax))
+        changes.push(
+          match[0] === '&'
+            ? { from: from + match.index + 1, insert: 'amp;' }
+            : { from: from + match.index, insert: '\\' },
+        )
+    }
+    const whole = () => {
+      changes.push({ from: node.from, to: text.from })
+      escapeText(text.from, text.to, false)
+      changes.push({ from: text.to, to: node.to })
+    }
     if (range.empty) {
       whole()
       return
@@ -742,17 +757,13 @@ export function unlinkChanges(
     }
     // What follows each kept part's text: the link's own destination or
     // label, a label for a shortcut or collapsed reference, or an
-    // autolink's address.
+    // autolink's address, where one without a scheme is an email.
     const tail = state.sliceDoc(text.to, node.to)
-    // An autolink's address is literal text, and an address without a
-    // scheme is an email.
-    const literal = (text: string) =>
-      text.replace(/[\\`*_~[\]&$^=|!]/g, (char) =>
-        char === '&' ? '&amp;' : `\\${char}`,
-      )
     const url = state.sliceDoc(text.from, text.to)
-    const href = literal(
-      /^[a-z][a-z\d+.-]{1,31}:/i.test(url) ? url : `mailto:${url}`,
+    const href = (
+      /^[a-z][a-z\d+.-]{1,31}:/i.test(url) ? url : `mailto:${url}`
+    ).replace(/[\\`*_~[\]&$^=|!]/g, (char) =>
+      char === '&' ? '&amp;' : `\\${char}`,
     )
     const after = autolink
       ? `](${/[\s()]/.test(href) ? `<${href}>` : href})`
@@ -763,19 +774,15 @@ export function unlinkChanges(
       if (state.sliceDoc(from, to) !== insert)
         changes.push({ from, to, insert })
     }
-    // Text from an autolink's address becomes Markdown text.
-    const part = (from: number, to: number) => {
-      if (autolink) replace(from, to, literal(state.sliceDoc(from, to)))
-    }
     const kept = start.at > text.from
     replace(node.from, text.from, kept ? '[' : '')
-    part(text.from, start.at)
+    escapeText(text.from, start.at, true)
     if (kept)
       changes.push({ from: start.at, insert: start.close + after + start.open })
-    part(start.at, end.at)
+    escapeText(start.at, end.at, false)
     if (end.at < text.to) {
       changes.push({ from: end.at, insert: `${end.close}[${end.open}` })
-      part(end.at, text.to)
+      escapeText(end.at, text.to, true)
       replace(text.to, node.to, after)
     } else replace(text.to, node.to, '')
   }
