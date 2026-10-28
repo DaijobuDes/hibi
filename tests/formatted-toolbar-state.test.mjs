@@ -2242,50 +2242,69 @@ test('inner style changes preserve unchanged outer delimiters and source history
     }
 })
 
-test('touching styles keep the native compatible-source fallback', () => {
-  for (const [source, anchor, head, from, to, expected] of [
-    ['take _keep_', 0, 5, 1, 6, '*take keep*'],
-    ['_keep_ take', 6, 11, 5, 10, '*keep take*'],
+test('touching styles distinguish accepted canonical source from native guard rejection', () => {
+  for (const [source, anchor, head, from, to, expected, rejected] of [
+    ['take _keep_', 0, 5, 1, 6, '*take keep*', true],
+    ['_keep_ take', 6, 11, 5, 10, '*keep take*', true],
+    ['take *keep*', 0, 5, 1, 6, '*take keep*', false],
+    ['*keep* take', 6, 11, 5, 10, '*keep take*', false],
   ]) {
     const editor = richEditor(source),
-      target = typing(source, anchor)
+      { target, bridge, session, dispose } = sessionTyping(source, anchor)
     try {
       const serialize = markdownSerializer(editor.markdown, true),
         before = serialize(editor.state.doc).source
       editor.commands.setTextSelection({ from, to })
-      editor.commands.toggleItalic()
+      const model = editor.getJSON()
+      assert.equal(editor.commands.toggleItalic(), true)
+      assert.notDeepEqual(editor.getJSON(), model)
       const canonical = serialize(editor.state.doc).source
-      const native =
-        preserveRichSource(source, before, canonical, (candidate) =>
+      const preserved = preserveRichSource(
+        source,
+        before,
+        canonical,
+        (candidate) =>
           sameRichSourceDocument(
             editor.schema.nodeFromJSON(editor.markdown.parse(candidate)),
             editor.state.doc,
             true,
           ),
-        ) ?? canonical
-      assert.equal(native, expected)
+      )
+      assert.equal(preserved, rejected ? null : expected)
+      assert.equal(editor.state.selection.toJSON().type, 'text')
+      // The app rejects the raw underscore transaction. Its candidate is an intended
+      // formatted result, not an accepted native operation.
       target.dispatch({ selection: { anchor, head } })
       assert.equal(target.formatting.run('italic'), true)
-      assert.equal(target.state.doc.toString(), native)
+      assert.equal(target.state.doc.toString(), expected)
       assert.ok(
         sameRichSourceDocument(
-          editor.schema.nodeFromJSON(editor.markdown.parse(native)),
+          editor.schema.nodeFromJSON(editor.markdown.parse(expected)),
           editor.state.doc,
           true,
         ),
       )
+      const selection = target.state.selection
+      assert.equal(session.snapshot().version, 1)
+      assert.equal(bridge.undo(), true)
+      assert.equal(target.state.doc.toString(), source)
+      assert.equal(bridge.redo(), true)
+      assert.equal(target.state.doc.toString(), expected)
+      assert.ok(target.state.selection.eq(selection))
     } finally {
+      dispose()
       editor.destroy()
     }
   }
 })
 
-test('retained mark spans cover wider styles and complete formatted blocks', () => {
-  for (const [source, anchor, head, id, all, expected] of [
-    ['__take__ rest', 2, 13, 'italic', false, '***take** rest*'],
-    ['**take** rest', 2, 13, 'italic', false, '***take** rest*'],
-    ['__take__', 0, 8, 'italic', true, '__*take*__'],
-    ['_take_', 0, 6, 'bold', true, '_**take**_'],
+test('retained mark spans distinguish accepted source, native rejection and genuine select-all', () => {
+  for (const [source, anchor, head, id, all, expected, rejected] of [
+    ['__take__ rest', 2, 13, 'italic', false, '***take** rest*', true],
+    ['**take** rest', 2, 13, 'italic', false, '***take** rest*', false],
+    ['__take__', 0, 8, 'italic', true, '__*take*__', false],
+    ['_take_', 0, 6, 'bold', true, '_**take**_', false],
+    ['__take__ rest', 0, 13, 'italic', true, '***take** rest*', false],
   ]) {
     const { target, bridge, session, dispose } = sessionTyping(source, anchor)
     target.dispatch({ selection: { anchor, head } })
@@ -2308,15 +2327,25 @@ test('retained mark spans cover wider styles and complete formatted blocks', () 
       )
       assert.notDeepEqual(editor.getJSON(), model)
       const canonical = serialize(editor.state.doc).source
-      const preserved =
-        preserveRichSource(source, before, canonical, (candidate) =>
+      const preserved = preserveRichSource(
+        source,
+        before,
+        canonical,
+        (candidate) =>
           sameRichSourceDocument(
             editor.schema.nodeFromJSON(editor.markdown.parse(candidate)),
             editor.state.doc,
             true,
           ),
-        ) ?? canonical
-      assert.equal(preserved, expected)
+      )
+      assert.equal(editor.state.selection.toJSON().type, all ? 'all' : 'text')
+      if (rejected) assert.equal(preserved, null)
+      else if (preserved === null) {
+        // Only an actual AllSelection may use canonical source in the app.
+        assert.equal(all, true)
+        assert.equal(canonical, expected)
+      } else assert.equal(preserved, expected)
+      // Raw TextSelection rejection above does not constrain the source-native action.
       assert.equal(target.formatting.run(id), true)
       assert.equal(target.state.doc.toString(), expected)
       assert.ok(
@@ -2328,6 +2357,67 @@ test('retained mark spans cover wider styles and complete formatted blocks', () 
       )
       const selection = target.state.selection
       assert.ok(selection.main.anchor < selection.main.head)
+      assert.equal(session.snapshot().version, 1)
+      assert.equal(bridge.undo(), true)
+      assert.equal(target.state.doc.toString(), source)
+      assert.equal(bridge.redo(), true)
+      assert.equal(target.state.doc.toString(), expected)
+      assert.ok(target.state.selection.eq(selection))
+    } finally {
+      dispose()
+      editor.destroy()
+    }
+  }
+})
+
+test('formatted link candidates retain source and history when the native source guard rejects them', () => {
+  for (const [source, expected] of [
+    ['__take__ and __keep__', '[**take**](https://example.com) and __keep__'],
+    ['_take_ and _keep_', '[*take*](https://example.com) and _keep_'],
+  ]) {
+    const start = source.indexOf('take')
+    const { target, bridge, session, dispose } = sessionTyping(source, start)
+    target.dispatch({ selection: { anchor: start, head: start + 4 } })
+    const editor = richEditor(source)
+    try {
+      const serialize = markdownSerializer(editor.markdown, true),
+        before = serialize(editor.state.doc).source
+      editor.commands.setTextSelection({ from: 1, to: 5 })
+      const model = editor.getJSON()
+      assert.equal(
+        editor.commands.setLink({ href: 'https://example.com' }),
+        true,
+      )
+      assert.notDeepEqual(editor.getJSON(), model)
+      assert.equal(editor.state.selection.toJSON().type, 'text')
+      assert.equal(
+        preserveRichSource(
+          source,
+          before,
+          serialize(editor.state.doc).source,
+          (candidate) =>
+            sameRichSourceDocument(
+              editor.schema.nodeFromJSON(editor.markdown.parse(candidate)),
+              editor.state.doc,
+              true,
+            ),
+        ),
+        null,
+      )
+      // Compare the intended candidate only; the production native view keeps its old model.
+      assert.equal(
+        target.formatting.run('link', { url: 'https://example.com', alt: '' }),
+        true,
+      )
+      assert.equal(target.state.doc.toString(), expected)
+      assert.ok(
+        sameRichSourceDocument(
+          editor.schema.nodeFromJSON(editor.markdown.parse(expected)),
+          editor.state.doc,
+          true,
+        ),
+      )
+      const selection = target.state.selection
       assert.equal(session.snapshot().version, 1)
       assert.equal(bridge.undo(), true)
       assert.equal(target.state.doc.toString(), source)

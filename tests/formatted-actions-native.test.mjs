@@ -211,6 +211,101 @@ const cases = [
     action: 'indent',
   },
   {
+    name: 'canonical wide italic span',
+    source: '**take** rest',
+    text: 'take',
+    offset: 0,
+    end: 'rest',
+    endOffset: 4,
+    action: 'italic',
+  },
+  {
+    name: 'genuine select-all may replace noncanonical source',
+    source: '__take__ rest',
+    all: true,
+    action: 'italic',
+  },
+  ...[
+    ['right', 'take *keep*', 'take', 0, 'keep', 0, 5],
+    ['left', '*keep* take', 'take', -1, 'take', 4, 11],
+  ].map(([side, source, text, offset, end, endOffset, sourceHead]) => ({
+    name: `canonical touching italic ${side}`,
+    source,
+    text,
+    offset,
+    end,
+    endOffset,
+    sourceHead,
+    action: 'italic',
+  })),
+  ...['**', '*'].map((mark) => ({
+    name: `canonical selected link inside ${mark.length === 2 ? 'bold' : 'italic'}`,
+    source: `${mark}take${mark} and ${mark}keep${mark}`,
+    text: 'take',
+    offset: 0,
+    end: 'take',
+    endOffset: 4,
+    action: 'link',
+  })),
+  // These raw-source transactions are rejected by the production native guard.
+  // Their intended formatted result is checked separately in formatted-toolbar-state.
+  ...[
+    {
+      name: 'wide underscore',
+      source: '__take__ rest',
+      text: 'take',
+      offset: 0,
+      end: 'rest',
+      endOffset: 4,
+      action: 'italic',
+      intended: '***take** rest*',
+    },
+    {
+      name: 'link inside underscore',
+      source: '__take__ and __keep__',
+      text: 'take',
+      offset: 0,
+      end: 'take',
+      endOffset: 4,
+      action: 'link',
+      intended: '[**take**](https://example.com) and __keep__',
+    },
+    {
+      name: 'link inside italic underscore',
+      source: '_take_ and _keep_',
+      text: 'take',
+      offset: 0,
+      end: 'take',
+      endOffset: 4,
+      action: 'link',
+      intended: '[*take*](https://example.com) and _keep_',
+    },
+    {
+      name: 'right touching underscore',
+      source: 'take _keep_',
+      text: 'take',
+      offset: 0,
+      end: 'keep',
+      endOffset: 0,
+      action: 'italic',
+      intended: '*take keep*',
+    },
+    {
+      name: 'left touching underscore',
+      source: '_keep_ take',
+      text: 'take',
+      offset: -1,
+      end: 'take',
+      endOffset: 4,
+      action: 'italic',
+      intended: '*keep take*',
+    },
+  ].map((item) => ({
+    ...item,
+    name: `native guard rejects ${item.name}`,
+    nativeGuard: true,
+  })),
+  {
     name: 'unicode crlf block',
     source: '> α😀 beta\r\n>\r\n> tail',
     text: 'α😀 beta',
@@ -476,7 +571,9 @@ for (const engine of ['tiptap', 'codemirror'])
       assert.equal(restored.source, expected)
       return restored
     }
-    for (const item of cases)
+    for (const item of cases.filter(
+      (item) => !item.nativeGuard || engine === 'tiptap',
+    ))
       await t.test(item.name, async () => {
         const file = join(profile, `${item.name}.md`)
         let source = item.source
@@ -505,6 +602,7 @@ for (const engine of ['tiptap', 'codemirror'])
         await rich.evaluate(
           (root, { item, engine }) => {
             window.actionInputs = []
+            window.formattingGuard = null
             root.oninput = (event) =>
               window.actionInputs.push({
                 type: event.inputType,
@@ -547,9 +645,11 @@ for (const engine of ['tiptap', 'codemirror'])
                       ? { anchor: 0 }
                       : {
                           anchor: source.indexOf(item.text) + item.offset,
-                          head: item.end
-                            ? source.indexOf(item.end) + item.endOffset
-                            : source.indexOf(item.text) + item.offset,
+                          head:
+                            item.sourceHead ??
+                            (item.end
+                              ? source.indexOf(item.end) + item.endOffset
+                              : source.indexOf(item.text) + item.offset),
                         },
                 scrollIntoView: true,
               })
@@ -627,6 +727,27 @@ for (const engine of ['tiptap', 'codemirror'])
             )
         }
         const before = await snapshot(page)
+        if (item.nativeGuard)
+          await rich.evaluate((element) => {
+            const editor = element.editor
+            window.formattingGuard = { attempted: [], accepted: [] }
+            if (!editor.formattingGuardWrapped) {
+              const dispatch = editor.view.dispatch.bind(editor.view)
+              editor.view.dispatch = (transaction) => {
+                if (transaction.docChanged && window.formattingGuard)
+                  window.formattingGuard.attempted.push({
+                    model: transaction.doc.toJSON(),
+                    selection: transaction.selection.toJSON(),
+                  })
+                return dispatch(transaction)
+              }
+              editor.on('transaction', ({ transaction }) => {
+                if (transaction.docChanged && window.formattingGuard)
+                  window.formattingGuard.accepted.push(editor.getJSON())
+              })
+              editor.formattingGuardWrapped = true
+            }
+          })
         const button = page.locator(
           `.editor-toolbar [data-toolbar-id="format.${item.action}"]`,
         )
@@ -674,6 +795,52 @@ for (const engine of ['tiptap', 'codemirror'])
             ...action,
           }),
         )
+        if (item.nativeGuard) {
+          assert.equal(engine, 'tiptap')
+          await page.waitForFunction(() =>
+            document
+              .querySelector('.rich-pane .document-notice')
+              ?.textContent.includes('This edit would rewrite other Markdown.'),
+          )
+          const guard = await rich.evaluate(() => ({
+            ...structuredClone(window.formattingGuard),
+            notices: Array.from(
+              document.querySelectorAll('.rich-pane .document-notice'),
+            ).map((node) => node.textContent),
+          }))
+          t.diagnostic(
+            JSON.stringify({ name: item.name, before, action, guard }),
+          )
+          assert.equal(before.source, item.source)
+          assert.equal(before.version, 0)
+          assert.equal(before.selectionDebug.type, 'text')
+          assert.deepEqual(guard.attempted, [
+            {
+              model: oracle.schema
+                .nodeFromJSON(oracle.markdown.parse(item.intended))
+                .toJSON(),
+              selection: before.selectionDebug,
+            },
+          ])
+          assert.notDeepEqual(guard.attempted[0].model, before.model)
+          assert.deepEqual(guard.accepted, [])
+          assert.deepEqual(guard.notices, [
+            'Edit could not be appliedThis edit would rewrite other Markdown. Use Source view for this document.',
+          ])
+          for (const key of [
+            'source',
+            'version',
+            'model',
+            'selectionDebug',
+            'styles',
+            'text',
+            'count',
+            'caret',
+          ])
+            assert.deepEqual(action[key], before[key], key)
+          assert.deepEqual(action.inputs, [])
+          return
+        }
         if (item.pendingHeading) {
           assert.deepEqual(action.headingLevels, [2])
           if (engine === 'tiptap') {
