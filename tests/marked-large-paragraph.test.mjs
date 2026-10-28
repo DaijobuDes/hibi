@@ -1055,6 +1055,16 @@ test('reference table titles measure indentation relative to their container', (
     ['- ', '  ', '    ', true],
     ['10. ', '    ', '    ', true],
     ['- ', '  ', '  ', false],
+    ['> ', '> ', '\t', false],
+    ['>', '>', '\t', false],
+    [' > ', ' > ', '\t', false],
+    ['  > ', '  > ', '\t', true],
+    ['> > ', '> > ', '\t', true],
+    ['> > > ', '> > > ', '\t', false],
+    ['- > ', '  > ', '\t', true],
+    ['10. > ', '    > ', '\t', false],
+    ['- - > ', '    > ', '\t', false],
+    ['> - ', '>   ', '\t', true],
   ])
     for (const gfm of [false, true]) {
       const source = `${first}[ref]: /x\n${rest}${indent}"a | b"\n${rest}--|--\n\n[ref]`
@@ -1079,17 +1089,43 @@ test('reference table titles measure indentation relative to their container', (
     }
 })
 
-test('quote-tab reference titles stop at gfm tables', {
-  todo: 'formatted gap export-006: quote-tab reference titles must stop at gfm tables',
-}, () => {
-  const source = '> [ref]: /x\n> \t"a | b"\n> --|--\n\n[ref]'
-  const oracle = micromark(source, {
-    extensions: [gfmSyntax()],
-    htmlExtensions: [gfmHtml()],
+test('quote-tab reference titles stop at gfm tables', (t) => {
+  const remove = flavors.register('quote-tab-title', {
+    id: 'grammar',
+    name: 'grammar',
+    kind: 'dialect',
+    detect: () => true,
+    markedOptions: { gfm: true },
   })
-  assert.match(oracle, /<table>/)
-  const markdown = new Marked({ gfm: true }, blockMarkdown)
-  assert.equal(markdown.parse(source).trim(), oracle)
+  t.after(remove)
+  for (const eol of ['\n', '\r\n']) {
+    const source = '> [ref]: /x\n> \t"a | b"\n> --|--\n\n[ref]'.replaceAll(
+      '\n',
+      eol,
+    )
+    const oracle = micromark(source, {
+      extensions: [gfmSyntax()],
+      htmlExtensions: [gfmHtml()],
+    }).replaceAll('\r\n', '\n')
+    assert.match(oracle, /<table>/)
+    const markdown = new Marked({ gfm: true }, blockMarkdown)
+    assert.equal(markdown.parse(source).trim(), oracle)
+    assert.equal(renderMarkdown(source).html.trim(), oracle)
+  }
+})
+
+test('quote tab normalization preserves code contents and outer raw spans', () => {
+  for (const source of ['> \t\tfoo\tbar', '> \t\t\tfoo', '>     >\tcode']) {
+    const expected = micromark(source)
+    assert.equal(
+      new Marked({ gfm: false }, blockMarkdown).parse(source).trim(),
+      expected,
+    )
+  }
+  const source = '> [ref]: /x\n> \t"a | b"\n> --|--\n\nsuffix'
+  const tokens = new Marked({ gfm: true }, blockMarkdown).lexer(source)
+  assert.equal(tokens.map((token) => token.raw).join(''), source)
+  assert.equal(tokens.at(-1).text, 'suffix')
 })
 
 test('reference title interruption windows stay linear through 20000 table candidates', async (t) => {
