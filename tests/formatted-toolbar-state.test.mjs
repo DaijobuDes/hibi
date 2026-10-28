@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { DocInput } from '@codemirror/language'
 import { EditorState, Text } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { Tree } from '@lezer/common'
@@ -25,6 +26,7 @@ import {
   storedMarkInput,
   tableActions,
 } from '../src/renderer/src/source-formatting.ts'
+import { ChunkedMarkdownParser } from '../src/shared/chunked-markdown.ts'
 
 const markdown = parser.configure(GFM)
 const note = [
@@ -559,42 +561,52 @@ function treeSteps(tree, run) {
   return steps
 }
 
-test('formatted toolbar inspection walks a bounded part of the syntax tree', () => {
-  const ids = [...marks, ...blocks, 'subtext', 'strike', 'subscript']
-  const steps = (doc, anchor, head = anchor) => {
-    const tree = markdown.parse(doc)
-    const target = {
-      state: EditorState.create({
-        doc,
-        selection: { anchor, head },
-        extensions: formattedTree.of(() => tree),
-      }),
+for (const [name, parse] of [
+  ['lezer', (doc) => markdown.parse(doc)],
+  [
+    'chunked',
+    (doc) =>
+      new ChunkedMarkdownParser(markdown, markdown, {
+        opaque: new Set(['FencedCode', 'CodeBlock']),
+      }).parse(new DocInput(Text.of(doc.split('\n')))),
+  ],
+])
+  test(`formatted toolbar inspection walks a bounded part of the ${name} syntax tree`, () => {
+    const ids = [...marks, ...blocks, 'subtext', 'strike', 'subscript']
+    const steps = (doc, anchor, head = anchor) => {
+      const tree = parse(doc)
+      const target = {
+        state: EditorState.create({
+          doc,
+          selection: { anchor, head },
+          extensions: formattedTree.of(() => tree),
+        }),
+      }
+      const formatting = sourceFormatting(target)
+      return treeSteps(tree, () => states(target, ids, formatting))
     }
-    const formatting = sourceFormatting(target)
-    return treeSteps(tree, () => states(target, ids, formatting))
-  }
-  // A caret at the end of a link's text finds its `]` from the link's end, not by reading its text.
-  const link = (spans) => {
-    const doc = `pre [${'**b** '.repeat(spans)}xy](https://e.test) post`
-    return steps(doc, doc.indexOf('xy') + 1)
-  }
-  assert.equal(link(32768), link(512))
-  assert.ok(link(32768) < 64)
-  // A caret, or a range of three items, in a list of 200,000 items: a
-  // balanced tree adds a few steps for each tenfold growth, not one per item.
-  const items = (count) => {
-    const doc = `${Array.from({ length: count }, (_, i) => `- item${i}`).join('\n')}\n`
-    const from = doc.indexOf('item10') + 2
-    return {
-      caret: steps(doc, from),
-      range: steps(doc, from, doc.indexOf('item13') + 3),
+    // A caret at the end of a link's text finds its `]` from the link's end, not by reading its text.
+    const link = (spans) => {
+      const doc = `pre [${'**b** '.repeat(spans)}xy](https://e.test) post`
+      return steps(doc, doc.indexOf('xy') + 1)
     }
-  }
-  const small = items(20),
-    large = items(200000)
-  assert.equal(large.caret, small.caret)
-  assert.ok(large.range - small.range < 64, `${small.range} ${large.range}`)
-})
+    assert.equal(link(32768), link(512))
+    assert.ok(link(32768) < 64)
+    // A caret, or a range of three items, in a list of 200,000 items: a
+    // balanced tree adds a few steps for each tenfold growth, not one per item.
+    const items = (count) => {
+      const doc = `${Array.from({ length: count }, (_, i) => `- item${i}`).join('\n')}\n`
+      const from = doc.indexOf('item10') + 2
+      return {
+        caret: steps(doc, from),
+        range: steps(doc, from, doc.indexOf('item13') + 3),
+      }
+    }
+    const small = items(20),
+      large = items(200000)
+    assert.equal(large.caret, small.caret)
+    assert.ok(large.range - small.range < 64, `${small.range} ${large.range}`)
+  })
 
 /** Characters read from documents and syntax tree lookups while `run` inspects. */
 function counted(run) {
