@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { history, undo, undoDepth } from '@codemirror/commands'
 import { DocInput } from '@codemirror/language'
 import { EditorState, Text } from '@codemirror/state'
 import { Tree } from '@lezer/common'
@@ -15,11 +16,17 @@ import {
   subtextSyntax,
 } from '../src/addons/text-extras/formatted-syntax.ts'
 import { Subscript, Subtext } from '../src/addons/text-extras/nodes.ts'
+import { cellLineBreak } from '../src/renderer/src/formatted/table-cells.ts'
 import {
   formattedLiteral,
   formattedTree,
 } from '../src/renderer/src/formatted-contributions.ts'
 import { markdownConfiguration } from '../src/renderer/src/markdown.ts'
+import { markdownSerializer } from '../src/renderer/src/markdown-serialization.ts'
+import {
+  preserveRichSource,
+  sameRichSourceDocument,
+} from '../src/renderer/src/rich-source-preservation.ts'
 import {
   sourceFormatting,
   tableActions,
@@ -257,12 +264,6 @@ test('the pressed code block action turns fenced code back into text', () => {
   assert.equal(ran('code-block', '- ```\n  a\n  ```', '  a'), '- a')
 })
 
-test('the code block action at a caret makes its paragraph code', {
-  todo: 'formatted gap input-076: the code block action at a caret turns its paragraph into code',
-}, () => {
-  assert.equal(ran('code-block', 'a', 'a'), '```\na\n```')
-})
-
 test('formatted toolbar states match the reviewed rich editor outcomes', () => {
   const at = (doc, anchor, head = anchor, extensions = []) =>
     sourceFormatting({
@@ -318,6 +319,37 @@ test('formatted toolbar states match the reviewed rich editor outcomes', () => {
   )
 })
 
+/** The rich editor's flavors and the formatted view's syntax for its markdown. */
+const flavors = [
+  {
+    id: 'github',
+    markedOptions: { gfm: true },
+    richExtensions: [
+      Strike,
+      NativeTableKit.configure({ table: { resizable: false } }),
+      TaskList,
+      TaskItem.configure({ nested: true }),
+    ],
+  },
+  { id: 'text-extras', richExtensions: [Subscript, Subtext] },
+]
+const grammar = parser.configure([GFM, subscriptSyntax, subtextSyntax])
+
+/** A headless rich editor of `content`. */
+function richEditor(content) {
+  const { core, addons, parser, options } = markdownConfiguration(flavors)
+  return new Editor({
+    element: null,
+    extensions: [
+      ...core,
+      Markdown.configure({ marked: parser, markedOptions: options }),
+      ...addons,
+    ],
+    content,
+    contentType: 'markdown',
+  })
+}
+
 /** A seeded generator from the high bits of a 32-bit LCG. */
 function random(seed) {
   let state = seed
@@ -328,20 +360,6 @@ function random(seed) {
 }
 
 test('formatted toolbar states match the rich toolbar on random selections', () => {
-  const flavors = [
-    {
-      id: 'github',
-      markedOptions: { gfm: true },
-      richExtensions: [
-        Strike,
-        NativeTableKit.configure({ table: { resizable: false } }),
-        TaskList,
-        TaskItem.configure({ nested: true }),
-      ],
-    },
-    { id: 'text-extras', richExtensions: [Subscript, Subtext] },
-  ]
-  const grammar = parser.configure([GFM, subscriptSyntax, subtextSyntax])
   // FormattingToolbar's rich checks.
   const list = (editor) =>
     editor.isActive('taskList') ? 'taskItem' : 'listItem'
@@ -409,17 +427,7 @@ test('formatted toolbar states match the rich toolbar on random selections', () 
   for (const seed of [0x552c0ffe, 0x552a11ce]) {
     const next = random(seed)
     for (const input of documents) {
-      const { core, addons, parser, options } = markdownConfiguration(flavors)
-      const editor = new Editor({
-        element: null,
-        extensions: [
-          ...core,
-          Markdown.configure({ marked: parser, markedOptions: options }),
-          ...addons,
-        ],
-        content: input,
-        contentType: 'markdown',
-      })
+      const editor = richEditor(input)
       // The rich editor's source and each text's position in both editors.
       const source = editor.getMarkdown()
       const tree = grammar.parse(source)
@@ -667,4 +675,247 @@ test('formatted toolbar inspection reads the same text and syntax in a 50 MiB no
     // A caret walks up from its position; only a range reads its syntax in order.
     if (length === undefined && text !== null) assert.equal(expected.scans, 0)
   }
+})
+
+/**
+ * The source each toolbar action writes, against the rich editor's: a note
+ * with each kind of block, a caret or range in each, and each action the
+ * formatted view enables there. Differences that main already had are
+ * ledgered by cause.
+ */
+test("formatted toolbar actions write the rich editor's source", async (t) => {
+  const note = [
+    '# headA',
+    'plainB **boldC** *italicD* ~~strikeE~~ `codeF` [linkG](https://example.com) tailQ',
+    '- oneH\n- twoI\n  - nestedJ',
+    '1. firstK\n2. secondL',
+    '- [ ] taskM',
+    '> quoteN',
+    '```js\ncodeO\n```',
+    '| a | b |\n| - | - |\n| cellP | 2 |',
+  ].join('\n\n')
+  const selections = [
+    ['heading', 'headA'],
+    ['plain', 'plainB'],
+    ['bold', 'boldC'],
+    ['italic-range', 'italicD', 0, 7],
+    ['mixed-range', 'plainB', 0, 13],
+    ['inline-code', 'codeF'],
+    ['link', 'linkG'],
+    ['first-item', 'oneH'],
+    ['second-item', 'twoI'],
+    ['nested', 'nestedJ'],
+    ['numbered', 'secondL'],
+    ['task', 'taskM'],
+    ['quote', 'quoteN'],
+    ['fence', 'codeO'],
+    ['cell', 'cellP'],
+    ['all', null],
+  ]
+  const list = (editor) =>
+    editor.isActive('taskList') ? 'taskItem' : 'listItem'
+  // The rich toolbar's commands; a caret link action inserts its address, as FormattingToolbar does.
+  const actions = [
+    ['bold', (c) => c.toggleBold()],
+    ['italic', (c) => c.toggleItalic()],
+    ['strike', (c) => c.toggleStrike()],
+    ['subscript', (c) => c.toggleMark('subscript')],
+    ['inline-code', (c) => c.toggleCode()],
+    [
+      'link',
+      (c, editor) =>
+        editor.state.selection.empty && !editor.isActive('link')
+          ? c.insertContent({
+              type: 'text',
+              text: 'https://example.com',
+              marks: [{ type: 'link', attrs: { href: 'https://example.com' } }],
+            })
+          : c.extendMarkRange('link').setLink({ href: 'https://example.com' }),
+    ],
+    ['unlink', (c) => c.unsetLink()],
+    ['subtext', (c) => c.setNode('subtext')],
+    ['paragraph', (c) => c.setParagraph()],
+    ...[1, 2, 3, 4, 5, 6].map((level) => [
+      `heading-${level}`,
+      (c) => c.toggleHeading({ level }),
+    ]),
+    ['bullet-list', (c) => c.toggleBulletList()],
+    ['numbered-list', (c) => c.toggleOrderedList()],
+    ['checklist', (c) => c.toggleTaskList()],
+    ['indent', (c, editor) => c.sinkListItem(list(editor))],
+    ['outdent', (c, editor) => c.liftListItem(list(editor))],
+    ['quote', (c) => c.toggleBlockquote()],
+    ['code-block', (c) => c.toggleCodeBlock()],
+    ['divider', (c) => c.setHorizontalRule()],
+    ['hard-break', (c) => c.setHardBreak()],
+    ['table', (c) => c.insertTable({ rows: 3, cols: 2, withHeaderRow: true })],
+  ]
+  const marks = ['bold', 'italic', 'strike', 'subscript', 'inline-code', 'link']
+  // Each difference's cause, by action and selection.
+  const causes = [
+    [
+      'formatted gap action-001: a caret mark action formats the text typed next instead of writing empty delimiters',
+      (id, label, caret) => caret && marks.includes(id) && label !== 'cell',
+    ],
+    [
+      'formatted gap action-002: a caret mark action in a table cell formats the text typed next',
+      (id, _label, caret) => caret && marks.includes(id),
+    ],
+    [
+      'formatted gap action-003: a mark action over a range across other formatting writes the delimiters the rich editor writes',
+      (id) => marks.includes(id),
+    ],
+    [
+      'formatted gap action-004: divider and line break actions split the surrounding block and formatting as the rich editor does',
+      (id) => id === 'divider' || id === 'hard-break',
+    ],
+    [
+      'formatted gap action-005: the table action inserts the table the rich editor inserts and splits the surrounding block',
+      (id) => id === 'table',
+    ],
+    [
+      'formatted gap input-076: the code block action turns the selected blocks into code',
+      (id) => id === 'code-block',
+    ],
+    [
+      'formatted gap action-007: list actions renumber, nest and convert items as the rich editor does',
+      (id) =>
+        [
+          'bullet-list',
+          'numbered-list',
+          'checklist',
+          'indent',
+          'outdent',
+        ].includes(id),
+    ],
+    [
+      'formatted gap action-006: block actions convert each selected block and keep its containers as the rich editor does',
+      () => true,
+    ],
+  ]
+  const differences = new Map(causes.map(([todo]) => [todo, []]))
+  let compared = 0
+  const undone = []
+  for (const [label, text, offset = 1, length = 0] of selections)
+    for (const [id, command] of actions) {
+      const editor = richEditor(note)
+      const source = editor.getMarkdown()
+      const serialize = markdownSerializer(editor.markdown, true)
+      const before = serialize(editor.state.doc).source
+      let anchor = 0,
+        head = source.length
+      if (text === null) editor.commands.selectAll()
+      else {
+        let from
+        editor.state.doc.descendants((node, pos) => {
+          if (from === undefined && node.isText && node.text.includes(text))
+            from = pos + node.text.indexOf(text) + offset
+        })
+        editor.commands.setTextSelection({ from, to: from + length })
+        anchor = head = source.indexOf(text) + offset
+        if (length) {
+          // The range's ends in the source, placed by sentinels.
+          const first = 'HIBIACTIONSTART871',
+            last = 'HIBIACTIONEND871'
+          const { from: start, to: end } = editor.state.selection
+          const transaction = editor.state.tr
+            .insert(
+              end,
+              editor.schema.text(last, editor.state.doc.resolve(end).marks()),
+            )
+            .insert(
+              start,
+              editor.schema.text(
+                first,
+                editor.state.doc.resolve(start).nodeAfter?.marks ?? [],
+              ),
+            )
+          const marked = editor.markdown.serialize(transaction.doc.toJSON())
+          anchor = marked.indexOf(first)
+          head = marked.indexOf(last) - first.length
+        }
+      }
+      const cell = label === 'cell'
+      const tree = grammar.parse(source)
+      const view = {
+        state: EditorState.create({
+          doc: source,
+          selection: { anchor, head },
+          extensions: [
+            history(),
+            formattedTree.of(() => tree),
+            tableActions.of({
+              active: () => cell,
+              run: (target, action) =>
+                action === 'hard-break' ? cellLineBreak(target) : false,
+            }),
+          ],
+        }),
+        dispatch(spec) {
+          view.state = view.state.update(spec).state
+        },
+        focus() {},
+      }
+      const formatting = sourceFormatting(view)
+      if (formatting.inspect().state(id).disabled) continue
+      let allowed = false
+      try {
+        allowed = command(editor.can().chain(), editor).run()
+      } catch {}
+      if (!allowed) continue
+      command(editor.chain(), editor).run()
+      formatting.run(id, { url: 'https://example.com', alt: 'alt' })
+      let expected = serialize(editor.state.doc).source
+      if (source !== before)
+        expected =
+          preserveRichSource(source, before, expected, (candidate) =>
+            sameRichSourceDocument(
+              editor.schema.nodeFromJSON(editor.markdown.parse(candidate)),
+              editor.state.doc,
+              true,
+            ),
+          ) ?? (text === null ? expected : source)
+      let actual = view.state.doc.toString()
+      compared++
+      const undoes =
+        actual === source
+          ? undoDepth(view.state) === 0
+          : undoDepth(view.state) === 1 &&
+            undo(view) &&
+            view.state.doc.toString() === source
+      if (!undoes) undone.push(`${label} ${id}`)
+      // A cell's edit keeps its column's padding, as typing in a cell does.
+      if (cell) {
+        const pad = (markdown) =>
+          markdown.replace(/^\|.*\|$/gm, (row) =>
+            row.replace(/ {2,}/g, ' ').replace(/-{3,}/g, '---'),
+          )
+        actual = pad(actual)
+        expected = pad(expected)
+      }
+      if (actual === expected) continue
+      const [todo] = causes.find(([, applies]) =>
+        applies(id, label, anchor === head),
+      )
+      differences.get(todo).push(`${label} ${id}`)
+    }
+  t.diagnostic(
+    JSON.stringify({
+      compared,
+      differences: Object.fromEntries(
+        [...differences].map(([todo, rows]) => [
+          todo.split(':')[0].replace('formatted gap ', ''),
+          rows.length,
+        ]),
+      ),
+    }),
+  )
+  await t.test('every action that changes the note undoes in one step', () => {
+    assert.ok(compared > 250, String(compared))
+    assert.deepEqual(undone, [])
+  })
+  for (const [todo] of causes)
+    await t.test(todo.slice(todo.indexOf(': ') + 2), { todo }, () => {
+      assert.deepEqual(differences.get(todo), [])
+    })
 })

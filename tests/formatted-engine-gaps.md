@@ -75,7 +75,14 @@ accepted differences are not gaps; their tests assert each engine. the codemirro
 | input-056 | [editor-input.test.mjs:3034](editor-input.test.mjs#L3034) | native enter preserves four line feeds between paragraphs | 8a: native input, structure and toolbar state |
 | input-073 | [editor-input.test.mjs:3459](editor-input.test.mjs#L3459) | native bold typing keeps bold action pressed | 8a: native input, structure and toolbar state |
 | input-074 | [editor-input.test.mjs:3473](editor-input.test.mjs#L3473) | native bold typing renders strong text in canonical source | 8a: native input, structure and toolbar state |
-| input-076 | [formatted-toolbar-state.test.mjs:261](formatted-toolbar-state.test.mjs#L261) | the code block action at a caret turns its paragraph into code | 8a: native input, structure and toolbar state |
+| input-076 | [formatted-toolbar-state.test.mjs:777](formatted-toolbar-state.test.mjs#L777) | the code block action turns the selected blocks into code | 8a: native input, structure and toolbar state |
+| action-001 | [formatted-toolbar-state.test.mjs:757](formatted-toolbar-state.test.mjs#L757) | a caret mark action formats the text typed next instead of writing empty delimiters | 8a: native input, structure and toolbar state |
+| action-002 | [formatted-toolbar-state.test.mjs:761](formatted-toolbar-state.test.mjs#L761) | a caret mark action in a table cell formats the text typed next | 8a: native input, structure and toolbar state |
+| action-003 | [formatted-toolbar-state.test.mjs:765](formatted-toolbar-state.test.mjs#L765) | a mark action over a range across other formatting writes the delimiters the rich editor writes | 8a: native input, structure and toolbar state |
+| action-004 | [formatted-toolbar-state.test.mjs:769](formatted-toolbar-state.test.mjs#L769) | divider and line break actions split the surrounding block and formatting as the rich editor does | 8a: native input, structure and toolbar state |
+| action-005 | [formatted-toolbar-state.test.mjs:773](formatted-toolbar-state.test.mjs#L773) | the table action inserts the table the rich editor inserts and splits the surrounding block | 8a: native input, structure and toolbar state |
+| action-006 | [formatted-toolbar-state.test.mjs:792](formatted-toolbar-state.test.mjs#L792) | block actions convert each selected block and keep its containers as the rich editor does | 8a: native input, structure and toolbar state |
+| action-007 | [formatted-toolbar-state.test.mjs:781](formatted-toolbar-state.test.mjs#L781) | list actions renumber, nest and convert items as the rich editor does | 8a: native input, structure and toolbar state |
 | semantics-001 | [editor-plugins.test.mjs:67](editor-plugins.test.mjs#L67) | source-view word counts must include markdown characters | 9: outline semantics and diagram lifecycle |
 | find-001 | [formatted-find.test.mjs:210](formatted-find.test.mjs#L210) | formatted find must match rendered phrases across hidden marks | 4a: rendered find projection |
 | find-002 | [formatted-find.test.mjs:339](formatted-find.test.mjs#L339) | undo must restore matches without a current find result | 4b: find wiring and navigation |
