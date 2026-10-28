@@ -662,6 +662,112 @@ test('raw HTML stays inert and exact through rich edits, atom deletion, undo, an
     },
   )
 
+  await t.test(
+    'latest native copy restores disabled inline and block syntax',
+    async () => {
+      const syntax = async (enabled) => {
+        await clickMenu(app, 'Settings')
+        await page.getByRole('tab', { name: /^syntax$/i, exact: true }).click()
+        for (const name of ['heading 1', 'bold'])
+          await page
+            .getByRole('checkbox', {
+              name: new RegExp('^' + name + '$', 'i'),
+              exact: true,
+            })
+            .setChecked(enabled)
+        await page
+          .getByRole('button', { name: /^back to app$/i, exact: true })
+          .click()
+        await rich.waitFor()
+      }
+      await syntax(false)
+      try {
+        const source = '# literal\n\n**literal**'
+        await rich.evaluate((element, source) => {
+          element.editor.commands.setContent(source, {
+            contentType: 'markdown',
+          })
+          element.editor.commands.selectAll()
+          element.editor.view.focus()
+        }, source)
+        assert.equal(
+          await rich.locator('[data-literal-markdown="block"]').count(),
+          1,
+        )
+        assert.equal(
+          await rich.locator('[data-literal-markdown="inline"]').count(),
+          1,
+        )
+        const before = await rich.evaluate((element) =>
+          element.editor.getJSON(),
+        )
+        const copied = await rawNativeClipboard(app, page, 'cut')
+        assert.match(copied.html, /data-literal-markdown="block"/)
+        assert.match(copied.html, /data-literal-markdown="inline"/)
+        await waitForAsync(
+          page,
+          async () => (await window.hibi.getDocument()).markdown === '',
+        )
+        await writeRawClipboard(app, copied)
+        await page.evaluate(() => {
+          document.addEventListener(
+            'paste',
+            (event) => {
+              window.literalNativePaste = {
+                text: event.clipboardData.getData('text/plain'),
+                html: event.clipboardData.getData('text/html'),
+              }
+            },
+            { once: true, capture: true },
+          )
+        })
+        await app.evaluate(({ BrowserWindow }) =>
+          BrowserWindow.getAllWindows()[0].webContents.paste(),
+        )
+        try {
+          await waitForAsync(
+            page,
+            async (source) =>
+              (await window.hibi.getDocument()).markdown === source,
+            source,
+          )
+        } catch (error) {
+          await clickMenu(app, 'Save')
+          await waitForAsync(
+            page,
+            async () => !(await window.hibi.getDocument()).dirty,
+          )
+          const savedSource = await readFile(file, 'utf8')
+          t.diagnostic(
+            JSON.stringify({
+              copied,
+              savedSource,
+              actual: await page.evaluate(async () => ({
+                markdown: (await window.hibi.getDocument()).markdown,
+                model: document.querySelector('.tiptap').editor.getJSON(),
+                pasted: window.literalNativePaste,
+              })),
+            }),
+          )
+          throw error
+        }
+        assert.deepEqual(
+          await rich.evaluate((element) => element.editor.getJSON()),
+          before,
+        )
+        await inert()
+        await clickMenu(app, 'Save')
+        await waitForAsync(
+          page,
+          async () => !(await window.hibi.getDocument()).dirty,
+        )
+        assert.equal(await readFile(file, 'utf8'), source)
+      } finally {
+        await syntax(true)
+      }
+    },
+  )
+
   await t.test('external html falls back to escaped text or code', async () => {
     const text = '<script>alert(1)</script>'
     const escaped = '&lt;script&gt;alert(1)&lt;/script&gt;'

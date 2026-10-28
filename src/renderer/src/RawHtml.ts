@@ -123,7 +123,7 @@ export const rawHtml = (['inline', 'block'] as const).map((level) => {
             },
             transformPastedHTML(html) {
               const fragment = clipboardHtml(html)
-              internalPaste = isCopiedHtml(fragment, pastedText)
+              internalPaste = isCopiedHtml(html, pastedText)
               pastedText = ''
               return internalPaste ? fragment : html
             },

@@ -26,12 +26,15 @@ export function isCopiedHtml(html: string, text: string) {
 
 /** Read the final payload after the editor's copy, cut or drag handler. */
 export function observeClipboard(dom: HTMLElement) {
-  const forget = () => {
+  // Cut can detach its target before the event bubbles.
+  const owned = new WeakSet<Event>()
+  const capture = (event: Event) => {
     lastCopiedHtml = ''
     lastCopiedText = ''
+    if (dom.contains(event.target as Node)) owned.add(event)
   }
   const remember = (event: Event) => {
-    if (!dom.contains(event.target as Node)) return
+    if (!owned.delete(event)) return
     const data =
       (event as ClipboardEvent).clipboardData ??
       (event as DragEvent).dataTransfer
@@ -41,12 +44,12 @@ export function observeClipboard(dom: HTMLElement) {
   const events = ['copy', 'cut', 'dragstart']
   const document = dom.ownerDocument
   for (const event of events) {
-    document.addEventListener(event, forget, true)
+    document.addEventListener(event, capture, true)
     document.addEventListener(event, remember)
   }
   return () => {
     for (const event of events) {
-      document.removeEventListener(event, forget, true)
+      document.removeEventListener(event, capture, true)
       document.removeEventListener(event, remember)
     }
   }
