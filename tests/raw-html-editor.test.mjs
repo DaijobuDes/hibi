@@ -1501,6 +1501,162 @@ test('codemirror: native copied source requires both formats and source copies s
   assert.equal(await readFile(file, 'utf8'), plainPasted)
 })
 
+for (const trusted of [true, false]) {
+  test('codemirror: cold html paste ' +
+    (trusted
+      ? 'keeps accepted source after another copy'
+      : 'cannot gain trust from a later matching copy'), {
+    timeout: 45000,
+  }, async (t) => {
+    const { app, page, rich, file, original, saved, inert } =
+      await rawCMFixture(t)
+    const fragment = '<kbd>x</kbd>'
+    const from = original.indexOf(fragment),
+      to = from + fragment.length
+    await selectRawSource(rich, from, to)
+    const copied = await rawNativeClipboard(app, page, 'copy')
+    let before = original
+    if (trusted) {
+      await rich.press('Delete')
+      before = original.slice(0, from) + original.slice(to)
+      await saved(before)
+      await selectRawSource(rich, from, from)
+    } else {
+      await selectRawSource(rich, 0, 'editable paragraph'.length)
+      await rawNativeClipboard(app, page, 'copy')
+      await selectRawSource(rich, from, to)
+    }
+    const expected = trusted
+      ? original
+      : original.slice(0, from) +
+        String.raw`\<kbd>x\</kbd>` +
+        original.slice(to)
+    assert.equal(
+      await page.evaluate(() =>
+        performance
+          .getEntriesByType('resource')
+          .some((entry) => entry.name.includes('/html-markdown-')),
+      ),
+      false,
+      'converter must be cold',
+    )
+    await app.evaluate(({ net }) => {
+      const fetch = net.fetch
+      let release
+      const held = new Promise((resolve) => {
+        release = resolve
+      })
+      const state = {
+        requested: false,
+        release,
+        restore: () => {
+          net.fetch = fetch
+        },
+      }
+      globalThis.rawColdImport = state
+      net.fetch = async function (...args) {
+        if (/\/html-markdown-[^/]+\.js$/.test(String(args[0]))) {
+          state.requested = true
+          await held
+        }
+        return fetch.apply(this, args)
+      }
+    })
+    await rich.evaluate((element) => {
+      const view = element.cmTile.root.view
+      const update = view.update
+      window.rawPasteComplete = false
+      view.update = function (transactions) {
+        update.call(this, transactions)
+        if (transactions.some((tr) => tr.isUserEvent('input.paste'))) {
+          view.update = update
+          window.rawPasteComplete = true
+        }
+      }
+      document.addEventListener(
+        'paste',
+        (event) => {
+          window.rawColdPaste = {
+            text: event.clipboardData.getData('text/plain'),
+            html: event.clipboardData.getData('text/html'),
+          }
+        },
+        { once: true, capture: true },
+      )
+    })
+    const version = (await page.evaluate(() => window.hibi.getDocument()))
+      .contentVersion
+    let later
+    try {
+      await writeRawClipboard(app, copied)
+      await app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0].webContents.paste(),
+      )
+      await waitForAsync(app, () => globalThis.rawColdImport.requested)
+      await selectRawSource(
+        rich,
+        trusted ? 0 : from,
+        trusted ? 'editable paragraph'.length : to,
+      )
+      later = await rawNativeClipboard(app, page, 'copy')
+      assert.equal(later.text, trusted ? 'editable paragraph' : copied.text)
+      if (!trusted) assert.equal(later.html, copied.html)
+    } finally {
+      await app.evaluate(() => {
+        globalThis.rawColdImport.release()
+        globalThis.rawColdImport.restore()
+        delete globalThis.rawColdImport
+      })
+    }
+    await page.waitForFunction(() => window.rawPasteComplete)
+    const actual = await rich.evaluate((element) =>
+      element.cmTile.root.view.state.doc.toString(),
+    )
+    await saved(actual)
+    const state = await page.evaluate(() => window.hibi.getDocument())
+    await clickMenu(app, 'Save')
+    await waitForAsync(
+      page,
+      async () => !(await window.hibi.getDocument()).dirty,
+    )
+    assert.equal(await readFile(file, 'utf8'), actual)
+    await inert()
+    t.diagnostic(
+      JSON.stringify({
+        trusted,
+        copied,
+        later,
+        pasted: await page.evaluate(() => window.rawColdPaste),
+        actual,
+        contentVersion: state.contentVersion,
+        beforeVersion: version,
+      }),
+    )
+    assert.equal(actual, expected)
+    assert.equal(state.contentVersion, version + 1)
+    if (trusted)
+      assert.deepEqual(
+        await rich.evaluate((element) => {
+          const { main } = element.cmTile.root.view.state.selection
+          return { anchor: main.anchor, head: main.head }
+        }),
+        { anchor: 0, head: 'editable paragraph'.length },
+      )
+    await rich.focus()
+    await pressShortcut(
+      app,
+      process.platform === 'darwin' ? 'Meta+z' : 'Control+z',
+    )
+    await saved(before)
+    await pressShortcut(
+      app,
+      process.platform === 'darwin' ? 'Meta+Shift+z' : 'Control+y',
+    )
+    await saved(expected)
+    await inert()
+  })
+}
+
 for (const level of ['inline', 'block']) {
   test('codemirror: modified and superseded ' +
     level +

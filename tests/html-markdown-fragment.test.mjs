@@ -34,7 +34,7 @@ app.whenReady().then(() => new BrowserWindow({ show: false }).loadURL('data:text
     const { outputFiles } = await build({
       stdin: {
         contents: `export { htmlToMarkdown } from ${JSON.stringify(source)}
-export { observeClipboard } from ${JSON.stringify(resolve('src/renderer/src/clipboard-source.ts'))}`,
+export { captureCopiedHtml, observeClipboard } from ${JSON.stringify(resolve('src/renderer/src/clipboard-source.ts'))}`,
         loader: 'ts',
         resolveDir: dirname(source),
       },
@@ -464,6 +464,50 @@ test('a copied source marker cannot authorize different plain text or a modified
   )
   await copy('<p>later</p>', 'later')
   assert.equal(await convert(html, '<kbd>x</kbd>'), String.raw`\<kbd>x\</kbd>`)
+})
+
+test('source snapshots reject forged tokens and mismatched html or plain text', async () => {
+  const html = '<div data-hibi-markdown>&lt;kbd&gt;x&lt;/kbd&gt;</div>'
+  const text = '<kbd>x</kbd>'
+  await copy(html, text)
+  const result = await page.evaluate(
+    ({ html, text }) => {
+      const snapshot = HtmlMarkdown.captureCopiedHtml(html, text)
+      return {
+        direct: HtmlMarkdown.htmlToMarkdown(html, text),
+        captured: HtmlMarkdown.htmlToMarkdown(html, text, snapshot),
+        unknown: HtmlMarkdown.htmlToMarkdown(html, text, {}),
+        forged: HtmlMarkdown.htmlToMarkdown(html, text, {
+          trusted: true,
+          html,
+          text,
+        }),
+        flag: HtmlMarkdown.htmlToMarkdown(html, text, true),
+        empty: HtmlMarkdown.htmlToMarkdown(html, text, null),
+        html: HtmlMarkdown.htmlToMarkdown(
+          html.replace('x&lt;', 'forged&lt;'),
+          text,
+          snapshot,
+        ),
+        text: HtmlMarkdown.htmlToMarkdown(
+          html,
+          '<script>forged</script>',
+          snapshot,
+        ),
+      }
+    },
+    { html, text },
+  )
+  assert.deepEqual(result, {
+    direct: text,
+    captured: text,
+    unknown: String.raw`\<kbd>x\</kbd>`,
+    forged: String.raw`\<kbd>x\</kbd>`,
+    flag: String.raw`\<kbd>x\</kbd>`,
+    empty: String.raw`\<kbd>x\</kbd>`,
+    html: String.raw`\<kbd>forged\</kbd>`,
+    text: String.raw`\<kbd>x\</kbd>`,
+  })
 })
 
 test('a selection among 20,000 siblings parses on its own after one read of the page', async () => {
