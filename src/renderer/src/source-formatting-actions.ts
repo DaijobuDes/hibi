@@ -81,6 +81,7 @@ function inlineRuns(
   from: number,
   to: number,
   split: readonly number[] = [],
+  keepOutside?: { from: number; to: number; id: string },
 ) {
   const runs: Run[] = []
   const text = (from: number, to: number, marks: Mark[], literal = false) => {
@@ -112,7 +113,18 @@ function inlineRuns(
       const a = Math.max(from, child.from),
         b = Math.min(to, child.to)
       const own = mark(state, child)
-      if (own) {
+      const adjacent =
+        keepOutside &&
+        own?.id === keepOutside.id &&
+        (child.to === keepOutside.from || child.from === keepOutside.to)
+      if (
+        own &&
+        keepOutside &&
+        !adjacent &&
+        (child.to <= keepOutside.from || child.from >= keepOutside.to)
+      )
+        text(a, b, marks)
+      else if (own) {
         const body = formattingText(state, child)
         if (body) {
           if (own.id === 'inline-code') {
@@ -245,7 +257,12 @@ function leaves(tree: Tree, range: SelectionRange, state: EditorState) {
     from: range.from,
     to: range.to,
     enter(ref) {
-      if (ref.to < range.from || ref.from > range.to) return false
+      if (
+        range.empty
+          ? ref.to < range.from || ref.from > range.to
+          : ref.to <= range.from || ref.from >= range.to
+      )
+        return false
       const node = ref.node
       if (
         node.name === 'TableCell' ||
@@ -289,7 +306,11 @@ export function inlineAction(
     if (leaf.name === 'FencedCode' || leaf.name === 'CodeBlock') continue
     const start = textStart(state, leaf),
       end = textEnd(leaf)
-    const output = inlineRuns(state, leaf, start, end, [from, to])
+    const output = inlineRuns(state, leaf, start, end, [from, to], {
+      from,
+      to,
+      id,
+    })
     for (const run of output) {
       if (run.to > from && run.from < to) {
         if (id === 'inline-code') {
@@ -417,12 +438,42 @@ function normalizeTables(
       const row = (cells: string[]) =>
         `| ${widths.map((width, index) => (cells[index] ?? '').padEnd(width)).join(' | ')} |`
       const delimiter = `| ${widths.map((width, index) => `${align[index] === 'left' || align[index] === 'center' ? ':' : ''}${'-'.repeat(width)}${align[index] === 'right' || align[index] === 'center' ? ':' : ''}`).join(' | ')} |`
-      const insert = [
+      const formatted = [
         row(rows[0] ?? []),
         delimiter,
         ...rows.slice(1).map(row),
-      ].join(`\n${prefix}`)
-      if (insert !== original) changes.push({ from, to, insert })
+      ]
+      if (formatted.join(`\n${prefix}`) === original) return false
+      // Padding edits leave the cell content, and positions within it, in place.
+      let at = from
+      for (let index = 0; index < lines.length; index++) {
+        const line = lines[index]!,
+          before = index ? line.slice(prefix.length) : line,
+          after = formatted[index]!,
+          start = at + (index ? prefix.length : 0)
+        const oldCells = index === 1 ? [] : parseRow(before).cells,
+          newCells = index === 1 ? [] : parseRow(after).cells
+        let oldEnd = 0,
+          newEnd = 0
+        const gap = (to: number, end: number) => {
+          const insert = after.slice(newEnd, end)
+          if (before.slice(oldEnd, to) !== insert)
+            changes.push({ from: start + oldEnd, to: start + to, insert })
+        }
+        for (
+          let column = 0;
+          column < Math.min(oldCells.length, newCells.length);
+          column++
+        ) {
+          const old = oldCells[column]!,
+            next = newCells[column]!
+          gap(old.from, next.from)
+          oldEnd = old.to
+          newEnd = next.to
+        }
+        gap(before.length, after.length)
+        at += line.length + 1
+      }
       return false
     },
   })
@@ -745,6 +796,7 @@ function readList(state: EditorState, node: SyntaxNode): ListBlock {
     for (let child = item.firstChild; child; child = child.nextSibling)
       if (child.type.is('Block')) children.push(child)
     const first = children.shift()
+    const prose = first?.name === 'Paragraph' || first?.name === 'Task'
     const prefix = prefixOf(state, item) ?? ''
     const strip = (text: string) =>
       text
@@ -759,7 +811,17 @@ function readList(state: EditorState, node: SyntaxNode): ListBlock {
         !!first?.getChild('TaskMarker') &&
         /[xX]/.test(state.sliceDoc(first.from, first.from + 3)),
       body: first
-        ? strip(state.sliceDoc(textStart(state, first), textEnd(first)))
+        ? strip(
+            state.sliceDoc(
+              prose
+                ? textStart(state, first)
+                : Math.min(
+                    first.from,
+                    (item.getChild('ListMark')?.to ?? first.from) + 1,
+                  ),
+              prose ? textEnd(first) : first.to,
+            ),
+          )
         : '',
       blocks: children.map((child) =>
         isList(child)
@@ -793,7 +855,7 @@ function writeList(list: ListBlock): string {
             : '- '
       const width =
         list.kind === 'numbered-list' ? Math.max(2, marker.length) : 2
-      let source = marker + item.body
+      let source = marker + item.body.replace(/\n/g, `\n${' '.repeat(width)}`)
       for (const block of item.blocks) {
         const text = 'kind' in block ? writeList(block) : block.source
         source +=

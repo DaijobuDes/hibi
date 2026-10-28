@@ -34,7 +34,9 @@ import {
   storedMarkInput,
   tableActions,
 } from '../src/renderer/src/source-formatting.ts'
+import { createSourceSession } from '../src/renderer/src/source-session.ts'
 import { ChunkedMarkdownParser } from '../src/shared/chunked-markdown.ts'
+import { DocumentSession } from '../src/shared/document-session.ts'
 
 const markdown = parser.configure(GFM)
 const note = [
@@ -1690,6 +1692,462 @@ test("formatted toolbar actions write the rich editor's source", async (t) => {
     await t.test(name, () => {
       assert.deepEqual(differences.get(name), [])
     })
+})
+
+function sessionTyping(source, at) {
+  const target = typing(source, at)
+  const session = new DocumentSession(
+    source,
+    { tabId: 'formatting', revision: 0 },
+    0,
+    {
+      enqueue() {},
+      onError(error) {
+        throw error
+      },
+    },
+  )
+  const bridge = createSourceSession(session, 'formatted')
+  target.update = (transactions) => {
+    for (const transaction of transactions) target.state = transaction.state
+  }
+  const detach = bridge.attach(target)
+  target.dispatch = (spec) =>
+    bridge.dispatch([target.state.update(spec)], target)
+  return {
+    target,
+    session,
+    bridge,
+    dispose() {
+      detach()
+      session.dispose()
+    },
+  }
+}
+
+test('block ranges exclude an untouched leaf at their end', () => {
+  for (const [first, last] of [
+    ['a', 'b'],
+    ['😀 a', '😀 b'],
+  ])
+    for (const id of ['heading-2', 'numbered-list'])
+      for (const reverse of [false, true]) {
+        const source = `${first}\n\n${last}`
+        const target = typing(source, 0)
+        target.dispatch({
+          selection: {
+            anchor: reverse ? first.length + 2 : 0,
+            head: reverse ? 0 : first.length + 2,
+          },
+        })
+        const editor = richEditor(source)
+        try {
+          editor.commands.setTextSelection({ from: 1, to: first.length + 1 })
+          if (id === 'heading-2') editor.commands.setHeading({ level: 2 })
+          else editor.commands.toggleOrderedList()
+          assert.equal(target.formatting.run(id), true)
+          assert.equal(target.state.doc.toString(), editor.getMarkdown())
+          assert.ok(
+            sameRichSourceDocument(
+              editor.schema.nodeFromJSON(
+                editor.markdown.parse(target.state.doc.toString()),
+              ),
+              editor.state.doc,
+              true,
+            ),
+          )
+        } finally {
+          editor.destroy()
+        }
+      }
+  const caret = typing('a\n\nb', 3)
+  caret.formatting.run('heading-2')
+  assert.equal(caret.state.doc.toString(), 'a\n\n## b')
+})
+
+test('list actions preserve raw first blocks and characterize the saved native models', async (t) => {
+  for (const [first, numbered] of [
+    [
+      '- ```js\n  keep **literal**\n  ```',
+      '1. ```js\n   keep **literal**\n   ```',
+    ],
+    ['-     keep **literal**', '1.     keep **literal**'],
+    ['- # keep', '1. # keep'],
+  ])
+    for (const id of ['indent', 'numbered-list', 'outdent'])
+      await t.test(`${id}: ${first.split('\n')[0]}`, () => {
+        const source = `${first}\n- target`
+        const { target, session, bridge, dispose } = sessionTyping(
+          source,
+          source.indexOf('target'),
+        )
+        target.dispatch({
+          selection: {
+            anchor: source.indexOf('target'),
+            head: source.indexOf('target') + 6,
+          },
+        })
+        const editor = richEditor(source)
+        try {
+          const before = JSON.parse(JSON.stringify(editor.getJSON()))
+          let from,
+            supported = false,
+            nativeError = null
+          editor.state.doc.descendants((node, pos) => {
+            if (node.isText && node.text === 'target') from = pos
+          })
+          editor.commands.setTextSelection({ from, to: from + 6 })
+          try {
+            supported =
+              id === 'indent'
+                ? editor.commands.sinkListItem('listItem')
+                : id === 'outdent'
+                  ? editor.commands.liftListItem('listItem')
+                  : editor.commands.toggleOrderedList()
+          } catch (error) {
+            nativeError = { name: error.name, message: error.message }
+            assert.match(error.message, /Invalid content for node listItem/)
+            assert.deepEqual(
+              JSON.parse(JSON.stringify(editor.getJSON())),
+              before,
+            )
+            t.diagnostic(
+              JSON.stringify({
+                source,
+                id,
+                nativeError: error.message,
+                before,
+              }),
+            )
+          }
+          assert.equal(supported, id !== 'indent')
+          assert.deepEqual(
+            nativeError,
+            id === 'indent'
+              ? {
+                  name: 'TransformError',
+                  message: 'Invalid content for node listItem',
+                }
+              : null,
+          )
+          assert.equal(target.formatting.run(id), true)
+          const actual = target.state.doc.toString()
+          const expected =
+            id === 'numbered-list'
+              ? `${numbered}\n2. target`
+              : id === 'indent'
+                ? `${first}\n  - target`
+                : `${first}\n\ntarget`
+          assert.equal(actual, expected)
+          assert.equal(
+            actual.slice(
+              target.state.selection.main.from,
+              target.state.selection.main.to,
+            ),
+            'target',
+          )
+          assert.equal(session.snapshot().version, 1)
+          assert.equal(bridge.undo(), true)
+          assert.equal(target.state.doc.toString(), source)
+          assert.equal(bridge.redo(), true)
+          assert.equal(target.state.doc.toString(), actual)
+          assert.equal(
+            actual.slice(
+              target.state.selection.main.from,
+              target.state.selection.main.to,
+            ),
+            'target',
+          )
+
+          const syntax = extras.parse(actual),
+            listNode = syntax.topNode.firstChild,
+            firstItem = listNode.getChild('ListItem')
+          assert.equal(
+            listNode.name,
+            id === 'numbered-list' ? 'OrderedList' : 'BulletList',
+          )
+          const block = firstItem.getChild(
+            first.includes('```')
+              ? 'FencedCode'
+              : first.startsWith('-     ')
+                ? 'CodeBlock'
+                : 'ATXHeading1',
+          )
+          assert.ok(block)
+          if (block.name === 'ATXHeading1')
+            assert.equal(actual.slice(block.from, block.to), '# keep')
+          else {
+            const text = block.getChild('CodeText')
+            assert.equal(actual.slice(text.from, text.to), 'keep **literal**')
+            if (block.name === 'FencedCode') {
+              const language = block.getChild('CodeInfo')
+              assert.equal(actual.slice(language.from, language.to), 'js')
+            }
+          }
+          const item = before.content[0].content[0],
+            next = before.content[0].content[1]
+          const intended = {
+            type: 'doc',
+            content:
+              id === 'outdent'
+                ? [{ type: 'bulletList', content: [item] }, ...next.content]
+                : [
+                    {
+                      type:
+                        id === 'numbered-list' ? 'orderedList' : 'bulletList',
+                      ...(id === 'numbered-list'
+                        ? {
+                            attrs: {
+                              ...editor.schema.nodes.orderedList.defaultAttrs,
+                            },
+                          }
+                        : {}),
+                      content:
+                        id === 'indent'
+                          ? [
+                              {
+                                ...item,
+                                content: [
+                                  ...item.content,
+                                  { type: 'bulletList', content: [next] },
+                                ],
+                              },
+                            ]
+                          : [item, next],
+                    },
+                  ],
+          }
+          if (supported)
+            assert.deepEqual(
+              JSON.parse(JSON.stringify(editor.getJSON())),
+              intended,
+            )
+
+          // The native saved codec has distinct first-block results; keep its exact models alongside the proper source and formatted grammar.
+          const persisted = structuredClone(intended),
+            content = persisted.content[0].content[0].content
+          if (id === 'numbered-list') {
+            if (first.includes('```')) {
+              content[0].content[0].text = ' keep **literal**'
+              content.unshift({ type: 'paragraph' })
+              content.push({ type: 'codeBlock', attrs: { language: null } })
+            } else if (first.startsWith('-     '))
+              content.splice(0, 1, {
+                type: 'paragraph',
+                content: [
+                  { type: 'text', text: 'keep ' },
+                  { type: 'text', marks: [{ type: 'bold' }], text: 'literal' },
+                ],
+              })
+            else content.unshift({ type: 'paragraph' })
+          } else if (id === 'indent' && first.startsWith('-     '))
+            content[0].content[0].text += '\n'
+          const saved = richEditor(actual)
+          try {
+            assert.deepEqual(
+              JSON.parse(JSON.stringify(saved.getJSON())),
+              persisted,
+            )
+            saved.commands.setContent(actual, {
+              contentType: 'markdown',
+              emitUpdate: false,
+            })
+            assert.deepEqual(
+              JSON.parse(JSON.stringify(saved.getJSON())),
+              persisted,
+            )
+            let at
+            saved.state.doc.descendants((node, pos) => {
+              if (node.isText && node.text === 'target') at = pos + 6
+            })
+            saved.commands.setTextSelection(at)
+            saved.view.dispatch(saved.state.tr.insertText('Q'))
+            const typed = structuredClone(persisted)
+            const append = (node) => {
+              if (node.text === 'target') node.text = 'targetQ'
+              for (const child of node.content ?? []) append(child)
+            }
+            append(typed)
+            assert.deepEqual(JSON.parse(JSON.stringify(saved.getJSON())), typed)
+          } finally {
+            saved.destroy()
+          }
+          target.dispatch({
+            selection: { anchor: target.state.selection.main.head },
+          })
+          target.dispatch({
+            ...target.state.replaceSelection('Q'),
+            userEvent: 'input.type',
+          })
+          assert.equal(target.state.doc.toString(), `${actual}Q`)
+          assert.equal(session.snapshot().version, 4)
+          assert.equal(bridge.undo(), true)
+          assert.equal(target.state.doc.toString(), actual)
+          assert.equal(bridge.redo(), true)
+          assert.equal(target.state.doc.toString(), `${actual}Q`)
+          assert.equal(
+            target.state.selection.main.head,
+            target.state.doc.length,
+          )
+        } finally {
+          dispose()
+          editor.destroy()
+        }
+      })
+  await t.test('native indent retains a paragraph and code sibling', () => {
+    const source = '- lead\n  ```js\n  keep **literal**\n  ```\n- target'
+    const { target, bridge, dispose } = sessionTyping(
+      source,
+      source.indexOf('target'),
+    )
+    const editor = richEditor(source)
+    try {
+      let at
+      editor.state.doc.descendants((node, pos) => {
+        if (node.isText && node.text === 'target') at = pos
+      })
+      editor.commands.setTextSelection({ from: at, to: at + 6 })
+      const before = editor.getJSON()
+      assert.equal(editor.commands.sinkListItem('listItem'), true)
+      assert.notDeepEqual(editor.getJSON(), before)
+      target.dispatch({
+        selection: { anchor: source.indexOf('target'), head: source.length },
+      })
+      assert.equal(target.formatting.run('indent'), true)
+      const actual = target.state.doc.toString()
+      assert.equal(actual, source.replace('\n- target', '\n  - target'))
+      const saved = richEditor(actual)
+      try {
+        assert.deepEqual(saved.getJSON(), editor.getJSON())
+      } finally {
+        saved.destroy()
+      }
+      assert.equal(bridge.undo(), true)
+      assert.equal(target.state.doc.toString(), source)
+      assert.equal(bridge.redo(), true)
+      assert.equal(target.state.doc.toString(), actual)
+    } finally {
+      dispose()
+      editor.destroy()
+    }
+  })
+})
+
+test('table spelling changes retain range direction, cell endpoints and next input', () => {
+  const source = 'plain\n\n| aa | bb |\n| --- | --- |\n| cell | tail |'
+  for (const reverse of [false, true]) {
+    const to = source.indexOf('cell') + 2
+    const { target, session, bridge, dispose } = sessionTyping(source, 0)
+    target.dispatch({
+      effects: StateEffect.appendConfig.of(
+        tableActions.of({ active: () => true, run: () => false }),
+      ),
+      selection: { anchor: reverse ? to : 0, head: reverse ? 0 : to },
+    })
+    const editor = richEditor(source)
+    try {
+      let end
+      editor.state.doc.descendants((node, pos) => {
+        if (node.isText && node.text === 'cell') end = pos + 2
+      })
+      editor.commands.setTextSelection(
+        reverse ? { from: end, to: 1 } : { from: 1, to: end },
+      )
+      editor.commands.toggleBold()
+      assert.equal(target.formatting.run('bold'), true)
+      const actual = target.state.doc.toString(),
+        cell = actual.indexOf('ce') + 2
+      assert.deepEqual(target.state.selection.toJSON(), {
+        ranges: [{ anchor: reverse ? cell : 2, head: reverse ? 2 : cell }],
+        main: 0,
+      })
+      assert.equal(bridge.undo(), true)
+      assert.equal(target.state.doc.toString(), source)
+      assert.equal(bridge.redo(), true)
+      assert.equal(target.state.doc.toString(), actual)
+      assert.equal(target.state.selection.main.head, reverse ? 2 : cell)
+      target.dispatch({
+        selection: { anchor: target.state.selection.main.head },
+      })
+      editor.commands.setTextSelection(editor.state.selection.head)
+      editor.view.dispatch(editor.state.tr.insertText('Q'))
+      target.dispatch({
+        ...target.state.replaceSelection('Q'),
+        userEvent: 'input.type',
+      })
+      assert.equal(session.snapshot().version, 4)
+      assert.equal(
+        session.snapshot().materialize(),
+        target.state.doc.toString(),
+      )
+      assert.ok(
+        sameRichSourceDocument(
+          editor.schema.nodeFromJSON(
+            editor.markdown.parse(target.state.doc.toString()),
+          ),
+          editor.state.doc,
+          true,
+        ),
+      )
+    } finally {
+      dispose()
+      editor.destroy()
+    }
+  }
+})
+
+test('inline actions preserve untouched marked source through the production rich codec', () => {
+  for (const prefix of ['__keep__', '_keep_', '``keep``']) {
+    const source = `${prefix} and take\n\nuntouched __suffix__`
+    const target = typing(source, source.indexOf('take'))
+    target.dispatch({
+      selection: {
+        anchor: source.indexOf('take'),
+        head: source.indexOf('take') + 4,
+      },
+    })
+    const editor = richEditor(source)
+    try {
+      const serialize = markdownSerializer(editor.markdown, true),
+        before = serialize(editor.state.doc).source
+      let from
+      editor.state.doc.descendants((node, pos) => {
+        if (node.isText && node.text.includes('take'))
+          from = pos + node.text.indexOf('take')
+      })
+      editor.commands.setTextSelection({ from, to: from + 4 })
+      editor.commands.toggleItalic()
+      const expected = preserveRichSource(
+        source,
+        before,
+        serialize(editor.state.doc).source,
+        (candidate) =>
+          sameRichSourceDocument(
+            editor.schema.nodeFromJSON(editor.markdown.parse(candidate)),
+            editor.state.doc,
+            true,
+          ),
+      )
+      assert.equal(expected, `${prefix} and *take*\n\nuntouched __suffix__`)
+      assert.equal(target.formatting.run('italic'), true)
+      assert.equal(target.state.doc.toString(), expected)
+      assert.ok(
+        sameRichSourceDocument(
+          editor.schema.nodeFromJSON(
+            editor.markdown.parse(target.state.doc.toString()),
+          ),
+          editor.state.doc,
+          true,
+        ),
+      )
+    } finally {
+      editor.destroy()
+    }
+  }
+  const adjacent = typing('plainB **boldC** *italicD* tail', 0)
+  adjacent.dispatch({ selection: { anchor: 0, head: 17 } })
+  adjacent.formatting.run('italic')
+  assert.equal(adjacent.state.doc.toString(), '*plainB **boldC** italicD* tail')
 })
 
 test('ranges ending in a table format every selected block when no cell editor owns them', () => {
