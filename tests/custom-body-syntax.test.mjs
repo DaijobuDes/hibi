@@ -16,7 +16,7 @@ const cases = [
       ['> [!TIP]\n> *careful*', 'careful'],
       ['-# small *words*', 'small words'],
     ],
-    gap: 'formatted gap corpus-020: custom alert and subtext bodies must preserve native italic parsing',
+    gap: 'formatted gap corpus-022: custom alert and subtext bodies must preserve native italic parsing',
   },
   {
     feature: 'markdown.strike',
@@ -24,7 +24,7 @@ const cases = [
       ['> [!TIP]\n> ~~gone~~', 'gone'],
       ['-# small ~~words~~', 'small words'],
     ],
-    gap: 'formatted gap corpus-021: custom alert and subtext bodies must preserve native strike parsing',
+    gap: 'formatted gap corpus-023: custom alert and subtext bodies must preserve native strike parsing',
   },
   {
     feature: 'core.links',
@@ -32,12 +32,12 @@ const cases = [
       ['> [!TIP]\n> [a](https://b.test)', 'a'],
       ['-# small [a](https://b.test)', 'small a'],
     ],
-    gap: 'formatted gap corpus-022: custom alert and subtext bodies must preserve native link parsing',
+    gap: 'formatted gap corpus-024: custom alert and subtext bodies must preserve native link parsing',
   },
   {
     feature: 'core.heading-1',
     bodies: [['> [!TIP]\n> # head', 'head']],
-    gap: 'formatted gap corpus-023: custom alert bodies must preserve native heading parsing',
+    gap: 'formatted gap corpus-025: custom alert bodies must preserve native heading parsing',
   },
 ]
 

@@ -389,7 +389,7 @@ test('list-nested alerts keep disabled bold literal while subtext owns its body'
 })
 
 test('custom subscript bodies preserve native inline mark parsing', {
-  todo: 'formatted gap corpus-024: custom subscript bodies must preserve native inline mark parsing',
+  todo: 'formatted gap corpus-026: custom subscript bodies must preserve native inline mark parsing',
 }, () => {
   markdownSyntax.setEnabled('core.bold', false)
   try {
