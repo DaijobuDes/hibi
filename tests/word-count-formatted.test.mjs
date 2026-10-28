@@ -306,6 +306,108 @@ test('custom alert and subtext bodies retain native text with disabled bold', ()
   }
 })
 
+for (const [feature, bodies] of [
+  [
+    'core.italic',
+    [
+      ['> [!TIP]\n> *careful*', '*careful*'],
+      ['-# small *words*', 'small *words*'],
+    ],
+  ],
+  [
+    'markdown.strike',
+    [
+      ['> [!TIP]\n> ~~gone~~', '~~gone~~'],
+      ['-# small ~~words~~', 'small ~~words~~'],
+    ],
+  ],
+  [
+    'core.links',
+    [
+      ['> [!TIP]\n> [a](https://b.test)', '[a](https://b.test)'],
+      ['-# small [a](https://b.test)', 'small [a](https://b.test)'],
+    ],
+  ],
+  ['core.heading-1', [['> [!TIP]\n> # head', '# head']]],
+])
+  test(`custom bodies keep the view's literal ${feature} in counts`, () => {
+    for (const [source, text] of bodies) {
+      const syntax = {
+        ...defaultNoteSyntax,
+        alerts: true,
+        textExtras: true,
+        disabledFeatures: [feature],
+      }
+      const expected = (source.startsWith('>') ? '\n' : '') + text
+      assert.equal(richText(source, syntax).slice(1), expected)
+      const counter = new FormattedCounter(
+        new SourceStore(source, { tabId: 'custom', revision: 0 }),
+        syntax,
+      )
+      try {
+        const work = counter.read()
+        let step
+        do step = work.next()
+        while (!step.done)
+        assert.deepEqual(step.value, countText(expected))
+      } finally {
+        counter.dispose()
+      }
+    }
+  })
+
+test('list-nested alerts keep disabled bold literal while subtext owns its body', () => {
+  markdownSyntax.setEnabled('core.bold', false)
+  try {
+    for (const source of [
+      '- > [!TIP]\n  > **x**',
+      '1. > [!TIP]\n   > **x**',
+      '- -# small **words**',
+    ]) {
+      const expected = native(source)
+      assert.equal(
+        richText(source, {
+          ...defaultNoteSyntax,
+          alerts: true,
+          textExtras: true,
+          disabledFeatures: ['core.bold'],
+        })
+          .slice(1)
+          .trim(),
+        expected.trim(),
+        source,
+      )
+      assert.equal(
+        expected.includes('**'),
+        !source.includes('-# small'),
+        source,
+      )
+    }
+  } finally {
+    markdownSyntax.reset()
+  }
+})
+
+test('custom subscript bodies preserve native inline mark parsing', {
+  todo: 'formatted gap corpus-024: custom subscript bodies must preserve native inline mark parsing',
+}, () => {
+  markdownSyntax.setEnabled('core.bold', false)
+  try {
+    const source = 'H~**2**~O'
+    assert.equal(native(source), 'H2O')
+    assert.equal(
+      richText(source, {
+        ...defaultNoteSyntax,
+        textExtras: true,
+        disabledFeatures: ['core.bold'],
+      }).slice(1),
+      'H2O',
+    )
+  } finally {
+    markdownSyntax.reset()
+  }
+})
+
 test('disabled syntax remains literal in document totals', () => {
   for (const [source, feature, expected] of [
     ['one **bold**', 'core.bold', 'one **bold**'],

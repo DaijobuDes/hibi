@@ -145,14 +145,17 @@ let blocks = noBlocks
 /** Native custom bodies drop unsupported bold marks while keeping their text. */
 function customBold(node: SyntaxNodeRef, literal: ReadonlySet<string>) {
   if (node.name !== 'StrongEmphasis' || !literal.has(node.name)) return false
-  for (let parent = node.node.parent; parent; parent = parent.parent)
+  let alert = false
+  for (let parent = node.node.parent; parent; parent = parent.parent) {
+    if (parent.name === 'Subtext') return true
+    if (parent.name === 'ListItem') return false
     if (
-      parent.name === 'Subtext' ||
-      (parent.name === 'Blockquote' &&
-        parent.firstChild?.nextSibling?.name === 'AlertTitle')
+      parent.name === 'Blockquote' &&
+      parent.firstChild?.nextSibling?.name === 'AlertTitle'
     )
-      return true
-  return false
+      alert = true
+  }
+  return alert
 }
 
 /** Blocks the view lays out; link reference definitions take no space. */

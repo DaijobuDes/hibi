@@ -128,6 +128,12 @@ accepted differences are not gaps; their tests assert each engine. the codemirro
 | semantics-002 | [source-reference-navigation.test.mjs:160](source-reference-navigation.test.mjs#L160) | formatted and source references must reuse one document worker | 9: outline semantics and diagram lifecycle |
 | addon-001 | [source-reference-navigation.test.mjs:185](source-reference-navigation.test.mjs#L185) | rich-only addon syntax must retain native editing and source reference isolation | 2b: legacy feature notices and literal fallback |
 
+| corpus-020 | [custom-body-syntax.test.mjs:19](custom-body-syntax.test.mjs#L19) | custom alert and subtext bodies must preserve native italic parsing | 9: outline semantics and diagram lifecycle |
+| corpus-021 | [custom-body-syntax.test.mjs:27](custom-body-syntax.test.mjs#L27) | custom alert and subtext bodies must preserve native strike parsing | 9: outline semantics and diagram lifecycle |
+| corpus-022 | [custom-body-syntax.test.mjs:35](custom-body-syntax.test.mjs#L35) | custom alert and subtext bodies must preserve native link parsing | 9: outline semantics and diagram lifecycle |
+| corpus-023 | [custom-body-syntax.test.mjs:40](custom-body-syntax.test.mjs#L40) | custom alert bodies must preserve native heading parsing | 9: outline semantics and diagram lifecycle |
+| corpus-024 | [word-count-formatted.test.mjs:392](word-count-formatted.test.mjs#L392) | custom subscript bodies must preserve native inline mark parsing | 9: outline semantics and diagram lifecycle |
+
 ## accepted differences
 
 api-004: typing context uses opaque editor-local positions in API 1, 2, and 3. `editor: 'rich'` does not identify the implementation. Legacy rich view retains ProseMirror positions, including node boundaries; CodeMirror source and formatted views use normalized-source UTF-16 offsets. Replacing `chosen` in `before chosen after 😀` reports 8..14 in ProseMirror and 7..13 in CodeMirror. Both must report the live committed selection and matching nearby text, with `change.from + change.insertedLength === selection.head`. The complete formatted-completions file verifies both implementations and CodeMirror CRLF normalization.
