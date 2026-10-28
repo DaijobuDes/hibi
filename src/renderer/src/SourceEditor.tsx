@@ -152,6 +152,7 @@ import {
   formattingKeymap,
   type SourceFormatting,
   sourceFormatting,
+  storedMarkInput,
 } from './source-formatting'
 import { sourceIndentation } from './source-indent'
 import {
@@ -1022,6 +1023,7 @@ export function SourceEditor({
       } = parserOptions.current
       if (formatted)
         return [
+          storedMarkInput,
           livePreview(syntax, { flavors: parserOptions.current.flavors }),
           keymap.of(
             formattingKeymap((id) => formatting.current?.run(id) ?? false),
