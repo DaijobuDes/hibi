@@ -1,6 +1,6 @@
 # rendered find worker contract
 
-rendered find is an opt-in mode of the existing document worker. source find remains the default. the formatted editor does not select this mode yet.
+the formatted editor requests rendered find through the existing document worker, with its active syntax configuration and a bounded highlight window. source view keeps source find. unsupported rendered configurations fall back to source search without discarding the replica.
 
 ## configuration and requests
 

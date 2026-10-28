@@ -92,11 +92,13 @@ import {
 } from '../../shared/editor-interactions'
 import { errorMessage } from '../../shared/errors'
 import type { ViewId, ViewTarget } from '../../shared/foundation-contracts'
+import type { BoundaryConfig } from '../../shared/markdown-boundary-syntax'
 import { protectMarkdownParser } from '../../shared/markdown-flavor-guard'
 import { markdownLink } from '../../shared/markdown-link'
 import { wikiHref } from '../../shared/note-links'
 import type { RawEdit } from '../../shared/source-operations'
 import { editorChangesFromSource } from '../../shared/source-projection'
+import type { SourceMatch } from '../../shared/source-search'
 import { Button } from '../../ui/Controls'
 import { DocumentNotice } from '../../ui/DocumentNotice'
 import { uncovered } from './chunked-markdown'
@@ -147,7 +149,13 @@ import {
   observeSourceAnnotations,
   sourceAnnotationExtension,
 } from './source-annotations'
-import { formattedFindWindow, sourceFindHighlights } from './source-find'
+import {
+  formattedFindViewport,
+  formattedFindWindow,
+  movedFindWindow,
+  renderedFindHighlights,
+  sourceFindHighlights,
+} from './source-find'
 import {
   formattingKeymap,
   type SourceFormatting,
@@ -676,11 +684,29 @@ export function SourceEditor({
   const referenceQueue = useRef<ReferenceJob[]>([])
   const activeReference = useRef<ReferenceJob | null>(null)
   const nextReference = useRef(() => {})
-  const repeatFind = useRef<(action?: FindAction) => void>(() => {})
-  const findCoverage = useRef({ query: '', version: -1, total: 0 })
+  const repeatFind = useRef<(action?: FindAction, page?: number) => void>(
+    () => {},
+  )
+  const findCoverage = useRef({ query: '', version: -1, total: 0, config: '' })
   const findActions = useRef<FindAction[]>([])
   const navigatingFind = useRef(false)
   const applyingFind = useRef(false)
+  const renderedConfig = useRef<
+    ((state: EditorState) => BoundaryConfig | null) | null
+  >(null)
+  const findConfig = useRef('')
+  const renderedRefused = useRef({
+    session,
+    query: '',
+    version: -1,
+    config: '',
+  })
+  const renderedPage = useRef<{
+    from: number
+    to: number
+    matches: SourceMatch[]
+  } | null>(null)
+  const lastFindAction = useRef<FindAction>(null)
   const handledFindMove = useRef(findMove.id)
   const ready = useRef(onReady)
   const formatting = useRef<SourceFormatting | null>(null)
@@ -747,21 +773,39 @@ export function SourceEditor({
           const known = findCoverage.current
           const complete =
             known.query === find.current.query &&
-            known.version === session.snapshot().version
+            known.version === session.snapshot().version &&
+            known.config === findConfig.current
           find.current.report({
             current: 0,
             total: complete ? known.total : 0,
             pending: !complete,
           })
         },
-        error: (message) => {
+        error: (message, reason) => {
+          if (reason === 'unsupported' && renderedPage.current) {
+            renderedRefused.current = {
+              session,
+              query: find.current.query,
+              version: session.snapshot().version,
+              config: findConfig.current,
+            }
+            repeatFind.current(lastFindAction.current)
+            return
+          }
           referenceFailed.current = true
           clearReferences('unavailable', false)
           findActions.current = []
           navigatingFind.current = false
           find.current.report({ current: 0, total: 0, error: message })
         },
-        result: (location, action, highlightStarts, query) => {
+        result: (
+          location,
+          action,
+          highlightStarts,
+          query,
+          highlights,
+          mode,
+        ) => {
           const current = view.current
           if (!current || !find.current.active || query !== find.current.query)
             return
@@ -769,6 +813,7 @@ export function SourceEditor({
             query: find.current.query,
             version: session.snapshot().version,
             total: location.total,
+            config: findConfig.current,
           }
           const target =
             action === 'previous'
@@ -776,7 +821,9 @@ export function SourceEditor({
               : action
                 ? location.next
                 : null
-          if (target || highlightStarts) {
+          const page = mode === 'rendered' ? renderedPage.current : null
+          if (page && highlights) page.matches.push(...highlights.matches)
+          if (target || highlightStarts || (page && highlights)) {
             applyingFind.current = true
             try {
               current.dispatch({
@@ -800,18 +847,29 @@ export function SourceEditor({
                         ),
                       ]
                     : []),
-                  ...(highlightStarts
+                  ...(page && highlights
                     ? [
                         findHighlights.current.reconfigure([
-                          sourceFindHighlights(
-                            find.current.query,
+                          renderedFindHighlights(
+                            page.matches,
+                            (target?.rank ?? location.current) > 0,
                             current.state.doc,
-                            highlightStarts,
                           ),
-                          formatted ? formattedFindWindow : [],
+                          formattedFindWindow,
                         ]),
                       ]
-                    : []),
+                    : highlightStarts
+                      ? [
+                          findHighlights.current.reconfigure([
+                            sourceFindHighlights(
+                              find.current.query,
+                              current.state.doc,
+                              highlightStarts,
+                            ),
+                            formatted ? formattedFindWindow : [],
+                          ]),
+                        ]
+                      : []),
                 ],
               })
             } finally {
@@ -827,7 +885,8 @@ export function SourceEditor({
           if (next) {
             navigatingFind.current = true
             repeatFind.current(next)
-          }
+          } else if (page && highlights?.next != null)
+            repeatFind.current(null, highlights.next)
         },
       })
       return sourceFind.current
@@ -915,18 +974,44 @@ export function SourceEditor({
       view.current?.dispatch({ effects: formattedRefresh.of(null) })
   }, [formatted, referenceSyntax, markdownMode])
   const requestFind = useCallback(
-    function requestFind(action: FindAction = null) {
+    function requestFind(action: FindAction = null, page?: number) {
       const editor = view.current
       if (!editor || !find.current.active || !find.current.query) return
       const selection = editor.state.selection.main
+      const candidate = renderedConfig.current?.(editor.state) ?? null
+      const key = JSON.stringify(candidate)
+      if (key !== findConfig.current) page = undefined
+      findConfig.current = key
+      const refused = renderedRefused.current
+      const config =
+        refused.session === session &&
+        refused.query === find.current.query &&
+        refused.version === session.snapshot().version &&
+        refused.config === key
+          ? null
+          : candidate
+      const shown =
+        page === undefined || !renderedPage.current
+          ? config
+            ? formattedFindViewport(editor)
+            : editor.viewport
+          : renderedPage.current
+      const viewport = { from: page ?? shown.from, to: shown.to }
+      if (page === undefined) {
+        lastFindAction.current = action
+        renderedPage.current = config
+          ? { from: shown.from, to: shown.to, matches: [] }
+          : null
+      }
       getWorker().find(
         find.current.query,
-        action === 'first' ? 0 : selection.from,
-        action === 'first' ? 0 : selection.to,
+        action === 'first' ? 0 : Math.min(selection.from, selection.to),
+        action === 'first' ? 0 : Math.max(selection.from, selection.to),
         action,
+        config ? { mode: 'rendered', config, viewport } : {},
       )
     },
-    [getWorker],
+    [getWorker, session],
   )
   repeatFind.current = requestFind
 
@@ -997,6 +1082,8 @@ export function SourceEditor({
           }
         : {},
     )
+    renderedConfig.current = formatted ? syntax.config : null
+    renderedRefused.current = { session, query: '', version: -1, config: '' }
     const tree = (state: EditorState) =>
       formatted ? syntax.tree(state) : syntaxTree(state)
     // Flavor syntax extends only the Markdown parser.
@@ -2091,14 +2178,26 @@ export function SourceEditor({
               )
             )
               reportFormatting.current(formatting.current)
-            if (
-              find.current.active &&
-              !applyingFind.current &&
-              (update.docChanged || update.selectionSet)
-            ) {
-              findActions.current = []
-              navigatingFind.current = false
-              requestFind()
+            if (find.current.active && !applyingFind.current) {
+              const config = renderedConfig.current?.(update.state) ?? null
+              if (
+                update.docChanged ||
+                update.selectionSet ||
+                JSON.stringify(config) !== findConfig.current
+              ) {
+                findActions.current = []
+                navigatingFind.current = false
+                requestFind()
+              } else if (!navigatingFind.current) {
+                const moved = movedFindWindow(update)
+                const shown = renderedPage.current
+                if (
+                  moved &&
+                  shown &&
+                  (moved.from !== shown.from || moved.to !== shown.to)
+                )
+                  requestFind()
+              }
             }
           }),
           failedEditGuard,
@@ -2650,6 +2749,8 @@ export function SourceEditor({
       clearReferences('unavailable', false)
       sourceFind.current?.dispose()
       sourceFind.current = null
+      renderedConfig.current = null
+      renderedPage.current = null
       referenceUsed.current = false
       referenceFailed.current = false
       unsubscribe()
@@ -2874,6 +2975,7 @@ export function SourceEditor({
       }
     }
     if (!findActive) {
+      renderedPage.current = null
       closeSearchPanel(editor)
       editor.dispatch({ effects: findHighlights.current.reconfigure([]) })
       stopFind()
