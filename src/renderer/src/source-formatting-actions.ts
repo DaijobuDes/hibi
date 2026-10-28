@@ -43,7 +43,13 @@ const tokens: Record<string, string> = {
   subscript: '~',
 }
 const order = ['link', 'bold', 'italic', 'strike', 'subscript', 'inline-code']
-type Mark = { id: string; href?: string; suffix?: string }
+type Mark = {
+  id: string
+  href?: string
+  suffix?: string
+  delimiter?: string
+  outer?: boolean
+}
 type Run = {
   from: number
   to: number
@@ -60,15 +66,20 @@ function mark(state: EditorState, node: SyntaxNode): Mark | null {
   const id = markNames[node.name]
   if (!id || state.facet(formattedLiteral).includes(node.name)) return null
   const url = node.getChild('URL')
-  const body = node.name === 'Link' ? formattingText(state, node) : null
+  const body = formattingText(state, node)
   return {
     id,
+    ...(body && tokens[id]
+      ? { delimiter: state.sliceDoc(node.from, body.from) }
+      : {}),
     ...(id === 'link'
       ? {
           href: state
             .sliceDoc(url?.from ?? node.from, url?.to ?? node.to)
             .replace(/^<|>$/g, ''),
-          ...(body ? { suffix: state.sliceDoc(body.to, node.to) } : {}),
+          ...(body && node.name === 'Link'
+            ? { suffix: state.sliceDoc(body.to, node.to) }
+            : {}),
         }
       : {}),
   }
@@ -127,6 +138,15 @@ function inlineRuns(
       else if (own) {
         const body = formattingText(state, child)
         if (body) {
+          // Keep existing wrappers when only the style inside them changes.
+          if (
+            keepOutside &&
+            tokens[keepOutside.id] &&
+            own.id !== keepOutside.id &&
+            child.from <= keepOutside.from &&
+            child.to >= keepOutside.to
+          )
+            own.outer = true
           if (own.id === 'inline-code') {
             const source = state.sliceDoc(body.from, body.to)
             const padded =
@@ -192,9 +212,24 @@ function render(runs: readonly Run[]): Mapped {
   }
   for (let i = 0; i < runs.length; ) {
     const run = runs[i]!
-    const own = order
-      .map((id) => run.marks.find((mark) => mark.id === id))
-      .find(Boolean)
+    let selected = run.marks.find((mark) => mark.outer)
+    let end = i + 1
+    if (!selected)
+      for (const id of order) {
+        const candidate = run.marks.find((mark) => mark.id === id)
+        if (!candidate) continue
+        let to = i + 1
+        while (
+          to < runs.length &&
+          runs[to]!.marks.some((mark) => sameMark(mark, candidate))
+        )
+          to++
+        if (!selected || to > end) {
+          selected = candidate
+          end = to
+        }
+      }
+    const own = selected
     if (!own) {
       spans.push({
         from: run.from,
@@ -206,22 +241,21 @@ function render(runs: readonly Run[]): Mapped {
       i++
       continue
     }
-    let end = i + 1
     while (
       end < runs.length &&
       runs[end]!.marks.some((mark) => sameMark(mark, own))
     )
       end++
+    const group = runs.slice(i, end)
     const inner = render(
-      runs.slice(i, end).map((run) => ({
+      group.map((run) => ({
         ...run,
         marks: run.marks.filter((mark) => !sameMark(mark, own)),
       })),
     )
     const code = own.id === 'inline-code'
     const value = code
-      ? runs
-          .slice(i, end)
+      ? group
           .map((run) => run.text)
           .join('')
           .replace(/\n/g, ' ')
@@ -229,7 +263,16 @@ function render(runs: readonly Run[]): Mapped {
     const lead = /^\s*/.exec(value)![0],
       tail = /\s*$/.exec(value.slice(lead.length))![0]
     const core = value.slice(lead.length, value.length - tail.length)
-    const delimiter = code ? fence(core) : (tokens[own.id] ?? '[')
+    let delimiter = code ? fence(core) : (tokens[own.id] ?? '[')
+    for (const run of group) {
+      const saved = run.marks.find(
+        (mark) => sameMark(mark, own) && mark.outer && mark.delimiter,
+      )
+      if (saved?.delimiter) {
+        delimiter = saved.delimiter
+        break
+      }
+    }
     const pad = code && /^`|`$/.test(core) ? ' ' : ''
     const open = core ? delimiter + pad : '',
       close = core

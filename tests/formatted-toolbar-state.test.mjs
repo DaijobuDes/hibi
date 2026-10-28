@@ -2150,6 +2150,197 @@ test('inline actions preserve untouched marked source through the production ric
   assert.equal(adjacent.state.doc.toString(), '*plainB **boldC** italicD* tail')
 })
 
+test('inner style changes preserve unchanged outer delimiters and source history', () => {
+  for (const [source, id, expected] of [
+    [
+      '__take__ and __keep__\n\nuntouched _suffix_',
+      'italic',
+      '__*take*__ and __keep__\n\nuntouched _suffix_',
+    ],
+    [
+      '_take_ and _keep_\n\nuntouched ``suffix``',
+      'bold',
+      '_**take**_ and _keep_\n\nuntouched ``suffix``',
+    ],
+  ])
+    for (const reverse of [false, true]) {
+      const start = source.indexOf('take'),
+        end = start + 4
+      const { target, bridge, session, dispose } = sessionTyping(source, start)
+      target.dispatch({
+        selection: {
+          anchor: reverse ? end : start,
+          head: reverse ? start : end,
+        },
+      })
+      const editor = richEditor(source)
+      try {
+        const serialize = markdownSerializer(editor.markdown, true),
+          before = serialize(editor.state.doc).source
+        let from
+        editor.state.doc.descendants((node, pos) => {
+          if (node.isText && node.text === 'take') from = pos
+        })
+        editor.commands.setTextSelection(
+          reverse ? { from: from + 4, to: from } : { from, to: from + 4 },
+        )
+        assert.equal(
+          id === 'italic'
+            ? editor.commands.toggleItalic()
+            : editor.commands.toggleBold(),
+          true,
+        )
+        const preserved = preserveRichSource(
+          source,
+          before,
+          serialize(editor.state.doc).source,
+          (candidate) =>
+            sameRichSourceDocument(
+              editor.schema.nodeFromJSON(editor.markdown.parse(candidate)),
+              editor.state.doc,
+              true,
+            ),
+        )
+        assert.equal(preserved, expected)
+        assert.equal(target.formatting.run(id), true)
+        assert.equal(target.state.doc.toString(), expected)
+        const selection = target.state.selection
+        assert.equal(
+          expected.slice(selection.main.from, selection.main.to),
+          'take',
+        )
+        assert.equal(selection.main.anchor > selection.main.head, reverse)
+        assert.equal(session.snapshot().version, 1)
+        assert.equal(bridge.undo(), true)
+        assert.equal(target.state.doc.toString(), source)
+        assert.equal(bridge.redo(), true)
+        assert.equal(target.state.doc.toString(), expected)
+        assert.ok(target.state.selection.eq(selection))
+        editor.view.dispatch(editor.state.tr.insertText('Q'))
+        target.dispatch({
+          ...target.state.replaceSelection('Q'),
+          userEvent: 'input.type',
+        })
+        const typed = expected.replace('take', 'Q')
+        assert.equal(target.state.doc.toString(), typed)
+        assert.equal(session.snapshot().version, 4)
+        assert.ok(
+          sameRichSourceDocument(
+            editor.schema.nodeFromJSON(editor.markdown.parse(typed)),
+            editor.state.doc,
+            true,
+          ),
+        )
+        assert.equal(bridge.undo(), true)
+        assert.equal(target.state.doc.toString(), expected)
+        assert.equal(bridge.redo(), true)
+        assert.equal(target.state.doc.toString(), typed)
+      } finally {
+        dispose()
+        editor.destroy()
+      }
+    }
+})
+
+test('touching styles keep the native compatible-source fallback', () => {
+  for (const [source, anchor, head, from, to, expected] of [
+    ['take _keep_', 0, 5, 1, 6, '*take keep*'],
+    ['_keep_ take', 6, 11, 5, 10, '*keep take*'],
+  ]) {
+    const editor = richEditor(source),
+      target = typing(source, anchor)
+    try {
+      const serialize = markdownSerializer(editor.markdown, true),
+        before = serialize(editor.state.doc).source
+      editor.commands.setTextSelection({ from, to })
+      editor.commands.toggleItalic()
+      const canonical = serialize(editor.state.doc).source
+      const native =
+        preserveRichSource(source, before, canonical, (candidate) =>
+          sameRichSourceDocument(
+            editor.schema.nodeFromJSON(editor.markdown.parse(candidate)),
+            editor.state.doc,
+            true,
+          ),
+        ) ?? canonical
+      assert.equal(native, expected)
+      target.dispatch({ selection: { anchor, head } })
+      assert.equal(target.formatting.run('italic'), true)
+      assert.equal(target.state.doc.toString(), native)
+      assert.ok(
+        sameRichSourceDocument(
+          editor.schema.nodeFromJSON(editor.markdown.parse(native)),
+          editor.state.doc,
+          true,
+        ),
+      )
+    } finally {
+      editor.destroy()
+    }
+  }
+})
+
+test('retained mark spans cover wider styles and complete formatted blocks', () => {
+  for (const [source, anchor, head, id, all, expected] of [
+    ['__take__ rest', 2, 13, 'italic', false, '***take** rest*'],
+    ['**take** rest', 2, 13, 'italic', false, '***take** rest*'],
+    ['__take__', 0, 8, 'italic', true, '__*take*__'],
+    ['_take_', 0, 6, 'bold', true, '_**take**_'],
+  ]) {
+    const { target, bridge, session, dispose } = sessionTyping(source, anchor)
+    target.dispatch({ selection: { anchor, head } })
+    const editor = richEditor(source)
+    try {
+      const serialize = markdownSerializer(editor.markdown, true),
+        before = serialize(editor.state.doc).source
+      if (all) editor.commands.selectAll()
+      else
+        editor.commands.setTextSelection({
+          from: 1,
+          to: editor.state.doc.content.size - 1,
+        })
+      const model = editor.getJSON()
+      assert.equal(
+        id === 'italic'
+          ? editor.commands.toggleItalic()
+          : editor.commands.toggleBold(),
+        true,
+      )
+      assert.notDeepEqual(editor.getJSON(), model)
+      const canonical = serialize(editor.state.doc).source
+      const preserved =
+        preserveRichSource(source, before, canonical, (candidate) =>
+          sameRichSourceDocument(
+            editor.schema.nodeFromJSON(editor.markdown.parse(candidate)),
+            editor.state.doc,
+            true,
+          ),
+        ) ?? canonical
+      assert.equal(preserved, expected)
+      assert.equal(target.formatting.run(id), true)
+      assert.equal(target.state.doc.toString(), expected)
+      assert.ok(
+        sameRichSourceDocument(
+          editor.schema.nodeFromJSON(editor.markdown.parse(expected)),
+          editor.state.doc,
+          true,
+        ),
+      )
+      const selection = target.state.selection
+      assert.ok(selection.main.anchor < selection.main.head)
+      assert.equal(session.snapshot().version, 1)
+      assert.equal(bridge.undo(), true)
+      assert.equal(target.state.doc.toString(), source)
+      assert.equal(bridge.redo(), true)
+      assert.equal(target.state.doc.toString(), expected)
+      assert.ok(target.state.selection.eq(selection))
+    } finally {
+      dispose()
+      editor.destroy()
+    }
+  }
+})
+
 test('ranges ending in a table format every selected block when no cell editor owns them', () => {
   for (const [first, offset, last, end] of [
     ['plain', 0, 'cell', 2],
