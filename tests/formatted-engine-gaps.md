@@ -109,7 +109,6 @@ accepted differences are not gaps; their tests assert each engine. the codemirro
 | corpus-021 | [markdown-semantics-native.test.mjs:108](markdown-semantics-native.test.mjs#L108) | disabled heading syntax counts must include a blank-line title definition | 5a: shared reference definition parsing |
 | export-001 | [marked-large-paragraph.test.mjs:597](marked-large-paragraph.test.mjs#L597) | export must keep a blank-line title definition and its heading as visible text | 5a: shared reference definition parsing |
 | corpus-018 | [markdown-semantics-native.test.mjs:106](markdown-semantics-native.test.mjs#L106) | disabled heading syntax must keep a blank-line title definition literal | 5a: shared reference definition parsing |
-| math-001 | [math-rendering.test.mjs:626](math-rendering.test.mjs#L626) | tall formula rendering must preserve the reading position | 8b: hidden markers and math caret placement |
 | semantics-003 | [outline-navigation.test.mjs:320](outline-navigation.test.mjs#L320) | formatted and source outlines must reuse one document worker | 9: outline semantics and diagram lifecycle |
 | contracts-001 | [raw-html-editor.test.mjs:1147](raw-html-editor.test.mjs#L1147) | clipboard html must exclude markup outside the selected fragment | 3c: clipboard fragments and trusted source |
 | contracts-002 | [raw-html-editor.test.mjs:1156](raw-html-editor.test.mjs#L1156) | a clipboard fragment must restore its exact selected markdown source | 3c: clipboard fragments and trusted source |
