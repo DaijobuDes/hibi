@@ -665,7 +665,10 @@ export function formattedStates(
 /**
  * Changes that remove the link around a caret, or the links of a range's
  * text, keeping that text. Like the rich editor, a range leaves the link on
- * the text outside it: `[ab](u)cd[ef](u)` from `cd` in `[abcdef](u)`.
+ * the text outside it, and formatting the split cuts closes and opens again:
+ * `[ab**c**](u)**de**[**f**gh](u)` from `de` in `[ab**cdef**gh](u)`.
+ * Reference links and autolinks have no spelling for half a link, so they
+ * lose their link as a whole.
  */
 export function unlinkChanges(
   state: EditorState,
@@ -681,28 +684,31 @@ export function unlinkChanges(
         ? node.getChild('URL')
         : formattingText(state, node)
     if (!text) return
-    const from = Math.max(range.from, text.from),
-      to = Math.min(range.to, text.to)
-    if (!range.empty && to <= from) return
     const tail = state.sliceDoc(text.to, node.to)
-    // Formatting the selection would cut, and links without an inline
-    // destination, lose their link as a whole.
-    const split =
-      !range.empty &&
-      node.name === 'Link' &&
-      tail.startsWith('](') &&
-      (from > text.from || to < text.to) &&
-      ![from, to].some((at) => cuts(tree, node, at))
-    if (!split) {
+    const whole = () =>
       changes.push(
         { from: node.from, to: text.from },
         { from: text.to, to: node.to },
       )
+    if (range.empty || node.name !== 'Link' || !tail.startsWith('](')) {
+      whole()
       return
     }
-    if (from > text.from) changes.push({ from, insert: tail })
+    const start = cut(state, tree, node, text, Math.max(range.from, text.from))
+    const end = cut(state, tree, node, text, Math.min(range.to, text.to))
+    if (end.at <= start.at) return
+    if (start.at <= text.from && end.at >= text.to) {
+      whole()
+      return
+    }
+    if (start.at > text.from)
+      changes.push({
+        from: start.at,
+        insert: start.close + tail + start.open,
+      })
     else changes.push({ from: node.from, to: text.from })
-    if (to < text.to) changes.push({ from: to, insert: '[' })
+    if (end.at < text.to)
+      changes.push({ from: end.at, insert: `${end.close}[${end.open}` })
     else changes.push({ from: text.to, to: node.to })
   }
   if (range.empty) {
@@ -725,15 +731,57 @@ export function unlinkChanges(
   return changes
 }
 
-/** Whether `at` falls inside formatting within `link`, which a split there would cut. */
-function cuts(tree: Tree, link: SyntaxNode, at: number) {
+/**
+ * Where a split of `link`'s text at `at` goes, and the formatting it closes
+ * before the split and opens after it, innermost closed first. A cut in a
+ * formatting node's delimiters, or at an edge of its text, moves outside the
+ * node, so the node stays whole and no empty formatting is left behind.
+ */
+function cut(
+  state: EditorState,
+  tree: Tree,
+  link: SyntaxNode,
+  text: { from: number; to: number },
+  at: number,
+) {
+  const formatting = formattingNames(state)
+  for (let moved = true; moved; ) {
+    moved = false
+    for (
+      let node: SyntaxNode | null = tree.resolveInner(at, 1);
+      node && node.from > link.from;
+      node = node.parent
+    ) {
+      if (!formatting.includes(node.name) || node.from >= at || node.to <= at)
+        continue
+      const inner = formattingText(state, node)
+      if (!inner) continue
+      if (at <= inner.from || at >= inner.to) {
+        // The cut is at an edge of this formatting's text: keep it whole.
+        at = at <= inner.from ? node.from : node.to
+        at = Math.min(Math.max(at, text.from), text.to)
+        moved = true
+        break
+      }
+    }
+  }
+  let close = '',
+    open = ''
   for (
     let node: SyntaxNode | null = tree.resolveInner(at, 1);
     node && node.from > link.from;
     node = node.parent
-  )
-    if (node.from < at && at < node.to && node !== link) return true
-  return false
+  ) {
+    if (!formatting.includes(node.name) || node.from >= at || node.to <= at)
+      continue
+    const inner = formattingText(state, node)
+    const first = node.firstChild,
+      last = node.lastChild
+    if (!inner || !first || !last) continue
+    close += state.sliceDoc(last.from, last.to)
+    open = state.sliceDoc(first.from, first.to) + open
+  }
+  return { at, close, open }
 }
 
 /** Changes that turn the fenced code blocks of a selection back into text. */

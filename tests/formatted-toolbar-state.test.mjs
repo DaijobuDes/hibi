@@ -264,11 +264,89 @@ test('formatted unlink removes links by their syntax and leaves other text unedi
   assert.equal(ran('unlink', link, 'ab', 2), 'ab[cdef](https://example.com)')
   assert.equal(ran('unlink', link, 'ef', 2), '[abcd](https://example.com)ef')
   assert.equal(ran('unlink', 'x [ab](u) y', 'b](', 1), 'x [a](u)b y')
-  // A split that would cut formatting, or a reference, unlinks the whole link.
-  assert.equal(ran('unlink', '[a**bc**d](u)', 'bc', 1), 'a**bc**d')
+  // A split closes the formatting it cuts and opens it again after.
+  assert.equal(
+    ran('unlink', '[a**bc**d](u)', 'bc', 1),
+    '[a](u)**b**[**c**d](u)',
+  )
+  // References have no spelling for half a link, so they lose it whole.
   assert.equal(ran('unlink', '[abc][r]\n\n[r]: u', 'abc', 1), 'abc\n\n[r]: u')
   // Nothing to unlink leaves the note unedited.
   assert.equal(ran('unlink', note, 'pl'), null)
+})
+
+test('a partial unlink keeps the link and formatting of the text around it, as the rich editor does', () => {
+  const read = (markdown) => {
+    const editor = richEditor(markdown)
+    const json = JSON.stringify(editor.getJSON())
+    editor.destroy()
+    return json
+  }
+  // [note, the text holding the selection, offset, length]: selections in one text node of the rich editor.
+  for (const [input, text, offset, length] of [
+    ['[ab**cdef**gh](https://example.com)', 'cdef', 1, 2],
+    ['[ab*cdef*gh](https://example.com)', 'cdef', 1, 2],
+    ['[abcdefgh](https://example.com)', 'abcdefgh', 3, 2],
+    ['[a***bcd***e](https://example.com)', 'bcd', 1, 1],
+    ['[a**b*cd*e**f](https://example.com)', 'cd', 1, 1],
+    ['[ab**cd**ef](https://example.com)', 'cd', 0, 2],
+    ['[ab**cd**ef](https://example.com)', 'cd', 0, 1],
+    ['[ab**cd**ef](https://example.com)', 'ef', 0, 1],
+    ['[a`bcd`e](https://example.com)', 'bcd', 1, 1],
+    ['[**abc**](https://example.com)', 'abc', 1, 1],
+    ['x [ab**cd**](https://example.com) y', 'cd', 1, 1],
+  ]) {
+    const editor = richEditor(input)
+    const source = editor.getMarkdown()
+    let from
+    editor.state.doc.descendants((node, pos) => {
+      if (from === undefined && node.isText && node.text.includes(text))
+        from = pos + node.text.indexOf(text) + offset
+    })
+    editor.commands.setTextSelection({ from, to: from + length })
+    editor.commands.unsetLink()
+    const anchor = source.indexOf(text) + offset
+    const target = {
+      state: EditorState.create({
+        doc: source,
+        selection: { anchor, head: anchor + length },
+        extensions: [
+          history(),
+          formattedTree.of((state) => markdown.parse(state.doc.toString())),
+        ],
+      }),
+      dispatch(spec) {
+        target.state = target.state.update(spec).state
+      },
+      focus() {},
+    }
+    assert.equal(sourceFormatting(target).run('unlink'), true)
+    const actual = target.state.doc.toString()
+    // The same text and marks as the rich editor's, though it spells some with HTML.
+    assert.equal(read(actual), JSON.stringify(editor.getJSON()), actual)
+    const { from: start, to: end } = target.state.selection.main
+    assert.equal(actual.slice(start, end), text.slice(offset, offset + length))
+    assert.equal(undoDepth(target.state), 1)
+    undo(target)
+    assert.equal(target.state.doc.toString(), source)
+    editor.destroy()
+  }
+  // A range across formatting splits at both of its edges.
+  const crossing = {
+    state: EditorState.create({
+      doc: '[ab**cd**ef](u)',
+      selection: { anchor: 2, head: 6 },
+      extensions: formattedTree.of((state) =>
+        markdown.parse(state.doc.toString()),
+      ),
+    }),
+    dispatch(spec) {
+      crossing.state = crossing.state.update(spec).state
+    },
+    focus() {},
+  }
+  sourceFormatting(crossing).run('unlink')
+  assert.equal(crossing.state.doc.toString(), '[a](u)b**c**[**d**ef](u)')
 })
 
 test('the pressed code block action turns fenced code back into text', () => {
@@ -384,10 +462,15 @@ const outside = (editor, type) => {
 }
 
 /** The rich editor's pressed state for `active`, without the double counting of toolbar-001. */
+const doubleCounted = (editor, active) =>
+  containerTypes.includes(active) &&
+  editor.isActive(active) &&
+  outside(editor, active)
 const richPressed = (editor, active, attrs) =>
-  !!active &&
-  editor.isActive(active, attrs) &&
-  !(containerTypes.includes(active) && outside(editor, active))
+  !!active && editor.isActive(active, attrs) && !doubleCounted(editor, active)
+/** The rich editor's disabled state; its quote toggle refuses a double-counted quote, which the formatted view joins. */
+const richDisabled = (editor, active, allowed) =>
+  !allowed && !(active === 'blockquote' && doubleCounted(editor, active))
 
 /** A seeded generator from the high bits of a 32-bit LCG. */
 function random(seed) {
@@ -451,6 +534,7 @@ test('formatted toolbar states match the rich toolbar on random selections', () 
     '- itemA\n- itemB\n  - itemC\n\nplainD',
     '- itemA\n\n  itemB\n- itemC',
     '> quoteA\n>\n> # headingB\n>\n> quoteC\n\nplainD',
+    '> quoteA\n>\n> > quoteB\n>\n> quoteC\n\nplainD',
     '```js\ncodeA\n```\n\nplainB\n\n```\ncodeC\n```',
     '# headingA\n\n## headingB\n\n###### headingC',
     '**boldA** `codeB` **boldC**',
@@ -521,7 +605,9 @@ test('formatted toolbar states match the rich toolbar on random selections', () 
           } catch {}
           const expected = {
             pressed: richPressed(editor, active, attrs),
-            disabled: !allowed || (inCell && cellBlocks.includes(id)),
+            disabled:
+              richDisabled(editor, active, allowed) ||
+              (inCell && cellBlocks.includes(id)),
           }
           const { pressed, disabled } = inspection.state(id)
           comparisons++
@@ -539,6 +625,115 @@ test('formatted toolbar states match the rich toolbar on random selections', () 
   }
   assert.ok(comparisons > 30000)
   assert.deepEqual(mismatches.slice(0, 5), [])
+})
+
+test("accepted difference toolbar-001 covers the rich editor's double-counted lists and quotes", () => {
+  for (const [id, type, input, start, nested] of [
+    [
+      'bullet-list',
+      'bulletList',
+      '- itemA\n- itemB\n  - itemC\n\nplainD',
+      'itemB',
+      'itemC',
+    ],
+    [
+      'checklist',
+      'taskList',
+      '- [ ] taskA\n- [x] taskB\n  - [ ] taskC\n\nplainD',
+      'taskB',
+      'taskC',
+    ],
+    [
+      'numbered-list',
+      'orderedList',
+      '1. itemA\n2. itemB\n   1. itemC\n\nplainD',
+      'itemB',
+      'itemC',
+    ],
+    [
+      'quote',
+      'blockquote',
+      '> quoteA\n>\n> > quoteB\n>\n> quoteC\n\nplainD',
+      'quoteB',
+      'quoteB',
+    ],
+  ]) {
+    const editor = richEditor(input)
+    const source = editor.getMarkdown()
+    const position = (text) => {
+      let at
+      editor.state.doc.descendants((node, pos) => {
+        if (at === undefined && node.isText && node.text.includes(text))
+          at = pos + node.text.indexOf(text)
+      })
+      return at
+    }
+    const command = {
+      bulletList: (c) => c.toggleBulletList(),
+      taskList: (c) => c.toggleTaskList(),
+      orderedList: (c) => c.toggleOrderedList(),
+      blockquote: (c) => c.toggleBlockquote(),
+    }[type]
+    const formatted = (anchor, head) => {
+      const target = {
+        state: EditorState.create({
+          doc: source,
+          selection: { anchor, head },
+          extensions: [
+            history(),
+            formattedTree.of((state) => markdown.parse(state.doc.toString())),
+          ],
+        }),
+        dispatch(spec) {
+          target.state = target.state.update(spec).state
+        },
+        focus() {},
+      }
+      return target
+    }
+    // From inside the nested node into the paragraph after the list or quote.
+    editor.commands.setTextSelection({
+      from: position(start) + 1,
+      to: position('plainD') + 3,
+    })
+    assert.equal(editor.isActive(type), true, id)
+    const outside = formatted(
+      source.indexOf(start) + 1,
+      source.indexOf('plainD') + 3,
+    )
+    const state = sourceFormatting(outside).inspect().state(id)
+    assert.equal(state.pressed, false, id)
+    if (type === 'blockquote') {
+      // The rich editor's toggle tries to lift its double-counted quote and
+      // refuses; the formatted view quotes the selected blocks, which join
+      // the quote around the selection's start.
+      assert.equal(command(editor.can().chain()).run(), false)
+      assert.equal(state.disabled, false)
+      assert.equal(sourceFormatting(outside).run('quote'), true)
+      assert.equal(
+        outside.state.doc.toString(),
+        '> quoteA\n>\n> > quoteB\n> >\n> quoteC\n> \n> plainD',
+      )
+      assert.equal(
+        richEditor(outside.state.doc.toString()).state.doc.toString(),
+        'doc(blockquote(paragraph("quoteA"), blockquote(paragraph("quoteB")), paragraph("quoteC"), paragraph("plainD")))',
+      )
+      assert.equal(undoDepth(outside.state), 1)
+    } else
+      assert.equal(state.disabled, !command(editor.can().chain()).run(), id)
+    // Inside the nested node both editors report it.
+    editor.commands.setTextSelection({
+      from: position(start) + 1,
+      to: position(nested) + 2,
+    })
+    assert.equal(editor.isActive(type), true, id)
+    const inside = formatted(
+      source.indexOf(start) + 1,
+      source.indexOf(nested) + 2,
+    )
+    assert.equal(sourceFormatting(inside).inspect().state(id).pressed, true, id)
+    editor.destroy()
+  }
 })
 
 /** Syntax tree steps: node and cursor moves between parents, children and siblings. */
@@ -753,7 +948,7 @@ test('formatted toolbar states match the rich toolbar with syntax features turne
             } catch {}
             const expected = {
               pressed: richPressed(editor, active, attrs),
-              disabled: !allowed,
+              disabled: richDisabled(editor, active, allowed),
             }
             const { pressed, disabled } = inspection.state(id)
             comparisons++
