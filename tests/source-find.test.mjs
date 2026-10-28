@@ -2,7 +2,10 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { EditorSelection, EditorState } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
-import { sourceFindHighlights } from '../src/renderer/src/source-find.ts'
+import {
+  renderedFindHighlights,
+  sourceFindHighlights,
+} from '../src/renderer/src/source-find.ts'
 import { SourceStore } from '../src/shared/source-buffer.ts'
 import { searchSourceLiteral } from '../src/shared/source-search.ts'
 import { SourceSearchIndex } from '../src/shared/source-search-index.ts'
@@ -39,6 +42,74 @@ function highlights(
   })
   return result
 }
+
+test('rendered highlights mark contributing segments and the selected offscreen envelope', () => {
+  const doc = EditorState.create({ doc: 'hello **world** and tail' }).doc
+  const matches = [
+    {
+      from: 0,
+      to: 13,
+      precise: true,
+      segments: [
+        { from: 0, to: 6 },
+        { from: 8, to: 13 },
+      ],
+    },
+  ]
+  const highlight = (selection, current = true) => {
+    const state = EditorState.create({
+      doc,
+      selection,
+      extensions: [renderedFindHighlights(matches, current, doc)],
+    })
+    const found = []
+    state
+      .facet(EditorView.decorations)[0]({ state })
+      .between(0, doc.length, (from, to, value) => {
+        found.push([from, to, value.spec.class])
+      })
+    return found
+  }
+  const selected = 'cm-searchMatch cm-searchMatch-selected'
+  assert.deepEqual(highlight({ anchor: 0, head: 13 }), [
+    [0, 6, selected],
+    [8, 13, selected],
+  ])
+  assert.deepEqual(highlight({ anchor: 20, head: 24 }), [
+    [0, 6, 'cm-searchMatch'],
+    [8, 13, 'cm-searchMatch'],
+    [20, 24, selected],
+  ])
+  assert.deepEqual(highlight({ anchor: 20, head: 24 }, false), [
+    [0, 6, 'cm-searchMatch'],
+    [8, 13, 'cm-searchMatch'],
+  ])
+})
+
+test('rendered highlights discard ranges after a document edit', () => {
+  const doc = EditorState.create({ doc: 'hello **world**' }).doc
+  const state = EditorState.create({
+    doc,
+    extensions: [
+      renderedFindHighlights(
+        [
+          {
+            from: 0,
+            to: 13,
+            precise: true,
+            segments: [
+              { from: 0, to: 6 },
+              { from: 8, to: 13 },
+            ],
+          },
+        ],
+        false,
+        doc,
+      ),
+    ],
+  }).update({ changes: { from: 0, insert: 'x' } }).state
+  assert.equal(state.facet(EditorView.decorations)[0]({ state }).size, 0)
+})
 
 test('source highlights agree with worker ranges across sigma, expansions and scalar seams', () => {
   const text = `${'x'.repeat(15)}😀İ e\u0301 ß ẞ ΟΔΟΣ οδος οδοσ;ΑΣΑ ΑςΑ ΣΣ.`

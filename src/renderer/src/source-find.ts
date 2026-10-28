@@ -5,8 +5,14 @@ import {
   StateField,
   type Text,
 } from '@codemirror/state'
-import { Decoration, EditorView, ViewPlugin } from '@codemirror/view'
+import {
+  Decoration,
+  EditorView,
+  ViewPlugin,
+  type ViewUpdate,
+} from '@codemirror/view'
 import { foldSearchText } from '../../shared/search-fold.ts'
+import type { SourceMatch } from '../../shared/source-search.ts'
 import { type FindRange, findWindow, visibleRange } from './find-window.ts'
 
 /** Resume the worker's non-overlap phase within one bounded scan interval. */
@@ -87,6 +93,39 @@ export function sourceFindHighlights(
   })
 }
 
+/** Highlight contributing source segments without painting hidden Markdown. */
+export function renderedFindHighlights(
+  matches: readonly SourceMatch[],
+  current: boolean,
+  document: Text,
+) {
+  return EditorView.decorations.of((view) => {
+    if (view.state.doc !== document) return Decoration.none
+    const { selection } = view.state
+    const marks: Range<Decoration>[] = []
+    const mark = (from: number, to: number, selected: boolean) =>
+      marks.push(
+        Decoration.mark({
+          class: selected
+            ? 'cm-searchMatch cm-searchMatch-selected'
+            : 'cm-searchMatch',
+        }).range(from, to),
+      )
+    let found = false
+    for (const match of matches) {
+      const selected = selection.ranges.some(
+        (range) => range.from === match.from && range.to === match.to,
+      )
+      found ||= selected
+      for (const segment of match.segments ?? [match])
+        mark(segment.from, segment.to, selected)
+    }
+    if (current && !found && !selection.main.empty)
+      mark(selection.main.from, selection.main.to, true)
+    return Decoration.set(marks, true)
+  })
+}
+
 const setWindow = StateEffect.define<FindRange>()
 
 /** Positions near the formatted view's screen whose matches are highlighted. */
@@ -101,6 +140,25 @@ const formattedWindow = StateField.define<FindRange | null>({
     return from < to ? { from, to } : null
   },
 })
+
+/** The formatted highlight window, measured before its first worker request. */
+export function formattedFindViewport(view: EditorView): FindRange {
+  const shown = view.state.field(formattedWindow, false)
+  if (shown) return shown
+  const visible = visibleRange(view.contentDOM, (node, offset) =>
+    view.posAtDOM(node, offset),
+  )
+  return visible ? findWindow(visible, view.state.doc.length) : view.viewport
+}
+
+/** The highlight window changed by an update, if any. */
+export function movedFindWindow(update: ViewUpdate) {
+  let moved: FindRange | null = null
+  for (const tr of update.transactions)
+    for (const effect of tr.effects)
+      if (effect.is(setWindow)) moved = effect.value
+  return moved
+}
 
 /** Bounds formatted find highlights by the screen, however long its lines. */
 export const formattedFindWindow = [

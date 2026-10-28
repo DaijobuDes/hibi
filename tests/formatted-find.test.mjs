@@ -7,6 +7,7 @@ import { renderedReplaceEdits } from '../src/shared/rendered-replace.ts'
 import { electron, waitForDocumentEditor } from './electron.mjs'
 import { selectFormattedEngine } from './formatted-engine.mjs'
 import { pressShortcut, replaceSourceText } from './keyboard.mjs'
+import { clickMenu } from './menu.mjs'
 import { waitForAsync } from './poll.mjs'
 
 const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
@@ -25,7 +26,7 @@ async function measureFindLayout(rich) {
 
 // The rich editor highlights matches overlapping the lines on screen and about
 // a screen of text, at least 2,000 characters, to each side.
-async function denseHighlights(page, rich) {
+async function denseHighlights(page, rich, query = 'needle') {
   await measureFindLayout(rich)
   await page.evaluate(
     () =>
@@ -33,7 +34,7 @@ async function denseHighlights(page, rich) {
         requestAnimationFrame(() => requestAnimationFrame(resolve)),
       ),
   )
-  return rich.evaluate((element) => {
+  return rich.evaluate((element, query) => {
     const view = element.cmTile.root.view
     const box = element.getBoundingClientRect()
     const pane = element.closest('.rich-pane').getBoundingClientRect()
@@ -52,7 +53,7 @@ async function denseHighlights(page, rich) {
       last: positions.at(-1),
     })
     const overlaps = (start, range) =>
-      start < range.to && start + 'needle'.length > range.from
+      start < range.to && start + query.length > range.from
     // The selected match stays highlighted outside the window.
     const [selected, near] = [true, false].map((selected) =>
       [...element.querySelectorAll('.cm-searchMatch')]
@@ -67,12 +68,12 @@ async function denseHighlights(page, rich) {
       ...selected.filter((start) => overlaps(start, window)),
     ].sort((a, b) => a - b)
     const highlighted = starts(positions)
-    const matches = [...view.state.doc.toString().matchAll(/needle/g)].map(
-      (match) => match.index,
-    )
+    const matches = [
+      ...view.state.doc.toString().matchAll(new RegExp(query, 'g')),
+    ].map((match) => match.index)
     return {
       count: highlighted.count,
-      units: highlighted.last + 'needle'.length - highlighted.first,
+      units: highlighted.last + query.length - highlighted.first,
       highlighted,
       expected: starts(matches.filter((start) => overlaps(start, window))),
       selected: selected.length,
@@ -88,7 +89,7 @@ async function denseHighlights(page, rich) {
         .reduce((sum, range) => sum + range.to - range.from, 0),
       ranges: view.visibleRanges.map((range) => [range.from, range.to]),
     }
-  })
+  }, query)
 }
 
 // Scrolls the pane to a fraction of its height, then waits until CodeMirror
@@ -398,7 +399,6 @@ test('rendered backend returns source provenance and replacement edits make one 
 
 test('formatted find matches rendered phrases across markdown marks and returns focus without editing', {
   timeout: 30000,
-  todo: 'formatted gap find-001: formatted find must match rendered phrases across hidden marks',
 }, async (t) => {
   const markdown = '# title\n\nhello **world** and hello world.\n\nHELLO world.'
   const { page, rich, input, bar, count } = await openFind(t, markdown)
@@ -425,6 +425,59 @@ test('formatted find matches rendered phrases across markdown marks and returns 
   assert.equal(
     await rich.evaluate((element) => element === document.activeElement),
     true,
+  )
+})
+
+test('formatted find falls back for defined references and retries rendered text after an edit', {
+  timeout: 45000,
+}, async (t) => {
+  const markdown = 'hello [world][r] and hello world.\n\n[r]: /url'
+  const { page, rich, input, count } = await openFind(t, markdown)
+  await input.fill('hello world')
+  await count('1/1')
+  await input.press('Enter')
+  await count('1/1')
+  assert.equal(
+    await page.locator('.find-bar output').getAttribute('aria-label'),
+    'Find matches',
+  )
+  const edited = 'hello **world** and hello world.'
+  await rich.evaluate((element, insert) => {
+    const view = element.cmTile.root.view
+    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert } })
+  }, edited)
+  await count('0/2')
+  await input.press('Enter')
+  await count('1/2')
+  assert.equal(
+    (await page.evaluate(() => window.hibi.getDocument())).markdown,
+    edited,
+  )
+})
+
+test('formatted find follows the active syntax configuration', {
+  timeout: 45000,
+}, async (t) => {
+  const markdown = 'hello **world** and hello world.'
+  const { app, page, input, count } = await openFind(t, markdown)
+  await input.fill('hello world')
+  await count('1/2')
+  for (const enabled of [false, true]) {
+    await clickMenu(app, 'Settings')
+    await page.getByRole('tab', { name: /^syntax$/i, exact: true }).click()
+    await page
+      .getByRole('checkbox', { name: /^bold$/i, exact: true })
+      .setChecked(enabled)
+    await page
+      .getByRole('button', { name: /^back to app$/i, exact: true })
+      .click()
+    await pressShortcut(app, `${mod}+f`)
+    await input.press('Enter')
+    await count(enabled ? '1/2' : '1/1')
+  }
+  assert.equal(
+    (await page.evaluate(() => window.hibi.getDocument())).markdown,
+    markdown,
   )
 })
 
@@ -606,6 +659,13 @@ test('formatted find keeps highlights bounded when match count grows from ten th
   // denser than this text, so that stays under ten screens of it.
   for (const { rendered, screen } of [nearby, more, ...scrolled])
     assert.ok(rendered <= 12 * screen, JSON.stringify({ rendered, screen }))
+  // A bounded window can contain more than one page of highlights.
+  await scrollFormatted(rich, 0)
+  await input.fill('e')
+  await count('1/300000')
+  const paged = await denseHighlights(page, rich, 'e')
+  assert.ok(paged.count > 512, JSON.stringify(paged))
+  assert.deepEqual(paged.highlighted, paged.expected)
   assert.equal(
     (await page.evaluate(() => window.hibi.getDocument())).markdown,
     larger,
@@ -658,15 +718,7 @@ test('formatted and raw source find retain their own counts, accent folding, rep
   const markdown = '# title\n\nhello **world** and hello world.\n\nHELLO world.'
   const { app, page, source, input, bar, count } = await openFind(t, markdown)
   await input.fill('hello world')
-  await t.test(
-    'formatted phrases still match across marks',
-    {
-      todo: 'formatted gap find-003: formatted phrase counts must include matches across marks',
-    },
-    async () => {
-      await count('1/3')
-    },
-  )
+  await count('1/3')
   await input.press('Escape')
   await page.getByRole('button', { name: 'Source view', exact: true }).click()
   await waitForDocumentEditor(app, page, { name: 'Markdown editor' })

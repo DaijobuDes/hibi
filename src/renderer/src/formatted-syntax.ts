@@ -872,6 +872,8 @@ export type FormattedSyntax = {
    * mapped through the edit, instead of rendering the edited chunks bare.
    */
   settling: (state: EditorState) => boolean
+  /** The exact active configuration to use for rendered worker requests. */
+  config: (state: EditorState) => BoundaryConfig | null
 }
 
 /** Chunked Markdown syntax for one formatted editor configuration. */
@@ -917,5 +919,6 @@ export function formattedSyntax(
       }
     },
     settling: (state) => state.field(field).settling,
+    config: (state) => boundaryConfig(state, options, syntax.prefixOf(state)),
   }
 }
