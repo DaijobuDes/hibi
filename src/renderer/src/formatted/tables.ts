@@ -36,6 +36,7 @@ import {
   tableKey,
   updateTableLayouts,
 } from '../table-layout-store.ts'
+import { customBody } from './custom-body.ts'
 import {
   CellEditor,
   type CellHost,
@@ -84,13 +85,15 @@ type CellConfig = {
   views: readonly FormattedNodeView[]
   literal: readonly string[]
   inputs: readonly unknown[]
+  customBody: boolean
 }
 
 const sameConfig = (a: CellConfig, b: CellConfig) =>
   a.markdown === b.markdown &&
   a.views === b.views &&
   a.literal === b.literal &&
-  a.inputs === b.inputs
+  a.inputs === b.inputs &&
+  a.customBody === b.customBody
 
 /**
  * A table: lines `first` (header) to `first + rows + 1` of `doc`, replaced
@@ -545,6 +548,7 @@ class TableView {
         paragraph,
         this.now(line.from + cell.from),
         content.source,
+        this.widget.config.customBody,
       )
     else paragraph.append(document.createElement('br'))
     element.append(paragraph)
@@ -855,6 +859,7 @@ class TableView {
   private host(): CellHost {
     return {
       main: this.view,
+      customBody: () => this.widget.config.customBody,
       current: () => this.current,
       span: () => (this.editing ? this.span(this.editing) : null),
       fill: (text) => this.fill(text),
@@ -1380,6 +1385,7 @@ class TableView {
         element,
         this.now(header.from + cell.from),
         content.source,
+        this.widget.config.customBody,
       )
       return element.textContent ?? ''
     })
@@ -1945,6 +1951,7 @@ export const contribution: FormattedContribution = {
               views: state.facet(formattedViews),
               literal: state.facet(formattedLiteral),
               inputs: state.facet(formattedRenderInputs),
+              customBody: customBody(node.node),
             },
           ),
           inline ? undefined : { block: true },

@@ -40,6 +40,7 @@ import { editorExtensions } from '../src/renderer/src/markdown.ts'
 import { markdownSyntax } from '../src/renderer/src/markdown-syntax.ts'
 import { defaultNoteSyntax } from '../src/shared/note-syntax.ts'
 import { SourceStore } from '../src/shared/source-buffer.ts'
+import { customBodyBoldCases } from './fixtures/custom-body.mjs'
 
 const flavors = [
   {
@@ -587,3 +588,37 @@ test('formatted text and counts match the rich view', () => {
     )
   }
 })
+
+for (const fixture of customBodyBoldCases)
+  test(`custom body bold counts: ${fixture.name}`, () => {
+    markdownSyntax.setEnabled('core.bold', false)
+    try {
+      for (const suffix of ['', '\n\ntail']) {
+        const source = fixture.source + suffix
+        const expected = fixture.text + (suffix ? '\ntail' : '')
+        assert.equal(native(source), expected, source)
+        const syntax = {
+          ...defaultNoteSyntax,
+          alerts: true,
+          textExtras: true,
+          disabledFeatures: ['core.bold'],
+        }
+        assert.equal(richText(source, syntax).slice(1), expected, source)
+        const counter = new FormattedCounter(
+          new SourceStore(source, { tabId: 'custom-count', revision: 0 }),
+          syntax,
+        )
+        try {
+          const work = counter.read()
+          let step
+          do step = work.next()
+          while (!step.done)
+          assert.deepEqual(step.value, countText(expected), source)
+        } finally {
+          counter.dispose()
+        }
+      }
+    } finally {
+      markdownSyntax.setEnabled('core.bold', true)
+    }
+  })

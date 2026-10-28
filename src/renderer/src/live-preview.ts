@@ -33,6 +33,7 @@ import {
 import { highlightTree } from '@lezer/highlight'
 import { listWindow, parsedChunks, uncovered } from './chunked-markdown'
 import { codeHighlighter } from './code-languages'
+import { customBody } from './formatted/custom-body'
 import {
   blockBreak,
   codeIndent,
@@ -147,18 +148,11 @@ let blocks = noBlocks
 
 /** Native custom bodies drop unsupported bold marks while keeping their text. */
 function customBold(node: SyntaxNodeRef, literal: ReadonlySet<string>) {
-  if (node.name !== 'StrongEmphasis' || !literal.has(node.name)) return false
-  let alert = false
-  for (let parent = node.node.parent; parent; parent = parent.parent) {
-    if (parent.name === 'Subtext') return true
-    if (parent.name === 'ListItem') return false
-    if (
-      parent.name === 'Blockquote' &&
-      parent.firstChild?.nextSibling?.name === 'AlertTitle'
-    )
-      alert = true
-  }
-  return alert
+  return (
+    node.name === 'StrongEmphasis' &&
+    literal.has(node.name) &&
+    customBody(node.node)
+  )
 }
 
 /** Blocks the view lays out; link reference definitions take no space. */
