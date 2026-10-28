@@ -4,9 +4,12 @@ import type {
 } from '../../shared/source-buffer.ts'
 import type { RawEdit } from '../../shared/source-operations.ts'
 import { countText } from './count.ts'
-import { localCount } from './local-count.ts'
+import { localCount, sourceCountBoundary } from './local-count.ts'
 
 type Count = ReturnType<typeof countText>
+
+// Larger contexts are rebuilt by the scheduled count job.
+const editContextUnits = 8192
 
 /** worker-owned literal counts over the same streamed source as formatted counts. */
 export class SourceCounter {
@@ -33,6 +36,7 @@ export class SourceCounter {
         0,
         before.utf16Length,
         true,
+        editContextUnits,
       )
       if (!delta) {
         this.#count = null
@@ -73,13 +77,17 @@ export class SourceCounter {
     let pending = '',
       words = 0,
       characters = 0
-    // ponytail: runs without stable spaces retain their segmentation context;
+    // ponytail: runs without stable spaces or line endings retain their context;
     // composable unicode summaries would bound those runs too.
     for (const chunk of this.store.snapshot().chunks()) {
       let cut = -1
-      for (const match of chunk.matchAll(/ (?=[a-zA-Z0-9])/g))
+      for (const match of chunk.matchAll(sourceCountBoundary))
         cut = match.index + 1
-      if (cut < 0 && pending.endsWith(' ') && /^[a-zA-Z0-9]/.test(chunk))
+      if (
+        cut < 0 &&
+        ((pending.endsWith(' ') && /^[a-zA-Z0-9]/.test(chunk)) ||
+          (pending.endsWith('\r') && /^[^\n]/.test(chunk)))
+      )
         cut = 0
       if (cut >= 0) {
         const count = countText(pending + chunk.slice(0, cut))
