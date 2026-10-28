@@ -377,6 +377,23 @@ test('reference lookup follows edits to multiline title closing delimiters', (t)
   assert.equal(f.references.lookup('ref').title, 'title\n[other]: /inside\nend')
 })
 
+test('indented reference table titles survive delimiter edits and undo', (t) => {
+  for (const indent of ['    ', '\t'])
+    for (const eol of ['\n', '\r\n']) {
+      const text = ['[ref]: /x', `${indent}"a | b"`, '--|--', '', '[ref]'].join(
+        eol,
+      )
+      const f = fixture(t, text)
+      const expected = { href: '/x', title: 'a | b' }
+      assert.deepEqual(f.references.lookup('ref'), expected, text)
+      const from = text.indexOf('--|--')
+      f.edit(from, from + 5, 'plain')
+      assert.deepEqual(f.references.lookup('ref'), expected)
+      f.edit(from, from + 5, '--|--')
+      assert.deepEqual(f.references.lookup('ref'), expected)
+    }
+})
+
 test('paragraph interruptions end indented titles and expose following references', (t) => {
   for (const line of ['# heading', '***', '~~~']) {
     const title = `title\n${line}\n[other]: /hidden\nend`,

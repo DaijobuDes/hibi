@@ -46,9 +46,10 @@ export function endsReferenceTitle(
     paragraphRule(marked.Lexer.rules.block.normal.paragraph)?.test(source)
   )
     return true
-  // The GFM paragraph rule only finds table candidates; cell counts must agree.
+  // Match block precedence on container-relative text before checking cell counts.
   const end = source.indexOf('\n', source.indexOf('\n') + 1)
-  return !!tableTokenizer.table(end < 0 ? source : source.slice(0, end))
+  const lines = end < 0 ? source : source.slice(0, end)
+  return !tableTokenizer.code(lines) && !!tableTokenizer.table(lines)
 }
 
 export function lexMarkdown(source: string) {

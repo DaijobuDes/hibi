@@ -136,6 +136,32 @@ test('regional definitions retain first and closing table title boundaries', (t)
         }
 })
 
+test('indented reference table titles retain frozen counts through edits and undo', (t) => {
+  for (const indent of ['    ', '\t'])
+    for (const eol of ['\n', '\r\n'])
+      for (const gfm of [false, true]) {
+        const text = [
+          '[ref]: /x',
+          `${indent}"a | b"`,
+          '--|--',
+          '',
+          '[ref]',
+        ].join(eol)
+        const config = { ...syntax, gfm }
+        const f = fixture(t, text, config)
+        const expected = { words: 1, characters: 9 }
+        assert.deepEqual(f.expected(), expected, text)
+        assert.deepEqual(f.read(), expected, text)
+        const from = text.indexOf('--|--')
+        f.edit(from, from + 5, 'plain')
+        assert.deepEqual(f.expected(), { words: 2, characters: 9 })
+        assert.deepEqual(f.read(), f.expected())
+        f.edit(from, from + 5, '--|--', 'undo')
+        assert.deepEqual(f.expected(), expected)
+        assert.deepEqual(f.read(), expected)
+      }
+})
+
 const references = [
   '[ref\n\n]: ht',
   '[re\n\nf]: https://example.test',

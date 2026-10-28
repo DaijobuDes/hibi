@@ -1006,6 +1006,10 @@ test('reference title edges match CommonMark and micromark GFM', () => {
             `[ref]: /x ${open}one\na | b${close}\n--|--\n\n[ref]`,
             `[ref]: /x ${open}a | b${close}\n--|--\n\n[ref]`,
             `[ref]: /x\n${open}a | b${close}\n--|--\n\n[ref]`,
+            `[ref]: /x\n    ${open}a | b${close}\n--|--\n\n[ref]`,
+            `[ref]: /x\n\t${open}a | b${close}\n--|--\n\n[ref]`,
+            `[ref]: /x\n    ${open}a | b\n--|--\nlast${close}\n\n[ref]`,
+            `[ref]: /x\n\t${open}a | b\n--|--\nlast${close}\n\n[ref]`,
             `[ref]: /x\n${open}one\na | b${close}\n--|--\n\n[ref]`,
             `[ref]: /x\n${open}a \\| b\n--|--\nlast${close}\n\n[ref]`,
             `[ref]: /x\n${open}a | b | c\n--|--\nlast${close}\n\n[ref]`,
@@ -1042,6 +1046,37 @@ test('reference title edges match CommonMark and micromark GFM', () => {
           remove()
         }
       }
+})
+
+test('reference table titles measure indentation relative to their container', () => {
+  for (const [first, rest, indent, hasTitle] of [
+    ['', '', '    ', true],
+    ['> ', '> ', '    ', true],
+    ['- ', '  ', '    ', true],
+    ['10. ', '    ', '    ', true],
+    ['- ', '  ', '  ', false],
+  ])
+    for (const gfm of [false, true]) {
+      const source = `${first}[ref]: /x\n${rest}${indent}"a | b"\n${rest}--|--\n\n[ref]`
+      const title = !gfm || hasTitle ? 'a | b' : null
+      const oracle = micromark(
+        source,
+        gfm ? { extensions: [gfmSyntax()], htmlExtensions: [gfmHtml()] } : {},
+      )
+      assert.equal(oracle.includes('title="a | b"'), title !== null, source)
+      const markdown = new Marked({ gfm }, blockMarkdown)
+      for (const tokens of [
+        markdown.lexer(source),
+        new Lexer({ gfm, tokenizer: new BlockTokenizer() }).lex(source),
+      ])
+        assert.equal(tokens.links.ref?.title ?? null, title, source)
+      assert.equal(
+        markdown.parse(source).includes('<table>'),
+        gfm && !hasTitle,
+        source,
+      )
+      assert.equal(references(source, gfm)?.title ?? null, title, source)
+    }
 })
 
 test('reference title interruption windows stay linear through 20000 table candidates', async (t) => {
