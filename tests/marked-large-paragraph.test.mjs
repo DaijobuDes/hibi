@@ -1079,6 +1079,19 @@ test('reference table titles measure indentation relative to their container', (
     }
 })
 
+test('quote-tab reference titles stop at gfm tables', {
+  todo: 'formatted gap export-006: quote-tab reference titles must stop at gfm tables',
+}, () => {
+  const source = '> [ref]: /x\n> \t"a | b"\n> --|--\n\n[ref]'
+  const oracle = micromark(source, {
+    extensions: [gfmSyntax()],
+    htmlExtensions: [gfmHtml()],
+  })
+  assert.match(oracle, /<table>/)
+  const markdown = new Marked({ gfm: true }, blockMarkdown)
+  assert.equal(markdown.parse(source).trim(), oracle)
+})
+
 test('reference title interruption windows stay linear through 20000 table candidates', async (t) => {
   for (const count of [1000, 4000, 16000, 20000])
     await t.test(String(count), () => {
