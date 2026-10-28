@@ -20,8 +20,7 @@ accepted differences are not gaps; their tests assert each engine. the codemirro
 | input-045 | [editor-input.test.mjs:2307](editor-input.test.mjs#L2307) | native table into a table input preserves rendered cells | 8a: native input, structure and toolbar state |
 | input-046 | [editor-input.test.mjs:2309](editor-input.test.mjs#L2309) | native multiline into a table keeps inserted caret and following text | 8a: native input, structure and toolbar state |
 | semantics-001 | [editor-plugins.test.mjs:67](editor-plugins.test.mjs#L67) | source-view word counts must include markdown characters | 9: outline semantics and diagram lifecycle |
-| input-075 | [formatted-commands.test.mjs:1043](formatted-commands.test.mjs#L1043) | multi-line input with backticks inside inline code keeps the code span | 8a: native input, structure and toolbar state |
-| input-blank-tail-001 | [formatted-commands.test.mjs:1190](formatted-commands.test.mjs#L1190) | unparsed space/tab tails longer than 4096 units must retain the same empty paragraph as a complete parse | 8a: native input, trailing-whitespace index (#559) |
+| input-075 | [formatted-commands.test.mjs:1045](formatted-commands.test.mjs#L1045) | multi-line input with backticks inside inline code keeps the code span | 8a: native input, structure and toolbar state |
 | find-001 | [formatted-find.test.mjs:401](formatted-find.test.mjs#L401) | formatted find must match rendered phrases across hidden marks | 4a: rendered find projection |
 | find-003 | [formatted-find.test.mjs:664](formatted-find.test.mjs#L664) | formatted phrase counts must include matches across marks | 4a: rendered find projection |
 | input-space-001 | [formatted-multiline-regressions.test.mjs:241](formatted-multiline-regressions.test.mjs#L241) | multiline input after a long formatted space run must retain native paragraph boundaries; the bounded fallback currently inserts a soft break | 8a: native input, structure and toolbar state |

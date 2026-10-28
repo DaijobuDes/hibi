@@ -677,6 +677,15 @@ export class SourceSnapshot {
   materialize() {
     return this.sliceRaw(0, this.utf16Length)
   }
+  /** Whitespace proof from indexed counts; reads only the range's edge strides. */
+  isWhitespace(from: number, to = this.utf16Length): boolean {
+    this.#range(from, to)
+    const root = roots.get(this)!
+    return (
+      this.#tree.prefix(root, from).nonWhitespaceUnits ===
+      this.#tree.prefix(root, to).nonWhitespaceUnits
+    )
+  }
   #seam(position: number) {
     if (position <= 0 || position >= this.utf16Length) return ''
     return this.sliceRaw(

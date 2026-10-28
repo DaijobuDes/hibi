@@ -6,6 +6,7 @@ export type TextMetrics = Readonly<{
   normalizedUnits: number
   utf8Bytes: number
   breaks: number
+  nonWhitespaceUnits: number
   firstUnit: number
   lastUnit: number
 }>
@@ -14,6 +15,7 @@ export const emptyMetrics: TextMetrics = Object.freeze({
   normalizedUnits: 0,
   utf8Bytes: 0,
   breaks: 0,
+  nonWhitespaceUnits: 0,
   firstUnit: -1,
   lastUnit: -1,
 })
@@ -30,6 +32,7 @@ export function combineMetrics(a: TextMetrics, b: TextMetrics): TextMetrics {
     normalizedUnits: a.normalizedUnits + b.normalizedUnits - crlf,
     utf8Bytes: a.utf8Bytes + b.utf8Bytes - 2 * pair,
     breaks: a.breaks + b.breaks - crlf,
+    nonWhitespaceUnits: a.nonWhitespaceUnits + b.nonWhitespaceUnits,
     firstUnit: a.firstUnit,
     lastUnit: b.lastUnit,
   }
@@ -43,6 +46,13 @@ const encodedUnitBytes = (unit: number, previous: number) =>
         ? 1
         : 3
 
+const nonWhitespace = (unit: number) =>
+  unit === 32 || (unit >= 9 && unit <= 13)
+    ? 0
+    : unit < 128 || /\S/.test(String.fromCharCode(unit))
+      ? 1
+      : 0
+
 /** Private storage; published pieces freeze their readable [from, to) extent. */
 export class SourceChunk {
   #text: string
@@ -52,6 +62,7 @@ export class SourceChunk {
   #normalized: Float64Array
   #bytes: Float64Array
   #breaks: Float64Array
+  #nonWhitespace: Uint32Array
   readonly #scanned: (units: number) => void
 
   constructor(text: string, scanned: (units: number) => void) {
@@ -62,9 +73,11 @@ export class SourceChunk {
     this.#normalized = new Float64Array(count)
     this.#bytes = new Float64Array(count)
     this.#breaks = new Float64Array(count)
+    this.#nonWhitespace = new Uint32Array(count)
     let normalized = 0,
       bytes = 0,
       breaks = 0,
+      nonWhitespaceUnits = 0,
       previous = -1
     for (let at = 0; at < text.length; at++) {
       const unit = text.charCodeAt(at)
@@ -72,12 +85,14 @@ export class SourceChunk {
       normalized += Number(!crlf)
       breaks += Number(unit === 13 || (unit === 10 && !crlf))
       bytes += encodedUnitBytes(unit, previous)
+      nonWhitespaceUnits += nonWhitespace(unit)
       previous = unit
       if ((at + 1) % this.#stride === 0) {
         const index = (at + 1) / this.#stride
         this.#normalized[index] = normalized
         this.#bytes[index] = bytes
         this.#breaks[index] = breaks
+        this.#nonWhitespace[index] = nonWhitespaceUnits
       }
     }
     scanned(text.length)
@@ -94,9 +109,11 @@ export class SourceChunk {
     chunk.#normalized = new Float64Array(count)
     chunk.#bytes = new Float64Array(count)
     chunk.#breaks = new Float64Array(count)
+    chunk.#nonWhitespace = new Uint32Array(count)
     let normalized = 0,
       bytes = 0,
-      breaks = 0
+      breaks = 0,
+      nonWhitespaceUnits = 0
     return Object.freeze({
       chunk,
       remaining: () => capacity - chunk.#length,
@@ -112,12 +129,14 @@ export class SourceChunk {
           normalized += Number(!crlf)
           breaks += Number(unit === 13 || (unit === 10 && !crlf))
           bytes += encodedUnitBytes(unit, previous)
+          nonWhitespaceUnits += nonWhitespace(unit)
           previous = unit
           if ((at + 1) % chunk.#stride === 0) {
             const index = (at + 1) / chunk.#stride
             chunk.#normalized[index] = normalized
             chunk.#bytes[index] = bytes
             chunk.#breaks[index] = breaks
+            chunk.#nonWhitespace[index] = nonWhitespaceUnits
           }
         }
         chunk.#length = to
@@ -144,7 +163,8 @@ export class SourceChunk {
     return (
       this.#normalized.byteLength +
       this.#bytes.byteLength +
-      this.#breaks.byteLength
+      this.#breaks.byteLength +
+      this.#nonWhitespace.byteLength
     )
   }
   slice(from: number, to: number) {
@@ -169,7 +189,8 @@ export class SourceChunk {
       start = index * this.#stride
     let normalized = this.#normalized[index]!,
       bytes = this.#bytes[index]!,
-      breaks = this.#breaks[index]!
+      breaks = this.#breaks[index]!,
+      nonWhitespaceUnits = this.#nonWhitespace[index]!
     let previous = this.#unit(start - 1)
     for (let at = start; at < to; at++) {
       const unit = this.#unit(at),
@@ -177,10 +198,11 @@ export class SourceChunk {
       normalized += Number(!crlf)
       breaks += Number(unit === 13 || (unit === 10 && !crlf))
       bytes += encodedUnitBytes(unit, previous)
+      nonWhitespaceUnits += nonWhitespace(unit)
       previous = unit
     }
     this.#scanned(to - start)
-    return { normalized, bytes, breaks }
+    return { normalized, bytes, breaks, nonWhitespaceUnits }
   }
 
   metrics(from: number, to: number): TextMetrics {
@@ -199,6 +221,7 @@ export class SourceChunk {
         a.bytes +
         2 * Number(highSurrogate(previous) && lowSurrogate(firstUnit)),
       breaks: b.breaks - a.breaks + crlf,
+      nonWhitespaceUnits: b.nonWhitespaceUnits - a.nonWhitespaceUnits,
       firstUnit,
       lastUnit: this.#unit(to - 1),
     }
