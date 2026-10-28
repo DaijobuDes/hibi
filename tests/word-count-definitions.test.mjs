@@ -112,6 +112,67 @@ test('regional definitions without bracket lookahead respect gfm table boundarie
       }
 })
 
+test('regional definitions retain first and closing table title boundaries', (t) => {
+  for (const [open, close] of [
+    ['"', '"'],
+    ["'", "'"],
+    ['(', ')'],
+  ])
+    for (const gfm of [false, true])
+      for (const eol of ['\n', '\r\n'])
+        for (const source of [
+          `[ref]: /x\n${open}a | b\n--|--\nlast${close}\n\n[ref]`,
+          `[ref]: /x ${open}one\na | b${close}\n--|--\n\n[ref]`,
+          `[ref]: /x ${open}a | b${close}\n--|--\n\n[ref]`,
+        ]) {
+          const text = source.replaceAll('\n', eol)
+          const f = fixture(t, text, { ...syntax, gfm })
+          assert.deepEqual(f.read(), f.expected(), text)
+          const from = text.indexOf('--|--')
+          f.edit(from, from + 5, 'plain')
+          assert.deepEqual(f.read(), f.expected())
+          f.edit(from, from + 5, '--|--', 'undo')
+          assert.deepEqual(f.read(), f.expected())
+        }
+})
+
+test('indented reference table titles retain frozen counts through edits and undo', (t) => {
+  for (const [first, rest, indent, hasTitle, characters] of [
+    ['', '', '    ', true, 9],
+    ['', '', '\t', true, 9],
+    ['> ', '> ', '\t', false, 10],
+    ['- > ', '  > ', '\t', true, 12],
+    ['10. > ', '    > ', '\t', false, 12],
+    ['> > ', '> > ', '\t', true, 11],
+  ])
+    for (const eol of ['\n', '\r\n'])
+      for (const gfm of [false, true]) {
+        const text = [
+          `${first}[ref]: /x`,
+          `${rest}${indent}"a | b"`,
+          `${rest}--|--`,
+          '',
+          '[ref]',
+        ].join(eol)
+        const config = { ...syntax, gfm }
+        const f = fixture(t, text, config)
+        const table = gfm && !hasTitle
+        const expected = {
+          words: table ? 3 : 1,
+          characters: characters + (table ? 4 : 0),
+        }
+        assert.deepEqual(f.expected(), expected, text)
+        assert.deepEqual(f.read(), expected, text)
+        const from = text.indexOf('--|--')
+        f.edit(from, from + 5, 'plain')
+        assert.deepEqual(f.expected(), { words: 2, characters })
+        assert.deepEqual(f.read(), f.expected())
+        f.edit(from, from + 5, '--|--', 'undo')
+        assert.deepEqual(f.expected(), expected)
+        assert.deepEqual(f.read(), expected)
+      }
+})
+
 const references = [
   '[ref\n\n]: ht',
   '[re\n\nf]: https://example.test',

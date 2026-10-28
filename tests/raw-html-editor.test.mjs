@@ -787,10 +787,29 @@ test('codemirror: literal html stays inert through native body edits, source swi
     }
   })
   assert.equal(copied.text, edited)
-  assert.doesNotMatch(
+  // Raw HTML copies as the literal text this view shows: the copy wrapper,
+  // paragraphs, html breaks and literal text are its only elements.
+  const copiedElements = await page.evaluate(
+    (html) =>
+      [
+        ...new DOMParser()
+          .parseFromString(html, 'text/html')
+          .body.querySelectorAll('*'),
+      ].map((element) =>
+        [
+          element.localName,
+          ...[...element.attributes].map(
+            ({ name, value }) => `${name}=${value}`,
+          ),
+        ].join(' '),
+      ),
     copied.html,
-    /<script|<iframe|<style| onerror=| onclick=/i,
   )
+  for (const element of copiedElements)
+    assert.match(
+      element,
+      /^(?:div data-hibi-markdown=|p|br|div class=hibi-literal-block|span class=hibi-literal-inline)$/,
+    )
   await native('cut')
   await saved('')
   await pressShortcut(app, `${mod}+z`)

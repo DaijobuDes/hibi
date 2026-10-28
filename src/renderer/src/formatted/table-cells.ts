@@ -22,6 +22,10 @@ import {
 } from '@codemirror/view'
 import { type SyntaxNodeRef, Tree } from '@lezer/common'
 import type { MarkdownConfig, MarkdownParser } from '@lezer/markdown'
+import {
+  literalText,
+  customBody as nativeBody,
+} from '../../../shared/formatted-custom-body.ts'
 import { formattedInlineParser } from '../../../shared/formatted-markdown.ts'
 import { runSourceHistory } from '../../../shared/source-history.ts'
 import {
@@ -98,6 +102,8 @@ type CellDecorations = {
   /** Hidden syntax delimiters, which the caret crosses together where they touch. */
   delimiter?(from: number, to: number): void
   widget(at: number, widget: WidgetType, side: number): void
+  /** The visible character and hidden backslash of an escape share a source unit. */
+  escape?(at: number, from: number): void
 }
 
 /**
@@ -112,6 +118,7 @@ function decorateCell(
   touched: (from: number, to: number) => boolean,
   from: number,
   source?: readonly number[],
+  customBody = false,
 ) {
   const to = from + (source?.[text.length] ?? text.length)
   const views = formattedNodeViews(state)
@@ -180,7 +187,10 @@ function decorateCell(
   cursor.firstChild()
   cursor.iterate((node) => {
     // Syntax whose setting is off shows as written, its children too.
-    if (literal.has(node.name)) return false
+    if (literalText(node.node, literal, customBody || nativeBody(node.node)))
+      return false
+    if (node.name === 'Escape')
+      out.escape?.(local(node.from + 1), local(node.from))
     const revealed = revealedFor(node)
     const nodeOut = sink(revealed)
     let skip = false
@@ -207,10 +217,10 @@ function decorateCell(
       out.mark(from, to, { class: name })
     switch (node.name) {
       case 'Emphasis':
-        style('hibi-lp-em', node.from, node.to)
+        if (!literal.has(node.name)) style('hibi-lp-em', node.from, node.to)
         return
       case 'StrongEmphasis':
-        style('hibi-lp-strong', node.from, node.to)
+        if (!literal.has(node.name)) style('hibi-lp-strong', node.from, node.to)
         return
       case 'EmphasisMark': {
         const parent = node.node.parent
@@ -250,11 +260,12 @@ function decorateCell(
         if (reference && !answer) return
         out.syntax(node.from, open.to)
         out.syntax(close.from, node.to)
-        out.link(
-          open.to,
-          close.from,
-          answer?.title ? { title: answer.title } : undefined,
-        )
+        if (!literal.has('Link'))
+          out.link(
+            open.to,
+            close.from,
+            answer?.title ? { title: answer.title } : undefined,
+          )
         return
       }
       case 'Autolink': {
@@ -262,12 +273,13 @@ function decorateCell(
         if (!url) return false
         out.syntax(node.from, url.from)
         out.syntax(url.to, node.to)
-        out.link(url.from, url.to)
+        if (!literal.has('Autolink')) out.link(url.from, url.to)
         return false
       }
       case 'URL': {
         const parent = node.node.parent?.name
         if (
+          !literal.has('URL') &&
           parent !== 'Link' &&
           parent !== 'Image' &&
           parent !== 'LinkReference'
@@ -290,9 +302,24 @@ function decorateCell(
   }
 }
 
-/** Where rendered text nodes and mark elements start in their cell's content. */
-export const textStarts = new WeakMap<Node, number>()
+/** Source boundaries of rendered text in its cell's content. */
+const textPositions = new WeakMap<
+  Node,
+  { from: number; start?: number; to?: number }
+>()
 export const markStarts = new WeakMap<Element, number>()
+
+/** Replacement glyphs and escaped characters include their complete source unit. */
+export function textPosition(node: Node, offset: number): number | null {
+  for (let current: Node | null = node; current; current = current.parentNode) {
+    const range = textPositions.get(current)
+    if (range)
+      return offset === 0
+        ? (range.start ?? range.from)
+        : (range.to ?? range.from + offset)
+  }
+  return null
+}
 
 /** A cell's inline Markdown as static DOM, as the formatted view renders text it does not reveal. */
 export function renderInline(
@@ -301,10 +328,12 @@ export function renderInline(
   into: HTMLElement,
   from = 0,
   source?: readonly number[],
+  customBody = false,
 ) {
   const marks: InlineMark[] = [],
     hidden: { from: number; to: number; widget: WidgetType | null }[] = [],
     widgets: { at: number; widget: WidgetType; side: number }[] = []
+  const escapes = new Map<number, number>()
   decorateCell(
     view.state,
     text,
@@ -314,10 +343,12 @@ export function renderInline(
       hide: (from, to, widget) => hidden.push({ from, to, widget }),
       marker() {},
       widget: (at, widget, side) => widgets.push({ at, widget, side }),
+      escape: (at, from) => escapes.set(at, from),
     },
     () => false,
     from,
     source,
+    customBody,
   )
   // Text between decoration boundaries, inside spans for the marks over it.
   const parents: HTMLElement[] = [into]
@@ -331,10 +362,16 @@ export function renderInline(
       parent.append(element)
       parents.push(element)
     } else if (op.type === 'close') parents.pop()
-    else if (op.type === 'widget') parent.append(op.widget.toDOM(view))
-    else {
+    else if (op.type === 'widget') {
+      const dom = op.widget.toDOM(view)
+      textPositions.set(dom, { from: op.from, to: op.to })
+      parent.append(dom)
+    } else {
       const node = document.createTextNode(text.slice(op.from, op.to))
-      textStarts.set(node, op.from)
+      textPositions.set(node, {
+        from: op.from,
+        start: escapes.get(op.from) ?? op.from,
+      })
       parent.append(node)
     }
   }
@@ -355,7 +392,12 @@ export function padding(text: string) {
 }
 
 /** Decorations of a cell editor: hidden padding, and the cell's Markdown rendered with markers under the selection. */
-function editorDecorations(main: EditorState, view: EditorView, from?: number) {
+function editorDecorations(
+  main: EditorState,
+  view: EditorView,
+  from?: number,
+  customBody = false,
+) {
   const text = view.state.doc.toString()
   const reveal =
     view.hasFocus && main.facet(showMarkdownMarkers)
@@ -398,6 +440,8 @@ function editorDecorations(main: EditorState, view: EditorView, from?: number) {
       (from, to) =>
         reveal.some((range) => range.from <= to && range.to >= from),
       from,
+      undefined,
+      customBody,
     )
   return {
     decorations: Decoration.set(decorations, true),
@@ -432,6 +476,8 @@ export type CellMove = 'next' | 'previous' | 'up' | 'down' | 'left' | 'right'
 export type CellHost = {
   /** The formatted view. */
   readonly main: EditorView
+  /** Whether native custom-body syntax surrounds the table. */
+  customBody(): boolean
   /** Whether the table's cell spans describe the current document. */
   current(): boolean
   /** The cell's text between its delimiters in the formatted view's document now; null while its row ends before it. */
@@ -442,6 +488,8 @@ export type CellHost = {
   move(move: CellMove): boolean
   /** Leave the table, after it or before it, back to the formatted view. */
   leave(after: boolean): void
+  /** Leave for a paragraph below a table that ends the note, as Mod-Enter does after a final block; false elsewhere. */
+  exit(): boolean
   /** Focus left the editor for something outside it. */
   blurred(editor: CellEditor): void
 }
@@ -479,7 +527,12 @@ export class CellEditor {
             decorations: this.decorations,
             atomic: this.atomic,
             runs: this.runs,
-          } = editorDecorations(host.main.state, view, host.span()?.from))
+          } = editorDecorations(
+            host.main.state,
+            view,
+            host.span()?.from,
+            host.customBody(),
+          ))
         }
         update(update: ViewUpdate) {
           // Local input reaches the parent after view.update. Keep mapped
@@ -503,6 +556,7 @@ export class CellEditor {
               host.main.state,
               update.view,
               host.span()?.from,
+              host.customBody(),
             ))
         }
       },
@@ -647,7 +701,10 @@ export class CellEditor {
               },
               { key: 'End', run: edge(true, false), shift: edge(true, true) },
               { key: 'Enter', run: cellLineBreak, shift: cellLineBreak },
-              { key: 'Mod-Enter', run: cellLineBreak },
+              {
+                key: 'Mod-Enter',
+                run: (view) => host.exit() || cellLineBreak(view),
+              },
               {
                 key: 'Escape',
                 run: () => {

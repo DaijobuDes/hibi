@@ -582,8 +582,7 @@ test('codemirror: right arrows exit final formatting, return inside and undo onl
     })
   }
   await t.test('next paragraph', async () => {
-    await replaceSourceText(page, rich, '*hello*\n\nnext')
-    await markerSelection(rich, 6)
+    await markerSource(rich, '*hello*\n\nnext', 6)
     await rich.press('ArrowRight')
     assert.equal(
       await rich.evaluate(

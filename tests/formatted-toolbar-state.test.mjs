@@ -3,6 +3,7 @@ import test from 'node:test'
 import { history, undo, undoDepth } from '@codemirror/commands'
 import { DocInput } from '@codemirror/language'
 import { EditorState, Text } from '@codemirror/state'
+import { EditorView } from '@codemirror/view'
 import { Tree } from '@lezer/common'
 import { GFM, parser } from '@lezer/markdown'
 import { Editor } from '@tiptap/core'
@@ -30,6 +31,7 @@ import {
 } from '../src/renderer/src/rich-source-preservation.ts'
 import {
   sourceFormatting,
+  storedMarkInput,
   tableActions,
 } from '../src/renderer/src/source-formatting.ts'
 import { ChunkedMarkdownParser } from '../src/shared/chunked-markdown.ts'
@@ -1503,7 +1505,7 @@ test("formatted toolbar actions write the rich editor's source", async (t) => {
       (id, _label, caret) => caret && id === 'link',
     ],
     [
-      'formatted gap action-001: a caret mark action formats the text typed next instead of writing empty delimiters',
+      'a caret mark action formats the text typed next instead of writing empty delimiters',
       (id, label, caret) => caret && marks.includes(id) && label !== 'cell',
     ],
     [
@@ -1592,6 +1594,7 @@ test("formatted toolbar actions write the rich editor's source", async (t) => {
           selection: { anchor, head },
           extensions: [
             history(),
+            storedMarkInput,
             formattedTree.of(() => tree),
             tableActions.of({
               active: () => cell,
@@ -1653,7 +1656,9 @@ test("formatted toolbar actions write the rich editor's source", async (t) => {
       compared,
       differences: Object.fromEntries(
         [...differences].map(([todo, rows]) => [
-          todo.split(':')[0].replace('formatted gap ', ''),
+          todo.startsWith('formatted gap ')
+            ? todo.split(':')[0].replace('formatted gap ', '')
+            : 'caret marks',
           rows.length,
         ]),
       ),
@@ -1664,7 +1669,113 @@ test("formatted toolbar actions write the rich editor's source", async (t) => {
     assert.deepEqual(undone, [])
   })
   for (const [todo] of causes)
-    await t.test(todo.slice(todo.indexOf(': ') + 2), { todo }, () => {
-      assert.deepEqual(differences.get(todo), [])
-    })
+    await t.test(
+      todo.replace(/^formatted gap [a-z0-9-]+: /, ''),
+      todo.startsWith('formatted gap ') ? { todo } : {},
+      () => {
+        assert.deepEqual(differences.get(todo), [])
+      },
+    )
+})
+
+const extras = parser.configure([GFM, subscriptSyntax])
+
+/** A formatted view of `doc`, with stored marks, that types like CodeMirror's input. */
+function typing(doc, anchor) {
+  const target = {
+    composing: false,
+    state: EditorState.create({
+      doc,
+      selection: { anchor },
+      extensions: [
+        formattedTree.of((state) => extras.parse(state.doc.toString())),
+        storedMarkInput,
+      ],
+    }),
+    dispatch(spec) {
+      this.state = this.state.update(spec).state
+    },
+    focus() {},
+    type(text) {
+      for (const character of text) {
+        const { from, to } = this.state.selection.main
+        const insert = () =>
+          this.state.update(this.state.replaceSelection(character))
+        if (
+          !this.state
+            .facet(EditorView.inputHandler)
+            .some((handler) => handler(this, from, to, character, insert))
+        )
+          this.state = insert().state
+      }
+      return this.state.doc.toString()
+    },
+  }
+  target.formatting = sourceFormatting(target)
+  target.pressed = (id) => target.formatting.inspect().state(id).pressed
+  return target
+}
+
+test('a formatted caret action stores its mark for the text typed next', () => {
+  const view = typing('plain end', 9)
+  assert.equal(view.formatting.run('bold'), true)
+  assert.equal(view.state.doc.toString(), 'plain end')
+  assert.equal(view.pressed('bold'), true)
+  assert.equal(view.type(' typed'), 'plain end **typed**')
+  assert.equal(view.pressed('bold'), true)
+  assert.equal(view.type(' more'), 'plain end **typed more**')
+
+  const off = typing('a **bold** b', 6)
+  off.formatting.run('bold')
+  assert.equal(off.pressed('bold'), false)
+  assert.equal(off.type('X'), 'a **bo**X**ld** b')
+  assert.equal(off.pressed('bold'), false)
+  const end = typing('a **bold** b', 8)
+  end.formatting.run('bold')
+  assert.equal(end.type('X'), 'a **bold**X b')
+
+  // After bold text the caret is in bold, as in the rich editor, so the action turns it off.
+  const after = typing('a **bold** b', 10)
+  assert.equal(after.pressed('bold'), true)
+  after.formatting.run('bold')
+  assert.equal(after.pressed('bold'), false)
+  assert.equal(after.type('er'), 'a **bold**er b')
+  // Typing next to the same formatting joins it: subscript ends at its text.
+  const joined = typing('a ~sub~ b', 7)
+  assert.equal(joined.pressed('subscript'), false)
+  joined.formatting.run('subscript')
+  assert.equal(joined.type('X'), 'a ~subX~ b')
+  // Two marks open together, and a gap line between blocks becomes a paragraph.
+  const gap = typing('a\n\nb', 2)
+  gap.formatting.run('bold')
+  gap.formatting.run('italic')
+  assert.equal(gap.pressed('italic'), true)
+  assert.equal(gap.type('x'), 'a\n\n***x***\n\nb')
+  assert.equal(gap.type('y'), 'a\n\n***xy***\n\nb')
+  // Code takes no other marks, and code blocks take none.
+  assert.equal(typing('```\nx\n```', 5).formatting.run('bold'), false)
+  const code = typing('a ', 2)
+  code.formatting.run('inline-code')
+  assert.equal(code.pressed('bold'), false)
+  assert.equal(code.formatting.inspect().state('bold').disabled, true)
+  assert.equal(code.type('x'), 'a `x`')
+})
+
+test('stored marks drop when the caret moves or the text has lines', () => {
+  const moved = typing('plain end', 9)
+  moved.formatting.run('bold')
+  moved.dispatch({ selection: { anchor: 3 } })
+  moved.dispatch({ selection: { anchor: 9 } })
+  assert.equal(moved.pressed('bold'), false)
+  assert.equal(moved.type('x'), 'plain endx')
+  // Like the rich editor, multi-line input does not take the caret's stored marks.
+  const lines = typing('', 0)
+  lines.formatting.run('bold')
+  const { from, to } = lines.state.selection.main
+  assert.equal(
+    lines.state
+      .facet(EditorView.inputHandler)
+      .some((handler) => handler(lines, from, to, 'alpha\nbeta', () => null)),
+    false,
+  )
 })

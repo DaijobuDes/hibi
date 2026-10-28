@@ -32,7 +32,7 @@ export default defineAddon({
         const markdown = isMarkdownDocument(document.name)
         const formatted = markdown ? formattedCounts?.read(document) : undefined
         if (formatted !== undefined) {
-          countsRichText = true
+          countsRichText = formatted?.mode !== 'source'
           return formatted
         }
         if (markdown && formattedLoad && !formattedCounts) return null
@@ -87,6 +87,7 @@ export default defineAddon({
       },
     })
     context.editor.onDocumentChange(refresh)
+    context.editor.onProjectionChange(refresh)
     stop = () => {
       active = false
       counter.stop()

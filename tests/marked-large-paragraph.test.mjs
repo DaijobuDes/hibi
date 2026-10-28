@@ -5,9 +5,13 @@ import { pathToFileURL } from 'node:url'
 import { GFM, parser } from '@lezer/markdown'
 import { build } from 'esbuild'
 import { Lexer, Marked, Tokenizer } from 'marked'
+import { micromark } from 'micromark'
+import { gfmHtml, gfm as gfmSyntax } from 'micromark-extension-gfm'
+import { blockStartCounters } from '../src/addons/_shared/block-start.ts'
 import { outsideCode } from '../src/addons/_shared/import-markdown.ts'
 import { exportOptions } from '../src/addons/documentation/options.ts'
 import { prepareSite } from '../src/addons/documentation/site.ts'
+import { blockMathSyntax } from '../src/addons/math/formatted-syntax.ts'
 import { mathTokens } from '../src/addons/math/syntax.ts'
 import { imageSources } from '../src/main/images.ts'
 import { parseWorkspaceMetadata } from '../src/main/workspace-index-metadata.ts'
@@ -91,13 +95,13 @@ const syntax = {
   unsupported: false,
 }
 
-function references(source, gfm = false) {
+function references(source, gfm = false, math = false) {
   const store = new SourceStore(source, {
     tabId: 'giant-paragraph',
     revision: 0,
   })
   const model = new MarkdownSourceModel(store.snapshot(), parser, 'commonmark')
-  const references = new MarkdownSourceReferences({ gfm })
+  const references = new MarkdownSourceReferences({ gfm, math })
   try {
     while (!model.advance().complete) {}
     for (const _ of references.update(store.snapshot(), model.state().owners)) {
@@ -283,24 +287,96 @@ test('reference titles keep mismatched and escaped gfm table candidates', () => 
   }
 })
 
-test('math block interruptions end reference titles', {
-  todo: 'formatted gap export-003: a block math interruption must end a reference title',
-}, () => {
+test('math block interruptions end reference titles', () => {
   for (const [open, close] of [
     ['"', '"'],
     ["'", "'"],
     ['(', ')'],
   ])
-    for (const separator of [' ', '\n']) {
-      const source = `[ref]: /x${separator}${open}one\n$$\nx^2\n$$\nlast${close}\n\n[ref]`
+    for (const separator of [' ', '\n'])
+      for (const gfm of [false, true])
+        for (const eol of ['\n', '\r\n']) {
+          const source =
+            `[ref]: /x${separator}${open}one\n$$\nx^2\n$$\nlast${close}\n\n[ref]`.replaceAll(
+              '\n',
+              eol,
+            )
+          const markdown = new Marked({ gfm }, mathTokens, blockMarkdown)
+          const tokens = markdown.lexer(source)
+          const href = separator === ' ' ? null : '/x'
+          assert.equal(tokens.links.ref?.href ?? null, href)
+          assert.equal(references(source, gfm, true)?.href ?? null, href)
+          assert.equal(tokens.links.ref?.title ?? null, null)
+          assert.ok(tokens.some((token) => token.type === 'blockMath'))
+          assert.match(
+            parser
+              .configure([gfm ? GFM : [], blockMathSyntax])
+              .parse(source.replaceAll('\r\n', '\n'))
+              .toString(),
+            /BlockMath\(/,
+          )
+          assert.equal(
+            new Marked({ gfm }, blockMarkdown).lexer(source).links.ref?.title,
+            `one\n$$\nx^2\n$$\nlast`,
+            'math disabled keeps the title',
+          )
+        }
+})
+
+test('math interruptions retain reference semantics inside lists and quotes', () => {
+  for (const separator of [' ', '\n'])
+    for (const prefix of ['- ', '> ']) {
+      const body = `[ref]: /x${separator}"one\n$$\nx^2\n$$\nlast"`
+      const source =
+        body
+          .split('\n')
+          .map(
+            (line, index) =>
+              `${index === 0 || prefix === '> ' ? prefix : '  '}${line}`,
+          )
+          .join('\n') + '\n\n[ref]'
       const markdown = new Marked({ gfm: false }, mathTokens, blockMarkdown)
       const tokens = markdown.lexer(source)
       assert.equal(
         tokens.links.ref?.href ?? null,
         separator === ' ' ? null : '/x',
+        source,
       )
-      assert.ok(tokens.some((token) => token.type === 'blockMath'))
+      assert.equal(tokens.links.ref?.title ?? null, null, source)
+      assert.equal(
+        references(source, false, true)?.href ?? null,
+        separator === ' ' ? null : '/x',
+        source,
+      )
+      let math = false
+      markdown.walkTokens(tokens, (token) => {
+        math ||= token.type === 'blockMath'
+      })
+      assert.equal(math, true, source)
     }
+})
+
+test('reference titles keep invalid math candidates and stop for math closed after the title', () => {
+  for (const body of ['$$\nunclosed', `$$\n${'x'.repeat(10001)}\n$$`]) {
+    const source = `[ref]: /x "one\n${body}\nlast"\n\n[ref]`
+    const markdown = new Marked({ gfm: false }, mathTokens, blockMarkdown)
+    assert.equal(markdown.lexer(source).links.ref?.title, `one\n${body}\nlast`)
+    assert.equal(references(source, false, true)?.title, `one\n${body}\nlast`)
+    assert.doesNotMatch(
+      parser.configure(blockMathSyntax).parse(source).toString(),
+      /BlockMath\(/,
+    )
+  }
+  const source = '[ref]: /x "one\n$$\nx"\n$$\n\n[ref]'
+  assert.equal(
+    new Marked({ gfm: false }, mathTokens, blockMarkdown).lexer(source).links
+      .ref?.href ?? null,
+    null,
+  )
+  assert.match(
+    parser.configure(blockMathSyntax).parse(source).toString(),
+    /BlockMath\(/,
+  )
 })
 
 test('html interruptions keep newline searches linear across paragraph starts', (t) => {
@@ -852,9 +928,7 @@ test('renderer worker resolves references across a giant paragraph and keeps fin
   )
 })
 
-test('export keeps an indented failed title in a paragraph, as CommonMark does', {
-  todo: 'formatted gap export-002: an indented failed reference title must remain paragraph text instead of code',
-}, () => {
+test('export keeps an indented failed title in a paragraph, as CommonMark does', () => {
   for (const indent of ['\t', '    ']) {
     const source = `[ref]: /x\n${indent}"first\n\nlast"\n\n[ref]\n`
     const { html } = renderMarkdown(source)
@@ -874,6 +948,184 @@ test('export keeps a quoted title with a blank line as text, as CommonMark does'
   assert.match(html, /<h1[^>]*>title<\/h1>/)
   assert.doesNotMatch(html, /<a /)
   assert.ok(html.includes('[ref]: /target'), html)
+})
+
+test('invalid math candidates keep reference title scans linear', (t) => {
+  for (const count of [64, 256, 1024]) {
+    const title = `"first\n${'$$no\n'.repeat(count)}last"`
+    const source = `[ref]: /x ${title}\n\n[ref]`
+    blockStartCounters.calls =
+      blockStartCounters.units =
+      blockStartCounters.max =
+        0
+    blockScanCounters.calls = blockScanCounters.units = 0
+    const tokens = new Marked({ gfm: false }, mathTokens, blockMarkdown).lexer(
+      source,
+    )
+    assert.equal(tokens.links.ref?.title, title.slice(1, -1))
+    assert.ok(blockStartCounters.calls <= count + 2)
+    assert.ok(blockStartCounters.units <= source.length * 2)
+    assert.ok(blockScanCounters.units <= source.length * 3)
+    t.diagnostic(
+      JSON.stringify({
+        count,
+        length: source.length,
+        start: { ...blockStartCounters },
+        boundary: { ...blockScanCounters },
+      }),
+    )
+  }
+})
+
+test('reference title edges match CommonMark and micromark GFM', () => {
+  const normalize = (html) =>
+    html
+      .replaceAll('\r\n', '\n')
+      .replaceAll('&#39;', "'")
+      .replace(/>\s+</g, '><')
+      .trim()
+  for (const [open, close] of [
+    ['"', '"'],
+    ["'", "'"],
+    ['(', ')'],
+  ])
+    for (const eol of ['\n', '\r\n'])
+      for (const gfm of [false, true]) {
+        const remove = flavors.register('title-edges', {
+          id: 'grammar',
+          name: 'grammar',
+          kind: 'dialect',
+          detect: () => true,
+          markedOptions: { gfm },
+        })
+        try {
+          for (const source of [
+            `[ref]: /x\n\t${open}first\n\nlast${close}\n\n[ref]`,
+            `[ref]: /x\n    ${open}first\n\nlast${close}\n\n[ref]`,
+            `[ref]: /x\n${open}a | b\n--|--\nlast${close}\n\n[ref]`,
+            `[ref]: /x ${open}one\na | b${close}\n--|--\n\n[ref]`,
+            `[ref]: /x ${open}a | b${close}\n--|--\n\n[ref]`,
+            `[ref]: /x\n${open}a | b${close}\n--|--\n\n[ref]`,
+            `[ref]: /x\n    ${open}a | b${close}\n--|--\n\n[ref]`,
+            `[ref]: /x\n\t${open}a | b${close}\n--|--\n\n[ref]`,
+            `[ref]: /x\n    ${open}a | b\n--|--\nlast${close}\n\n[ref]`,
+            `[ref]: /x\n\t${open}a | b\n--|--\nlast${close}\n\n[ref]`,
+            `[ref]: /x\n${open}one\na | b${close}\n--|--\n\n[ref]`,
+            `[ref]: /x\n${open}a \\| b\n--|--\nlast${close}\n\n[ref]`,
+            `[ref]: /x\n${open}a | b | c\n--|--\nlast${close}\n\n[ref]`,
+            `[ref]: /x\n${open}first\nlast${close}\n\n[ref]`,
+            `[ref]: /x\n\n    ${open}code${close}\n\n[ref]`,
+          ]) {
+            const text = source.replaceAll('\n', eol)
+            const oracle = micromark(
+              text,
+              gfm
+                ? { extensions: [gfmSyntax()], htmlExtensions: [gfmHtml()] }
+                : {},
+            )
+            const markdown = new Marked({ gfm }, blockMarkdown)
+            assert.equal(
+              normalize(markdown.parse(text)),
+              normalize(oracle),
+              text,
+            )
+            assert.equal(
+              normalize(renderMarkdown(text).html),
+              normalize(oracle),
+              text,
+            )
+            const link = markdown.lexer(text).links.ref
+            const indexed = references(text, gfm)
+            assert.deepEqual(
+              indexed && { href: indexed.href, title: indexed.title ?? null },
+              link ? { href: link.href, title: link.title ?? null } : null,
+              text,
+            )
+          }
+        } finally {
+          remove()
+        }
+      }
+})
+
+test('reference table titles measure indentation relative to their container', () => {
+  for (const [first, rest, indent, hasTitle] of [
+    ['', '', '    ', true],
+    ['> ', '> ', '    ', true],
+    ['- ', '  ', '    ', true],
+    ['10. ', '    ', '    ', true],
+    ['- ', '  ', '  ', false],
+    ['> ', '> ', '\t', false],
+    ['>', '>', '\t', false],
+    [' > ', ' > ', '\t', false],
+    ['  > ', '  > ', '\t', true],
+    ['> > ', '> > ', '\t', true],
+    ['> > > ', '> > > ', '\t', false],
+    ['- > ', '  > ', '\t', true],
+    ['10. > ', '    > ', '\t', false],
+    ['- - > ', '    > ', '\t', false],
+    ['> - ', '>   ', '\t', true],
+  ])
+    for (const gfm of [false, true]) {
+      const source = `${first}[ref]: /x\n${rest}${indent}"a | b"\n${rest}--|--\n\n[ref]`
+      const title = !gfm || hasTitle ? 'a | b' : null
+      const oracle = micromark(
+        source,
+        gfm ? { extensions: [gfmSyntax()], htmlExtensions: [gfmHtml()] } : {},
+      )
+      assert.equal(oracle.includes('title="a | b"'), title !== null, source)
+      const markdown = new Marked({ gfm }, blockMarkdown)
+      for (const tokens of [
+        markdown.lexer(source),
+        new Lexer({ gfm, tokenizer: new BlockTokenizer() }).lex(source),
+      ])
+        assert.equal(tokens.links.ref?.title ?? null, title, source)
+      assert.equal(
+        markdown.parse(source).includes('<table>'),
+        gfm && !hasTitle,
+        source,
+      )
+      assert.equal(references(source, gfm)?.title ?? null, title, source)
+    }
+})
+
+test('quote-tab reference titles stop at gfm tables', (t) => {
+  const remove = flavors.register('quote-tab-title', {
+    id: 'grammar',
+    name: 'grammar',
+    kind: 'dialect',
+    detect: () => true,
+    markedOptions: { gfm: true },
+  })
+  t.after(remove)
+  for (const eol of ['\n', '\r\n']) {
+    const source = '> [ref]: /x\n> \t"a | b"\n> --|--\n\n[ref]'.replaceAll(
+      '\n',
+      eol,
+    )
+    const oracle = micromark(source, {
+      extensions: [gfmSyntax()],
+      htmlExtensions: [gfmHtml()],
+    }).replaceAll('\r\n', '\n')
+    assert.match(oracle, /<table>/)
+    const markdown = new Marked({ gfm: true }, blockMarkdown)
+    assert.equal(markdown.parse(source).trim(), oracle)
+    assert.equal(renderMarkdown(source).html.trim(), oracle)
+  }
+})
+
+test('quote tab normalization preserves code contents and outer raw spans', () => {
+  for (const source of ['> \t\tfoo\tbar', '> \t\t\tfoo', '>     >\tcode']) {
+    const expected = micromark(source)
+    assert.equal(
+      new Marked({ gfm: false }, blockMarkdown).parse(source).trim(),
+      expected,
+    )
+  }
+  const source = '> [ref]: /x\n> \t"a | b"\n> --|--\n\nsuffix'
+  const tokens = new Marked({ gfm: true }, blockMarkdown).lexer(source)
+  assert.equal(tokens.map((token) => token.raw).join(''), source)
+  assert.equal(tokens.at(-1).text, 'suffix')
 })
 
 test('reference title interruption windows stay linear through 20000 table candidates', async (t) => {
@@ -907,9 +1159,7 @@ test('reference title interruption windows stay linear through 20000 table candi
     })
 })
 
-test('a table at the first line of a next-line title leaves a destination-only definition', {
-  todo: 'formatted gap export-004: a gfm table at the first title line must leave a destination-only definition',
-}, () => {
+test('a table at the first line of a next-line title leaves a destination-only definition', () => {
   const source = '[ref]: /x\n"a | b\n--|--\nc"\n\n[ref]'
   assert.match(parser.configure(GFM).parse(source).toString(), /Table\(/)
   const markdown = new Marked({ gfm: true }, blockMarkdown)
@@ -918,9 +1168,7 @@ test('a table at the first line of a next-line title leaves a destination-only d
   assert.match(markdown.parse(source), /<table>/)
 })
 
-test('a table at the last title line rejects an inline definition', {
-  todo: 'formatted gap export-005: a gfm table at the last title line must reject the definition',
-}, () => {
+test('a table at the last title line rejects an inline definition', () => {
   const source = '[ref]: /x "one\na | b"\n--|--\n\n[ref]'
   assert.match(parser.configure(GFM).parse(source).toString(), /Table\(/)
   const markdown = new Marked({ gfm: true }, blockMarkdown)

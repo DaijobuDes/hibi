@@ -74,8 +74,7 @@ export class FormattedCounter {
       countParser(syntax),
     )
   }
-  apply(operation: SourceOperation) {
-    const prepared = this.store.prepare(operation)
+  apply(operation: SourceOperation, prepared = this.store.prepare(operation)) {
     const [change] = operation.changes
     let row =
       this.#plainOwners && operation.changes.length === 1 && change

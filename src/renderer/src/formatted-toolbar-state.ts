@@ -316,6 +316,44 @@ const textKinds = ['paragraph', 'subtext', ...headings, 'code-block']
 const stop = Symbol('stop')
 
 /**
+ * The formatting whose text holds `pos`, innermost first: where typing at a
+ * caret there goes, which can differ from the marks the toolbar shows.
+ */
+export function formattingAt(state: EditorState, tree: Tree, pos: number) {
+  const formatting = formattingNames(state)
+  const found = new Map<string, SyntaxNode>()
+  for (
+    let node: SyntaxNode | null = tree.resolveInner(pos, 1);
+    node && !isLeaf(node) && !containers.includes(node.name);
+    node = node.parent
+  ) {
+    if (!formatting.includes(node.name) || linkAddress(node)) continue
+    const text = formattingText(state, node)
+    const id = markIds[node.name]
+    if (text && id && !found.has(id) && text.from <= pos && pos <= text.to)
+      found.set(id, node)
+  }
+  return found
+}
+
+/** Formatting of mark `id` that ends at `pos`, so that text typed there can join it. */
+export function formattingBefore(
+  state: EditorState,
+  tree: Tree,
+  pos: number,
+  id: string,
+) {
+  for (
+    let node: SyntaxNode | null = tree.resolveInner(pos, -1);
+    node && !isLeaf(node) && !containers.includes(node.name);
+    node = node.parent
+  )
+    if (node.to === pos && markIds[node.name] === id)
+      return formattingText(state, node)
+  return null
+}
+
+/**
  * Walk the nodes that touch `from`-`to` in order, like `Tree.iterate`, until
  * `enter` or `leave` returns `stop`.
  */
@@ -535,6 +573,7 @@ export function formattedStates(
   state: EditorState,
   tree: Tree,
   range: SelectionRange,
+  pending?: readonly string[] | null,
 ) {
   const literal = state.facet(formattedLiteral)
   const unsupported = (id: string) =>
@@ -568,9 +607,11 @@ export function formattedStates(
       ? first.kind === type || chain.some((node) => blockType(node) === type)
       : known.has(type) ||
         (blockKinds.includes(type) && !content.uncovered.has(type))
+  const caretHas = (id: string) =>
+    range.empty && pending ? pending.includes(id) : !!atCaret?.has(id)
   const markActive = (id: string) =>
     atCaret
-      ? atCaret.has(id)
+      ? caretHas(id)
       : !!content?.markable && content.seen.has(id) && !content.absent.has(id)
   const pressed = (id: string): boolean =>
     !unsupported(id) && (marks.includes(id) ? markActive(id) : blockActive(id))
@@ -579,7 +620,7 @@ export function formattedStates(
       return (
         takesMarks(first.kind) &&
         !insideLiteral(state, tree, range.from) &&
-        (id === 'inline-code' || atCaret.has(id) || !atCaret.has('inline-code'))
+        (id === 'inline-code' || caretHas(id) || !caretHas('inline-code'))
       )
     if (content?.atoms) return true
     return id === 'inline-code'

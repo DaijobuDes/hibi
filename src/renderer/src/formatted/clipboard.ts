@@ -12,8 +12,8 @@ import { renderMarkdown } from '../render-markdown'
 /*
  * Copy and paste in the formatted view. Copying gives the selection's exact
  * Markdown as text and the same Markdown rendered by the export renderer,
- * sanitized, as HTML; pasted HTML becomes Markdown, and plain text pastes as
- * it is.
+ * sanitized, as HTML, with raw HTML as the literal text this view shows;
+ * pasted HTML becomes Markdown, and plain text pastes as it is.
  */
 
 /** Marks the HTML this view copies, whose text is already the exact Markdown. */
@@ -50,6 +50,7 @@ function copy(event: ClipboardEvent, view: EditorView, cut: boolean) {
       const { html } = renderMarkdown(
         markdown,
         tabId ? documentRuntime.get(tabId)?.id : undefined,
+        true,
       )
       data.setData(
         'text/html',

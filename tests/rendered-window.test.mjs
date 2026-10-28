@@ -22,6 +22,7 @@ import {
 } from '../src/shared/rendered-text.ts'
 import { SourceStore } from '../src/shared/source-buffer.ts'
 import { searchRenderedLiteral } from '../src/shared/source-rendered-search.ts'
+import { customBodyCases } from './fixtures/custom-body.mjs'
 import { renderedConfig } from './rendered-config.mjs'
 
 const config = {
@@ -42,13 +43,55 @@ const config = {
   ],
   textFeatures: [...textFeatures],
 }
-function build(text) {
+function build(text, syntax = config) {
   const store = new SourceStore(text, { tabId: 'window', revision: 0 })
-  const index = new RenderedTextIndex(store.snapshot(), 0, config)
+  const index = new RenderedTextIndex(store.snapshot(), 0, syntax)
   for (const _ of index.build()) {
   }
   return index
 }
+for (const [name, source, custom] of [
+  ['alert', '> [!TIP]\n> **x** y', true],
+  ['subtext', '-# **x** y', true],
+  ['list inside alert', '> [!TIP]\n> - **x** y', true],
+  ['alert table', '> [!TIP]\n> | h |\n> |---|\n> | **x** y |', true],
+  ['paragraph', '**x** y', false],
+  ['table', '| h |\n|---|\n| **x** y |', false],
+  ['direct list alert', '- > [!TIP]\n  > **x** y', false],
+  ['task inside alert', '> [!TIP]\n> - [ ] **x** y', true],
+])
+  test(`rendered find follows native custom bold scope in ${name}`, () => {
+    const index = build(source, { ...config, literal: ['StrongEmphasis'] })
+    const matches = (query) =>
+      [...searchRenderedLiteral(index, query)].flatMap((batch) => batch.matches)
+    assert.equal(matches('x y').length, custom ? 1 : 0)
+    assert.equal(matches('**').length, custom ? 0 : 2)
+  })
+
+for (const fixture of customBodyCases)
+  test(`custom body rendered projection: ${fixture.name}`, () => {
+    const syntax = {
+      ...config,
+      literal: fixture.literal ? [fixture.literal] : [],
+    }
+    const index = build(fixture.source, syntax)
+    assert.equal(
+      [...index.range(0, index.length)]
+        .map((chunk) => chunk.text)
+        .join('')
+        .trim(),
+      fixture.rendered ??
+        (fixture.source.includes('[!TIP]') ? 'tip\n' : '') +
+          fixture.text.trim().replace(/\n+/g, '\n'),
+    )
+    assert.equal(
+      [
+        ...searchRenderedLiteral(index, fixture.text.trim().split('\n').at(-1)),
+      ].flatMap((batch) => batch.matches).length,
+      1,
+    )
+  })
+
 function inputFor(text) {
   return {
     length: text.length,

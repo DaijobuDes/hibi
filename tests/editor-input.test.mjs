@@ -3370,32 +3370,20 @@ test('codemirror: stored bold state follows native typing, undo and redo', {
   await rich.focus()
   await page.keyboard.type(' typed')
   const typed = await acceptedInput(page)
-  await t.test(
-    'native typing retains bold pressed state',
-    {
-      todo: 'formatted gap input-073: native bold typing keeps bold action pressed',
-    },
-    async () => {
-      await settledInputToolbar(page, 'bold', { pressed: 'true' })
-      assert.equal(await bold.getAttribute('aria-pressed'), 'true')
-    },
-  )
+  await t.test('native typing retains bold pressed state', async () => {
+    await settledInputToolbar(page, 'bold', { pressed: 'true' })
+    assert.equal(await bold.getAttribute('aria-pressed'), 'true')
+  })
   await t.test('native typing enables undo', async () => {
     await settledInputToolbar(page, 'undo', { disabled: false })
     assert.equal((await toolbarSnapshot(page)).undo.disabled, false)
   })
-  await t.test(
-    'native typing preserves bold in canonical source',
-    {
-      todo: 'formatted gap input-074: native bold typing renders strong text in canonical source',
-    },
-    () => {
-      assert.equal(
-        marked.parseInline(typed.markdown),
-        'plain end <strong>typed</strong>',
-      )
-    },
-  )
+  await t.test('native typing preserves bold in canonical source', () => {
+    assert.equal(
+      marked.parseInline(typed.markdown),
+      'plain end <strong>typed</strong>',
+    )
+  })
   await pressShortcut(
     app,
     process.platform === 'darwin' ? 'Meta+z' : 'Control+z',

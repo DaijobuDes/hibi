@@ -40,7 +40,7 @@ export type FindAction = 'first' | 'next' | 'previous' | null
 type Request = Extract<DocumentWorkerRequest, { type: 'find' }> & {
   action: FindAction
 }
-type ClientOptions = {
+export type ClientOptions = {
   changed: () => void
   pending: () => void
   result: (
@@ -167,6 +167,7 @@ export class DocumentWorkerClient {
     declined: (reason: 'stale' | 'mismatch') => void
   } | null = null
   #sentBoundaries = ''
+  #releasedBoundaryId = 0
   #boundarySequence = 0
   #boundaryFrom: number | null = null
   #boundaryTo: number | null = null
@@ -392,7 +393,14 @@ export class DocumentWorkerClient {
     this.#flushBoundaries()
   }
   releaseBoundaries(retain = false) {
-    if (retain && this.#codeReceivers.size && this.#codeConfig) {
+    const keepCode =
+      retain && this.#codeReceivers.size > 0 && this.#codeConfig !== null
+    if (!keepCode || !this.#boundaries?.codeOnly)
+      this.#releasedBoundaryId = Math.max(
+        this.#releasedBoundaryId,
+        this.#boundaries?.id ?? 0,
+      )
+    if (keepCode) {
       if (!this.#boundaries?.codeOnly) this.#boundaries = null
       this.#watchCode()
       return
@@ -504,6 +512,9 @@ export class DocumentWorkerClient {
     }
     this.#options.metadataPending?.()
     this.#flushMetadata()
+  }
+  invalidateHighlights() {
+    this.#highlightRequest = null
   }
   cancelFind() {
     this.#highlightRequest = null
@@ -684,6 +695,13 @@ export class DocumentWorkerClient {
     if (reply.type === 'boundaries' || reply.type === 'boundary-declined') {
       const request = this.#boundaries
       if (!request) return
+      // A released pane's late pages cannot invalidate the next receiver.
+      if (
+        Number.isSafeInteger(reply.id) &&
+        reply.id > 0 &&
+        reply.id <= this.#releasedBoundaryId
+      )
+        return
       if (
         reply.id !== request.id ||
         reply.version !== request.version ||
@@ -1001,7 +1019,7 @@ export class DocumentWorkerClient {
     this.#stop()
     this.#deferFind(this.#findQuietUntil)
     this.#epoch = crypto.randomUUID()
-    this.#requestId = 0
+    this.#requestId = this.#releasedBoundaryId = 0
     if (this.#latest)
       this.#latest = {
         ...this.#latest,
@@ -1061,8 +1079,10 @@ export class DocumentWorkerClient {
         type: 'module',
       })
     this.#worker = worker
-    worker.onmessage = (event: MessageEvent<DocumentWorkerReply>) =>
-      this.#reply(event.data)
+    worker.onmessage = (event: MessageEvent<DocumentWorkerReply>) => {
+      if (epoch === this.#epoch && this.#worker === worker)
+        this.#reply(event.data)
+    }
     worker.onerror = (event) => {
       event.preventDefault()
       if (epoch === this.#epoch && this.#worker === worker) {

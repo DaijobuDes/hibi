@@ -24,7 +24,9 @@ import {
   tabIndent,
 } from '../src/renderer/src/indentation.ts'
 import { markdownConfiguration } from '../src/renderer/src/markdown.ts'
+import { sourceEditorTextCooperatively } from '../src/renderer/src/source-session.ts'
 import { Footnotes } from '../src/shared/markdown-extra-syntax.ts'
+import { SourceStore } from '../src/shared/source-buffer.ts'
 
 const markdown = parser.configure(GFM)
 const hide = Decoration.replace({})
@@ -847,9 +849,9 @@ test('multi-line text input repairs formatting it cuts, as the browser types', (
     run('**ab|cd**', typing('\tx\n    y')),
     '**ab\tx**\n\n&#32;   **y|cd**',
   )
-  assert.equal(run('**ab |cd**', typing('\ny')), '**ab** \n\n**y|cd**')
-  // Only the closing markers move before spaces the caret follows.
-  assert.equal(run('**a   |b**', typing('\ny')), '**a**   \n\n**y|b**')
+  assert.equal(run('**ab |cd**', typing('\ny')), '**ab&#32;**\n\n**y|cd**')
+  // A character reference keeps existing trailing spaces inside their marks.
+  assert.equal(run('**a   |b**', typing('\ny')), '**a  &#32;**\n\n**y|b**')
   // A line break alone is the browser's input, not Enter: a heading continues.
   assert.equal(run('## ab|cd', typing('\n')), '## ab\n\n## |cd')
   assert.equal(run('## a^b\n\nc|d', typing('\n')), '## a\n\n## |d')
@@ -978,18 +980,18 @@ test('multi-line input after a long run of spaces reads a bounded part of it', (
     } finally {
       Object.assign(prototype, originals)
     }
-    // Past the limit the input is left to the default insertion, which
-    // keeps the bold whole across a soft line break.
-    assert.equal(spec, null)
-    if (size === 2 ** 20) {
-      const typed = `${doc.slice(0, caret)}\ny${doc.slice(caret)}`
-      const strong = markdown.parse(typed).topNode.firstChild.firstChild
-      assert.deepEqual(
-        [strong?.name, strong?.from, strong?.to],
-        ['StrongEmphasis', 0, typed.length],
-      )
-    }
-    assert.ok(units > 0 && units <= 1024, `${units} units read`)
+    assert.ok(spec)
+    const changes = []
+    spec.changes.iterChanges((from, to, _from, _to, insert) =>
+      changes.push({ from, to, insert: insert.toString() }),
+    )
+    assert.deepEqual(changes, [
+      { from: caret - 1, to: caret, insert: '&#32;**\n\n**y' },
+    ])
+    assert.equal(spec.selection.head, caret + 11)
+    // The old bounded fallback read 259 units and declined. The completed
+    // edit reads only the two markers and the final space at either size.
+    assert.equal(units, 5)
   }
 })
 
@@ -1039,10 +1041,57 @@ test('multi-line text input at the edges of formatting, headings and lists, as t
   )
 })
 
-test('backticks typed into inline code keep the code span', {
-  todo: 'formatted gap input-075: multi-line input with backticks inside inline code keeps the code span',
-}, () => {
-  assert.equal(run('`ab|cd`', typing('x\n`y`')), '`abx`\n\n`` `y`|cd ``')
+test('backticks typed into inline code keep the code span', () => {
+  for (const [source, text, expected] of [
+    ['`ab|cd`', 'x\n`y`', '`abx`\n\n`` `y`|cd ``'],
+    ['`ab|cd`', '`x`\ny', '`` ab`x` ``\n\n`y|cd`'],
+    ['`` `ab|cd` ``', 'x\n`y`', '`` `abx ``\n\n`` `y`|cd` ``'],
+    ['``a`|b``', '`x`\n``y``', '``` a``x` ```\n\n` ``y``|b `'],
+    ['`abcd|`', '`x`\ny', '`` abcd`x` ``\n\ny|'],
+    ['`|abcd`', '`x`\ny', '`` `x` ``\n\n`y|abcd`'],
+    ['**`ab|cd`**', 'x\n`y`', '**`abx`**\n\n**`` `y`|cd ``**'],
+    ['- `ab|cd`\n- tail', 'x\n`y`', '- `abx`\n- `` `y`|cd ``\n- tail'],
+    ['`a  |b`', '\n`y`', '`a  `\n\n`` `y`|b ``'],
+    ['`ab^cd|ef`', 'x\n`y`', '`abx`\n\n`` `y`|ef ``'],
+    ['^`abcd`|', '`x`\ny', '`` `x` ``\n\ny|'],
+    ['^`` `abcd` ``|', '`x`\ny', '`` `x` ``\n\ny|'],
+    ['`\nab|cd\n`', 'x\n`y`', '`abx`\n\n`` `y`|cd ``'],
+    ['`ab|cd`', '`x`\n`y`\nz', '`` ab`x` ``\n\n`` `y` ``\n\n`z|cd`'],
+  ])
+    assert.equal(run(source, typing(text)), expected, source)
+})
+
+test('inline code re-fencing reads only its span and leaves the document tail untouched', () => {
+  const reads = []
+  for (const length of [2 ** 16, 2 ** 20]) {
+    const source = '`abcd`\n\n' + 'z'.repeat(length)
+    const state = EditorState.create({ doc: source, selection: { anchor: 3 } })
+    const tree = markdown.parse('`abcd`\n\nz')
+    const prototype = Object.getPrototypeOf(state.doc)
+    const originals = Object.fromEntries(
+      ['sliceString', 'lineAt', 'line'].map((name) => [name, prototype[name]]),
+    )
+    let units = 0
+    for (const name of Object.keys(originals))
+      prototype[name] = function (...args) {
+        const value = originals[name].apply(this, args)
+        units += value.length
+        return value
+      }
+    let spec
+    try {
+      spec = lineInput(state, tree, 3, 3, 'x\n`y`')
+    } finally {
+      Object.assign(prototype, originals)
+    }
+    assert.ok(spec)
+    const next = state.update(spec)
+    assert.equal(next.state.doc.sliceString(0, 20), '`abx`\n\n`` `y`cd ``\n\n')
+    next.changes.iterChanges((from, to) => assert.ok(from <= 6 && to <= 6))
+    assert.ok(units > 0 && units <= 32, `${units} units read`)
+    reads.push(units)
+  }
+  assert.equal(reads[0], reads[1])
 })
 
 test('multi-line input in a 50 MiB block reads and rewrites only around the caret', () => {
@@ -1178,21 +1227,31 @@ test('enter on a blank line after the last block reads no more of a 50 MiB blank
   assert.equal(next.sliceString(0, 5), 'x\n\n\n\n')
 })
 
-for (const [name, tail, todo] of [
+for (const [name, tail, direction] of [
   ['no suffix', ''],
   ['4096 line feeds', '\n'.repeat(4096)],
   ['4097 line feeds', '\n'.repeat(4097)],
   ['8192 line feeds', '\n'.repeat(8192)],
   ['8192 line feeds before text', `${'\n'.repeat(8192)}last`],
+  ['4098 spaces and tabs', ' \t\n'.repeat(1366)],
+  ['mixed whitespace before text', `${' \t\n'.repeat(1366)}last`],
+  ['JavaScript whitespace', ' \t\u00a0\ufeff\u2003\n'.repeat(1000)],
+  ['whitespace before an astral character', `${' \t\n'.repeat(1366)}😀`],
   [
-    '4098 spaces and tabs',
-    ' \t\n'.repeat(1366),
-    'formatted gap input-blank-tail-001: unparsed space and tab tails retain empty paragraphs',
+    'mixed tail after a forward selection',
+    `\n${' \t\n'.repeat(1366)}`,
+    'forward',
+  ],
+  [
+    'mixed tail after a backward selection',
+    `\n${' \t\n'.repeat(1366)}`,
+    'backward',
   ],
 ]) {
-  test(`enter before ${name} agrees with a complete parse`, { todo }, () => {
+  test(`enter before ${name} agrees with a complete parse`, async () => {
     const prefix = `first\n\n${'old tail\n\n'.repeat(20000)}`
-    const doc = prefix + tail
+    const selected = direction ? '\n\nsecond' : ''
+    const doc = prefix + selected + tail
     const parse = new ChunkedMarkdownParser(
       markdown,
       markdown,
@@ -1209,9 +1268,17 @@ for (const [name, tail, todo] of [
     let partial = parse.advance()
     while (!partial) partial = parse.advance()
     assert.ok(partial.topNode.lastChild.to < 20000, 'parsed only at the start')
+    const store = new SourceStore(doc, { tabId: 'blank-tail', revision: 0 })
+    const text = await sourceEditorTextCooperatively(store.snapshot(), {
+      signal: new AbortController().signal,
+      yieldTask: async () => {},
+    })
     const state = EditorState.create({
-      doc,
-      selection: { anchor: prefix.length },
+      doc: text,
+      selection:
+        direction === 'backward'
+          ? { anchor: prefix.length + selected.length, head: prefix.length }
+          : { anchor: prefix.length, head: prefix.length + selected.length },
     })
     let units = 0
     const slice = state.sliceDoc.bind(state)
@@ -1224,7 +1291,10 @@ for (const [name, tail, todo] of [
     const expected = state.update(blockBreak(state, markdown.parse(doc))).state
     assert.ok(actual.doc.eq(expected.doc))
     assert.ok(actual.selection.eq(expected.selection))
-    assert.equal(actual.doc.length, doc.length + (/\S/.test(tail) ? 1 : 2))
+    assert.equal(
+      actual.doc.length,
+      doc.length - selected.length + (/\S/.test(tail) ? 1 : 2),
+    )
     assert.ok(units <= 4096, `${units} source units read`)
   })
 }
@@ -1253,5 +1323,87 @@ test('enter on a blank line keeps the same pairs while the note is partly parsed
     const added = (tree) =>
       state.update(blockBreak(state, tree)).state.doc.length - doc.length
     assert.equal(added(partial), added(complete), String(caret))
+  }
+})
+
+test('multiline selections preserve unselected formatting edges', async (t) => {
+  const cases = [
+    ['both edges', '`a` mid `b`', 2, 9, '`a`\\`x\\`\n\n\\`y\\``b`'],
+    ['start edge', '`a` mid `b`', 2, 6, '`a`\\`x\\`\n\n\\`y\\`d `b`'],
+    ['end edge', '`a` mid `b`', 4, 9, '`a` \\`x\\`\n\n\\`y\\``b`'],
+    [
+      'nested edges',
+      '**`a`** mid **`b`**',
+      4,
+      15,
+      '**`a`**\\`x\\`\n\n\\`y\\`**`b`**',
+      '**`a`**&#120;\n\n&#121;**`b`**',
+    ],
+    [
+      'shared bold',
+      '**`a` mid `b`**',
+      4,
+      11,
+      '**`a`\\`x\\`**\n\n**\\`y\\``b`**',
+    ],
+    ['full selection', '`a` mid `b`', 0, 11, '`` `x` ``\n\n\\`y\\`'],
+  ]
+  for (const [name, source, from, to, expected, plainExpected] of cases)
+    for (const backward of [false, true])
+      for (const ticks of [true, false])
+        await t.test(
+          name +
+            ': ' +
+            (backward ? 'backward' : 'forward') +
+            ', ' +
+            (ticks ? 'backticks' : 'plain'),
+          () => {
+            const state = EditorState.create({
+              doc: source,
+              selection: backward
+                ? { anchor: to, head: from }
+                : { anchor: from, head: to },
+            })
+            const spec = lineInput(
+              state,
+              markdown.parse(source),
+              from,
+              to,
+              ticks ? '`x`\n`y`' : 'x\ny',
+            )
+            assert.ok(spec, 'selection must be handled')
+            const plain =
+              plainExpected ??
+              (name === 'full selection'
+                ? '`x`\n\ny'
+                : expected
+                    .replaceAll('\\`x\\`', 'x')
+                    .replaceAll('\\`y\\`', 'y'))
+            assert.equal(
+              state.update(spec).state.doc.toString(),
+              ticks ? expected : plain,
+            )
+          },
+        )
+})
+
+test('multiline input keeps selections through partial inline markers valid', () => {
+  for (const source of ['`a` mid `b`', '**`a`** mid **`b`**']) {
+    const tree = markdown.parse(source)
+    for (let from = 0; from <= source.length; from++)
+      for (let to = from; to <= source.length; to++)
+        for (const backward of [false, true])
+          for (const text of ['x\ny', '`x`\n`y`']) {
+            const state = EditorState.create({
+              doc: source,
+              selection: backward
+                ? { anchor: to, head: from }
+                : { anchor: from, head: to },
+            })
+            assert.doesNotThrow(() => {
+              const spec = lineInput(state, tree, from, to, text)
+              if (spec) state.update(spec)
+            }, `${source}: ${from}..${to}, ${backward}, ${text}`)
+          }
   }
 })
