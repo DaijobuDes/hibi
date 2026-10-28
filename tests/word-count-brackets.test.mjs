@@ -405,6 +405,58 @@ test('regional title lookahead follows gfm tables through delimiter edits and un
       }
 })
 
+test('regional title boundaries include first and closing table rows', (t) => {
+  for (const [open, close] of [
+    ['"', '"'],
+    ["'", "'"],
+    ['(', ')'],
+  ])
+    for (const eol of ['\n', '\r\n']) {
+      const sources = [
+        `[ref]: /x\n${open}a | b\n--|--\nlast${close}\n\n[ref]`,
+        `[ref]: /x ${open}one\na | b${close}\n--|--\n\n[ref]`,
+      ]
+      for (const source of sources) {
+        const text = source.replaceAll('\n', eol)
+        const { counter, edit } = counterFixture(t, text, {
+          ...syntax,
+          gfm: true,
+        })
+        assert.deepEqual(
+          read(counter),
+          sources.indexOf(source) === 0
+            ? { words: 4, characters: 22 }
+            : { words: 6, characters: 29 },
+        )
+        const delimiter = text.indexOf('--|--')
+        edit([{ from: delimiter, to: delimiter + 5, insert: 'plain' }])
+        edit([{ from: delimiter, to: delimiter + 5, insert: '--|--' }], 'undo')
+        assert.deepEqual(
+          read(counter),
+          expected(text, { ...syntax, gfm: true }),
+        )
+      }
+    }
+})
+
+test('regional counts retain failed indented titles and math interruptions', (t) => {
+  for (const gfm of [false, true])
+    for (const eol of ['\n', '\r\n'])
+      for (const [source, words, characters] of [
+        ['[ref]: /x\n\t"first\n\nlast"\n\n[ref]', 3, 16],
+        ['[ref]: /x\n    "first\n\nlast"\n\n[ref]', 3, 16],
+        ['[ref]: /x "one\n$$\nx^2\n$$\nlast"\n\n[ref]', 5, 27],
+        ['[ref]: /x\n"one\n$$\nx^2\n$$\nlast"\n\n[ref]', 3, 15],
+      ]) {
+        const { counter } = counterFixture(t, source.replaceAll('\n', eol), {
+          ...syntax,
+          gfm,
+          math: true,
+        })
+        assert.deepEqual(read(counter), { words, characters }, source)
+      }
+})
+
 test('regional title lookahead invalidates gfm headers and delimiters', (t) => {
   const source = '[ref]: /x "one\na | b\n--|--\nlast"\n\n[ref]'
   const f = fixture(t, source, true)

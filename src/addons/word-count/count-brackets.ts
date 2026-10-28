@@ -123,8 +123,7 @@ export class CountBrackets {
           prefix = `[count]: /x ${title}x`,
           probe = `${prefix}\n${text}`,
           match = rule.exec(`${probe}\n`)
-        const next =
-          this.#gfm && !match?.[3] ? this.#source.lineStart(number + 1) : null
+        const next = this.#gfm ? this.#source.lineStart(number + 1) : null
         const continuation =
           next === null
             ? text

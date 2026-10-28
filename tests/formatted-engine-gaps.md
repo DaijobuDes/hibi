@@ -93,10 +93,6 @@ accepted differences are not gaps; their tests assert each engine. the codemirro
 | find-005 | [formatted-find.test.mjs:916](formatted-find.test.mjs#L916) | wide code matches must scroll horizontally with their start visible | 4b: find wiring and navigation |
 | corpus-011 | [markdown-semantics-native.test.mjs:98](markdown-semantics-native.test.mjs#L98) | disabled heading syntax must preserve bold formatting inside alerts | 9: outline semantics and diagram lifecycle |
 | corpus-012 | [markdown-semantics-native.test.mjs:100](markdown-semantics-native.test.mjs#L100) | disabled heading syntax must preserve bold formatting inside subtext | 9: outline semantics and diagram lifecycle |
-| export-002 | [marked-large-paragraph.test.mjs:856](marked-large-paragraph.test.mjs#L856) | an indented failed reference title must remain paragraph text instead of code | 10a: shared reference definition parsing |
-| export-003 | [marked-large-paragraph.test.mjs:287](marked-large-paragraph.test.mjs#L287) | a block math interruption must end a reference title | 10a: shared reference definition parsing |
-| export-004 | [marked-large-paragraph.test.mjs:911](marked-large-paragraph.test.mjs#L911) | a gfm table at the first title line must leave a destination-only definition | 10a: shared reference definition parsing |
-| export-005 | [marked-large-paragraph.test.mjs:922](marked-large-paragraph.test.mjs#L922) | a gfm table at the last title line must reject the definition | 10a: shared reference definition parsing |
 | semantics-003 | [outline-navigation.test.mjs:320](outline-navigation.test.mjs#L320) | formatted and source outlines must reuse one document worker | 9: outline semantics and diagram lifecycle |
 | contracts-003 | [raw-html-editor.test.mjs:1225](raw-html-editor.test.mjs#L1225) | modified inline html copies must fall back without restoring raw markup | 3c: clipboard fragments and trusted source |
 | contracts-004 | [raw-html-editor.test.mjs:1227](raw-html-editor.test.mjs#L1227) | superseded inline html copies must fall back without restoring raw markup | 3c: clipboard fragments and trusted source |

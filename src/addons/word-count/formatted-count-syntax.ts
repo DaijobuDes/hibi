@@ -205,7 +205,6 @@ export function countMarkdownSyntax(
                   if (!take()) break
                   if (
                     syntax.gfm &&
-                    continues &&
                     endsReferenceTitle(
                       `${line.text}\n${cx.peekLine()}`,
                       rules.paragraph,

@@ -112,6 +112,29 @@ test('regional definitions without bracket lookahead respect gfm table boundarie
       }
 })
 
+test('regional definitions retain first and closing table title boundaries', (t) => {
+  for (const [open, close] of [
+    ['"', '"'],
+    ["'", "'"],
+    ['(', ')'],
+  ])
+    for (const gfm of [false, true])
+      for (const eol of ['\n', '\r\n'])
+        for (const source of [
+          `[ref]: /x\n${open}a | b\n--|--\nlast${close}\n\n[ref]`,
+          `[ref]: /x ${open}one\na | b${close}\n--|--\n\n[ref]`,
+        ]) {
+          const text = source.replaceAll('\n', eol)
+          const f = fixture(t, text, { ...syntax, gfm })
+          assert.deepEqual(f.read(), f.expected(), text)
+          const from = text.indexOf('--|--')
+          f.edit(from, from + 5, 'plain')
+          assert.deepEqual(f.read(), f.expected())
+          f.edit(from, from + 5, '--|--', 'undo')
+          assert.deepEqual(f.read(), f.expected())
+        }
+})
+
 const references = [
   '[ref\n\n]: ht',
   '[re\n\nf]: https://example.test',
