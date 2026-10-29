@@ -2962,26 +2962,47 @@ export const contribution: FormattedContribution = {
           view.dispatch({ effects: clearTablePick.of(null) })
       },
     }),
-    // Shift-click outside tables from an edited cell keeps the selection's
-    // anchor in the cell's text, as in the rich editor. The view's own
-    // pointer selection moves it out of the table, which is atomic for it.
+    // Shift-click, -drag and -double-click outside tables from an edited cell
+    // keep the selection's anchor in the cell's text, as in the rich editor.
+    // The view's own pointer selection moves it out of the table, which is
+    // atomic for it. A double-click extends by words, as the view does.
     EditorView.domEventHandlers({
       mousedown(event, view) {
-        const { anchor } = view.state.selection.main
         if (
           event.button !== 0 ||
           !event.shiftKey ||
-          event.detail > 1 ||
+          event.detail > 2 ||
           !writable(view.state) ||
-          !tableAt(view, anchor, true)
+          !tableAt(view, view.state.selection.main.anchor, true)
         )
           return false
-        const head = view.posAtCoords({ x: event.clientX, y: event.clientY })
-        if (head === null) return false
-        view.dispatch({
-          selection: { anchor, head },
-          userEvent: 'select.pointer',
-        })
+        const extend = (at: MouseEvent) => {
+          const head = view.posAtCoords({ x: at.clientX, y: at.clientY })
+          if (head === null) return false
+          const word = event.detail === 2 ? view.state.wordAt(head) : null
+          const range = view.state.selection.main.extend(
+            word?.from ?? head,
+            word?.to ?? head,
+          )
+          if (at === event || !range.eq(view.state.selection.main))
+            view.dispatch({
+              selection: { anchor: range.anchor, head: range.head },
+              userEvent: 'select.pointer',
+            })
+          return true
+        }
+        if (!extend(event)) return false
+        // ponytail: no scrolling at the view's edges while dragging, unlike
+        // the view's own drags; add it if long drags from cells need it.
+        const doc = view.dom.ownerDocument
+        const move = (moved: MouseEvent) =>
+          moved.buttons & 1 ? extend(moved) : done()
+        const done = () => {
+          doc.removeEventListener('mousemove', move)
+          doc.removeEventListener('mouseup', done)
+        }
+        doc.addEventListener('mousemove', move)
+        doc.addEventListener('mouseup', done)
         view.focus()
         return true
       },

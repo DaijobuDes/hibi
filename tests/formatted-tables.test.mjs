@@ -513,6 +513,64 @@ test('arrow keys enter the nearest cells of an adjacent table and shift-click ex
   assert.equal(extended.editor, null)
 })
 
+test('shift-drag and shift-double-click from an edited cell keep the anchor in the cell, as in the rich editor', {
+  timeout: 30000,
+}, async () => {
+  const doc =
+    'one two three\n\n| a | b |\n| --- | --- |\n| x | y |\n\nfour five six'
+  const cell = doc.indexOf('x |') + 1
+  await mount(doc)
+  /** The page point just inside the character at `pos`. */
+  const point = (pos) =>
+    harness.evaluate((pos) => {
+      const { left, top, bottom } = window.tables.view().coordsAtPos(pos, 1)
+      return { x: left + 1, y: (top + bottom) / 2 }
+    }, pos)
+  const edit = async () => {
+    await harness.locator('.hibi-lp-table td', { hasText: 'x' }).click()
+    await harness.keyboard.press('End')
+    assert.equal((await state()).editor, 'x')
+  }
+  const shifted = async (run) => {
+    await harness.keyboard.down('Shift')
+    try {
+      await run()
+    } finally {
+      await harness.keyboard.up('Shift')
+    }
+    return state()
+  }
+  // The head follows a drag that starts outside the table.
+  await edit()
+  const from = await point(doc.indexOf('two') + 1)
+  const to = await point(1)
+  const dragged = await shifted(async () => {
+    await harness.mouse.move(from.x, from.y)
+    await harness.mouse.down()
+    await harness.mouse.move(to.x, to.y, { steps: 5 })
+    await harness.mouse.up()
+  })
+  assert.deepEqual([dragged.anchor, dragged.head], [cell, 1])
+  // A double-click extends to the word's far edge, before or after the table.
+  await edit()
+  const before = await point(doc.indexOf('two') + 1)
+  const up = await shifted(() => harness.mouse.dblclick(before.x, before.y))
+  assert.deepEqual([up.anchor, up.head], [cell, doc.indexOf('two')])
+  await edit()
+  const after = await point(doc.indexOf('five') + 1)
+  const down = await shifted(() => harness.mouse.dblclick(after.x, after.y))
+  assert.deepEqual([down.anchor, down.head], [cell, doc.indexOf('five') + 4])
+  assert.equal(down.editor, null)
+  // Without a cell, the view's own shift-double-click still extends by words.
+  await harness.evaluate(() => {
+    const view = window.tables.view()
+    view.focus()
+    view.dispatch({ selection: { anchor: 1 } })
+  })
+  const plain = await shifted(() => harness.mouse.dblclick(after.x, after.y))
+  assert.deepEqual([plain.anchor, plain.head], [1, doc.indexOf('five') + 4])
+})
+
 test('arrow keys enter tables in quotes and lists', {
   timeout: 30000,
 }, async () => {
