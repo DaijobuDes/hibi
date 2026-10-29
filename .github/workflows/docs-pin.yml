@@ -102,19 +102,72 @@ jobs:
 
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          branch="docs-pin/$DOCS_SHA"
+          branch="docs-pin/${DOCS_SHA}"
+          ref="refs/heads/${branch}"
+          # This job may publish only its own docs-pin/<sha> ref. It never
+          # merges, and it never pushes or force-pushes any other branch.
+          if [[ -z ${GITHUB_REPOSITORY:-} || $ref != "refs/heads/docs-pin/${DOCS_SHA}" || ! $ref =~ ^refs/heads/docs-pin/[0-9a-f]{40}$ ]]; then
+            echo "::error::refusing to publish ${ref}; only this bot's docs-pin branch is allowed"
+            exit 1
+          fi
+
+          is_actions_bot() {
+            [[ $1 == 'app/github-actions' || $1 == 'github-actions[bot]' ]]
+          }
+
+          pr_err=$(mktemp)
+          if pr_meta=$(gh pr view "$branch" --repo "$GITHUB_REPOSITORY" --json author,headRefName,headRepository --jq '"\(.author.login)\t\(.headRefName)\t\(.headRepository.nameWithOwner)"' 2>"$pr_err"); then
+            IFS=$'\t' read -r pr_author pr_head pr_repo <<<"$pr_meta"
+            if [[ $pr_repo != "$GITHUB_REPOSITORY" || $pr_head != "$branch" ]] || ! is_actions_bot "$pr_author"; then
+              echo "::error::refusing to update ${ref}; pull request is ${pr_author} ${pr_repo}#${pr_head}"
+              exit 1
+            fi
+          elif [[ ! -s "$pr_err" ]] || ! grep -q 'no pull requests found' "$pr_err"; then
+            echo "::error::could not read the pull request for ${branch}"
+            cat "$pr_err"
+            exit 1
+          fi
+          rm -f "$pr_err"
+
+          remote_sha=""
+          if remote_line=$(git ls-remote --exit-code origin "$ref"); then
+            if [[ $remote_line == *$'\n'* ]]; then
+              echo "::error::refusing to force-push ${ref}; expected one remote tip"
+              exit 1
+            fi
+            remote_sha=${remote_line%%[[:space:]]*}
+            git fetch --no-tags origin "$ref"
+            fetched=$(git rev-parse FETCH_HEAD)
+            if [[ $fetched != "$remote_sha" || ! $remote_sha =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::error::refusing to force-push ${ref}; origin moved while reading it"
+              exit 1
+            fi
+            remote_name=$(git log -1 --format='%an' "$remote_sha")
+            remote_email=$(git log -1 --format='%ae' "$remote_sha")
+            if [[ $remote_name != 'github-actions[bot]' || $remote_email != '41898282+github-actions[bot]@users.noreply.github.com' ]]; then
+              echo "::error::refusing to force-push ${ref}; tip ${remote_sha} is not a github-actions[bot] commit"
+              exit 1
+            fi
+          fi
+
           git checkout -B "$branch"
+          if [[ $(git branch --show-current) != "$branch" ]]; then
+            echo "::error::refusing to commit on $(git branch --show-current)"
+            exit 1
+          fi
           git commit -m "chore(nix): pin published docs ${DOCS_SHA:0:12}" \
             -m "Point docs-revision and the fetchFromGitHub hash at the documentation commit that just published."
 
-          if git fetch origin "$branch"; then
-            git push --force-with-lease origin "HEAD:$branch"
-          else
-            git push origin "HEAD:$branch"
+          if [[ $(git branch --show-current) != "$branch" || $ref != "refs/heads/docs-pin/${DOCS_SHA}" ]]; then
+            echo "::error::refusing to push ${ref}"
+            exit 1
           fi
+          # Empty lease means the ref must not exist yet. A recorded tip
+          # updates only that docs-pin ref, and only while it is still there.
+          git push --force-with-lease="${ref}:${remote_sha}" origin "HEAD:${ref}"
 
-          if ! gh pr view "$branch" --json number --jq .number >/dev/null 2>&1; then
-            gh pr create --base main --head "$branch" \
+          if ! gh pr view "$branch" --repo "$GITHUB_REPOSITORY" --json number --jq .number >/dev/null 2>&1; then
+            gh pr create --repo "$GITHUB_REPOSITORY" --base main --head "$branch" \
               --title "chore(nix): pin published docs ${DOCS_SHA:0:12}" \
               --body "$(cat <<EOF
           Published [hibigarden/docs](https://github.com/hibigarden/docs) at \`$DOCS_SHA\`.
@@ -126,10 +179,25 @@ jobs:
           )"
           fi
 
-          gh pr list --state open --limit 30 --json number,title,headRefName \
-            --jq '.[] | select(.title | startswith("chore(nix): pin published docs ")) | "\(.number)\t\(.headRefName)"' |
-            while IFS=$'\t' read -r number head; do
-              if [[ $head != "$branch" ]]; then
-                gh pr close "$number" --comment "Superseded by ${DOCS_SHA}."
-              fi
-            done
+          # Supersede older pins only. Title matches are not enough: a person's
+          # pull request can use the same title on some other branch.
+          export DOCS_PIN_BRANCH="$branch"
+          superseded=$(mktemp)
+          gh api --paginate "/repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" \
+            --jq '.[] | select(.head.repo.full_name == env.GITHUB_REPOSITORY) | select(.base.ref == "main") | select(.user.login == "github-actions[bot]" or .user.login == "app/github-actions") | select(.head.ref | test("^docs-pin/[0-9a-f]{40}$")) | select(.head.ref != env.DOCS_PIN_BRANCH) | "\(.number)\t\(.head.ref)"' \
+            >"$superseded"
+          while IFS=$'\t' read -r number head; do
+            [[ -n "$number" ]] || continue
+            if [[ ! $number =~ ^[0-9]+$ || ! $head =~ ^docs-pin/[0-9a-f]{40}$ || $head == "$branch" ]]; then
+              echo "::error::refusing to close #${number} (${head})"
+              exit 1
+            fi
+            close_meta=$(gh pr view "$number" --repo "$GITHUB_REPOSITORY" --json state,author,headRefName,headRepository,baseRefName --jq '"\(.state)\t\(.author.login)\t\(.headRefName)\t\(.headRepository.nameWithOwner)\t\(.baseRefName)"')
+            IFS=$'\t' read -r close_state close_author close_head close_repo close_base <<<"$close_meta"
+            if [[ $close_state != OPEN || $close_head != "$head" || $close_repo != "$GITHUB_REPOSITORY" || $close_base != main || ! $close_head =~ ^docs-pin/[0-9a-f]{40}$ ]] || ! is_actions_bot "$close_author"; then
+              echo "::error::refusing to close #${number} (${close_author} ${close_repo}#${close_head} -> ${close_base}, ${close_state})"
+              exit 1
+            fi
+            gh pr close "$number" --repo "$GITHUB_REPOSITORY" --comment "Superseded by ${DOCS_SHA}."
+          done <"$superseded"
+          rm -f "$superseded"
