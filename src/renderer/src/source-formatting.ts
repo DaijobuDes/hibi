@@ -689,14 +689,24 @@ export const wholeSelectionInput = [
         return false
       const text = String.fromCodePoint(event.charCode)
       if (/[\r\n\t]/.test(text)) return false
-      const insert = markdownLineStarts(markdownLiteral(text))
+      const literal = markdownLineStarts(markdownLiteral(text))
       event.preventDefault()
-      view.dispatch({
-        changes: { from: whole.from, to: state.doc.length, insert },
-        selection: EditorSelection.cursor(whole.from + insert.length),
-        userEvent: 'input.type',
-        scrollIntoView: true,
-      })
+      const insert = () =>
+        state.update({
+          changes: { from: whole.from, to: state.doc.length, insert: literal },
+          selection: EditorSelection.cursor(whole.from + literal.length),
+          userEvent: 'input.type',
+          scrollIntoView: true,
+        })
+      // Input handlers, an addon's among them, see the typing first.
+      if (
+        !state
+          .facet(EditorView.inputHandler)
+          .some((handler) =>
+            handler(view, whole.from, state.doc.length, text, insert),
+          )
+      )
+        view.dispatch(insert())
       return true
     },
   }),
