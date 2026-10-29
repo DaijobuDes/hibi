@@ -43,6 +43,7 @@ import {
 import { blockAt } from '../formatted-toolbar-state.ts'
 import {
   readDOMPosition,
+  recordPageSelection,
   registerDOMPositions,
 } from '../native-dom-selection.ts'
 import { type InsertValues, tableActions } from '../source-formatting.ts'
@@ -2972,7 +2973,12 @@ export const contribution: FormattedContribution = {
           if (event.inputType !== 'insertText' || !event.data) return false
           if (belowTable(event, view))
             view.dispatch(paragraphBelow(view), { userEvent: 'input.type' })
-          else if (!tableInput(event, view)) return false
+          else if (!tableInput(event, view)) {
+            // CodeMirror takes declined text as typed over its next DOM
+            // read of the selection: that read must find no new pick.
+            if (view.state.field(pickedTable)) recordPageSelection(view)
+            return false
+          }
           event.preventDefault()
           type(view, event.data)
           view.contentDOM.dispatchEvent(

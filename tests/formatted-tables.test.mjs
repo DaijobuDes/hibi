@@ -2,13 +2,14 @@ import assert from 'node:assert/strict'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import test, { after, before } from 'node:test'
+import test, { after, afterEach, before } from 'node:test'
 import { build } from 'vite'
 import { parseRow } from '../src/renderer/src/formatted/table-source.ts'
 import { tableKey } from '../src/renderer/src/table-layout-store.ts'
 import { bundledColorschemes } from '../src/shared/color-palettes.ts'
 import { COLOR_TOKENS } from '../src/shared/colorschemes.ts'
 import { electron, waitForDocumentEditor } from './electron.mjs'
+import { recordEvents, reportFailure } from './failure-state.mjs'
 import { selectFormattedEngine } from './formatted-engine.mjs'
 import { clickMenu, pressShortcut } from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
@@ -46,6 +47,8 @@ Closing paragraph.
 `
 
 let app, folder, page, harness
+const tablesView = 'window.tables.view()'
+const documentView = `document.querySelector('.rich-pane [aria-label="Document editor"]')?.cmTile?.root.view`
 
 const palette = (id) => {
   const scheme = bundledColorschemes.find((entry) => entry.id === id)
@@ -142,9 +145,15 @@ before(
     // Hidden windows have no focus; keys and markers need a focused editor.
     const focus = await harness.context().newCDPSession(harness)
     await focus.send('Emulation.setFocusEmulationEnabled', { enabled: true })
+    await recordEvents(harness)
   },
   { timeout: 90000 },
 )
+
+afterEach(async (t) => {
+  await reportFailure(t, harness, tablesView)
+  await reportFailure(t, page, documentView)
+})
 
 after(
   async () => {
@@ -1488,6 +1497,7 @@ test('unfinished syntax never resolves or writes cells with old spans', {
       doc,
     )
     await harness.waitForFunction(() => !window.tables.settling())
+    await recordEvents(harness, tablesView)
     const target = mode === 'lookup-end' ? 'right19999' : 'right0'
     if (mode === 'lookup-end') {
       await harness.evaluate((target) => {
@@ -1709,8 +1719,7 @@ test('a native selection in a read-only table becomes the editing selection', {
   await mount(doc)
   await harness.evaluate(() => {
     window.tables.setEditable(false)
-    // The pick as the double click made it: the view's own selection
-    // replaces it on the page once it reads it.
+    // The pick as the double click made it.
     document.addEventListener(
       'dblclick',
       () => {
@@ -1733,6 +1742,12 @@ test('a native selection in a read-only table becomes the editing selection', {
     ],
     [from, from + 5],
   )
+  // The page keeps showing the pick, as the rich editor does, through
+  // later updates too.
+  assert.equal(await harness.evaluate(() => getSelection().toString()), 'alpha')
+  await harness.evaluate(() => window.tables.view().dispatch({}))
+  await harness.evaluate(() => window.tables.settle())
+  assert.equal(await harness.evaluate(() => getSelection().toString()), 'alpha')
   await harness.keyboard.type('BLOCKED')
   assert.equal((await state()).doc, doc)
   await harness.evaluate(() => window.tables.setEditable(true))
@@ -1937,6 +1952,7 @@ test('cell editors take no input while the formatted view takes none', {
 }, async () => {
   const doc = 'before\n\n| a | b |\n| - | - |\n| c | d |\n\nafter'
   await mount(doc)
+  await recordEvents(harness, tablesView)
   await harness.locator('.hibi-lp-table td', { hasText: 'c' }).click()
   await harness.keyboard.press('End')
   await harness.evaluate(() => window.tables.setEditable(false))
@@ -2854,6 +2870,7 @@ const openFormatted = async () => {
   // Hidden windows have no focus; editors need a focused page.
   const session = await page.context().newCDPSession(page)
   await session.send('Emulation.setFocusEmulationEnabled', { enabled: true })
+  await recordEvents(page)
 }
 
 test('in the app, cells edit their source in place, undo and run the toolbar table actions', {
@@ -3240,6 +3257,7 @@ test('toolbar formatting preserves genuine DOM picks across table redraws', {
               .cmTile.root.view.state.doc.toString() === doc,
           doc,
         )
+        await recordEvents(page, documentView)
         await rich.evaluate((root, at) => {
           const view = root.cmTile.root.view
           view.focus()
