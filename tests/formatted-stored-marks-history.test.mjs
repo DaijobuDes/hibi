@@ -160,3 +160,84 @@ test('undo and redo keep opposite caret states at a shared text boundary', (t) =
   assert.equal(f.formatting.inspect().state('bold').pressed, true)
   assert.equal(f.type('Z'), 'plain end**XZ**')
 })
+
+test('retained opaque input edges keep exact source history and one version per glyph', (t) => {
+  for (const body of ['[ell](https://e.test)', '`ell`']) {
+    for (const leading of [true, false]) {
+      for (const reverse of [false, true]) {
+        const source = leading ? 'c _' + body + '_' : '_' + body + '_ x'
+        const from = leading ? 0 : source.length - 3,
+          to = leading ? 3 : source.length
+        const { view, session, bridge, type } = fixture(t, source, from)
+        view.dispatch({
+          selection: { anchor: reverse ? to : from, head: reverse ? from : to },
+        })
+        assert.equal(session.snapshot().version, 0)
+        const typed = leading ? '&#90;_' + body + '_' : '_' + body + '_&#90;'
+        assert.equal(type('Z'), typed)
+        assert.equal(session.snapshot().version, 1)
+        assert.equal(view.state.selection.main.head, leading ? 5 : typed.length)
+        const next = leading ? '&#90;&#81;_' + body + '_' : typed + 'Q'
+        assert.equal(type('Q'), next)
+        assert.equal(session.snapshot().version, 2)
+        assert.equal(view.state.selection.main.head, leading ? 10 : next.length)
+        assert.equal(bridge.undo(), true)
+        assert.equal(view.state.doc.toString(), source)
+        assert.equal(session.snapshot().version, 3)
+        assert.equal(bridge.redo(), true)
+        assert.equal(view.state.doc.toString(), next)
+        assert.equal(session.snapshot().version, 4)
+        assert.equal(view.state.selection.main.head, leading ? 10 : next.length)
+      }
+    }
+  }
+})
+
+test('retained code input grows fences and keeps whitespace inside them with an exact caret', (t) => {
+  for (const [source, from, to, text, expected, head, nativeFrom, nativeTo] of [
+    ['``ab``', 2, 4, ' x ', '``  x  ``', 6, 1, 3],
+    ['`` ab ``', 3, 5, '   ', '``   ``', 5, 1, 3],
+    ['``ab``', 2, 3, '``', '``` ``b ```', 6, 1, 2],
+    ['``ab``', 2, 4, '`', '`` ` ``', 4, 1, 3],
+  ]) {
+    const config = markdownConfiguration([])
+    const editor = new Editor({
+      element: null,
+      extensions: [
+        ...config.core,
+        Markdown.configure({
+          marked: config.parser,
+          markedOptions: config.options,
+        }),
+        ...config.addons,
+      ],
+      content: source,
+      contentType: 'markdown',
+    })
+    try {
+      editor.commands.setTextSelection({ from: nativeFrom, to: nativeTo })
+      editor.view.dispatch(editor.state.tr.insertText(text))
+      const { view, bridge } = fixture(t, source, from)
+      view.dispatch({ selection: { anchor: from, head: to } })
+      assert.equal(
+        view.state
+          .facet(EditorView.inputHandler)
+          .some((input) => input(view, from, to, text, () => null)),
+        true,
+      )
+      assert.equal(view.state.doc.toString(), expected)
+      assert.equal(view.state.selection.main.head, head)
+      assert.deepEqual(
+        editor.schema.nodeFromJSON(editor.markdown.parse(expected)).toJSON(),
+        editor.getJSON(),
+      )
+      assert.equal(bridge.undo(), true)
+      assert.equal(view.state.doc.toString(), source)
+      assert.equal(bridge.redo(), true)
+      assert.equal(view.state.doc.toString(), expected)
+      assert.equal(view.state.selection.main.head, head)
+    } finally {
+      editor.destroy()
+    }
+  }
+})

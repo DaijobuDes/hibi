@@ -39,11 +39,13 @@ import {
   formattedSyntaxTree,
   formattedViews,
 } from '../formatted-contributions.ts'
+import { blockAt, formattingAt } from '../formatted-toolbar-state.ts'
 import {
   readDOMPosition,
   registerDOMPositions,
 } from '../native-dom-selection.ts'
 import { type InsertValues, tableActions } from '../source-formatting.ts'
+import { inlineInput, typedLiteral } from '../source-formatting-actions.ts'
 import {
   readTableLayouts,
   storedTableLayouts,
@@ -57,6 +59,7 @@ import {
   type CellMove,
   cellInput,
   cellLineBreak,
+  cellParser,
   markStarts,
   padding,
   renderInline,
@@ -66,6 +69,7 @@ import {
 import {
   alignments,
   cellContent,
+  cellFixes,
   cellSpan,
   countTables,
   deleteColumn,
@@ -339,9 +343,12 @@ type Cell = { line: number; column: number }
 type Lost = { at: number; column: number }
 
 /** Chromium's unhandled table input counts each native block break once again in its caret. */
-function nativeTableTail(text: string) {
+function nativeTableTail(text: string, boundaries = 0) {
   const normalized = text.replace(/\r\n?/g, '\n')
-  let at = normalized.length - (normalized.match(/\n/g)?.length ?? 0)
+  let at = Math.max(
+    0,
+    normalized.length - (normalized.match(/\n/g)?.length ?? 0) - boundaries,
+  )
   // Chromium puts a caret that falls inside a surrogate pair after that scalar.
   if (
     at > 0 &&
@@ -898,12 +905,128 @@ class TableView {
     )
   }
 
+  /** Edit one cell's inline source without normalizing its table's padding. */
+  private inline(source: string, from: number, to: number, text: string) {
+    const state = this.view.state
+    const selected = EditorState.create({
+      doc: source,
+      selection: { anchor: from, head: to },
+      extensions: state
+        .facet(formattedLiteral)
+        .map((name) => formattedLiteral.of(name)),
+    })
+    const edit = selected.update(
+      inlineInput(selected, cellParser(state).parse(source), from, to, text) ??
+        selected.replaceSelection(typedLiteral(selected, text)),
+    )
+    const fixed = edit.state.update({
+      changes: cellFixes(edit.newDoc.toString(), true),
+    })
+    return {
+      source: fixed.newDoc.toString(),
+      head: fixed.changes.mapPos(edit.newSelection.main.head),
+    }
+  }
+
+  /** A genuine text pick keeps balanced inline fragments at the cells it crosses. */
+  private textInput(
+    from: number,
+    to: number,
+    text: string,
+  ): TransactionSpec | null {
+    const { state } = this.view
+    const tree = formattedSyntaxTree(state)
+    if (!tree || /[\r\n]/.test(text)) return null
+    const range = this.range()
+    const last = this.locate(to)
+    if (!last) return null
+    const changes: { from: number; to: number; insert: string }[] = []
+    if (from >= range.from) {
+      const first = this.locate(from)
+      if (!first || first.line !== last.line || first.column === last.column)
+        return null
+      const line = this.widget.line(first.line)
+      const row = this.widget.row(first.line)
+      const a = row.cells[first.column],
+        b = row.cells[last.column]
+      if (!a || !b) return null
+      const start = this.now(line.from + a.from)
+      const before = state.sliceDoc(start, this.now(line.from + a.to))
+      const end = this.now(line.from + b.to)
+      const after = state.sliceDoc(this.now(line.from + b.from), end)
+      const prefix = this.inline(before, from - start, before.length, '').source
+      const suffix = this.inline(after, 0, to - (end - after.length), '').source
+      const selected = this.inline(before, 0, from - start, '').source
+      const inserted = this.inline(selected, 0, selected.length, text)
+      const fragments = [prefix, inserted.source, suffix]
+      changes.push({ from: start, to: end, insert: fragments.join(' | ') })
+      const counts = Array.from(
+        { length: this.lines - 1 },
+        (_, row) => this.widget.row(row ? row + 1 : 0).cells.length,
+      )
+      counts[first.line ? first.line - 1 : 0] =
+        row.cells.length - (last.column - first.column + 1) + fragments.length
+      const width = counts.reduce((width, count) => Math.max(width, count), 0)
+      const short = counts.flatMap((count, row) => (count < width ? [row] : []))
+      const pad = (index: number, count: number, before: boolean) => {
+        const line = this.widget.line(index)
+        const row = this.widget.row(index)
+        const span = cellSpan(
+          row,
+          before ? 0 : row.cells.length - 1,
+          line.text.length,
+        )
+        if (!span) return
+        const at = this.now(line.from + (before ? span.from : span.to))
+        changes.push({
+          from: at,
+          to: at,
+          insert: (before
+            ? ` ${index === 1 ? '---' : ' '} |`
+            : `| ${index === 1 ? '---' : ' '} `
+          ).repeat(count),
+        })
+      }
+      // The native table repair fills the short rows at their open edge.
+      for (const row of short) {
+        const before =
+          (row === 0 || short[0] === row - 1) && short.at(-1) === row
+        pad(row ? row + 1 : 0, width - counts[row]!, before)
+        if (row === 0) pad(1, width - counts[row]!, before)
+      }
+      const set = state.changes(changes)
+      const tail = nativeTableTail(text, 4) // The open cell and paragraph each have two boundaries.
+      const literal = formattingAt(state, tree, from).has('inline-code')
+        ? tail
+        : typedLiteral(state, tail)
+      const escaped = EditorState.create({ doc: literal }).update({
+        changes: cellFixes(literal, true),
+      }).newDoc.length
+      return {
+        changes: set,
+        selection: {
+          anchor:
+            set.mapPos(start, -1) + prefix.length + 3 + inserted.head - escaped,
+        },
+        annotations: isolateHistory.of('full'),
+        userEvent: 'input.type',
+        scrollIntoView: true,
+      }
+    }
+    return null
+  }
+
   /** Native table input stays in its cells; a range entering a table keeps its structure. */
   input(from: number, to: number, text: string): TransactionSpec | null {
     if (!this.current || from === to || !writable(this.view.state)) return null
     const range = this.range()
     if (to <= range.from || to > range.to) return null
     const { state } = this.view
+    const picked = !!state.field(pickedTable, false)
+    if (picked) {
+      const edit = this.textInput(from, to, text)
+      if (edit) return edit
+    }
     if (from >= range.from) {
       const anchor = this.locate(state.selection.main.anchor)
       const head = this.locate(state.selection.main.head)
@@ -936,18 +1059,31 @@ class TableView {
     if (!tree) return null
     let end = range.from
     while (end > from && /\s/.test(state.sliceDoc(end - 1, end))) end--
+    const block = picked
+      ? blockAt(tree, from, state.facet(formattedLiteral)).node
+      : null
+    const balanced =
+      picked &&
+      !/[\r\n]/.test(text) &&
+      block?.name === 'Paragraph' &&
+      block.parent?.name === 'Document' &&
+      !this.widget.inline &&
+      block.nextSibling?.name === 'Table' &&
+      state.doc.lineAt(block.nextSibling.from).from === range.from
+    const part = balanced ? block.to : end
     const selected = state.update({
-      selection: { anchor: from, head: end },
+      selection: { anchor: from, head: part },
     }).state
     const spec = /[\r\n]/.test(text)
-      ? lineInput(selected, tree, from, end, text)
-      : {
+      ? lineInput(selected, tree, from, part, text)
+      : ((balanced ? inlineInput(selected, tree, from, part, text) : null) ?? {
           ...selected.replaceSelection(markdownLiteral(text)),
           userEvent: 'input.type',
-        }
+        })
     if (!spec) return null
     const transaction = selected.update(spec)
     const cleared: { from: number; to: number; insert: string }[] = []
+    if (part < end) cleared.push({ from: part, to: end, insert: '' })
     const target = this.locate(to)
     if (!target) return null
     for (let index = 0; index <= target.line; index++) {
@@ -956,13 +1092,24 @@ class TableView {
       for (const content of this.widget.row(index).cells) {
         const start = this.now(line.from + content.from)
         const stop = Math.min(to, this.now(line.from + content.to))
-        if (start < stop) cleared.push({ from: start, to: stop, insert: '' })
+        if (start < stop) {
+          const source = state.sliceDoc(start, this.now(line.from + content.to))
+          cleared.push({
+            from: start,
+            to: balanced ? start + source.length : stop,
+            insert:
+              balanced && stop < start + source.length
+                ? this.inline(source, 0, stop - start, '').source
+                : '',
+          })
+        }
       }
     }
     const changes = transaction.changes
     const after = markdownLiteral(nativeTableTail(text)).replace(/\n/g, '\n\n')
     return {
       changes: changes.compose(state.changes(cleared).map(changes)),
+      ...(balanced ? { annotations: isolateHistory.of('full') } : {}),
       selection: { anchor: transaction.newSelection.main.head - after.length },
       userEvent: 'input.type',
       scrollIntoView: true,

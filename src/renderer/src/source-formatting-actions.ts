@@ -5,7 +5,10 @@ import {
   type TransactionSpec,
 } from '@codemirror/state'
 import type { SyntaxNode, Tree } from '@lezer/common'
-import { formattedMarkdownParser } from '../../shared/formatted-markdown.ts'
+import {
+  emphasisFlanks,
+  formattedMarkdownParser,
+} from '../../shared/formatted-markdown.ts'
 import { formattedAtomText } from '../../shared/formatted-text-rules.ts'
 import {
   markdownLineStarts,
@@ -48,7 +51,9 @@ type Mark = {
   href?: string
   suffix?: string
   delimiter?: string
+  padded?: boolean
   outer?: boolean
+  input?: boolean
 }
 type Run = {
   from: number
@@ -93,6 +98,7 @@ function inlineRuns(
   to: number,
   split: readonly number[] = [],
   keepOutside?: { from: number; to: number; id?: string },
+  context = keepOutside,
 ) {
   const runs: Run[] = []
   const text = (from: number, to: number, marks: Mark[], literal = false) => {
@@ -132,7 +138,8 @@ function inlineRuns(
         own &&
         keepOutside &&
         !adjacent &&
-        (child.to <= keepOutside.from || child.from >= keepOutside.to)
+        context &&
+        (child.to <= context.from || child.from >= context.to)
       )
         text(a, b, marks)
       else if (own) {
@@ -143,19 +150,26 @@ function inlineRuns(
             keepOutside &&
             (keepOutside.id === undefined || tokens[keepOutside.id]) &&
             own.id !== keepOutside.id &&
-            child.from <= keepOutside.from &&
-            child.to >= keepOutside.to
-          )
+            ((child.from <= keepOutside.from && child.to >= keepOutside.to) ||
+              (keepOutside.id === undefined &&
+                (body.from < keepOutside.from || body.to > keepOutside.to)))
+          ) {
             own.outer = true
+            own.input = keepOutside.id === undefined
+          }
           if (own.id === 'inline-code') {
             const source = state.sliceDoc(body.from, body.to)
             const padded =
               source.startsWith(' ') &&
               source.endsWith(' ') &&
               /[^ ]/.test(source)
+            if (own.outer && keepOutside?.id === undefined) {
+              own.delimiter = state.sliceDoc(child.from, body.from)
+              own.padded = padded
+            }
             const start = body.from + (padded ? 1 : 0),
               end = body.to - (padded ? 1 : 0)
-            text(start, end, [own])
+            text(start, end, own.input ? [...marks, own] : [own])
           } else if (child.name === 'URL' || child.name === 'Autolink') {
             const url = child.getChild('URL') ?? child
             text(url.from, url.to, [...marks, own])
@@ -198,8 +212,18 @@ const urlSource = (url: string) =>
   url.replace(/\\/g, '\\\\').replace(/[()]/g, '\\$&').replace(/ /g, '%20')
 
 /** Serialize one text block, sharing marks across adjacent runs and keeping spaces outside their edges. */
-function render(runs: readonly Run[]): Mapped {
-  let source = ''
+function render(
+  runs: readonly Run[],
+  input?: Run,
+): Mapped & {
+  unsafe: boolean
+  unsafeLeading: boolean
+  unsafeTrailing: boolean
+} {
+  let source = '',
+    unsafe = false,
+    unsafeLeading = false,
+    unsafeTrailing = false
   const spans: Mapped['spans'] = []
   const append = (value: Mapped) => {
     for (const span of value.spans)
@@ -252,7 +276,11 @@ function render(runs: readonly Run[]): Mapped {
         ...run,
         marks: run.marks.filter((mark) => !sameMark(mark, own)),
       })),
+      input,
     )
+    unsafe ||= inner.unsafe
+    unsafeLeading ||= inner.unsafeLeading
+    unsafeTrailing ||= inner.unsafeTrailing
     const code = own.id === 'inline-code'
     const value = code
       ? group
@@ -260,20 +288,61 @@ function render(runs: readonly Run[]): Mapped {
           .join('')
           .replace(/\n/g, ' ')
       : inner.source
-    const lead = /^\s*/.exec(value)![0],
-      tail = /\s*$/.exec(value.slice(lead.length))![0]
+    const retained = code
+      ? group
+          .flatMap((run) => run.marks)
+          .find((mark) => mark.outer && mark.delimiter)
+      : undefined
+    const lead = retained ? '' : /^\s*/.exec(value)![0],
+      tail = retained ? '' : /\s*$/.exec(value.slice(lead.length))![0]
     const core = value.slice(lead.length, value.length - tail.length)
     let delimiter = code ? fence(core) : (tokens[own.id] ?? '[')
     for (const run of group) {
       const saved = run.marks.find(
         (mark) => sameMark(mark, own) && mark.outer && mark.delimiter,
       )
-      if (saved?.delimiter) {
+      if (
+        saved?.delimiter &&
+        (!code || saved.delimiter.length >= delimiter.length)
+      ) {
+        if (saved.input && /^_+$/.test(saved.delimiter)) {
+          let next = end
+          while (next < runs.length && !runs[next]!.source) next++
+          const following = runs[next]
+          const after = tail
+            ? (tail.slice(0, 2).match(/^./su)?.[0] ?? '')
+            : following?.marks.length
+              ? '*'
+              : (following?.source.slice(0, 2).match(/^./su)?.[0] ?? '')
+          const before = (lead || source).slice(-2).match(/.$/su)?.[0] ?? ''
+          const first = core.slice(0, 2).match(/^./su)?.[0] ?? ''
+          const last = core.slice(-2).match(/.$/su)?.[0] ?? ''
+          if (
+            !emphasisFlanks(95, before, first).open ||
+            !emphasisFlanks(95, last, after).close
+          ) {
+            // An opaque marked body can need a reference at the typed edge
+            // even when switching its underscores to asterisks.
+            const open = emphasisFlanks(42, before, first).open,
+              close = emphasisFlanks(42, last, after).close
+            unsafe ||= !open || !close
+            if (!open && runs[i - 1] === input) unsafeTrailing = true
+            if (!close && following === input) unsafeLeading = true
+            continue
+          }
+        }
         delimiter = saved.delimiter
         break
       }
     }
-    const pad = code && /^`|`$/.test(core) ? ' ' : ''
+    const pad =
+      code &&
+      (/^`|`$/.test(core) ||
+        (/[^ ]/.test(core) &&
+          (retained?.padded ||
+            (retained && core.startsWith(' ') && core.endsWith(' ')))))
+        ? ' '
+        : ''
     const open = core ? delimiter + pad : '',
       close = core
         ? own.id === 'link'
@@ -291,7 +360,7 @@ function render(runs: readonly Run[]): Mapped {
     })
     i = end
   }
-  return { source, spans }
+  return { source, spans, unsafe, unsafeLeading, unsafeTrailing }
 }
 
 function leaves(tree: Tree, range: SelectionRange, state: EditorState) {
@@ -345,7 +414,6 @@ export function inlineInput(
   text: string,
 ): TransactionSpec | null {
   if (
-    from === to ||
     state.selection.ranges.length !== 1 ||
     from !== state.selection.main.from ||
     to !== state.selection.main.to ||
@@ -363,6 +431,54 @@ export function inlineInput(
     to > leaf.to
   )
     return null
+  const context = { from, to }
+  let boundary = false
+  for (const [at, side] of [
+    [from, -1],
+    [to, 1],
+  ] as const) {
+    for (
+      let node: SyntaxNode | null = tree.resolveInner(at, side);
+      node;
+      node = node.parent
+    ) {
+      if (
+        (node.from !== to && node.to !== from) ||
+        !['Emphasis', 'StrongEmphasis'].includes(node.name) ||
+        state.facet(formattedLiteral).includes(node.name) ||
+        state.sliceDoc(node.from, node.from + 1) !== '_'
+      )
+        continue
+      const body = formattingText(state, node)
+      if (!body) continue
+      const literal = typedLiteral(state, text)
+      const before =
+        (literal || state.sliceDoc(Math.max(0, from - 2), from))
+          .slice(-2)
+          .match(/.$/su)?.[0] ?? ''
+      const after =
+        (literal || state.sliceDoc(to, Math.min(state.doc.length, to + 2)))
+          .slice(0, 2)
+          .match(/^./su)?.[0] ?? ''
+      const first =
+        state
+          .sliceDoc(body.from, Math.min(body.to, body.from + 2))
+          .match(/^./su)?.[0] ?? ''
+      const last =
+        state
+          .sliceDoc(Math.max(body.from, body.to - 2), body.to)
+          .match(/.$/su)?.[0] ?? ''
+      if (
+        (node.from === to && !emphasisFlanks(95, before, first).open) ||
+        (node.to === from && !emphasisFlanks(95, last, after).close)
+      ) {
+        boundary = true
+        context.from = Math.min(context.from, node.from)
+        context.to = Math.max(context.to, node.to)
+      }
+    }
+  }
+  if (from === to && !boundary) return null
   let marked = false
   tree.iterate({
     from,
@@ -370,6 +486,8 @@ export function inlineInput(
     enter(ref) {
       if (
         markNames[ref.name] &&
+        ref.from < to &&
+        ref.to > from &&
         !state.facet(formattedLiteral).includes(ref.name)
       ) {
         marked = true
@@ -378,21 +496,31 @@ export function inlineInput(
       return undefined
     },
   })
-  if (!marked) return null
+  if (!marked && !boundary) return null
   const start = textStart(state, leaf),
     end = textEnd(leaf)
-  const runs = inlineRuns(state, leaf, start, end, [from, to], { from, to })
-  const first = runs.findIndex((run) => run.to > from && run.from < to),
-    last = runs.findLastIndex((run) => run.to > from && run.from < to)
-  if (first < 0 || !runs.slice(first, last + 1).some((run) => run.marks.length))
-    return null
+  const runs = inlineRuns(
+    state,
+    leaf,
+    start,
+    end,
+    [from, to],
+    { from, to },
+    context,
+  )
+  let first = runs.findIndex((run) => run.to > from && run.from < to)
+  const last = runs.findLastIndex((run) => run.to > from && run.from < to)
+  if (from === to) {
+    first = runs.findIndex((run) => run.from >= from)
+    if (first < 0) first = runs.length
+  } else if (first < 0) return null
   const after = runs.find((run) => run.from <= to && run.to > to)
-  const marks = runs[first]!.marks.filter(
+  const marks = (from === to ? [] : runs[first]!.marks).filter(
     (mark) =>
       mark.id !== 'subscript' ||
       after?.marks.some((other) => sameMark(mark, other)),
   )
-  runs.splice(first, last - first + 1, {
+  const input = {
     from,
     to,
     text,
@@ -400,9 +528,26 @@ export function inlineInput(
     source: marks.some((mark) => mark.id === 'inline-code')
       ? text
       : typedLiteral(state, text),
-  })
-  const value = render(runs),
-    inserted = value.spans.find((span) => span.from === from && span.to === to)
+  }
+  runs.splice(first, from === to ? 0 : last - first + 1, input)
+  let value = render(runs, input)
+  if (!marks.length && !state.facet(formattedLiteral).includes('Entity')) {
+    if (value.unsafeLeading)
+      input.source = input.source.replace(
+        /^[^\s\p{P}\p{S}]/u,
+        (char) => `&#${char.codePointAt(0)};`,
+      )
+    if (value.unsafeTrailing)
+      input.source = input.source.replace(
+        /[^\s\p{P}\p{S}]$/u,
+        (char) => `&#${char.codePointAt(0)};`,
+      )
+    if (value.unsafeLeading || value.unsafeTrailing) value = render(runs, input)
+  }
+  if (value.unsafe) return null
+  const inserted = value.spans.find(
+    (span) => span.from === from && span.to === to,
+  )
   if (!inserted) return null
   return normalizeTables(state, tree, {
     changes: { from: start, to: end, insert: value.source },
