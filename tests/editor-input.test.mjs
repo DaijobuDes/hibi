@@ -1351,7 +1351,7 @@ test('codemirror: a native table pick keeps the shared input guards', {
         const before = await acceptedInput(page)
         await inputWorkProbe(rich)
         const composing = await rich.evaluate(
-          (element, { guard, kind }) => {
+          async (element, { guard, kind }) => {
             const target =
               guard === 'foreign target'
                 ? element.querySelector('.cm-line')
@@ -1370,6 +1370,10 @@ test('codemirror: a native table pick keeps the shared input guards', {
                   })
                 : new KeyboardEvent(kind, { ...init, key: 'Q' })
             target.dispatchEvent(event)
+            // The view's next measure reads the page's selection, which the
+            // pick shows, even in the moment after text input it did not take.
+            element.cmTile.root.view.requestMeasure()
+            await new Promise(requestAnimationFrame)
             return event.isComposing
           },
           { guard, kind },

@@ -48,6 +48,29 @@ type Points = Pick<
   'anchorNode' | 'anchorOffset' | 'focusNode' | 'focusOffset'
 >
 
+type Point = { node: Node; offset: number }
+
+/**
+ * Make CodeMirror's record of the page selection match the page, which
+ * shows a pick inside a widget where CodeMirror would draw it at the
+ * widget's edges. Otherwise its next DOM read takes the pick for a new
+ * selection at those edges or, just after text input the view did not
+ * take, for that text typed over it.
+ */
+export function recordPageSelection(view: EditorView) {
+  const page = view.dom.ownerDocument.getSelection()
+  if (!page?.anchorNode || !page.focusNode) return
+  // ponytail: CodeMirror has no public API for this record; the pinned
+  // @codemirror/view keeps it on the view's internal DOM observer.
+  const { observer } = view as unknown as {
+    observer: { setSelectionRange(anchor: Point, head: Point): void }
+  }
+  observer.setSelectionRange(
+    { node: page.anchorNode, offset: page.anchorOffset },
+    { node: page.focusNode, offset: page.focusOffset },
+  )
+}
+
 const writable = (state: EditorState) =>
   !state.readOnly && state.facet(EditorView.editable)
 
