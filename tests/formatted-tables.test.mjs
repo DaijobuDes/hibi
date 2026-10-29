@@ -2008,7 +2008,9 @@ test('the toolbar inserts a header and two rows, with the caret in the first hea
   await harness.locator('.hibi-lp-table').waitFor()
   assert.equal(await rows.count(), 3)
   await harness.evaluate(() => window.tables.settle())
-  assert.deepEqual([(await state()).cell, (await state()).head], ['0:0', 2])
+  // The rich editor's table spelling `\n|     |`: an empty cell's caret sits
+  // mid-padding, after the line break, the pipe and three of its five spaces.
+  assert.deepEqual([(await state()).cell, (await state()).head], ['0:0', 5])
   // Table actions edit the table around that cell, as in the rich editor.
   assert.equal(
     await harness.evaluate(() => window.tables.runTableAction('row-after')),
