@@ -85,6 +85,12 @@ export async function selectFormattingDOMRange(
       const a = reverse ? end : start,
         b = reverse ? start : end
       getSelection().setBaseAndExtent(a.node, a.offset, b.node, b.offset)
+      // A pointer pick moves focus out of the cell editor, and the view reads
+      // it in that turn. A reverse pick here leaves the editor focused with
+      // the anchor in it, so a measure before the page reports the pick
+      // would let the editor draw its caret over it.
+      if (engine === 'codemirror')
+        document.dispatchEvent(new Event('selectionchange'))
       return true
     },
     { item, engine, reverse },
