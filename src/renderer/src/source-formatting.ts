@@ -37,6 +37,11 @@ import {
   formattedSyntaxTree,
 } from './formatted-contributions.ts'
 import {
+  insertAfterBlock,
+  selectBlock,
+  selectedBlock,
+} from './formatted-text-end.ts'
+import {
   caretMarks,
   formattedStates,
   formattingAt,
@@ -1013,6 +1018,21 @@ export function sourceFormatting(
       view.focus()
       return true
     }
+    // As over the rich editor's node selection, a block selected whole
+    // takes a divider after it, and stays selected in its quote.
+    const held = tree && selectedBlock(view.state)
+    if (held && id === 'divider') {
+      view.dispatch({
+        ...insertAfterBlock(view.state, tree, held, true),
+        annotations: [
+          Transaction.userEvent.of('input.format'),
+          isolateHistory.of('full'),
+        ],
+        scrollIntoView: true,
+      })
+      view.focus()
+      return true
+    }
     const block =
       tree &&
       (blockAction(view.state, tree, id) ??
@@ -1020,8 +1040,14 @@ export function sourceFormatting(
         listAction(view.state, tree, id) ??
         (id === 'quote' ? quoteAction(view.state, tree) : null))
     if (block) {
+      // A quote adds its marks at line starts: the block's ends keep their
+      // distance from their lines' ends.
+      const after = held && view.state.changes(block.changes).apply(doc)
+      const kept = (at: number) =>
+        after!.line(doc.lineAt(at).number).to - (doc.lineAt(at).to - at)
       view.dispatch({
         ...preserveActionSelection(view.state, tree!, block),
+        ...(held && selectBlock(kept(held.from), kept(held.to))),
         annotations: [
           Transaction.userEvent.of('input.format'),
           isolateHistory.of('full'),
