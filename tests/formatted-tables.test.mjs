@@ -500,6 +500,17 @@ test('arrow keys enter the nearest cells of an adjacent table and shift-click ex
   assert.equal(selection.anchor, 1)
   assert.equal(selection.line, '| x | y |')
   assert.equal(selection.editor, null)
+  // From an edited cell, the selection keeps its anchor in the cell's text,
+  // as in the rich editor.
+  await harness.locator('.hibi-lp-table td', { hasText: 'x' }).click()
+  await harness.keyboard.press('End')
+  await harness.locator('.cm-line', { hasText: 'before' }).click({
+    modifiers: ['Shift'],
+  })
+  const extended = await state()
+  assert.equal(extended.anchor, doc.indexOf('x |') + 1)
+  assert.ok(extended.head < doc.indexOf('| a'), String(extended.head))
+  assert.equal(extended.editor, null)
 })
 
 test('arrow keys enter tables in quotes and lists', {
@@ -1668,6 +1679,7 @@ test('a cell editor keeps editing its cell when another edit changes the columns
             insert: b.slice(start, b.length - end),
           }
         })
+        window.editedCell = document.activeElement
         view.dispatch({ changes })
         return view.state.selection.main.head
       }, edits)
@@ -1678,9 +1690,17 @@ test('a cell editor keeps editing its cell when another edit changes the columns
           inView: view.dom.contains(document.activeElement),
           inCell: !!document.activeElement.closest('.hibi-lp-cell-editor'),
           head: view.state.selection.main.head,
+          // The editor of a cell that is still there goes on, with any
+          // composition in it.
+          kept: document.activeElement === window.editedCell,
         }
       })
-      assert.deepEqual(focus, { inView: true, inCell: true, head: mapped })
+      assert.deepEqual(focus, {
+        inView: true,
+        inCell: true,
+        head: mapped,
+        kept: name !== 'column gone',
+      })
       const now = await state()
       assert.deepEqual([now.cell, now.editor], [cell, editor])
       await harness.keyboard.type('Y')

@@ -980,3 +980,115 @@ test('behind the switch, edits from elsewhere that change the columns of a table
     'before\n\n| n | a | b |\n| :- | - | - |\n| m | cXYZ | d |\n\nafter\n',
   )
 })
+
+test('behind the switch, a composition in a table cell goes on through edits from elsewhere that change the columns', {
+  timeout: 90000,
+}, async (t) => {
+  const folder = await mkdtemp(join(tmpdir(), 'hibi-formatted-view-'))
+  const file = join(folder, 'notes', 'note.md')
+  await mkdir(join(folder, 'notes'))
+  await writeFile(file, 'before\n\n| a | b |\n| - | - |\n| c | d |\n\nafter\n')
+  const app = await electron.launch({
+    args: [resolve('.'), `--user-data-dir=${join(folder, 'profile')}`],
+  })
+  t.after(async () => {
+    await app.close()
+    await rm(folder, { recursive: true, force: true })
+  })
+  await app.evaluate(({ dialog }) => {
+    dialog.showMessageBox = async () => ({ response: 1 })
+  })
+  const page = await app.firstWindow()
+  await selectFormattedEngine(app, page, 'codemirror')
+  await app.evaluate(({ dialog }, path) => {
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] })
+  }, file)
+  await pressShortcut(app, `${mod}+o`)
+  await page.locator('.rich-pane .hibi-lp-table').waitFor()
+  await page
+    .getByRole('button', { name: /^side-by-side$/i, exact: true })
+    .click()
+  await page.locator('.mode-side-by-side[data-source-ready="true"]').waitFor()
+  const cdp = await page.context().newCDPSession(page)
+  await cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true })
+  const candidate = (text) =>
+    cdp.send('Input.imeSetComposition', {
+      text,
+      selectionStart: text.length,
+      selectionEnd: text.length,
+    })
+  // Each edit inserts after a text of the note: from the source pane, or
+  // without a selection in the formatted view, as an addon's.
+  for (const [cell, pane, edits, row] of [
+    [
+      'td:has-text("c")',
+      'source',
+      [
+        ['before\n\n', '| n '],
+        ['| a | b |\n', '| - '],
+        ['| - | - |\n', '| m '],
+      ],
+      '| m | cか | d |',
+    ],
+    ['th:has-text("a")', 'rich', [['| ak | b |\n| ', ':']], '| n | aか | b |'],
+    [
+      'td:has-text("d")',
+      'rich',
+      [
+        ['| b |', ' e |'],
+        ['| - | - |', ' - |'],
+        ['| dk |', ' f |'],
+      ],
+      '| m | cか | dか | f |',
+    ],
+  ]) {
+    await page.locator(`.rich-pane .hibi-lp-table ${cell}`).click()
+    await page.keyboard.press('End')
+    await cdp.send('Input.dispatchKeyEvent', {
+      type: 'rawKeyDown',
+      key: 'k',
+      code: 'KeyK',
+      windowsVirtualKeyCode: 229,
+      nativeVirtualKeyCode: 229,
+    })
+    await candidate('k')
+    await page.evaluate(
+      ({ pane, edits }) => {
+        window.composingCell = document.activeElement
+        const view = document.querySelector(`.${pane}-pane .cm-content`).cmTile
+          .root.view
+        const text = view.state.doc.toString()
+        view.dispatch({
+          changes: edits.map(([before, insert]) => ({
+            from: text.indexOf(before) + before.length,
+            insert,
+          })),
+        })
+      },
+      { pane, edits },
+    )
+    const composing = await page.evaluate(async () => {
+      for (let frame = 0; frame < 2; frame++)
+        await new Promise(requestAnimationFrame)
+      return {
+        kept: document.activeElement === window.composingCell,
+        composing: document.activeElement.cmTile.root.view.composing,
+      }
+    })
+    assert.deepEqual(composing, { kept: true, composing: true }, row)
+    await candidate('か')
+    await cdp.send('Input.insertText', { text: 'か' })
+    await waitForAsync(
+      page,
+      async (row) => (await window.hibi.getDocument()).markdown.includes(row),
+      row,
+    ).catch(() => {})
+    const { markdown } = await page.evaluate(() => window.hibi.getDocument())
+    assert.ok(markdown.includes(row), markdown)
+  }
+  const { markdown } = await page.evaluate(() => window.hibi.getDocument())
+  assert.equal(
+    markdown,
+    'before\n\n| n | aか | b | e |\n| :- | - | - | - |\n| m | cか | dか | f |\n\nafter\n',
+  )
+})
