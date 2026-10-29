@@ -768,6 +768,7 @@ class TableView {
 
   /** Where the table is now: the range its widget replaces. */
   range() {
+    if (this.current) return { from: this.widget.from, to: this.widget.to }
     const from = this.view.posAtDOM(this.dom)
     return { from, to: from + this.widget.to - this.widget.from }
   }
@@ -2302,8 +2303,11 @@ const clearTablePick = StateEffect.define<null>()
 const pickedTable = StateField.define<boolean>({
   create: () => false,
   update(picked, tr) {
-    if (tr.effects.some((effect) => effect.is(clearTablePick)) || tr.docChanged)
-      return false
+    if (tr.effects.some((effect) => effect.is(clearTablePick))) return false
+    if (tr.docChanged)
+      return (
+        picked && tr.isUserEvent('input.format') && !tr.newSelection.main.empty
+      )
     if (tr.annotation(cellInput) && tr.isUserEvent('select.pointer'))
       return true
     return (
@@ -2325,8 +2329,7 @@ const tableEditing = ViewPlugin.fromClass(
     readonly view: EditorView
     /** Focused cell editors that follow their tables' changes once tables redraw. */
     private following: { table: TableView; lost: Lost | null }[] = []
-    private picked: { anchor: [Node, number]; head: [Node, number] } | null =
-      null
+    private picked = false
     private editable = new Set<HTMLElement>()
     constructor(view: EditorView) {
       this.view = view
@@ -2341,7 +2344,7 @@ const tableEditing = ViewPlugin.fromClass(
       view.dom.ownerDocument.defaultView?.addEventListener('blur', this.intent)
     }
     private releasePick() {
-      this.picked = null
+      this.picked = false
       for (const dom of this.editable) dom.contentEditable = 'false'
       this.editable.clear()
     }
@@ -2412,29 +2415,20 @@ const tableEditing = ViewPlugin.fromClass(
         selection.focusOffset,
       )
       if (!anchor || !head || !(anchor.mapped || head.mapped)) return
-      let a = { node: selection.anchorNode, offset: selection.anchorOffset }
-      let h = { node: selection.focusNode, offset: selection.focusOffset }
+      const a = selection.anchorNode,
+        h = selection.focusNode
       // Cross-cell picks belong to the document. Removing the nested editing
       // host lets Chromium include both endpoints in the same native range.
       for (const table of mounted.get(view) ?? []) {
         const editor = table.dom.querySelector('.hibi-lp-cell-editor')
         if (!editor) continue
-        const left = editor.contains(a.node),
-          right = editor.contains(h.node)
+        const left = editor.contains(a),
+          right = editor.contains(h)
         if (!left && !right) continue
         table.stopEditing()
-        if (left) a = table.point(anchor.at) ?? a
-        if (right) h = table.point(head.at) ?? h
       }
-      // Across a widget edge Chromium omits text inside an uneditable island.
-      // The document owns input for this pick, so both endpoints share its host.
-      for (const table of mounted.get(view) ?? [])
-        if (table.dom.contains(a.node) !== table.dom.contains(h.node)) {
-          table.dom.contentEditable = 'inherit'
-          this.editable.add(table.dom)
-        }
       if (event?.type === 'selectionchange') event.stopImmediatePropagation()
-      this.picked = { anchor: [a.node, a.offset], head: [h.node, h.offset] }
+      this.picked = true
       const current = view.state.selection.main
       if (
         !view.state.field(pickedTable) ||
@@ -2451,22 +2445,47 @@ const tableEditing = ViewPlugin.fromClass(
       return true
     }
     private restorePick = () => {
-      const picked = this.picked
-      if (!picked) return
+      if (!this.picked) return
       const { view } = this
       if (
         !view.state.field(pickedTable) ||
         !writable(view.state) ||
-        !view.hasFocus ||
-        !picked.anchor[0].isConnected ||
-        !picked.head[0].isConnected
+        !view.hasFocus
       ) {
         this.releasePick()
         return
       }
+      const point = (at: number) => {
+        const table = tableAt(view, at, true)
+        return table ? table.point(at) : view.domAtPos(at)
+      }
+      const range = view.state.selection.main
+      const anchor = point(range.anchor),
+        head = point(range.head)
+      if (
+        !anchor ||
+        !head ||
+        !anchor.node.isConnected ||
+        !head.node.isConnected
+      )
+        return
+      for (const dom of this.editable)
+        if (dom.contains(anchor.node) === dom.contains(head.node)) {
+          dom.contentEditable = 'false'
+          this.editable.delete(dom)
+        }
+      // Across a widget edge both endpoints must share the document's host.
+      for (const table of mounted.get(view) ?? [])
+        if (
+          table.dom.contains(anchor.node) !== table.dom.contains(head.node) &&
+          !this.editable.has(table.dom)
+        ) {
+          table.dom.contentEditable = 'inherit'
+          this.editable.add(table.dom)
+        }
       view.dom.ownerDocument
         .getSelection()
-        ?.setBaseAndExtent(...picked.anchor, ...picked.head)
+        ?.setBaseAndExtent(anchor.node, anchor.offset, head.node, head.offset)
     }
     destroy() {
       this.releasePick()
@@ -2488,6 +2507,8 @@ const tableEditing = ViewPlugin.fromClass(
       )
     }
     update(update: ViewUpdate) {
+      if (update.docChanged && update.state.field(pickedTable))
+        this.picked = true
       if (this.picked) queueMicrotask(this.restorePick)
       const tables = mounted.get(this.view) ?? []
       // Undo and keyboard navigation move a focused cell editor; ignore

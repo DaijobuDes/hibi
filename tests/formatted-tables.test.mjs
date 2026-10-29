@@ -10,7 +10,7 @@ import { bundledColorschemes } from '../src/shared/color-palettes.ts'
 import { COLOR_TOKENS } from '../src/shared/colorschemes.ts'
 import { electron, waitForDocumentEditor } from './electron.mjs'
 import { selectFormattedEngine } from './formatted-engine.mjs'
-import { pressShortcut } from './keyboard.mjs'
+import { clickMenu, pressShortcut } from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
 
 const wide = Array.from({ length: 30 }, (_, i) => `col ${i}`)
@@ -3038,4 +3038,243 @@ test('typed cell padding follows selection, blur, readonly and a source change',
       )
     })
   }
+})
+
+test('toolbar formatting preserves genuine DOM picks across table redraws', {
+  timeout: 30000,
+}, async (t) => {
+  await openFormatted()
+  const doc = 'plain\n\n\n| aa   | bb   |\n| ---- | ---- |\n| cell | tail |\n'
+  const cases = [
+    {
+      id: 'bold',
+      start: 'plain',
+      a: 1,
+      end: 'cell',
+      b: 2,
+      selected: 'lainaabbce',
+      source:
+        'p**lain**\n\n\n| **aa**   | **bb** |\n| -------- | ------ |\n| **ce**ll | tail   |\n',
+      styles: [
+        ['p', false, false],
+        ['lainaabbce', true, false],
+        ['lltail', false, false],
+      ],
+      caret: [
+        ['p', 'lain'],
+        ['ce', 'll'],
+      ],
+    },
+    {
+      id: 'italic',
+      start: 'cell',
+      a: 1,
+      end: 'tail',
+      b: 2,
+      selected: 'ellta',
+      source:
+        'plain\n\n\n| aa     | bb     |\n| ------ | ------ |\n| c*ell* | *ta*il |\n',
+      styles: [
+        ['plain', false, false],
+        ['aabb', true, false],
+        ['c', false, false],
+        ['ellta', false, true],
+        ['il', false, false],
+      ],
+      caret: [
+        ['c', 'ell'],
+        ['ta', 'il'],
+      ],
+    },
+  ]
+  const snapshot = () =>
+    page.evaluate(async () => {
+      await window.hibi.flushDocumentChanges()
+      const accepted = await window.hibi.getDocument()
+      const root = document.querySelector(
+        '.rich-pane [aria-label="Document editor"]',
+      )
+      const selection = getSelection()
+      const clean = (fragment) => {
+        for (const node of fragment.querySelectorAll(
+          '.hibi-lp-marker, [aria-hidden="true"], label',
+        ))
+          node.remove()
+        return fragment.textContent
+      }
+      const at = (node, offset) => {
+        const block = (
+          node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement
+        ).closest('.cm-line, p')
+        const left = document.createRange(),
+          right = document.createRange()
+        left.selectNodeContents(block)
+        left.setEnd(node, offset)
+        right.selectNodeContents(block)
+        right.setStart(node, offset)
+        return [clean(left.cloneContents()), clean(right.cloneContents())]
+      }
+      const styles = []
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+      while (walker.nextNode()) {
+        const node = walker.currentNode,
+          parent = node.parentElement
+        if (
+          !node.data ||
+          parent.closest('.hibi-lp-marker, [aria-hidden="true"], label') ||
+          !parent.getClientRects().length
+        )
+          continue
+        const css = getComputedStyle(parent),
+          bold = Number(css.fontWeight) >= 600,
+          italic = css.fontStyle === 'italic'
+        const last = styles.at(-1)
+        if (last && last[1] === bold && last[2] === italic) last[0] += node.data
+        else styles.push([node.data, bold, italic])
+      }
+      const range = root.cmTile.root.view.state.selection.main
+      return {
+        source: accepted.markdown,
+        version: accepted.contentVersion,
+        range: [range.anchor, range.head],
+        text: clean(root.cloneNode(true)),
+        styles,
+        selected: clean(selection.getRangeAt(0).cloneContents()).replace(
+          /\s/g,
+          '',
+        ),
+        caret: [
+          at(selection.anchorNode, selection.anchorOffset),
+          at(selection.focusNode, selection.focusOffset),
+        ],
+        collapsed: selection.isCollapsed,
+        inputs: window.tableActionInputs,
+      }
+    })
+  for (const item of cases)
+    for (const reverse of [false, true])
+      await t.test(item.id + (reverse ? ' reverse' : ' forward'), async () => {
+        const name = 'table-action-' + item.id + '-' + reverse + '.md'
+        const file = join(folder, name)
+        await writeFile(file, doc)
+        await app.evaluate(({ dialog }, file) => {
+          dialog.showOpenDialog = async () => ({
+            canceled: false,
+            filePaths: [file],
+          })
+        }, file)
+        await clickMenu(app, 'Open…')
+        await waitForAsync(
+          page,
+          async (name) => (await window.hibi.getDocument()).name === name,
+          name,
+        )
+        await waitForDocumentEditor(app, page)
+        const rich = page.getByRole('textbox', {
+          name: 'Document editor',
+          exact: true,
+        })
+        await page.waitForFunction(
+          (doc) =>
+            document
+              .querySelector('.rich-pane [aria-label="Document editor"]')
+              .cmTile.root.view.state.doc.toString() === doc,
+          doc,
+        )
+        await rich.evaluate((root, at) => {
+          const view = root.cmTile.root.view
+          view.focus()
+          view.dispatch({ selection: { anchor: at }, scrollIntoView: true })
+        }, doc.indexOf(item.end) + item.b)
+        await page
+          .getByRole('textbox', { name: 'Table cell', exact: true })
+          .waitFor()
+        await page.waitForFunction(
+          () =>
+            document.activeElement?.getAttribute('aria-label') === 'Table cell',
+        )
+        await rich.evaluate(
+          (root, { item, reverse }) => {
+            const find = (word) => {
+              const walker = document.createTreeWalker(
+                root,
+                NodeFilter.SHOW_TEXT,
+              )
+              while (walker.nextNode())
+                if (walker.currentNode.data.trim() === word)
+                  return walker.currentNode
+            }
+            const a = find(item.start),
+              h = find(item.end)
+            getSelection().setBaseAndExtent(
+              reverse ? h : a,
+              reverse ? item.b : item.a,
+              reverse ? a : h,
+              reverse ? item.a : item.b,
+            )
+            window.tableActionInputs = []
+            if (!window.tableActionInputInstalled) {
+              window.tableActionInputInstalled = true
+              document.addEventListener('input', (event) => {
+                if (
+                  document
+                    .querySelector('.rich-pane [aria-label="Document editor"]')
+                    ?.contains(event.target)
+                )
+                  window.tableActionInputs.push({
+                    type: event.inputType,
+                    data: event.data,
+                  })
+              })
+            }
+          },
+          { item, reverse },
+        )
+        const initial = [
+          doc.indexOf(item.start) + item.a,
+          doc.indexOf(item.end) + item.b,
+        ]
+        if (reverse) initial.reverse()
+        await page.waitForFunction((range) => {
+          const current = document.querySelector(
+            '.rich-pane [aria-label="Document editor"]',
+          ).cmTile.root.view.state.selection.main
+          return current.anchor === range[0] && current.head === range[1]
+        }, initial)
+        const before = await snapshot()
+        assert.equal(before.source, doc)
+        assert.equal(before.version, 0)
+        assert.equal(before.selected, item.selected)
+        await page
+          .locator('.editor-toolbar [data-toolbar-id="format.' + item.id + '"]')
+          .click()
+        await page.evaluate(async () => {
+          await new Promise(requestAnimationFrame)
+          await new Promise(requestAnimationFrame)
+        })
+        await rich.focus()
+        const from = item.source.indexOf(item.id === 'bold' ? 'lain' : 'ell')
+        const to = item.source.indexOf(item.id === 'bold' ? 'ce' : 'ta') + 2
+        const expectedRange = reverse ? [to, from] : [from, to]
+        const expectedCaret = reverse ? [...item.caret].reverse() : item.caret
+        const action = await snapshot()
+        assert.equal(action.source, item.source)
+        assert.equal(action.version, 1)
+        assert.equal(action.text, 'plainaabbcelltail')
+        assert.deepEqual(action.styles, item.styles)
+        assert.deepEqual(action.range, expectedRange)
+        assert.deepEqual(action.caret, expectedCaret)
+        assert.equal(action.selected, item.selected)
+        assert.equal(action.collapsed, false)
+        assert.deepEqual(action.inputs, [])
+        // Round-trip the real range through the registered widget mapping.
+        await page.evaluate(() =>
+          document.dispatchEvent(new Event('selectionchange')),
+        )
+        await page.evaluate(async () => {
+          await new Promise(requestAnimationFrame)
+          await new Promise(requestAnimationFrame)
+        })
+        assert.deepEqual(await snapshot(), action)
+      })
 })
