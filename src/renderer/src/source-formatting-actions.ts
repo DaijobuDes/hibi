@@ -1,4 +1,5 @@
 import {
+  Annotation,
   EditorSelection,
   EditorState,
   type SelectionRange,
@@ -46,6 +47,10 @@ const tokens: Record<string, string> = {
   subscript: '~',
 }
 const order = ['link', 'bold', 'italic', 'strike', 'subscript', 'inline-code']
+/** The cause of input refused because no Markdown spelling keeps its marks. */
+export const formattedInputError = Symbol('formatted input error')
+/** Input an input handler refused, for its editor to reject unapplied. */
+export const rejectedInput = Annotation.define<Error>()
 type Mark = {
   id: string
   href?: string
@@ -544,7 +549,11 @@ export function inlineInput(
       )
     if (value.unsafeLeading || value.unsafeTrailing) value = render(runs, input)
   }
-  if (value.unsafe) return null
+  if (value.unsafe)
+    throw new Error(
+      'This edit would rewrite other Markdown. Use Source view for this document.',
+      { cause: formattedInputError },
+    )
   const inserted = value.spans.find(
     (span) => span.from === from && span.to === to,
   )

@@ -163,6 +163,7 @@ import {
   storedMarkInput,
   wholeSelectionInput,
 } from './source-formatting'
+import { rejectedInput } from './source-formatting-actions'
 import { sourceIndentation } from './source-indent'
 import {
   createSourceSession,
@@ -1785,6 +1786,14 @@ export function SourceEditor({
           }
         : {}),
       dispatchTransactions(transactions, editor) {
+        // Input no Markdown can keep is refused unapplied, its features kept.
+        for (const transaction of transactions) {
+          const error = transaction.annotation(rejectedInput)
+          if (error) {
+            reject(editor, error)
+            return
+          }
+        }
         try {
           bridge.dispatch(transactions, editor, exactChanges.current)
           // Only the user's next action clears a failure, not the view's own.

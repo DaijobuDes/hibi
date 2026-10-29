@@ -46,11 +46,13 @@ import {
 } from './formatted-toolbar-state.ts'
 import {
   blockAction,
+  formattedInputError,
   inlineAction,
   inlineInput,
   listAction,
   preserveActionSelection,
   quoteAction,
+  rejectedInput,
   splitAction,
   typedLiteral,
 } from './source-formatting-actions.ts'
@@ -760,7 +762,15 @@ export const storedMarkInput = [
       !view.compositionStarted &&
       (from !== to || !stored)
     ) {
-      const spec = inlineInput(view.state, tree, from, to, text)
+      let spec: TransactionSpec | null
+      try {
+        spec = inlineInput(view.state, tree, from, to, text)
+      } catch (error) {
+        if (!(error instanceof Error) || error.cause !== formattedInputError)
+          throw error
+        view.dispatch({ annotations: rejectedInput.of(error) })
+        return true
+      }
       if (spec) {
         view.dispatch(spec)
         return true

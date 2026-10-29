@@ -52,6 +52,7 @@ import {
   sourceFormatting,
   storedMarkInput,
 } from '../source-formatting.ts'
+import { rejectedInput } from '../source-formatting-actions.ts'
 import { cellFixes, type InlineMark, planInline } from './table-source.ts'
 
 /*
@@ -844,6 +845,14 @@ export class CellEditor {
 
   /** Apply the editor's transactions, and send each change and selection to the formatted view. */
   private dispatch(transactions: readonly Transaction[], view: EditorView) {
+    // Rejected input leaves the cell as it was, for CodeMirror to redraw.
+    for (const transaction of transactions) {
+      const error = transaction.annotation(rejectedInput)
+      if (error) {
+        this.host.main.dispatch({ annotations: rejectedInput.of(error) })
+        return
+      }
+    }
     view.update(transactions)
     if (this.remote) {
       if (transactions.some((transaction) => transaction.docChanged))

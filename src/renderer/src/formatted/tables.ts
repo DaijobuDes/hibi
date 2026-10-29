@@ -46,7 +46,12 @@ import {
   registerDOMPositions,
 } from '../native-dom-selection.ts'
 import { type InsertValues, tableActions } from '../source-formatting.ts'
-import { inlineInput, typedLiteral } from '../source-formatting-actions.ts'
+import {
+  formattedInputError,
+  inlineInput,
+  rejectedInput,
+  typedLiteral,
+} from '../source-formatting-actions.ts'
 import {
   sourceHistoryEffects,
   sourceHistorySelection,
@@ -2977,7 +2982,15 @@ export const contribution: FormattedContribution = {
         !view.composing &&
         (/[\r\n]/.test(text) || view.state.field(pickedTable))
       ) {
-        const edit = tableAt(view, to)?.input(from, to, text)
+        let edit: TransactionSpec | null | undefined
+        try {
+          edit = tableAt(view, to)?.input(from, to, text)
+        } catch (error) {
+          if (!(error instanceof Error) || error.cause !== formattedInputError)
+            throw error
+          view.dispatch({ annotations: rejectedInput.of(error) })
+          return true
+        }
         if (edit) {
           view.dispatch(edit)
           return true
