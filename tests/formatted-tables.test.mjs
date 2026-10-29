@@ -1707,11 +1707,22 @@ test('a native selection in a read-only table becomes the editing selection', {
 }, async () => {
   const doc = 'before\n\n| h | other |\n| - | - |\n| alpha | beta |\n\nafter'
   await mount(doc)
-  await harness.evaluate(() => window.tables.setEditable(false))
+  await harness.evaluate(() => {
+    window.tables.setEditable(false)
+    // The pick as the double click made it: the view's own selection
+    // replaces it on the page once it reads it.
+    document.addEventListener(
+      'dblclick',
+      () => {
+        window.pickedText = getSelection().toString()
+      },
+      { once: true },
+    )
+  })
   await harness
     .locator('.hibi-lp-table td', { hasText: 'alpha' })
     .dblclick({ position: { x: 8, y: 8 } })
-  assert.equal(await harness.evaluate(() => getSelection().toString()), 'alpha')
+  assert.equal(await harness.evaluate(() => window.pickedText), 'alpha')
   await harness.evaluate(() => window.tables.settle())
   const picked = await state()
   const from = doc.indexOf('alpha')
@@ -1732,6 +1743,29 @@ test('a native selection in a read-only table becomes the editing selection', {
     process.platform === 'darwin' ? 'Meta+z' : 'Control+z',
   )
   assert.equal((await state()).doc, doc)
+})
+
+test('a read-only pick outlasts a view update before its selection change', {
+  timeout: 30000,
+}, async () => {
+  const doc = 'before\n\n| h | other |\n| - | - |\n| alpha | beta |\n\nafter'
+  await mount(doc)
+  await harness.evaluate(() => window.tables.setEditable(false))
+  await harness.locator('.hibi-lp-table td', { hasText: 'alpha' }).click()
+  await harness.evaluate(() => {
+    const cell = [...document.querySelectorAll('.hibi-lp-table td p')].find(
+      (paragraph) => paragraph.textContent === 'alpha',
+    )
+    const text = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT)
+    text.nextNode()
+    getSelection().setBaseAndExtent(text.currentNode, 1, text.currentNode, 4)
+    // As from a parse slice, before the page reports the selection change.
+    window.tables.view().dispatch({})
+  })
+  await harness.evaluate(() => window.tables.settle())
+  const from = doc.indexOf('alpha')
+  const picked = await state()
+  assert.deepEqual([picked.anchor, picked.head], [from + 1, from + 4])
 })
 
 test('a read-only cell pick maps hidden marks, escaped pipes and quote prefixes', {
@@ -1989,6 +2023,29 @@ test('undo moves the cell editor to the cell whose edit it undoes', {
   assert.equal(now.doc, doc)
   assert.deepEqual([now.cell, now.editor], ['0:0', 'alpha'])
   assert.equal(now.head, '| alpha'.length)
+})
+
+test('a cell editor shows its cell formatted as it opens', {
+  timeout: 30000,
+}, async () => {
+  const doc = '| a | b |\n| - | - |\n| x<br>**y** | z |'
+  await mount(doc)
+  const shown = await harness.evaluate(async (at) => {
+    const view = window.tables.view()
+    view.focus()
+    view.dispatch({ selection: { anchor: at } })
+    const text = () =>
+      document.querySelector('.hibi-lp-cell-editor .cm-content')?.textContent
+    // The editor opens in a microtask, before CodeMirror's focus change,
+    // which waits for a timer.
+    await Promise.resolve()
+    const opened = text()
+    await new Promise((done) => setTimeout(done, 50))
+    await window.tables.settle()
+    return [opened, text()]
+  }, doc.indexOf('x'))
+  // The line break shows as one, with no source text.
+  assert.deepEqual(shown, ['x**y**', 'x**y**'])
 })
 
 test('the toolbar inserts a header and two rows, with the caret in the first header cell', {
