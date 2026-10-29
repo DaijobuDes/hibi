@@ -27,6 +27,7 @@ import { useFormattingToolbar } from './FormattingToolbar'
 import { formattedSyntaxTree } from './formatted-contributions'
 import type { FormattedHeadingList } from './formatted-headings'
 import { formattedProjectionSource } from './formatted-projection'
+import { drawsText, formattedTextEnd } from './formatted-text-end'
 import { LoadingScreen } from './LoadingScreen'
 import { linkScroll } from './linked-scroll'
 import { MirrorCursor } from './MirrorCursor'
@@ -471,18 +472,12 @@ export function MarkdownEditor({
         !content.current?.contains(active))
     )
       return
-    // As its Selection.atEnd: the end of the last text, in a table that ends
-    // the note its last cell's, which the table edits once the view has focus.
+    // As its Selection.atEnd: the end of the last text. A table there edits
+    // its last cell once the view has focus.
     const { state } = view
-    let end = state.doc.length
-    while (end && /\s/.test(state.sliceDoc(end - 1, end))) end--
-    const table = formattedSyntaxTree(state)?.topNode.lastChild
-    let row =
-      table?.name === 'Table' && table.to >= end ? table.lastChild : null
-    while (row && row.name !== 'TableRow' && row.name !== 'TableHeader')
-      row = row.prevSibling
-    const cell = row?.lastChild
-    if (cell) end = cell.name === 'TableDelimiter' ? cell.from : cell.to
+    const end = formattedTextEnd(state.doc, formattedSyntaxTree(state), (pos) =>
+      drawsText(view, pos),
+    )
     view.dispatch({ selection: { anchor: end } })
     view.focus()
   }, [autoFocus, formattedReady, paneMode, content])
