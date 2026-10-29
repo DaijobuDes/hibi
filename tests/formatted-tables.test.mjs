@@ -1576,6 +1576,32 @@ test('unfinished syntax never resolves or writes cells with old spans', {
   assert.deepEqual([now.cell, now.editor], ['20000:1', 'right19998'])
 })
 
+test('a cell editor whose table a redraw removes gives focus back to the formatted view', {
+  timeout: 30000,
+}, async () => {
+  await mount('before\n\n| a | b |\n| - | - |\n| c | d |')
+  await harness.locator('.hibi-lp-table td', { hasText: 'c' }).click()
+  // A fence opened above, from elsewhere, turns the table into code.
+  await harness.evaluate(() =>
+    window.tables.view().dispatch({ changes: { from: 0, insert: '~~~\n' } }),
+  )
+  await harness.waitForFunction(() => !window.tables.settling())
+  await harness.evaluate(() => window.tables.settle())
+  assert.equal(
+    await harness.evaluate(() => window.tables.view().hasFocus),
+    true,
+  )
+  await harness.evaluate(() =>
+    window.tables.view().dispatch({ changes: { from: 0, to: 4 } }),
+  )
+  await harness.waitForFunction(() =>
+    document.querySelector('.hibi-lp-cell-editor .cm-content:focus'),
+  )
+  await harness.keyboard.press('End')
+  await harness.keyboard.type('W')
+  assert.match((await state()).doc, /^\| cW \| d \|$/m)
+})
+
 test('a cell editor whose row is deleted leaves focus that moved out of the editor', {
   timeout: 30000,
 }, async () => {

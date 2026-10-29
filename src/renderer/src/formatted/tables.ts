@@ -2204,6 +2204,21 @@ class TableView {
 
   destroy() {
     this.unregisterPositions()
+    // Removing the table, as a fence opened above it does once parsed, takes
+    // its cell editor's focus to the page; the formatted view takes it back,
+    // as when a change deletes the edited row.
+    if (this.editing) {
+      const { view } = this
+      const page = view.dom.ownerDocument
+      queueMicrotask(() => {
+        if (
+          view.dom.isConnected &&
+          page.hasFocus() &&
+          page.activeElement === page.body
+        )
+          view.focus()
+      })
+    }
     this.stopEditing(false)
     if (this.saving) this.save()
     this.unsubscribe?.()
