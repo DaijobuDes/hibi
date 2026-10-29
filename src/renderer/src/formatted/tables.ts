@@ -682,7 +682,17 @@ class TableView {
         row.element.remove()
         this.rendered.delete(index)
       }
-    let next: Element | null = this.after
+    // The row being edited stays mounted next to the window. Moving it takes
+    // its cell editor's focus: the window renders around it, and it moves
+    // only when out of place.
+    const kept =
+      editing < from || editing >= to
+        ? this.rendered.get(editing)?.element
+        : undefined
+    let next: Element | null =
+      kept && editing >= to && kept.nextElementSibling === this.after
+        ? kept
+        : this.after
     for (let index = to - 1; index >= from; index--) {
       const line = widget.line(index + 2)
       let rendered = this.rendered.get(index)
@@ -710,11 +720,11 @@ class TableView {
         this.body.insertBefore(rendered.element, next)
       next = rendered.element
     }
-    // The row being edited stays mounted next to the window.
-    const kept = this.rendered.get(editing)?.element
-    if (kept && (editing < from || editing >= to))
-      if (editing < from) (this.before ?? this.head).after(kept)
-      else this.body.insertBefore(kept, this.after)
+    const edge = this.before ?? this.head
+    if (kept && editing < from && kept.previousElementSibling !== edge)
+      edge.after(kept)
+    else if (kept && editing >= to && kept.nextElementSibling !== this.after)
+      this.body.insertBefore(kept, this.after)
     this.start = from
     this.end = to
     if (this.heights) {

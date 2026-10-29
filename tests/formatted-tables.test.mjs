@@ -1688,6 +1688,29 @@ test('a cell editor keeps editing its cell when another edit changes the columns
     })
 })
 
+test('a cell editor keeps focus while scrolling moves the rows a long table renders away from its row', {
+  timeout: 30000,
+}, async () => {
+  await mount(
+    'intro\n\n| a | b |\n| - | - |\n' +
+      Array.from({ length: 1000 }, (_, i) => `| row ${i} | r${i} |`).join('\n'),
+  )
+  await harness.locator('.hibi-lp-table td', { hasText: /^r1$/ }).click()
+  await harness.keyboard.press('End')
+  for (const fraction of [0.5, 0.25, 0]) {
+    await scroll(harness, fraction)
+    assert.equal(
+      await harness.evaluate(
+        () => !!document.activeElement.closest('.hibi-lp-cell-editor'),
+      ),
+      true,
+      String(fraction),
+    )
+  }
+  await harness.keyboard.type('W')
+  assert.match((await state()).doc, /^\| row 1 \| r1W \|$/m)
+})
+
 test('a cell editor whose row is deleted leaves focus that moved out of the editor', {
   timeout: 30000,
 }, async () => {
