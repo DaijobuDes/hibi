@@ -611,7 +611,9 @@ test('behind the switch, a note that is only a table takes text and compositions
   }
   // Without a line, the selection's DOM needs a place below the table for Chromium to take input.
   for (const candidates of [[], ['n', 'ni', '你']]) {
-    await page.locator('.rich-pane .cm-content[aria-label="Document editor"]').focus()
+    await page
+      .locator('.rich-pane .cm-content[aria-label="Document editor"]')
+      .focus()
     await page.keyboard.press(`${mod}+a`)
     for (const text of candidates)
       await cdp.send('Input.imeSetComposition', {
