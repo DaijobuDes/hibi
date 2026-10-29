@@ -95,9 +95,10 @@ import './live-preview.css'
 const hide = Decoration.replace({})
 /** Measure key of the sideways scroll to the caret. */
 const revealCaret = {}
+// Chromium makes a scrolling box a Tab stop of its own; Tab passes it by.
 const codeScroll = BlockWrapper.create({
   tagName: 'div',
-  attributes: { class: 'hibi-lp-codescroll' },
+  attributes: { class: 'hibi-lp-codescroll', tabindex: '-1' },
 })
 
 /** Whether Tab indents formatted text and code; list items always take Tab. */
@@ -2257,6 +2258,16 @@ export function livePreview(
     // input handlers seeing the whole range as for any typed text. Text with
     // line breaks keeps the native multi-line input path.
     EditorView.domEventHandlers({
+      // A pointer can still focus a code block's scrolling box, as when it
+      // drags a selection; the text keeps the focus.
+      focusin(event, view) {
+        if (
+          event.target instanceof HTMLElement &&
+          event.target.classList.contains('hibi-lp-codescroll')
+        )
+          view.contentDOM.focus({ preventScroll: true })
+        return false
+      },
       beforeinput(event, view) {
         const { selection, readOnly } = view.state
         const hidden = (at: number) => {
