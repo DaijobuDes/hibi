@@ -1668,6 +1668,7 @@ test('a cell editor keeps editing its cell when another edit changes the columns
             insert: b.slice(start, b.length - end),
           }
         })
+        window.editedCell = document.activeElement
         view.dispatch({ changes })
         return view.state.selection.main.head
       }, edits)
@@ -1678,9 +1679,17 @@ test('a cell editor keeps editing its cell when another edit changes the columns
           inView: view.dom.contains(document.activeElement),
           inCell: !!document.activeElement.closest('.hibi-lp-cell-editor'),
           head: view.state.selection.main.head,
+          // The editor of a cell that is still there goes on, with any
+          // composition in it.
+          kept: document.activeElement === window.editedCell,
         }
       })
-      assert.deepEqual(focus, { inView: true, inCell: true, head: mapped })
+      assert.deepEqual(focus, {
+        inView: true,
+        inCell: true,
+        head: mapped,
+        kept: name !== 'column gone',
+      })
       const now = await state()
       assert.deepEqual([now.cell, now.editor], [cell, editor])
       await harness.keyboard.type('Y')

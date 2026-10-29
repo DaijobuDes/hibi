@@ -475,24 +475,35 @@ class TableView {
     const header = widget.line(0),
       delimiter = widget.line(1).text
     const aligned = alignments(delimiter.slice(widget.rowStart(1, delimiter)))
-    if (
+    const columns =
       delimiter !== this.delimiterText ||
       aligned.length !== this.aligned.length ||
       widget.row(0).cells.length !== this.head.cells.length
-    ) {
-      // New columns or alignments: every row renders again.
-      this.stopEditing()
+    if (columns) {
+      // New columns or alignments: every row renders again, around an
+      // edited cell that is still there.
       this.delimiterText = delimiter
       this.aligned = aligned
+      if (!this.remap()) this.stopEditing()
       this.headText = ''
-      for (const row of this.rendered.values()) row.element.remove()
-      this.rendered.clear()
+      const editing = this.editing ? this.editing.line - 2 : -1
+      for (const [index, row] of this.rendered)
+        if (index !== editing) {
+          row.element.remove()
+          this.rendered.delete(index)
+        }
+      const kept = this.rendered.get(editing)
+      if (kept) {
+        this.replaceCells(kept.element, this.cells(editing + 2))
+        kept.text = widget.line(editing + 2).text
+      }
       this.heights = null
       this.start = this.end = 0
     }
     if (header.text !== this.headText) {
-      if (this.editing?.line === 0) this.refresh(this.head, 0, this.headText)
-      else this.renderHead(header)
+      if (this.editing?.line === 0 && !columns)
+        this.refresh(this.head, 0, this.headText)
+      else this.renderHead()
       this.headText = header.text
       const texts = this.headerTexts()
       const renamed =
@@ -581,9 +592,8 @@ class TableView {
     return row
   }
 
-  private renderHead(header: Line) {
-    const cells = this.widget.row(0).cells
-    const count = cells.length
+  private renderHead() {
+    const count = this.widget.row(0).cells.length
     this.table.style.minWidth = `${count * 25}px`
     this.columns.replaceChildren(
       ...Array.from({ length: count }, () => {
@@ -592,9 +602,7 @@ class TableView {
         return column
       }),
     )
-    this.head.replaceChildren(
-      ...cells.map((cell, index) => this.cell('th', header, cell, index)),
-    )
+    this.replaceCells(this.head, this.cells(0))
     this.head.setAttribute('aria-rowindex', '1')
     this.head.dataset.line = '0'
     for (const spacer of [this.before, this.after])
@@ -602,6 +610,63 @@ class TableView {
         'colspan',
         String(count),
       )
+  }
+
+  /** New cells for a line of the table: all of the header's, or one per column. */
+  private cells(index: number) {
+    const line = this.widget.line(index)
+    const cells = this.widget.row(index).cells
+    return index
+      ? Array.from({ length: this.aligned.length }, (_, column) =>
+          this.cell('td', line, cells[column], column),
+        )
+      : cells.map((cell, column) => this.cell('th', line, cell, column))
+  }
+
+  /**
+   * Put new cells in a row. The edited cell stays where it is, in its column
+   * now, with that column's alignment and handles: moving it would take its
+   * editor's focus and end a composition in it.
+   */
+  private replaceCells(row: HTMLTableRowElement, cells: HTMLElement[]) {
+    const editing = this.editing
+    const kept = editing?.element.parentElement === row && editing.element
+    const fresh = editing && cells[editing.column]
+    if (!editing || !fresh || !(kept instanceof HTMLElement)) {
+      row.replaceChildren(...cells)
+      return
+    }
+    for (const cell of [...row.children]) if (cell !== kept) cell.remove()
+    kept.before(...cells.slice(0, editing.column))
+    kept.after(...cells.slice(editing.column + 1))
+    kept.style.cssText = fresh.style.cssText
+    for (const child of [...kept.children].slice(1)) child.remove()
+    kept.append(...[...fresh.children].slice(1))
+  }
+
+  /**
+   * After the table's columns or alignments changed: whether the edited cell
+   * is still there, as the cell with the editor's text that holds the
+   * formatted view's selection, which follows the editor's. The editor then
+   * goes on editing it, in its column now.
+   */
+  private remap() {
+    const editing = this.editing
+    if (!editing || !this.current) return false
+    const { main } = this.view.state.selection
+    const cell = this.locate(main.head)
+    if (!cell || cell.line !== editing.line) return false
+    const span = this.span(cell)
+    if (
+      !span ||
+      main.from < span.from ||
+      main.to > span.to ||
+      this.view.state.sliceDoc(span.from, span.to) !==
+        editing.editor.view.state.doc.toString()
+    )
+      return false
+    editing.column = cell.column
+    return true
   }
 
   private cell(
@@ -706,9 +771,7 @@ class TableView {
         const height = this.sizes.rows.get(index + 1)
         if (height) element.style.height = `${height}px`
         // Missing cells render empty; cells past the header's count are not shown.
-        const cells = widget.row(index + 2).cells
-        for (let column = 0; column < this.aligned.length; column++)
-          element.append(this.cell('td', line, cells[column], column))
+        element.append(...this.cells(index + 2))
         if (rendered) rendered.element.replaceWith(element)
         rendered = { element, text: line.text }
         this.rendered.set(index, rendered)
