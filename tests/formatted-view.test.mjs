@@ -878,3 +878,105 @@ test('behind the switch, an echo before the first composition candidate keeps th
   assert.equal(markdown, expected)
   assert.equal(focused, true)
 })
+
+test('behind the switch, edits from elsewhere that change the columns of a table keep typing in its open cell', {
+  timeout: 90000,
+}, async (t) => {
+  const folder = await mkdtemp(join(tmpdir(), 'hibi-formatted-view-'))
+  const file = join(folder, 'notes', 'note.md')
+  await mkdir(join(folder, 'notes'))
+  await writeFile(file, 'before\n\n| a | b |\n| - | - |\n| c | d |\n\nafter\n')
+  const app = await electron.launch({
+    args: [resolve('.'), `--user-data-dir=${join(folder, 'profile')}`],
+  })
+  t.after(async () => {
+    await app.close()
+    await rm(folder, { recursive: true, force: true })
+  })
+  await app.evaluate(({ dialog }) => {
+    dialog.showMessageBox = async () => ({ response: 1 })
+  })
+  const page = await app.firstWindow()
+  await selectFormattedEngine(app, page, 'codemirror')
+  await app.evaluate(({ dialog }, path) => {
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] })
+  }, file)
+  await pressShortcut(app, `${mod}+o`)
+  await page.locator('.rich-pane .hibi-lp-table').waitFor()
+  await page
+    .getByRole('button', { name: /^side-by-side$/i, exact: true })
+    .click()
+  await page.locator('.mode-side-by-side[data-source-ready="true"]').waitFor()
+  const session = await page.context().newCDPSession(page)
+  await session.send('Emulation.setFocusEmulationEnabled', { enabled: true })
+  const markdown = async () =>
+    (await page.evaluate(() => window.hibi.getDocument())).markdown
+  await page.locator('.rich-pane .hibi-lp-table td', { hasText: 'c' }).click()
+  await page.keyboard.press('End')
+  await page.keyboard.type('X')
+  await waitForAsync(page, async () =>
+    (await window.hibi.getDocument()).markdown.includes('| cX |'),
+  )
+  // The source pane adds a column before the edited cell's, then an edit
+  // without a selection, as an addon's, aligns the columns in the formatted
+  // view: the caret stays after X in the cell, now the second.
+  for (const [pane, edits, editor, typed, row, drawn] of [
+    [
+      'source',
+      [
+        ['| a', '| n '],
+        ['| - | - |', '| - '],
+        ['| cX', '| m '],
+      ],
+      'cX',
+      'Y',
+      '| m | cXY | d |',
+      'th:nth-child(3)',
+    ],
+    [
+      'rich',
+      [['- | - | - |', ':']],
+      'cXY',
+      'Z',
+      '| m | cXYZ | d |',
+      'th[style*="left"]',
+    ],
+  ]) {
+    await page.evaluate(
+      ({ pane, edits }) => {
+        const view = document.querySelector(`.${pane}-pane .cm-content`).cmTile
+          .root.view
+        const text = view.state.doc.toString()
+        view.dispatch({
+          changes: edits.map(([before, insert]) => ({
+            from: text.indexOf(before),
+            insert,
+          })),
+        })
+      },
+      { pane, edits },
+    )
+    await page.locator(`.rich-pane .hibi-lp-table ${drawn}`).waitFor()
+    const focus = await page.evaluate(async () => {
+      for (let frame = 0; frame < 2; frame++)
+        await new Promise(requestAnimationFrame)
+      const active = document.activeElement
+      return {
+        cell: active.closest('td')?.cellIndex ?? null,
+        editor: active.closest('.hibi-lp-cell-editor')?.textContent ?? null,
+      }
+    })
+    assert.deepEqual(focus, { cell: 1, editor }, pane)
+    await page.keyboard.type(typed)
+    await waitForAsync(
+      page,
+      async (row) => (await window.hibi.getDocument()).markdown.includes(row),
+      row,
+    ).catch(() => {})
+    assert.ok((await markdown()).includes(row), await markdown())
+  }
+  assert.equal(
+    await markdown(),
+    'before\n\n| n | a | b |\n| :- | - | - |\n| m | cXYZ | d |\n\nafter\n',
+  )
+})

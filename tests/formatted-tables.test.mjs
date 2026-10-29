@@ -1602,6 +1602,92 @@ test('a cell editor whose table a redraw removes gives focus back to the formatt
   assert.match((await state()).doc, /^\| cW \| d \|$/m)
 })
 
+test('a cell editor keeps editing its cell when another edit changes the columns or alignments', {
+  timeout: 60000,
+}, async (t) => {
+  const doc = 'before\n\n| a | b |\n| - | - |\n| c | d |\n\nafter'
+  // Edits from elsewhere, each the smallest change from a text to another.
+  for (const [name, edits, cell, editor, row] of [
+    [
+      'column after',
+      [
+        ['| a | b |', '| a | b | e |'],
+        ['| - | - |', '| - | - | - |'],
+        ['| cX | d |', '| cX | d | f |'],
+      ],
+      '2:0',
+      'cX',
+      '| cXY | d | f |',
+    ],
+    [
+      'column before',
+      [
+        ['| a', '| n | a'],
+        ['| - | - |', '| - | - | - |'],
+        ['| cX', '| m | cX'],
+      ],
+      '2:1',
+      'cX',
+      '| m | cXY | d |',
+    ],
+    ['alignment', [['| - | - |', '| :- | -: |']], '2:0', 'cX', '| cXY | d |'],
+    // The edited cell is gone: editing goes on where its caret maps to.
+    [
+      'column gone',
+      [
+        ['| a | b |', '| b |'],
+        ['| - | - |', '| - |'],
+        ['| cX | d |', '| d |'],
+      ],
+      '2:0',
+      'd',
+      '| Yd |',
+    ],
+  ])
+    await t.test(name, async () => {
+      await mount(doc)
+      await harness.locator('.hibi-lp-table td', { hasText: 'c' }).click()
+      await harness.keyboard.press('End')
+      await harness.keyboard.type('X')
+      const mapped = await harness.evaluate((edits) => {
+        const view = window.tables.view()
+        const text = view.state.doc.toString()
+        const changes = edits.map(([a, b]) => {
+          let start = 0,
+            end = 0
+          while (a[start] === b[start]) start++
+          while (
+            end < Math.min(a.length, b.length) - start &&
+            a.at(-1 - end) === b.at(-1 - end)
+          )
+            end++
+          const at = text.indexOf(a)
+          return {
+            from: at + start,
+            to: at + a.length - end,
+            insert: b.slice(start, b.length - end),
+          }
+        })
+        view.dispatch({ changes })
+        return view.state.selection.main.head
+      }, edits)
+      await harness.evaluate(() => window.tables.settle())
+      const focus = await harness.evaluate(() => {
+        const view = window.tables.view()
+        return {
+          inView: view.dom.contains(document.activeElement),
+          inCell: !!document.activeElement.closest('.hibi-lp-cell-editor'),
+          head: view.state.selection.main.head,
+        }
+      })
+      assert.deepEqual(focus, { inView: true, inCell: true, head: mapped })
+      const now = await state()
+      assert.deepEqual([now.cell, now.editor], [cell, editor])
+      await harness.keyboard.type('Y')
+      assert.equal((await state()).doc.split('\n')[4], row)
+    })
+})
+
 test('a cell editor whose row is deleted leaves focus that moved out of the editor', {
   timeout: 30000,
 }, async () => {

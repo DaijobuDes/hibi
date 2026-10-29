@@ -466,6 +466,7 @@ class TableView {
 
   update(widget: TableWidget) {
     const previous = this.widget
+    const focused = this.focused
     this.widget = widget
     this.takeOver()
     this.relocate()
@@ -544,6 +545,30 @@ class TableView {
     }
     this.applySizes()
     this.syncEditor()
+    if (focused && !this.editing) this.regain()
+  }
+
+  /**
+   * A redraw that drops the focused cell editor, as a change from elsewhere
+   * to the table's columns or alignments does, or removes the table, takes
+   * its focus to the page. The cell the formatted view's selection, which
+   * follows the editor's caret, maps to is edited again; elsewhere the
+   * formatted view takes focus back, as when a change deletes the edited row.
+   */
+  private regain() {
+    const { view } = this
+    const page = view.dom.ownerDocument
+    queueMicrotask(() => {
+      if (
+        !view.dom.isConnected ||
+        !page.hasFocus() ||
+        page.activeElement !== page.body
+      )
+        return
+      const { main } = view.state.selection
+      if (!tableAt(view, main.head, true)?.editAt(main.anchor, main.head))
+        view.focus()
+    })
   }
 
   private spacer() {
@@ -2204,21 +2229,8 @@ class TableView {
 
   destroy() {
     this.unregisterPositions()
-    // Removing the table, as a fence opened above it does once parsed, takes
-    // its cell editor's focus to the page; the formatted view takes it back,
-    // as when a change deletes the edited row.
-    if (this.editing) {
-      const { view } = this
-      const page = view.dom.ownerDocument
-      queueMicrotask(() => {
-        if (
-          view.dom.isConnected &&
-          page.hasFocus() &&
-          page.activeElement === page.body
-        )
-          view.focus()
-      })
-    }
+    // As a fence opened above the table does once parsed.
+    if (this.editing) this.regain()
     this.stopEditing(false)
     if (this.saving) this.save()
     this.unsubscribe?.()
