@@ -311,6 +311,12 @@ export function MarkdownEditor({
   const exactHistory = useRef(
     new WeakMap<Editor, Map<string, { source: string; document: RichNode }>>(),
   )
+  // The caret each rich edit started from and left, by the session history
+  // state it started from (undo) and reached (redo).
+  const historyCarets = useRef({
+    undo: new WeakMap<object, { document: RichNode; head: number }>(),
+    redo: new WeakMap<object, { document: RichNode; head: number }>(),
+  })
   const serializers = useRef(
     new WeakMap<Editor, ReturnType<typeof markdownSerializer>>(),
   )
@@ -507,7 +513,24 @@ export function MarkdownEditor({
       richSourceSession.configure({
         // Only a completed visible-pane synchronization may claim source ownership.
         initialSource: null,
-        prepare: (event) => prepareRichRef.current(event),
+        prepare: (event) => {
+          const session = documentRuntime.session(documentState.tabId),
+            before = session?.historyIdentity()
+          const accepted = prepareRichRef.current(event)
+          if (accepted && session && before)
+            for (const [carets, identity, { doc, selection }] of [
+              [historyCarets.current.undo, before, event.editor.state],
+              [
+                historyCarets.current.redo,
+                session.historyIdentity(),
+                event.nextState,
+              ],
+            ] as const)
+              if (selection.empty)
+                carets.set(identity, { document: doc, head: selection.head })
+              else carets.delete(identity)
+          return accepted
+        },
         reject: (error) => {
           plainSync.current = null
           pendingPlainSync.current = null
@@ -2110,7 +2133,17 @@ export function MarkdownEditor({
         ],
       )
     }
-    const sync = () => {
+    // History puts back the caret its edit started from or left, in the
+    // document that caret was taken in.
+    const historyCaret = (origin: string, tr: Transaction) => {
+      const caret =
+        origin === 'undo' || origin === 'redo'
+          ? historyCarets.current[origin].get(session.historyIdentity())
+          : undefined
+      if (caret?.document.eq(tr.doc))
+        tr.setSelection(TextSelection.create(tr.doc, caret.head))
+    }
+    const sync = (origin?: string) => {
       clearTimeout(timer)
       timer = undefined
       scheduled = false
@@ -2162,6 +2195,7 @@ export function MarkdownEditor({
                   ),
                 )
             }
+            if (origin) historyCaret(origin, tr)
             tr.setMeta(richSourceEcho, snapshot).setMeta('addToHistory', false)
             return true
           })
@@ -2320,6 +2354,7 @@ export function MarkdownEditor({
             )
           : null
       if (incremental) {
+        historyCaret(prepared.operation.origin, incremental.transaction)
         editor.view.dispatch(
           incremental.transaction
             .setMeta(richSourceEcho, prepared.after)
@@ -2338,7 +2373,7 @@ export function MarkdownEditor({
         prepared.operation.origin === 'undo' ||
         prepared.operation.origin === 'redo'
       )
-        sync()
+        sync(prepared.operation.origin)
       else if (!scheduled) {
         scheduled = true
         queueMicrotask(sync)
