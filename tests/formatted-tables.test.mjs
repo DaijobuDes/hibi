@@ -3328,6 +3328,11 @@ test('toolbar formatting preserves genuine DOM picks across table redraws', {
               reverse ? a : h,
               reverse ? item.a : item.b,
             )
+            // A pointer pick moves focus out of the cell editor, and the
+            // view reads it in that turn. This pick leaves the editor
+            // focused, so a measure before the page reports it would let
+            // the editor draw its caret over it.
+            document.dispatchEvent(new Event('selectionchange'))
             window.tableActionInputs = []
             if (!window.tableActionInputInstalled) {
               window.tableActionInputInstalled = true
