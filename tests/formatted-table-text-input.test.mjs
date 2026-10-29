@@ -328,12 +328,12 @@ async function snapshot(page) {
         characters++
       return `${words.toLocaleString()} ${words === 1 ? 'word' : 'words'} · ${characters.toLocaleString()} ${characters === 1 ? 'character' : 'characters'}`
     },
-    result.countText ??
-      richText(result.source, {
-        ...defaultNoteSyntax,
-        textExtras: true,
-        alerts: true,
-      }).slice(1),
+    // Both engines count the canonical source, as a fresh reload shows it.
+    richText(result.source, {
+      ...defaultNoteSyntax,
+      textExtras: true,
+      alerts: true,
+    }).slice(1),
   )
   try {
     await page.waitForFunction(
@@ -532,14 +532,7 @@ for (const engine of ['tiptap', 'codemirror'])
           native.set(item.name, observed)
         } else {
           const expected = native.get(item.name).action
-          for (const key of [
-            'source',
-            'canonicalModel',
-            'text',
-            'styles',
-            'caret',
-            'count',
-          ])
+          for (const key of ['source', 'canonicalModel', 'text', 'styles'])
             assert.deepEqual(action[key], expected[key], 'action ' + key)
         }
         // Preserve actual post-toolbar DOM range. No selectAll/selection reset/focus
@@ -581,6 +574,49 @@ for (const engine of ['tiptap', 'codemirror'])
         assert.equal(fresh.version, 0)
         if (engine === 'tiptap')
           assert.deepEqual(fresh.model, fresh.canonicalModel)
+        // Owner contract: stable logical behavior in both engines; native quirks are fixed, not copied.
+        const point = ({ text, offset }) => [
+            text.slice(0, offset),
+            text.slice(offset),
+          ],
+          caret = (at) => ({ anchor: at, head: at, empty: true }),
+          logical = []
+        const expect = (phase, expected) => {
+          try {
+            assert.deepEqual(observed[phase].caret, expected)
+          } catch {
+            logical.push(phase + ': caret')
+          }
+        }
+        // Formatting keeps the picked range.
+        expect('action', {
+          anchor: point(item.reverse ? item.head : item.anchor),
+          head: point(item.reverse ? item.anchor : item.head),
+          empty: false,
+        })
+        // Typing leaves the caret right after the typed text.
+        for (const [phase, typed] of [
+          ['Z', 'Z'],
+          ['Q', 'ZQ'],
+          ['R', 'ZQR'],
+        ]) {
+          const { anchor } = observed[phase].caret
+          if (!anchor?.[0].endsWith(typed)) logical.push(phase + ': typed')
+          expect(phase, caret(anchor))
+        }
+        // Undo restores the caret the edit was typed at; redo the caret it left.
+        for (const [phase, at] of [
+          ['undoQ', 'Z'],
+          ['redoZ', 'Z'],
+          ['redoQ', 'Q'],
+          ['undoR', 'redoQ'],
+          ['redoR', 'R'],
+        ])
+          expect(phase, observed[at].caret)
+        // History restores a picked range as a caret at its upper end.
+        for (const phase of ['undoZ', 'undoFormat', 'redoFormat'])
+          expect(phase, caret(point(item.head)))
+        t.diagnostic(JSON.stringify({ engine, name: item.name, logical }))
         if (engine === 'codemirror') {
           const expected = native.get(item.name),
             differences = []
@@ -590,12 +626,13 @@ for (const engine of ['tiptap', 'codemirror'])
               differences.push(phase + ': missing native witness')
               continue
             }
+            // Fresh-open carets differ before any edit (native ends in the last
+            // block, CodeMirror at the source end); that comparison stays paired.
             for (const key of [
               'canonicalModel',
               'text',
               'styles',
-              'caret',
-              'count',
+              ...(phase === 'fresh' ? ['caret'] : []),
               'inputs',
             ])
               try {
@@ -610,5 +647,6 @@ for (const engine of ['tiptap', 'codemirror'])
           }
           assert.deepEqual(differences, [], 'raw paired differences')
         }
+        assert.deepEqual(logical, [], 'logical carets')
       })
   })
