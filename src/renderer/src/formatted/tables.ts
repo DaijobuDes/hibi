@@ -2566,6 +2566,8 @@ const endCompositions = new WeakMap<
 >()
 
 const clearTablePick = StateEffect.define<null>()
+/** Views in a shift-drag from a cell, which opens no cell editor until it ends. */
+const dragging = new WeakSet<EditorView>()
 // Releasing DOM ownership, including for readonly, keeps the logical source
 // selection until a new intent replaces it; widget-bound echoes cannot do so.
 const pickedTable = StateField.define<boolean>({
@@ -2712,21 +2714,26 @@ const tableEditing = ViewPlugin.fromClass(
         table.stopEditing()
       }
       if (event?.type === 'selectionchange') event.stopImmediatePropagation()
+      this.select(anchor.at, head.at)
+      return true
+    }
+    /** Selects source with an end in cell text, drawn as the page's pick. */
+    select(anchor: number, head: number) {
+      const { view } = this
       this.picked = true
       const current = view.state.selection.main
       if (
         !view.state.field(pickedTable) ||
-        current.anchor !== anchor.at ||
-        current.head !== head.at
+        current.anchor !== anchor ||
+        current.head !== head
       )
         view.dispatch({
-          selection: { anchor: anchor.at, head: head.at },
+          selection: { anchor, head },
           annotations: cellInput.of(true),
           userEvent: 'select.pointer',
         })
       if (!view.hasFocus) view.focus()
       this.restorePick()
-      return true
     }
     private restorePick = () => {
       if (!this.picked) return
@@ -2835,7 +2842,7 @@ const tableEditing = ViewPlugin.fromClass(
               this.following.push(pending)
           const { view } = this
           const { main } = view.state.selection
-          if (view.hasFocus)
+          if (view.hasFocus && !dragging.has(view))
             tableAt(view, main.head, true)?.editAt(main.anchor, main.head)
         })
     }
@@ -2962,29 +2969,49 @@ export const contribution: FormattedContribution = {
           view.dispatch({ effects: clearTablePick.of(null) })
       },
     }),
-    // Shift-click, -drag and -double-click outside tables from an edited cell
-    // keep the selection's anchor in the cell's text, as in the rich editor.
-    // The view's own pointer selection moves it out of the table, which is
-    // atomic for it. A double-click extends by words, as the view does.
+    // Shift-click, -drag and -double-click from an edited cell keep the
+    // selection's anchor in the cell's text, as in the rich editor. The view's
+    // own pointer selection moves it out of the table, which is atomic for it.
+    // A double-click extends by words, as the view does; over cells the head
+    // goes to their text, as a native pick across them.
     EditorView.domEventHandlers({
       mousedown(event, view) {
         if (
           event.button !== 0 ||
           !event.shiftKey ||
-          event.detail > 2 ||
+          event.detail > 3 ||
           !writable(view.state) ||
           !tableAt(view, view.state.selection.main.anchor, true)
         )
           return false
+        // A triple-click selects the clicked paragraph, as in the rich editor:
+        // the view's own triple-click extends a caret there to it.
+        if (event.detail === 3) {
+          const at = view.posAtCoords({ x: event.clientX, y: event.clientY })
+          if (at !== null)
+            view.dispatch({
+              selection: { anchor: at },
+              userEvent: 'select.pointer',
+            })
+          return false
+        }
+        const doc = view.dom.ownerDocument
         const extend = (at: MouseEvent) => {
-          const head = view.posAtCoords({ x: at.clientX, y: at.clientY })
+          const caret = doc.caretPositionFromPoint(at.clientX, at.clientY)
+          const cell =
+            caret && readDOMPosition(view, caret.offsetNode, caret.offset)
+          const head = cell?.mapped
+            ? cell.at
+            : view.posAtCoords({ x: at.clientX, y: at.clientY })
           if (head === null) return false
           const word = event.detail === 2 ? view.state.wordAt(head) : null
           const range = view.state.selection.main.extend(
             word?.from ?? head,
             word?.to ?? head,
           )
-          if (at === event || !range.eq(view.state.selection.main))
+          if (cell?.mapped)
+            view.plugin(tableEditing)?.select(range.anchor, range.head)
+          else if (at === event || !range.eq(view.state.selection.main))
             view.dispatch({
               selection: { anchor: range.anchor, head: range.head },
               userEvent: 'select.pointer',
@@ -2992,14 +3019,55 @@ export const contribution: FormattedContribution = {
           return true
         }
         if (!extend(event)) return false
-        // ponytail: no scrolling at the view's edges while dragging, unlike
-        // the view's own drags; add it if long drags from cells need it.
-        const doc = view.dom.ownerDocument
-        const move = (moved: MouseEvent) =>
-          moved.buttons & 1 ? extend(moved) : done()
+        dragging.add(view)
+        // Held at the scroller's top or bottom, the drag scrolls it and
+        // extends from the last pointer, as the view's own drags do.
+        let scroller = view.scrollDOM.parentElement
+        while (
+          scroller &&
+          !(
+            scroller.scrollHeight > scroller.clientHeight &&
+            /auto|scroll/.test(getComputedStyle(scroller).overflowY)
+          )
+        )
+          scroller = scroller.parentElement
+        let last = event,
+          frame = 0
+        const scroll = () => {
+          frame = 0
+          if (!scroller) return
+          const { top, bottom } = scroller.getBoundingClientRect()
+          // CodeMirror's drag speed, per frame instead of per 50 ms.
+          const by =
+            last.clientY <= top + 6
+              ? -(Math.max(0, top - last.clientY) * 0.7 + 8) / 3
+              : last.clientY >= bottom - 6
+                ? (Math.max(0, last.clientY - bottom) * 0.7 + 8) / 3
+                : 0
+          if (!by) return
+          scroller.scrollTop += by
+          extend(last)
+          frame = requestAnimationFrame(scroll)
+        }
+        const move = (moved: MouseEvent) => {
+          if (!(moved.buttons & 1)) return done()
+          last = moved
+          extend(moved)
+          if (!frame) frame = requestAnimationFrame(scroll)
+        }
         const done = () => {
           doc.removeEventListener('mousemove', move)
           doc.removeEventListener('mouseup', done)
+          cancelAnimationFrame(frame)
+          dragging.delete(view)
+          // A drag that ends in its anchor's cell edits the dragged text there.
+          const { main } = view.state.selection
+          if (
+            view.hasFocus &&
+            tableAt(view, main.head, true)?.editAt(main.anchor, main.head) &&
+            view.state.field(pickedTable)
+          )
+            view.dispatch({ effects: clearTablePick.of(null) })
         }
         doc.addEventListener('mousemove', move)
         doc.addEventListener('mouseup', done)
