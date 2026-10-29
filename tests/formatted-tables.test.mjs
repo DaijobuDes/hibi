@@ -1760,6 +1760,45 @@ test('a native selection in a read-only table becomes the editing selection', {
   assert.equal((await state()).doc, doc)
 })
 
+test('a read-only double-click pick outlasts a measure that reads it first', {
+  timeout: 30000,
+}, async () => {
+  const doc = 'before\n\n| h | other |\n| - | - |\n| alpha | beta |\n\nafter'
+  await mount(doc)
+  await harness.evaluate(() => {
+    window.tables.setEditable(false)
+    // A measure frame reads the double click's selection before the page
+    // reports its change.
+    const flush = () => {
+      if (getSelection().toString() !== 'alpha') return
+      document.removeEventListener('selectionchange', flush, true)
+      window.tables.view().observer.forceFlush()
+    }
+    document.addEventListener('selectionchange', flush, true)
+  })
+  await harness
+    .locator('.hibi-lp-table td', { hasText: 'alpha' })
+    .dblclick({ position: { x: 8, y: 8 } })
+  await harness.evaluate(() => window.tables.settle())
+  const from = doc.indexOf('alpha')
+  const picked = await state()
+  assert.deepEqual(
+    [
+      Math.min(picked.anchor, picked.head),
+      Math.max(picked.anchor, picked.head),
+    ],
+    [from, from + 5],
+  )
+  assert.equal(await harness.evaluate(() => getSelection().toString()), 'alpha')
+  // A selection set after the pick replaces it.
+  await harness.evaluate(() =>
+    window.tables.view().dispatch({ selection: { anchor: 0 } }),
+  )
+  await harness.evaluate(() => window.tables.settle())
+  const moved = await state()
+  assert.deepEqual([moved.anchor, moved.head], [0, 0])
+})
+
 test('a read-only pick outlasts a view update before its selection change', {
   timeout: 30000,
 }, async () => {
@@ -3289,6 +3328,11 @@ test('toolbar formatting preserves genuine DOM picks across table redraws', {
               reverse ? a : h,
               reverse ? item.a : item.b,
             )
+            // A pointer pick moves focus out of the cell editor, and the
+            // view reads it in that turn. This pick leaves the editor
+            // focused, so a measure before the page reports it would let
+            // the editor draw its caret over it.
+            document.dispatchEvent(new Event('selectionchange'))
             window.tableActionInputs = []
             if (!window.tableActionInputInstalled) {
               window.tableActionInputInstalled = true
