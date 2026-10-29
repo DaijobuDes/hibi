@@ -1,6 +1,6 @@
 import type { Editor, EditorEvents } from '@tiptap/core'
 import { closeHistory } from '@tiptap/pm/history'
-import type { ResolvedPos, Node as RichNode } from '@tiptap/pm/model'
+import type { Mark, ResolvedPos, Node as RichNode } from '@tiptap/pm/model'
 import { AllSelection, TextSelection, type Transaction } from '@tiptap/pm/state'
 import { Mapping, ReplaceStep } from '@tiptap/pm/transform'
 import { EditorContent, useEditor } from '@tiptap/react'
@@ -157,6 +157,27 @@ const parseParagraph = (editor: Editor, source: string) =>
 const tableCell = ($pos: ResolvedPos) =>
   /cell/.test(String($pos.node(-1).type.spec.tableRole)) ? $pos.start(-1) : -1
 
+// Whether two documents differ at most in the marks on their text.
+const sameUnmarked = (a: RichNode, b: RichNode): boolean => {
+  if (!a.hasMarkup(b.type, b.attrs)) return false
+  if (a.inlineContent) {
+    const inline = (node: RichNode) => {
+      let text = ''
+      node.forEach((child) => {
+        text += child.isText
+          ? child.text
+          : `\0${child.type.name}${JSON.stringify(child.attrs)}\0`
+      })
+      return text
+    }
+    return inline(a) === inline(b)
+  }
+  if (a.childCount !== b.childCount) return false
+  for (let i = 0; i < a.childCount; i++)
+    if (!sameUnmarked(a.child(i), b.child(i))) return false
+  return true
+}
+
 // Addons whose syntax features the plain codec models.
 const plainTextOwners = new Set(
   [...builtInFlavors.values()].flatMap(({ owner, plainText }) =>
@@ -239,6 +260,13 @@ type PreviewBase = {
   document: RichNode
   batches: { changes: readonly RawEdit[]; length: number }[]
 }
+// A rich edit's selection and pending marks, in the document it took them in.
+type HistoryCaret = {
+  document: RichNode
+  anchor: number
+  head: number
+  marks: readonly Mark[] | null
+}
 
 export function MarkdownEditor({
   document: documentState,
@@ -318,14 +346,8 @@ export function MarkdownEditor({
   // The text selection each rich edit started from and left, by the session
   // history state it started from (undo) and reached (redo).
   const historyCarets = useRef({
-    undo: new WeakMap<
-      object,
-      { document: RichNode; anchor: number; head: number } | null
-    >(),
-    redo: new WeakMap<
-      object,
-      { document: RichNode; anchor: number; head: number } | null
-    >(),
+    undo: new WeakMap<object, HistoryCaret | null>(),
+    redo: new WeakMap<object, HistoryCaret | null>(),
   })
   const serializers = useRef(
     new WeakMap<Editor, ReturnType<typeof markdownSerializer>>(),
@@ -454,6 +476,9 @@ export function MarkdownEditor({
     id: '',
     time: 0,
     composition: undefined as number | undefined,
+    // The document the group's last edit left and the ranges it touched there.
+    doc: null as RichNode | null,
+    ranges: [] as [number, number][],
   })
   const [richInputError, setRichInputError] = useState('')
   const viewIdRef = useRef(viewId)
@@ -531,7 +556,7 @@ export function MarkdownEditor({
             // Ranges across table cells keep mapping to a caret. An edit that
             // returns its group to the text it started from reaches a known
             // identity, whose redo selection belongs to the edit before.
-            for (const [carets, identity, { doc, selection }] of [
+            for (const [carets, identity, { doc, selection, storedMarks }] of [
               [historyCarets.current.undo, before, event.editor.state],
               [
                 historyCarets.current.redo,
@@ -553,6 +578,7 @@ export function MarkdownEditor({
                   document: doc,
                   anchor: selection.anchor,
                   head: selection.head,
+                  marks: storedMarks,
                 })
               else carets.set(identity, null)
           return accepted
@@ -1741,14 +1767,26 @@ export function MarkdownEditor({
       typeof nativeComposition === 'number' ? nativeComposition : undefined
     const previous = richHistoryGroup.current
     const groupAt = (now: number) => {
+      // Like ProseMirror history, typing joins only where the edit before it
+      // left off; a composition joins wherever its candidates go.
+      let adjacent = false
+      if (previous.doc === transaction.before)
+        transaction.mapping.maps[0]?.forEach((from, to) => {
+          adjacent ||= previous.ranges.some(([a, b]) => from <= b && to >= a)
+        })
       if (
         !previous.id ||
         composition !== previous.composition ||
         (!typing && composition === undefined) ||
-        (composition === undefined && now - previous.time > 500)
+        (composition === undefined && (now - previous.time > 500 || !adjacent))
       )
         previous.id = crypto.randomUUID()
       previous.composition = composition
+      previous.doc = nextState.doc
+      previous.ranges = []
+      transaction.mapping.maps.at(-1)?.forEach((_from, _to, from, to) => {
+        previous.ranges.push([from, to])
+      })
     }
     const direct =
       typing &&
@@ -2166,8 +2204,22 @@ export function MarkdownEditor({
         origin === 'undo' || origin === 'redo'
           ? historyCarets.current[origin].get(session.historyIdentity())
           : undefined
+      // Marks the source spells the same, as bold over a trailing space, come
+      // back as the edit had them, like the formatted view's stored marks.
+      const serialize = serializers.current.get(editor)
+      if (
+        caret &&
+        serialize &&
+        !caret.document.eq(tr.doc) &&
+        caret.document.type.schema === tr.doc.type.schema &&
+        sameUnmarked(caret.document, tr.doc) &&
+        serialize(caret.document).source === serialize(tr.doc).source
+      )
+        tr.replaceWith(0, tr.doc.content.size, caret.document.content)
       if (caret?.document.eq(tr.doc))
-        tr.setSelection(TextSelection.create(tr.doc, caret.anchor, caret.head))
+        tr.setSelection(
+          TextSelection.create(tr.doc, caret.anchor, caret.head),
+        ).setStoredMarks(caret.marks)
     }
     const sync = (origin?: string) => {
       clearTimeout(timer)
@@ -2380,6 +2432,7 @@ export function MarkdownEditor({
             )
           : null
       if (incremental) {
+        const planned = incremental.transaction.doc
         historyCaret(prepared.operation.origin, incremental.transaction)
         editor.view.dispatch(
           incremental.transaction
@@ -2387,8 +2440,7 @@ export function MarkdownEditor({
             .setMeta('preventUpdate', true),
         )
         plainSync.current =
-          matches(prepared.after) &&
-          editor.state.doc === incremental.transaction.doc
+          matches(prepared.after) && editor.state.doc === planned
             ? incremental.next
             : null
         richHistoryGroup.current.id = ''
