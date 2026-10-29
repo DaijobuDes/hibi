@@ -1,13 +1,24 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import {
+  mkdir,
+  mkdtemp,
+  open,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import test from 'node:test'
 import {
   electron,
   waitForAppState,
   waitForDocumentEditor,
 } from './electron.mjs'
+import {
+  selectFormattedEngine,
+  testFormattedEngines as test,
+} from './formatted-engine.mjs'
 import { pressShortcut } from './keyboard.mjs'
 
 test('managed workspaces stay opt-in, preserve files, import safely, and reopen at startup', {
@@ -42,10 +53,11 @@ test('managed workspaces stay opt-in, preserve files, import safely, and reopen 
     })
     const page = await app.firstWindow()
     page.setDefaultTimeout(10000)
+    await waitForDocumentEditor(app, page)
     return page
   }
   let page = await launch()
-  await waitForDocumentEditor(app, page)
+  await selectFormattedEngine(app, page, t.formattedEngine)
   assert.equal(
     (await page.evaluate(() => window.hibi.getWorkspaceSettings())).enabled,
     false,
@@ -167,6 +179,54 @@ test('managed workspaces stay opt-in, preserve files, import safely, and reopen 
     snapshot.id,
   )
   assert.notEqual(second.folder, imported.folder)
+  await writeFile(join(source, 'Start.md'), '[[Target]] ![[Target]]')
+  await writeFile(join(source, 'Target.md'), '# Target')
+  const attachment = await open(join(source, 'large.mov'), 'wx')
+  await attachment.truncate(40 * 1024 * 1024)
+  await attachment.close()
+  await app.evaluate(async () => {
+    const { Worker } = process.getBuiltinModule('node:worker_threads')
+    globalThis.__importTransfers = []
+    const postMessage = Worker.prototype.postMessage
+    Worker.prototype.postMessage = function (message, buffers) {
+      globalThis.__importTransfers.push({
+        type: message.type,
+        count: buffers?.length ?? 0,
+      })
+      return postMessage.call(this, message, buffers)
+    }
+  })
+  const converted = await page.evaluate(
+    (workspaceId) =>
+      window.hibi.importIntoWorkspace({
+        id: 'import-obsidian',
+        source: 'folder',
+        workspaceId,
+      }),
+    snapshot.id,
+  )
+  assert.equal(converted.files, 3)
+  const transfers = await app.evaluate(() => globalThis.__importTransfers)
+  assert.ok(transfers.some((message) => message.type === 'files'))
+  assert.ok(transfers.every((message) => message.count <= 1))
+  assert.equal(
+    (
+      await stat(
+        join(workspace, converted.folder, 'Imported files', 'large.mov'),
+      )
+    ).size,
+    40 * 1024 * 1024,
+  )
+  assert.deepEqual(converted.warnings, [
+    'Embedded notes become links. Images remain embedded.',
+  ])
+  assert.equal(
+    await readFile(
+      join(workspace, converted.folder, 'Imported files', 'Start.md'),
+      'utf8',
+    ),
+    '[Target](Target.md) [Target](Target.md)',
+  )
   const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
   await pressShortcut(app, `${mod}+,`)
   await page
@@ -208,13 +268,22 @@ test('managed workspaces stay opt-in, preserve files, import safely, and reopen 
   await app.close()
   app = null
   page = await launch()
+  await page
+    .locator(
+      t.formattedEngine === 'tiptap'
+        ? '.rich-pane .tiptap'
+        : '.rich-pane .hibi-formatted .cm-content',
+    )
+    .waitFor()
   await waitForAppState(page, async () => !!(await window.hibi.getWorkspace()))
   await page.waitForFunction(
     () =>
       document
         .querySelector('.document-tab')
         ?.textContent?.includes('Start.md') ||
-      document.querySelector('.tiptap')?.textContent?.includes('Welcome'),
+      document
+        .querySelector('.rich-pane [role="textbox"]')
+        ?.textContent?.includes('Welcome'),
   )
   assert.equal(
     (await page.evaluate(() => window.hibi.getWorkspace())).name,

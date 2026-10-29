@@ -1,11 +1,73 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rm,
+  writeFile,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import test from 'node:test'
 import { electron, waitForDocumentEditor } from './electron.mjs'
-import { clickMenu } from './keyboard.mjs'
+import {
+  selectFormattedEngine,
+  testFormattedEngines as test,
+} from './formatted-engine.mjs'
+import { clickMenu, pressPastCompletionDelay } from './keyboard.mjs'
 import { APP_STATE_TIMEOUT, waitForAsync } from './poll.mjs'
+
+test('legacy words migrate in the native worker and remain available to older builds', {}, async (t) => {
+  const profile = await mkdtemp(join(tmpdir(), 'hibi-dictionary-migration-'))
+  await mkdir(join(profile, 'addon-storage', 'global'), { recursive: true })
+  const file = join(profile, 'addon-storage', 'global', 'dictionary.json')
+  const saved = Array.from({ length: 5000 }, (_, index) => ({
+    id: `id-${index}`,
+    word: `legacy${index}`,
+  }))
+  const original = JSON.stringify({
+    format: 1,
+    entries: { 'custom-words': { version: 1, revision: 7, value: saved } },
+  })
+  await writeFile(file, original)
+  await writeFile(
+    join(profile, 'addons.json'),
+    JSON.stringify({ dictionary: true }),
+  )
+  const app = await electron.launch({
+    args: [resolve('.'), `--user-data-dir=${profile}`],
+  })
+  t.after(async () => {
+    await app.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => ({ response: 1 })
+    })
+    await app.close()
+    await rm(profile, { recursive: true, force: true })
+  })
+  const page = await app.firstWindow()
+  await selectFormattedEngine(app, page, t.formattedEngine)
+  await waitForDocumentEditor(app, page)
+  const words = await page.evaluate(async () => {
+    const words = []
+    let after = 0
+    for (;;) {
+      const page = await window.hibi.queryAddon('dictionary', 'customWords', {
+        after,
+      })
+      words.push(...page.words)
+      if (!page.more) return words
+      after = page.after
+    }
+  })
+  assert.deepEqual(words, saved)
+  assert.equal(await readFile(file, 'utf8'), original)
+  assert.equal(
+    await page
+      .getByRole('textbox', { name: 'Document editor', exact: true })
+      .evaluate((element) => element.isContentEditable),
+    true,
+  )
+})
 
 test('custom words are added, edited, removed, kept across restart, and suggested without going online', {
   timeout: 120000,
@@ -40,6 +102,7 @@ test('custom words are added, edited, removed, kept across restart, and suggeste
       }
     }, file)
     const page = await app.firstWindow()
+    await selectFormattedEngine(app, page, t.formattedEngine)
     page.setDefaultTimeout(APP_STATE_TIMEOUT)
     await waitForDocumentEditor(app, page)
     await app.evaluate(({ ipcMain }) => {
@@ -73,9 +136,21 @@ test('custom words are added, edited, removed, kept across restart, and suggeste
     async () => (await window.hibi.getDocument()).name === 'note.md',
   )
   await waitForDocumentEditor(app, page)
-  const rich = page.locator('.rich-pane .tiptap[contenteditable="true"]')
+  const rich = page.getByRole('textbox', {
+    name: 'Document editor',
+    exact: true,
+  })
   await rich.click()
-  await rich.evaluate((element) => element.editor.commands.setTextSelection(6))
+  if (t.formattedEngine === 'tiptap')
+    await rich.evaluate((element) =>
+      element.editor.commands.setTextSelection(6),
+    )
+  else
+    await rich.evaluate((element) => {
+      const view = element.cmTile.root.view
+      view.dispatch({ selection: { anchor: 5 } })
+      view.focus()
+    })
 
   // A word with no entry is added from the side view and then shown as yours.
   await clickMenu(app, 'Command palette')
@@ -97,6 +172,25 @@ test('custom words are added, edited, removed, kept across restart, and suggeste
   await words
     .getByRole('combobox', { name: 'Language of “kilig”' })
     .selectOption('tl')
+  const longTerm = `custom${'x'.repeat(128)}`
+  const longNote = 'full note '.repeat(400).trim()
+  await words.getByRole('textbox', { name: 'New custom word' }).fill(longTerm)
+  await words.getByRole('button', { name: 'Add', exact: true }).click()
+  const longInput = words.getByRole('textbox', {
+    name: `Note for “${longTerm}”`,
+  })
+  await longInput.fill(longNote)
+  await longInput.blur()
+  await waitForAsync(
+    page,
+    async ({ longTerm, longNote }) =>
+      (
+        await window.hibi.queryAddon('dictionary', 'customWords', {})
+      ).words.some((item) => item.word === longTerm && item.note === longNote),
+    { longTerm, longNote },
+  )
+  await words.getByRole('button', { name: `Remove “${longTerm}”` }).click()
+  await longInput.waitFor({ state: 'detached' })
   const note = words.getByRole('textbox', { name: 'Note for “zorp”' })
   await note.fill('a made-up word')
   await note.press('Tab')
@@ -110,16 +204,27 @@ test('custom words are added, edited, removed, kept across restart, and suggeste
   await closeSettings()
 
   // Suggestions put custom words first and never go online.
-  await rich.evaluate((element) => element.editor.commands.focus('end'))
+  if (t.formattedEngine === 'tiptap')
+    await rich.evaluate((element) => element.editor.commands.focus('end'))
+  else {
+    await rich.focus()
+    await rich.press(
+      process.platform === 'darwin' ? 'Meta+ArrowDown' : 'Control+End',
+    )
+  }
   await page.keyboard.type(' Hib')
   const menu = page.getByRole('listbox', { name: 'Completions' })
   await menu
     .getByRole('option', { name: /^Hibiland/ })
     .filter({ hasText: 'Your word' })
     .waitFor()
-  await page.keyboard.press('ArrowDown')
+  if (t.formattedEngine === 'codemirror')
+    await pressPastCompletionDelay(page, 'ArrowDown')
+  else await page.keyboard.press('ArrowDown')
   await menu.getByRole('option', { selected: true }).waitFor()
-  await page.keyboard.press('Enter')
+  if (t.formattedEngine === 'codemirror')
+    await pressPastCompletionDelay(page, 'Enter')
+  else await page.keyboard.press('Enter')
   await waitForAsync(page, async () =>
     (await window.hibi.getDocument()).markdown.endsWith(' Hibiland'),
   )
@@ -258,7 +363,11 @@ test('custom words are added, edited, removed, kept across restart, and suggeste
   )
 
   // With slow saves, typing a note, another, then the first again keeps the last one typed.
-  await app.evaluate(({ ipcMain }) => {
+  await app.evaluate(({ ipcMain, app }) => {
+    const { DatabaseSync } = process.getBuiltinModule('node:sqlite')
+    const path = process
+      .getBuiltinModule('node:path')
+      .join(app.getPath('userData'), 'dictionary-custom-words', 'words.sqlite')
     const exportWrite = ipcMain._invokeHandlers.get(
       'host-selected-io:write-export',
     )
@@ -276,21 +385,32 @@ test('custom words are added, edited, removed, kept across restart, and suggeste
       globalThis.canceledExports.push(result)
       return result
     })
-    const write = ipcMain._invokeHandlers.get('addon-storage:write')
+    const write = ipcMain._invokeHandlers.get('addons:profile')
     globalThis.held = []
     globalThis.written = 0
-    ipcMain.removeHandler('addon-storage:write')
-    ipcMain.handle('addon-storage:write', async (event, request) => {
-      if (request?.owner !== 'dictionary' || request.key !== 'custom-words')
-        return write(event, request)
+    ipcMain.removeHandler('addons:profile')
+    ipcMain.handle('addons:profile', async (event, id, method, input) => {
+      if (
+        id !== 'dictionary' ||
+        method !== 'changeCustomWords' ||
+        input?.type !== 'commit'
+      )
+        return write(event, id, method, input)
       await new Promise((resolve) => globalThis.held.push(resolve))
       try {
         if (globalThis.failNextWrite) {
           globalThis.failNextWrite = false
-          return { status: 'unavailable', reason: 'corrupt' }
+          throw new Error('Could not save custom words.')
         }
-        const result = await write(event, request)
-        globalThis.lastWrite = result
+        const result = await write(event, id, method, input)
+        const db = new DatabaseSync(path, { readOnly: true })
+        try {
+          globalThis.lastWrite = {
+            value: db.prepare('SELECT word, note FROM words').all(),
+          }
+        } finally {
+          db.close()
+        }
         return result
       } finally {
         globalThis.written++
@@ -491,4 +611,174 @@ test('custom words are added, edited, removed, kept across restart, and suggeste
   assert.equal(await app.evaluate(() => globalThis.written), 11)
   assert.equal(await app.evaluate(() => globalThis.held.length), 0)
   assert.deepEqual(await online(), [])
+})
+
+test('5,000 custom words keep bounded live rows, skip hidden discovery work, and keep a failed note', {
+  timeout: 120000,
+}, async (t) => {
+  const profile = await mkdtemp(join(tmpdir(), 'hibi-dictionary-many-'))
+  await writeFile(
+    join(profile, 'addons.json'),
+    JSON.stringify({ dictionary: true }),
+  )
+  const app = await electron.launch({
+    args: [resolve('.'), `--user-data-dir=${profile}`],
+  })
+  t.after(async () => {
+    await app.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => ({ response: 1 })
+    })
+    await app.close()
+    await rm(profile, { recursive: true, force: true })
+  })
+  const page = await app.firstWindow()
+  await selectFormattedEngine(app, page, t.formattedEngine)
+  page.setDefaultTimeout(APP_STATE_TIMEOUT)
+  await waitForDocumentEditor(app, page)
+  await app.evaluate(({ ipcMain }) => {
+    const query = ipcMain._invokeHandlers.get('addons:query')
+    const write = ipcMain._invokeHandlers.get('addons:profile')
+    globalThis.packReads = 0
+    ipcMain.removeHandler('addons:query')
+    ipcMain.handle('addons:query', (event, id, method, ...input) => {
+      if (id === 'dictionary' && method === 'packs') globalThis.packReads++
+      return query(event, id, method, ...input)
+    })
+    ipcMain.removeHandler('addons:profile')
+    ipcMain.handle('addons:profile', (event, id, method, input) => {
+      if (
+        globalThis.failNextWrite &&
+        id === 'dictionary' &&
+        method === 'changeCustomWords' &&
+        input?.type === 'commit'
+      ) {
+        globalThis.failNextWrite = false
+        throw new Error('Could not save custom words.')
+      }
+      return write(event, id, method, input)
+    })
+  })
+  const palette = page.getByRole('dialog', { name: /command palette/i })
+  const search = page.getByRole('combobox', { name: /search commands/i })
+  // The background addon is running once its command is listed.
+  await clickMenu(app, 'Command palette')
+  await search.fill('Open dictionary side view')
+  await page
+    .getByRole('option', { name: /Open dictionary side view/ })
+    .waitFor()
+  await page.keyboard.press('Escape')
+  await palette.waitFor({ state: 'hidden' })
+
+  await clickMenu(app, 'Settings')
+  await page
+    .getByRole('tab', { name: 'Dictionary and thesaurus', exact: true })
+    .click()
+  const words = page.getByRole('region', { name: 'Custom words' })
+  const name = (index) => `w${String(index).padStart(4, '0')}`
+  const file = join(await realpath(profile), 'words.txt')
+  await writeFile(
+    file,
+    Array.from({ length: 5000 }, (_, index) => name(index)).join('\n'),
+  )
+  await app.evaluate(({ dialog }, path) => {
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] })
+  }, file)
+  await words.getByRole('button', { name: 'Import from file…' }).click()
+  await words.getByText('Imported 5000 words.').waitFor()
+  await waitForAsync(app, () => globalThis.packReads > 0)
+  const remove = (index) =>
+    words.getByRole('button', { name: `Remove “${name(index)}”` })
+  const note = (index) =>
+    words.getByRole('textbox', { name: `Note for “${name(index)}”` })
+  const scrollList = (edge) =>
+    page.evaluate((edge) => {
+      const scroller = document.querySelector('.settings-content')
+      // Spacers around the mounted rows hold the full list height.
+      const list = document
+        .querySelector('.dictionary-custom-words ul')
+        .parentElement.getBoundingClientRect()
+      const view = scroller.getBoundingClientRect()
+      scroller.scrollTop +=
+        edge === 'end' ? list.bottom - view.bottom : list.top - view.top
+    }, edge)
+  // Rows within one viewport above and below stay live, plus a focused row and
+  // its neighbors; the rest only keep their height.
+  const live = () =>
+    page.evaluate(() => {
+      const section = document.querySelector('.dictionary-custom-words')
+      const rows = section.querySelectorAll('li')
+      return {
+        rows: rows.length,
+        selects: section.querySelectorAll('select').length,
+        bound:
+          Math.ceil(
+            (3 * document.querySelector('.settings-content').clientHeight) /
+              rows[0].offsetHeight,
+          ) + 2,
+        height: section.querySelector('ul').parentElement.offsetHeight,
+        expected: 5000 * rows[0].offsetHeight,
+      }
+    })
+  await remove(0).waitFor()
+  let shown = await live()
+  assert.ok(shown.rows > 0 && shown.rows <= shown.bound, JSON.stringify(shown))
+  assert.equal(shown.selects, shown.rows)
+  assert.equal(shown.height, shown.expected)
+
+  // A focused row stays mounted while the list scrolls past it.
+  await note(0).focus()
+  await scrollList('end')
+  await remove(4999).waitFor()
+  assert.equal(
+    await page.evaluate(() =>
+      document.activeElement?.getAttribute('aria-label'),
+    ),
+    `Note for “${name(0)}”`,
+  )
+  shown = await live()
+  assert.ok(shown.rows <= shown.bound + 3, JSON.stringify(shown))
+
+  // A note whose save failed keeps its text after its row unmounts far off screen.
+  await app.evaluate(() => {
+    globalThis.failNextWrite = true
+  })
+  await note(4999).fill('kept after failure')
+  await note(4999).blur()
+  await words.getByText('Could not save custom words.').waitFor()
+  // Focus moving to another control releases the row; the note stays with its word.
+  await words.getByRole('textbox', { name: 'New custom word' }).focus()
+  await scrollList('start')
+  await remove(1).waitFor()
+  await note(4999).waitFor({ state: 'detached' })
+  shown = await live()
+  assert.ok(shown.rows <= shown.bound, JSON.stringify(shown))
+  await scrollList('end')
+  await remove(4999).waitFor()
+  assert.equal(await note(4999).inputValue(), 'kept after failure')
+
+  // Palette discovery finds the page's settings without its list or pack reads.
+  await page.getByRole('button', { name: /back to app/i }).click()
+  await page.locator('.settings-screen').waitFor({ state: 'hidden' })
+  await app.evaluate(() => {
+    globalThis.packReads = 0
+  })
+  await clickMenu(app, 'Command palette')
+  await search.fill('new custom word')
+  await page.getByRole('option', { name: /^New custom word/ }).waitFor()
+  assert.deepEqual(
+    await page.evaluate(() => ({
+      discovered: !!document.getElementById('dictionary-new-word'),
+      rows: document.querySelectorAll('.dictionary-custom-words li').length,
+      licenses: document.querySelectorAll('.license-row').length,
+    })),
+    { discovered: true, rows: 0, licenses: 0 },
+  )
+  assert.equal(await app.evaluate(() => globalThis.packReads), 0)
+  await search.press('Enter')
+  await palette.waitFor({ state: 'hidden' })
+  await page.waitForFunction(
+    () => document.activeElement?.id === 'dictionary-new-word',
+  )
+  await remove(0).waitFor()
+  await waitForAsync(app, () => globalThis.packReads > 0)
 })

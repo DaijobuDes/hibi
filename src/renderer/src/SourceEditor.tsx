@@ -14,13 +14,7 @@ import {
   setSelectedCompletion,
   startCompletion,
 } from '@codemirror/autocomplete'
-import {
-  defaultKeymap,
-  indentLess,
-  indentMore,
-  isolateHistory,
-  selectAll,
-} from '@codemirror/commands'
+import { indentLess, indentMore, isolateHistory } from '@codemirror/commands'
 import {
   ensureSyntaxTree,
   HighlightStyle,
@@ -31,7 +25,6 @@ import {
 } from '@codemirror/language'
 import {
   closeSearchPanel,
-  openSearchPanel,
   SearchQuery,
   search,
   setSearchQuery,
@@ -41,8 +34,11 @@ import {
   Compartment,
   EditorSelection,
   EditorState,
+  type Extension,
   Prec,
+  type Text,
   Transaction,
+  type TransactionSpec,
 } from '@codemirror/state'
 import {
   type Command,
@@ -50,10 +46,25 @@ import {
   keymap,
   lineNumbers,
   placeholder,
+  ViewPlugin,
 } from '@codemirror/view'
+import type { SyntaxNode } from '@lezer/common'
 import { tags } from '@lezer/highlight'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { DocumentFormat, SourceExtension } from '../../addons/api'
+import type { MarkdownParser } from '@lezer/markdown'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
+import type {
+  DocumentFormat,
+  FormattedExtension,
+  SourceExtension,
+} from '../../addons/api'
+import { commands as sourceCommands } from '../../addons/sdk-source'
 import {
   type CompletionItem,
   type CompletionRequest,
@@ -62,9 +73,8 @@ import {
   sourceProseAllowed,
   type TypingContext,
 } from '../../shared/completions'
-import { type DocumentState, MAX_DOCUMENT_BYTES } from '../../shared/desktop'
+import type { DocumentState } from '../../shared/desktop'
 import {
-  editedSource,
   type SourceEditRequest,
   type SourceEditResult,
   sourceEditMatches,
@@ -75,17 +85,21 @@ import {
   type EditorInteractionRequest,
   sameInteraction,
 } from '../../shared/editor-interactions'
+import { errorMessage } from '../../shared/errors'
 import type { ViewId, ViewTarget } from '../../shared/foundation-contracts'
+import type { BoundaryConfig } from '../../shared/markdown-boundary-syntax'
+import { protectMarkdownParser } from '../../shared/markdown-flavor-guard'
 import { markdownLink } from '../../shared/markdown-link'
 import { wikiHref } from '../../shared/note-links'
 import type { RawEdit } from '../../shared/source-operations'
-import {
-  editorChangesFromSource,
-  normalizedSource as normalizeSource,
-} from '../../shared/source-projection'
+import { editorChangesFromSource } from '../../shared/source-projection'
+import type { SourceMatch } from '../../shared/source-search'
 import { Button } from '../../ui/Controls'
 import { DocumentNotice } from '../../ui/DocumentNotice'
+import { uncovered } from './chunked-markdown'
+import { observeClipboard } from './clipboard-source'
 import { codeHighlighter, codeLanguages } from './code-languages'
+import { setCodeExtents } from './code-placeholders'
 import {
   completionBroker,
   lazyCompletionProse,
@@ -100,33 +114,280 @@ import { documentEdits } from './document-edits'
 import { editorDocument } from './document-formats'
 import { documentProjections } from './document-projections'
 import { documentRuntime } from './document-runtime'
-import { DocumentWorkerClient, type FindAction } from './document-worker-client'
+import type { FindAction } from './document-worker-client'
+import {
+  connectDocumentWorker,
+  type DocumentWorkerConnection,
+} from './document-worker-pool'
 import { registerEditorSelectionCapture } from './editor-command-targets'
+import { captureEditorFocus } from './editor-focus-restore'
 import {
   hasEditorInteractionProviders,
   onEditorInteractionProvidersChanged,
 } from './editor-interaction-presence'
 import { editorViewRegistry } from './editor-view-api'
 import type { FindMove, FindStatus } from './FindBar'
+import { flavorSyntax } from './flavor-syntax'
+import { flavors as markdownFlavors } from './flavors'
+import { definitionOf } from './formatted/footnote-definitions'
+import {
+  followsLink,
+  formattedDocument,
+  formattedFollowLink,
+  formattedRefresh,
+  formattedRenderInputs,
+  showMarkdownMarkers,
+} from './formatted-contributions'
+import { formattedReferences } from './formatted-references'
+import { formattedSelectionPreview } from './formatted-selection-text'
+import { formattedLiteralEdits } from './formatted-source-edits'
+import { formattedSyntax } from './formatted-syntax'
+import { tabIndent } from './indentation'
+import { formattedTabIndents, livePreview } from './live-preview'
 import { mountedDocumentEdits } from './mounted-document-edits'
 import {
   observeSourceAnnotations,
   sourceAnnotationExtension,
 } from './source-annotations'
 import {
+  formattedFindViewport,
+  formattedFindWindow,
+  movedFindWindow,
+  renderedFindHighlights,
+  sourceFindHighlights,
+} from './source-find'
+import {
   formattingKeymap,
   type SourceFormatting,
   sourceFormatting,
+  storedMarkInput,
+  wholeSelectionInput,
 } from './source-formatting'
+import { rejectedInput } from './source-formatting-actions'
 import { sourceIndentation } from './source-indent'
-import { createSourceSession, sourceEditorText } from './source-session'
+import {
+  createSourceSession,
+  editSpec,
+  failedEditGuard,
+  failingParts,
+  firstStateRead,
+  reconfiguration,
+  sourceEditorTextCooperatively,
+  sourceEditTransaction,
+  transactionState,
+} from './source-session'
 import {
   registerSourceView,
   type SourceReferenceResult,
   type SourceReferenceSyntax,
 } from './source-view'
-import { tabIndent } from './tab-indent'
 import { textProjection } from './text-projection'
+
+/** Each mounted view's bridge to its document session. */
+const bridges = new WeakMap<
+  EditorView,
+  ReturnType<typeof createSourceSession>
+>()
+/** The whole source after editor changes, exactly as the mounted view commits them. */
+export const sourceAfter = (view: EditorView, changes: readonly RawEdit[]) =>
+  bridges.get(view)?.sourceAfter(changes) ?? null
+
+/** The line at a view's top, and where its block starts relative to the top. */
+function placeOf(view: EditorView) {
+  const height = view.scrollDOM.getBoundingClientRect().top - view.documentTop
+  const line = view.lineBlockAtHeight(height)
+  return { top: line.from, margin: line.top - height }
+}
+
+/** Properties whose transitions move or resize a pane, as when it slides in and widens. */
+const paneMotion = new Set([
+  'width',
+  'min-width',
+  'max-width',
+  'flex-basis',
+  'inset',
+  'left',
+  'right',
+  'transform',
+  'translate',
+])
+
+/** Running pane motion around an element, and how long the longest still lasts. */
+function paneMotionAround(element: Element) {
+  const transitions: Animation[] = []
+  let left = 0
+  for (let node: Element | null = element; node; node = node.parentElement)
+    for (const animation of node.getAnimations()) {
+      if (
+        !(animation instanceof CSSTransition) ||
+        animation.playState !== 'running' ||
+        !paneMotion.has(animation.transitionProperty)
+      )
+        continue
+      const end = animation.effect?.getComputedTiming().endTime,
+        now = animation.currentTime
+      if (typeof end !== 'number' || typeof now !== 'number') continue
+      // In real time; a stopped one never ends.
+      const remaining = (end - now) / animation.playbackRate
+      if (!Number.isFinite(remaining) || remaining <= 0) continue
+      transitions.push(animation)
+      left = Math.max(left, remaining)
+    }
+  return { transitions, left }
+}
+
+/** Input in the scroller, its gutters included, is the user's own scrolling. */
+const scrollInput = ['keydown', 'pointerdown', 'touchstart', 'wheel'] as const
+
+/**
+ * A view built off screen scrolls to its kept place with estimated line
+ * heights, and CodeMirror then anchors whichever line those put at the top.
+ * Once it is on screen and its pane has stopped moving and resizing, the kept
+ * line goes back to its kept offset, in a measure that changes no heights:
+ * when heights change, CodeMirror moves the view to hold the line it anchored
+ * before them. Input or any other scroll ends this.
+ */
+function keptPlaceScroll(top: number, margin: number) {
+  let state: 'waiting' | 'aligning' | 'holding' | 'done' = 'waiting',
+    moved = false,
+    // The scroll position the view was aligned at, while it holds the place.
+    held = 0,
+    // The view's own scroll there, first from its construction.
+    scrolling = true,
+    scrolled = false,
+    settling: ReturnType<typeof setTimeout> | null = null,
+    // The first wait sets when waiting ends, whatever moves after it.
+    deadline: number | null = null
+  const stop = () => {
+    state = 'done'
+    if (settling) clearTimeout(settling)
+    settling = null
+  }
+  const align = {
+    // Only a line CodeMirror has laid out has a measured position.
+    read: (view: EditorView) =>
+      top < view.viewport.from || top > view.viewport.to
+        ? null
+        : view.documentTop +
+          view.lineBlockAt(top).top -
+          view.scrollDOM.getBoundingClientRect().top,
+    write: (offset: number | null, view: EditorView) => {
+      if (state !== 'aligning') return
+      if (offset === null) {
+        // Scroll there once, which lays it out; the measure after aligns it.
+        if (scrolled) return stop()
+        scrolled = scrolling = true
+        state = 'waiting'
+        queueMicrotask(() => {
+          if (state !== 'done')
+            view.dispatch({
+              effects: EditorView.scrollIntoView(top, {
+                y: 'start',
+                yMargin: margin,
+              }),
+            })
+        })
+        return
+      }
+      if (moved) {
+        moved = false
+        queueMicrotask(() => view.requestMeasure(align))
+        return
+      }
+      state = 'holding'
+      if (Math.abs(offset - margin) >= 0.5)
+        view.scrollDOM.scrollTop += offset - margin
+      held = view.scrollDOM.scrollTop
+    },
+  }
+  const begin = (view: EditorView) => {
+    if (state !== 'waiting' || scrolling || settling) return
+    // Its lines wrap again when the pane reaches its last width. The wait
+    // ends with that motion, or at the latest when it was due to end, and
+    // holds the view only weakly.
+    const { transitions, left } = paneMotionAround(view.dom)
+    const now = performance.now()
+    if (left > 0) deadline ??= now + left
+    const wait = deadline === null ? 0 : Math.min(left, deadline - now)
+    if (wait > 0) {
+      const owner = new WeakRef(view)
+      const wake = () => {
+        if (!settling) return
+        clearTimeout(settling)
+        settling = null
+        const view = owner.deref()
+        if (view) begin(view)
+      }
+      settling = setTimeout(wake, wait)
+      for (const transition of transitions) transition.finished.then(wake, wake)
+      return
+    }
+    state = 'aligning'
+    moved = false
+    view.requestMeasure(align)
+  }
+  const extension: Extension = [
+    EditorView.scrollHandler.of((view, range, options) => {
+      if (range.head !== top || options.yMargin !== margin) stop()
+      else {
+        scrolling = false
+        // On screen, this scroll lays the line out; the next measure aligns it.
+        if (view.inView) queueMicrotask(() => begin(view))
+      }
+      return false
+    }),
+    // A held view scrolled anywhere else, as by its scrollbar or a script,
+    // is the user's again; this runs before the place is recorded.
+    EditorView.domEventHandlers({
+      scroll: (_event, view) => {
+        if (
+          state === 'holding' &&
+          Math.abs(view.scrollDOM.scrollTop - held) > 1
+        )
+          stop()
+      },
+    }),
+    ViewPlugin.define((view) => {
+      const options = { capture: true, passive: true }
+      for (const type of scrollInput)
+        view.scrollDOM.addEventListener(type, stop, options)
+      return {
+        destroy() {
+          stop()
+          for (const type of scrollInput)
+            view.scrollDOM.removeEventListener(type, stop, options)
+        },
+        update(update) {
+          if (update.docChanged) top = update.changes.mapPos(top, 1)
+          if (update.heightChanged || update.geometryChanged) moved = true
+          // A measure on screen; its own height changes still move the view.
+          if (
+            update.transactions.length ||
+            !update.view.inView ||
+            !(
+              update.geometryChanged ||
+              update.viewportChanged ||
+              update.heightChanged
+            )
+          )
+            return
+          const { view } = update
+          if (state === 'holding') {
+            // Anything that scrolled the view ends the hold. CodeMirror can
+            // also move the kept line without scrolling, when it estimates
+            // the lines above it again, and the line goes back.
+            if (Math.abs(view.scrollDOM.scrollTop - held) > 1) return stop()
+            state = 'aligning'
+            moved = false
+            queueMicrotask(() => view.requestMeasure(align))
+          } else queueMicrotask(() => begin(view))
+        },
+      }
+    }),
+  ]
+  /** Whether the view is on its way to, or holding, the kept place. */
+  return { extension, pending: () => state !== 'done' }
+}
 
 const highlighting = HighlightStyle.define([
   { tag: tags.heading, color: 'var(--syntax-heading)', fontWeight: '600' },
@@ -158,9 +419,69 @@ const sameReferenceSyntax = (
   !!a.math === !!b.math &&
   a.frontmatter === b.frontmatter
 
+/** An editor feature. `fail` reports its failure and removes it from every editor; input waits for one without it. */
+type EditorFeature = (SourceExtension | FormattedExtension) & {
+  fail?: (error: unknown) => void
+}
+type InstalledFeature = { feature: EditorFeature; extension: Extension }
+
+/** Input does not wait for features this editor removed after they failed to leave. */
+const installedFor = (
+  installed: readonly EditorFeature[],
+  wanted: readonly EditorFeature[],
+  failed: WeakSet<EditorFeature>,
+) =>
+  installed === wanted ||
+  (wanted.every((feature) => installed.includes(feature)) &&
+    installed.every(
+      (feature) => wanted.includes(feature) || failed.has(feature),
+    ))
+
+const featureExtensions = (
+  installed: readonly InstalledFeature[],
+  formatted: boolean,
+) => {
+  const extensions = installed.map(({ extension }) => extension)
+  // Cached renderers must see the fields installed with their input.
+  return [extensions, formatted ? formattedRenderInputs.of(extensions) : []]
+}
+
+/**
+ * Reports the features an edit fails with, which then leave every editor,
+ * and returns the others. A feature input waits for stays; the edit fails.
+ */
+function isolateFeatures(
+  start: EditorState,
+  edit: readonly Transaction[] | readonly TransactionSpec[],
+  installed: readonly InstalledFeature[],
+  compartment: Compartment,
+  formatted: boolean,
+) {
+  const failing = failingParts(
+    start,
+    edit,
+    installed.filter(({ feature }) => feature.fail),
+    (kept) =>
+      compartment.reconfigure(
+        featureExtensions(
+          installed.filter((part) => !part.feature.fail || kept.includes(part)),
+          formatted,
+        ),
+      ),
+  )
+  for (const { part, error } of failing)
+    part.feature.fail?.(
+      new Error(`${part.feature.id}: ${errorMessage(error)}`, { cause: error }),
+    )
+  return installed.filter(
+    (part) => !failing.some((failure) => failure.part === part),
+  )
+}
+
 export function SourceEditor({
   document,
   viewId = 'default',
+  sessionViewId = viewId,
   focused = true,
   editTarget,
   sourceVisible = editTarget,
@@ -184,9 +505,16 @@ export function SourceEditor({
   sourceExtensions,
   onFormatting,
   onLink,
+  presentation = 'source',
+  markers = true,
+  spellCheck = false,
+  flavors,
+  documentRevision = 0,
+  keepPlace = false,
 }: {
   document: DocumentState
   viewId?: string
+  sessionViewId?: string
   focused?: boolean
   editTarget: boolean
   sourceVisible?: boolean
@@ -209,10 +537,23 @@ export function SourceEditor({
   findMove: FindMove
   onFindStatus: (status: FindStatus) => void
   showLineNumbers: boolean
-  sourceExtensions: readonly SourceExtension[]
+  sourceExtensions: readonly EditorFeature[]
   onFormatting: (formatting: SourceFormatting | null) => void
   onLink: (href: string) => void
+  /** Formatted renders Markdown in place over the same source session. */
+  presentation?: 'source' | 'formatted'
+  /** Formatted view: show the Markdown markers under the caret. */
+  markers?: boolean
+  spellCheck?: boolean
+  /** The document's Markdown flavor ids, which select syntax and formatted contributions. */
+  flavors?: readonly string[]
+  /** Formatted view: the document revision for widgets such as media. */
+  documentRevision?: number
+  /** A view that unmounts keeps its selection and scroll position, mapped through edits, for the next. */
+  keepPlace?: boolean
 }) {
+  const formatted = presentation === 'formatted'
+  const kind = formatted ? 'rich' : 'source'
   const parserOptions = useRef({
     markdownMode,
     markdownLanguage,
@@ -223,6 +564,7 @@ export function SourceEditor({
     label,
     sourceFormat,
     supportsMedia,
+    flavors,
   })
   parserOptions.current = {
     markdownMode,
@@ -234,8 +576,11 @@ export function SourceEditor({
     label,
     sourceFormat,
     supportsMedia,
+    flavors,
   }
+  const flavorKey = flavors?.join(',')
   const configureParser = useRef(() => {})
+  const configureFlavors = useRef(() => {})
   // biome-ignore lint/correctness/useExhaustiveDependencies: parser configuration reads these current values through parserOptions.
   useEffect(() => {
     configureParser.current()
@@ -248,11 +593,24 @@ export function SourceEditor({
     sourceFormat,
     supportsMedia,
   ])
+  // biome-ignore lint/correctness/useExhaustiveDependencies: flavor configuration reads the current flavors through parserOptions.
+  useEffect(() => {
+    configureFlavors.current()
+  }, [flavorKey])
   const host = useRef<HTMLDivElement>(null)
   const view = useRef<EditorView | null>(null)
+  const restoreFocus = useRef<(() => void) | null>(null)
+  const keepingPlace = useRef(keepPlace)
+  keepingPlace.current = keepPlace
+  // A hidden view's layout goes stale, and a pane that hides can already be
+  // relaid out when its effects run, so a view keeps the place it last showed.
+  const shown = useRef(false)
+  const shownPlace = useRef<ReturnType<typeof placeOf> | null>(null)
+  // Effects follow the actual view, which mounts after source preparation.
+  const [mountedView, setMountedView] = useState<EditorView | null>(null)
   const [installedExtensions, setInstalledExtensions] = useState<{
     bridge: ReturnType<typeof createSourceSession>
-    extensions: readonly SourceExtension[]
+    extensions: readonly EditorFeature[]
   } | null>(null)
   const [extensionError, setExtensionError] = useState('')
   const [languageError, setLanguageError] = useState('')
@@ -262,16 +620,33 @@ export function SourceEditor({
   const session = documentRuntime.session(document.tabId)!
   // biome-ignore lint/correctness/useExhaustiveDependencies: retry refreshes a bridge whose snapshot went stale before attachment.
   const bridge = useMemo(
-    () => createSourceSession(session, viewId),
-    [session, viewId, bridgeRetry],
+    () => createSourceSession(session, sessionViewId),
+    [session, sessionViewId, bridgeRetry, document.tabId, document.revision],
   )
+  // An echo this bridge's view could not show; Retry rebuilds the view.
+  const [failedEcho, setFailedEcho] = useState<{
+    bridge: typeof bridge
+    message: string
+  } | null>(null)
+  const echoError = failedEcho?.bridge === bridge ? failedEcho.message : ''
+  const [preparedText, setPreparedText] = useState<{
+    bridge: ReturnType<typeof createSourceSession>
+    text: Text
+  } | null>(null)
   const [fontReadyBridge, setFontReadyBridge] = useState<ReturnType<
     typeof createSourceSession
   > | null>(null)
+  const failedFeatures = useRef(new WeakSet<EditorFeature>())
   const inputReady =
+    preparedText?.bridge === bridge &&
     installedExtensions?.bridge === bridge &&
-    installedExtensions.extensions === sourceExtensions &&
-    languageReady
+    installedFor(
+      installedExtensions.extensions,
+      sourceExtensions,
+      failedFeatures.current,
+    ) &&
+    languageReady &&
+    !echoError
   const editContext = useRef({
     document,
     editTarget,
@@ -292,23 +667,48 @@ export function SourceEditor({
   const editable = useRef(new Compartment())
   const numbers = useRef(new Compartment())
   const addons = useRef(new Compartment())
+  /** The features in `addons`, with what each created. */
+  const installed = useRef<readonly InstalledFeature[]>([])
   const indentation = useRef(new Compartment())
+  const display = useRef(new Compartment())
+  const findHighlights = useRef(new Compartment())
+  // Later changes reconfigure the display compartment without a new editor.
+  const displayOptions = useRef({ markers, spellCheck, documentRevision })
+  displayOptions.current = { markers, spellCheck, documentRevision }
   const find = useRef({
     active: findActive,
     query: findQuery,
     report: onFindStatus,
   })
-  const sourceFind = useRef<DocumentWorkerClient | null>(null)
+  const sourceFind = useRef<DocumentWorkerConnection | null>(null)
   const referenceUsed = useRef(false)
   const referenceFailed = useRef(false)
   const referenceQueue = useRef<ReferenceJob[]>([])
   const activeReference = useRef<ReferenceJob | null>(null)
   const nextReference = useRef(() => {})
-  const repeatFind = useRef<(action?: FindAction) => void>(() => {})
-  const findCoverage = useRef({ query: '', version: -1, total: 0 })
+  const repeatFind = useRef<(action?: FindAction, page?: number) => void>(
+    () => {},
+  )
+  const findCoverage = useRef({ query: '', version: -1, total: 0, config: '' })
   const findActions = useRef<FindAction[]>([])
   const navigatingFind = useRef(false)
   const applyingFind = useRef(false)
+  const renderedConfig = useRef<
+    ((state: EditorState) => BoundaryConfig | null) | null
+  >(null)
+  const findConfig = useRef('')
+  const renderedRefused = useRef({
+    session,
+    query: '',
+    version: -1,
+    config: '',
+  })
+  const renderedPage = useRef<{
+    from: number
+    to: number
+    matches: SourceMatch[]
+  } | null>(null)
+  const lastFindAction = useRef<FindAction>(null)
   const handledFindMove = useRef(findMove.id)
   const ready = useRef(onReady)
   const formatting = useRef<SourceFormatting | null>(null)
@@ -346,7 +746,7 @@ export function SourceEditor({
         sourceFind.current = null
         referenceFailed.current = false
       }
-      sourceFind.current ??= new DocumentWorkerClient(session, {
+      sourceFind.current ??= connectDocumentWorker(session, {
         changed: () => {
           // Edits already cancel old-version work in the client. Keep its
           // reference index available for the next incremental lookup.
@@ -375,27 +775,47 @@ export function SourceEditor({
           const known = findCoverage.current
           const complete =
             known.query === find.current.query &&
-            known.version === session.snapshot().version
+            known.version === session.snapshot().version &&
+            known.config === findConfig.current
           find.current.report({
             current: 0,
             total: complete ? known.total : 0,
             pending: !complete,
           })
         },
-        error: (message) => {
+        error: (message, reason) => {
+          if (reason === 'unsupported' && renderedPage.current) {
+            renderedRefused.current = {
+              session,
+              query: find.current.query,
+              version: session.snapshot().version,
+              config: findConfig.current,
+            }
+            repeatFind.current(lastFindAction.current)
+            return
+          }
           referenceFailed.current = true
           clearReferences('unavailable', false)
           findActions.current = []
           navigatingFind.current = false
           find.current.report({ current: 0, total: 0, error: message })
         },
-        result: (location, action) => {
+        result: (
+          location,
+          action,
+          highlightStarts,
+          query,
+          highlights,
+          mode,
+        ) => {
           const current = view.current
-          if (!current || !find.current.active) return
+          if (!current || !find.current.active || query !== find.current.query)
+            return
           findCoverage.current = {
             query: find.current.query,
             version: session.snapshot().version,
             total: location.total,
+            config: findConfig.current,
           }
           const target =
             action === 'previous'
@@ -403,12 +823,56 @@ export function SourceEditor({
               : action
                 ? location.next
                 : null
-          if (target) {
+          const page = mode === 'rendered' ? renderedPage.current : null
+          if (page && highlights) page.matches.push(...highlights.matches)
+          if (target || highlightStarts || (page && highlights)) {
             applyingFind.current = true
             try {
               current.dispatch({
-                selection: { anchor: target.match.from, head: target.match.to },
-                scrollIntoView: true,
+                ...(target
+                  ? {
+                      selection: {
+                        anchor: target.match.from,
+                        head: target.match.to,
+                      },
+                    }
+                  : {}),
+                effects: [
+                  // A match wider than the view shows its start.
+                  ...(target
+                    ? [
+                        EditorView.scrollIntoView(
+                          EditorSelection.range(
+                            target.match.to,
+                            target.match.from,
+                          ),
+                        ),
+                      ]
+                    : []),
+                  ...(page && highlights
+                    ? [
+                        findHighlights.current.reconfigure([
+                          renderedFindHighlights(
+                            page.matches,
+                            (target?.rank ?? location.current) > 0,
+                            current.state.doc,
+                          ),
+                          formattedFindWindow,
+                        ]),
+                      ]
+                    : highlightStarts
+                      ? [
+                          findHighlights.current.reconfigure([
+                            sourceFindHighlights(
+                              find.current.query,
+                              current.state.doc,
+                              highlightStarts,
+                            ),
+                            formatted ? formattedFindWindow : [],
+                          ]),
+                        ]
+                      : []),
+                ],
               })
             } finally {
               applyingFind.current = false
@@ -423,12 +887,13 @@ export function SourceEditor({
           if (next) {
             navigatingFind.current = true
             repeatFind.current(next)
-          }
+          } else if (page && highlights?.next != null)
+            repeatFind.current(null, highlights.next)
         },
       })
       return sourceFind.current
     },
-    [session, clearReferences, referenceCurrent],
+    [session, clearReferences, referenceCurrent, formatted],
   )
   const requestReference = useCallback(() => {
     if (activeReference.current) return
@@ -504,24 +969,84 @@ export function SourceEditor({
     )
       clearReferences('stale')
   }, [referenceSyntax, markdownMode, clearReferences])
+  // Rendered reference labels resolve again with other syntax.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the syntax the resolver reads changed.
+  useEffect(() => {
+    if (formatted)
+      view.current?.dispatch({ effects: formattedRefresh.of(null) })
+  }, [formatted, referenceSyntax, markdownMode])
   const requestFind = useCallback(
-    function requestFind(action: FindAction = null) {
+    function requestFind(action: FindAction = null, page?: number) {
       const editor = view.current
       if (!editor || !find.current.active || !find.current.query) return
       const selection = editor.state.selection.main
+      const candidate = renderedConfig.current?.(editor.state) ?? null
+      const key = JSON.stringify(candidate)
+      if (key !== findConfig.current) page = undefined
+      findConfig.current = key
+      const refused = renderedRefused.current
+      const config =
+        refused.session === session &&
+        refused.query === find.current.query &&
+        refused.version === session.snapshot().version &&
+        refused.config === key
+          ? null
+          : candidate
+      const shown =
+        page === undefined || !renderedPage.current
+          ? config
+            ? formattedFindViewport(editor)
+            : editor.viewport
+          : renderedPage.current
+      const viewport = { from: page ?? shown.from, to: shown.to }
+      if (page === undefined) {
+        lastFindAction.current = action
+        renderedPage.current = config
+          ? { from: shown.from, to: shown.to, matches: [] }
+          : null
+      }
       getWorker().find(
         find.current.query,
-        action === 'first' ? 0 : selection.from,
-        action === 'first' ? 0 : selection.to,
+        action === 'first' ? 0 : Math.min(selection.from, selection.to),
+        action === 'first' ? 0 : Math.max(selection.from, selection.to),
         action,
+        config ? { mode: 'rendered', config, viewport } : {},
       )
     },
-    [getWorker],
+    [getWorker, session],
   )
   repeatFind.current = requestFind
 
   useEffect(() => {
-    if (!host.current) return
+    const controller = new AbortController()
+    setPreparedText(null)
+    const current = () =>
+      documentRuntime.session(document.tabId) === session &&
+      session.ownsCurrentSnapshot(bridge.snapshot())
+    void sourceEditorTextCooperatively(bridge.snapshot(), {
+      signal: controller.signal,
+      isCurrent: current,
+    })
+      .then((text) => {
+        if (
+          controller.signal.aborted ||
+          documentRuntime.session(document.tabId) !== session
+        )
+          return
+        if (!text || !current()) {
+          retryBridge((retry) => retry + 1)
+          return
+        }
+        setPreparedText({ bridge, text })
+      })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) setExtensionError(String(error))
+      })
+    return () => controller.abort()
+  }, [bridge, session, document.tabId])
+
+  useEffect(() => {
+    if (!host.current || preparedText?.bridge !== bridge) return
     const active = documentRuntime.get(document.tabId)
     if (
       !active ||
@@ -537,6 +1062,46 @@ export function SourceEditor({
       return
     }
     const language = new Compartment()
+    // The formatted view owns its syntax tree, kept across language reconfigurations.
+    const syntax = formattedSyntax(
+      formatted
+        ? {
+            boundaries: {
+              request: (config, receive, declined, from, baseVersion) => {
+                if (bridge.isCurrent())
+                  getWorker().boundaries(
+                    config,
+                    receive,
+                    declined,
+                    from,
+                    baseVersion,
+                  )
+                else declined('stale')
+              },
+              release: (retain) =>
+                sourceFind.current?.releaseBoundaries(retain),
+            },
+          }
+        : {},
+    )
+    renderedConfig.current = formatted ? syntax.config : null
+    renderedRefused.current = { session, query: '', version: -1, config: '' }
+    const tree = (state: EditorState) =>
+      formatted ? syntax.tree(state) : syntaxTree(state)
+    // Flavor syntax extends only the Markdown parser.
+    const flavorConfigs = () =>
+      parserOptions.current.markdownMode
+        ? markdownFlavors
+            .snapshot()
+            .filter(
+              (flavor) =>
+                !parserOptions.current.flavors ||
+                parserOptions.current.flavors.includes(flavor.id),
+            )
+            .flatMap((flavor) => flavorSyntax(flavor) ?? [])
+        : []
+    /** The flavor syntax the source parser was configured with. */
+    let parsedFlavors: ReturnType<typeof flavorConfigs> = []
     const markdown = () => {
       const {
         markdownMode,
@@ -545,12 +1110,38 @@ export function SourceEditor({
         codeLanguage,
         label,
       } = parserOptions.current
+      if (formatted)
+        return [
+          storedMarkInput,
+          wholeSelectionInput,
+          livePreview(syntax, { flavors: parserOptions.current.flavors }),
+          keymap.of(
+            formattingKeymap((id) => formatting.current?.run(id) ?? false),
+          ),
+          EditorView.contentAttributes.of({
+            'aria-label': 'Document editor',
+            'aria-description': 'Press Escape, then Tab, to leave the editor.',
+          }),
+          // CodeMirror only marks read-only views; like the rich editor, also say when editing resumes.
+          EditorView.contentAttributes.of((view) => ({
+            'aria-readonly': String(view.state.readOnly),
+          })),
+        ]
+      parsedFlavors = flavorConfigs()
+      const support =
+        markdownMode && !(codeLanguage && !codeLanguages.resolve(codeLanguage))
+          ? markdownLanguage?.({
+              codeLanguages: codeLanguages.resolve,
+            })
+          : undefined
+      if (support)
+        support.language.parser = protectMarkdownParser(
+          support.language.parser as MarkdownParser,
+          parsedFlavors,
+        )
       return [
         markdownMode
-          ? codeLanguage && !codeLanguages.resolve(codeLanguage)
-            ? []
-            : (markdownLanguage?.({ codeLanguages: codeLanguages.resolve }) ??
-              [])
+          ? (support ?? [])
           : codeLanguage
             ? (codeLanguages.resolve(codeLanguage) ?? [])
             : (sourceLanguage ?? []),
@@ -563,7 +1154,16 @@ export function SourceEditor({
         }),
       ]
     }
-    const selection = bridge.selection()
+    // A note that shrank since its view left still gets the place it kept.
+    const place = bridge.place()
+    const selection = place?.selection ?? bridge.selection()
+    const restore = place && keptPlaceScroll(place.top, place.margin)
+    // Until it gets there, a restored view's place is the one it kept.
+    shownPlace.current = place && { top: place.top, margin: place.margin }
+    const record = (editor: EditorView) => {
+      if (shown.current && editor.inView && !restore?.pending())
+        shownPlace.current = placeOf(editor)
+    }
     type PendingCompletion = {
       request: CompletionRequest
       items: readonly CompletionItem[]
@@ -574,6 +1174,7 @@ export function SourceEditor({
       options: Map<CompletionItem, Completion>
     }
     let completion: PendingCompletion | null = null
+    let pendingSyntax: { update: () => void; cancel: () => void } | null = null
     let typed: {
       doc: EditorState['doc']
       pos: number
@@ -618,6 +1219,12 @@ export function SourceEditor({
         kind,
       )
     }
+    const completionParsed = () => {
+      if (!formatted || !parserOptions.current.markdownMode) return true
+      const state = editor.state
+      const line = state.doc.lineAt(state.selection.main.head)
+      return line.length > 16384 || !uncovered(tree(state), line.from, line.to)
+    }
     const proseAt = (
       state: EditorState,
       markdownMode = parserOptions.current.markdownMode,
@@ -625,8 +1232,11 @@ export function SourceEditor({
       const pos = state.selection.main.head
       if (
         !markdownMode ||
-        pos > 16384 ||
-        !sourceProseAllowed(state.sliceDoc(0, pos))
+        // The formatted view's tree knows the blocks around the caret past
+        // the prefix the source view reads as text.
+        (formatted
+          ? pos <= 16384 && !sourceProseAllowed(state.sliceDoc(0, pos))
+          : pos > 16384 || !sourceProseAllowed(state.sliceDoc(0, pos)))
       )
         return null
       const line = state.doc.lineAt(pos)
@@ -636,12 +1246,18 @@ export function SourceEditor({
         /<\/?[a-z!]/i.test(line.text)
       )
         return null
-      const tree = ensureSyntaxTree(state, line.to, 2)
-      if (tree?.type.name !== 'Document') return null
+      const parsed = formatted
+        ? tree(state)
+        : ensureSyntaxTree(state, line.to, 2)
+      if (
+        parsed?.type.name !== 'Document' ||
+        (formatted && uncovered(parsed, line.from, line.to))
+      )
+        return null
       let from = line.from,
         to = line.to,
         excluded = false
-      tree.iterate({
+      parsed.iterate({
         from: line.from,
         to: line.to,
         enter(node) {
@@ -694,7 +1310,7 @@ export function SourceEditor({
       return {
         view: target,
         contentVersion: snapshot.version,
-        editor: 'source',
+        editor: kind,
         documentLength: state.doc.length,
         selection: { anchor: selected.main.anchor, head: pos },
         get prose() {
@@ -739,10 +1355,23 @@ export function SourceEditor({
         return null
       const snapshot = bridge.snapshot()
       if (snapshot.version !== active.contentVersion) return null
+      const from = selected.main.from
+      const selectedText = formatted
+        ? formattedSelectionPreview(
+            editor.state,
+            syntax,
+            from,
+            selected.main.to,
+            toolbarSelection ? '\n' : '',
+          )
+        : editor.state
+            .sliceDoc(from, Math.min(selected.main.to, from + 256))
+            .replace(/[\uD800-\uDBFF]$/, '')
+      if (selectedText === null) return null
       return {
         view: target,
         contentVersion: snapshot.version,
-        editor: 'source',
+        editor: kind,
         documentLength: editor.state.doc.length,
         position,
         selection: {
@@ -754,15 +1383,11 @@ export function SourceEditor({
           position,
           Math.min(editor.state.doc.length, position + 256),
         ),
-        selectedText: editor.state.sliceDoc(
-          selected.main.from,
-          toolbarSelection
-            ? Math.min(selected.main.to, selected.main.from + 256)
-            : selected.main.to,
-        ),
+        selectedText,
       }
     }
     const cancelCompletion = () => {
+      pendingSyntax?.cancel()
       const pending = completion
       completion = null
       if (!pending) return
@@ -875,7 +1500,7 @@ export function SourceEditor({
         }
       }, 0)
     }
-    const sourceCompletions = (context: CompletionContext) => {
+    const sourceCompletions = async (context: CompletionContext) => {
       if (!completionBroker.hasProviders()) return null
       const trigger: CompletionRequest['trigger'] | null = context.explicit
         ? { kind: 'explicit' }
@@ -883,8 +1508,37 @@ export function SourceEditor({
           ? { kind: 'input', character: typed.character }
           : null
       if (!trigger) return null
-      const request = captureCompletion(trigger)
-      if (!request) return null
+      const initial = captureCompletion(trigger)
+      if (!initial) return null
+      // A jump can reach a chunk before its idle parse. Wait for that parse,
+      // then capture the current tree instead of caching missing prose.
+      const request = completionParsed()
+        ? initial
+        : await new Promise<CompletionRequest | null>((resolve) => {
+            cancelCompletion()
+            const finish = (request: CompletionRequest | null) => {
+              if (pendingSyntax !== pending) return
+              pendingSyntax = null
+              resolve(request)
+            }
+            const pending = {
+              cancel: () => finish(null),
+              update: () => {
+                if (context.aborted) finish(null)
+                else if (completionParsed()) {
+                  const current = captureCompletion(trigger)
+                  finish(
+                    sameCompletionContext(initial, current) ? current : null,
+                  )
+                }
+              },
+            }
+            pendingSyntax = pending
+            context.addEventListener('abort', pending.cancel, {
+              onDocChange: true,
+            })
+          })
+      if (!request || context.aborted) return null
       const current = completion
       if (current && sameCompletionContext(current.request, request))
         return current.items.length
@@ -950,22 +1604,236 @@ export function SourceEditor({
       })
       return true
     }
+    /** Open the link at a position, as a modified click on it does. */
+    const followLink = (
+      view: EditorView,
+      position: number,
+      wikiTarget?: string,
+    ) => {
+      if (
+        !parserOptions.current.markdownMode ||
+        !parserOptions.current.linksEnabled
+      )
+        return false
+      if (wikiTarget !== undefined) {
+        if (!wikiTarget) return false
+        openLink.current(wikiHref(wikiTarget))
+        return true
+      }
+      // The formatted view also follows bare URLs, which it shows as links.
+      const bare = (node: SyntaxNode) =>
+        formatted &&
+        node.name === 'URL' &&
+        !['Link', 'Autolink', 'Image', 'LinkReference'].includes(
+          node.parent?.name ?? '',
+        )
+      // Footnote references there move to their definitions.
+      const links = formatted
+        ? ['Link', 'Autolink', 'FootnoteReference']
+        : ['Link', 'Autolink']
+      const linkAt = (side: -1 | 1) => {
+        let node = tree(view.state).resolveInner(position, side)
+        while (node.parent && !links.includes(node.name))
+          if (bare(node)) return node
+          else node = node.parent
+        return links.includes(node.name) ? node : null
+      }
+      // The formatted view also looks after the position, where a table cell
+      // gives the start of the link clicked in it.
+      const node = linkAt(-1) ?? (formatted ? linkAt(1) : null)
+      if (!node) {
+        let parent = tree(view.state).resolveInner(position, -1)
+        while (parent.parent) {
+          if (/code|frontmatter/i.test(parent.name)) return false
+          parent = parent.parent
+        }
+        const line = view.state.doc.lineAt(position)
+        for (const match of line.text.matchAll(/!?\[\[([^\]\r\n]+)\]\]/g)) {
+          const from = line.from + match.index
+          if (position < from || position > from + match[0].length) continue
+          const target = (match[1] ?? '').split('|')[0]?.trim() ?? ''
+          if (!target) return false
+          openLink.current(wikiHref(target))
+          return true
+        }
+        return false
+      }
+      if (node.name === 'FootnoteReference') {
+        const label = node.getChild('FootnoteLabel')
+        const at =
+          label &&
+          definitionOf(view.state, view.state.sliceDoc(label.from, label.to))
+        if (at == null) return false
+        view.dispatch({
+          selection: { anchor: at },
+          effects: EditorView.scrollIntoView(at, { y: 'start', yMargin: 48 }),
+          userEvent: 'select',
+        })
+        view.focus()
+        return true
+      }
+      const target = markdownLink(
+        view.state.sliceDoc(node.from, node.to),
+        node.name === 'URL',
+      )
+      if (!target) return false
+      const syntax = parserOptions.current.referenceSyntax
+      if ('label' in target) {
+        if (!syntax) return false
+        const pending = activeReference.current
+        activeReference.current = null
+        if (pending?.link) pending.settle({ status: 'stale' })
+        else if (pending) referenceQueue.current.unshift(pending)
+        referenceQueue.current.unshift({
+          version: session.snapshot().version,
+          syntax: { ...syntax },
+          label: target.label,
+          link: true,
+          settle(result) {
+            if (
+              parserOptions.current.linksEnabled &&
+              result.status === 'resolved' &&
+              result.value?.href
+            )
+              openLink.current(result.value.href)
+          },
+        })
+        requestReference()
+        return true
+      }
+      if (!target.href) return false
+      if (activeReference.current?.link) {
+        const pending = activeReference.current
+        activeReference.current = null
+        pending.settle({ status: 'stale' })
+        requestReference()
+        if (!activeReference.current) sourceFind.current?.releaseMetadata()
+      }
+      openLink.current(target.href)
+      return true
+    }
+    installed.current = []
+    /** While typing is made into an edit: the first transaction made, once there is one. */
+    let inputEdit: Transaction | null | undefined
+    /**
+     * Rejects input that failed, with the features named that it failed with
+     * when `edit` is replayed from `start`. The DOM may still show what it left
+     * out; an update could fail again, so setState draws the state as it is.
+     */
+    const reject = (
+      view: EditorView,
+      error: unknown,
+      edit?: readonly Transaction[] | readonly TransactionSpec[],
+      start = view.state,
+    ) => {
+      setInputError(error instanceof Error ? error.message : String(error))
+      const kept = edit
+        ? isolateFeatures(
+            start,
+            edit,
+            installed.current,
+            addons.current,
+            formatted,
+          )
+        : installed.current
+      for (const { feature } of installed.current)
+        if (!kept.some((part) => part.feature === feature))
+          failedFeatures.current.add(feature)
+      // A composition must keep the note's text: CodeMirror redraws text that
+      // differs, which ends the composition, and the IME then starts over
+      // beside it. Without the features named, the edit is made again, in the
+      // same update. The features leave first, so their extenders do not run.
+      if (
+        view.compositionStarted &&
+        edit &&
+        start === view.state &&
+        kept.length < installed.current.length
+      ) {
+        const reinstall = reconfiguration(
+          view.state,
+          addons.current.reconfigure(featureExtensions(kept, formatted)),
+        )
+        let retry: Transaction | null = null
+        try {
+          retry = reinstall.state.update(
+            ...edit.map((part, index) => {
+              const spec = part instanceof Transaction ? editSpec(part) : part
+              return index ? { ...spec, sequential: true } : spec
+            }),
+          )
+        } catch {}
+        if (retry) {
+          installed.current = kept
+          view.dispatch([reinstall, retry])
+          return
+        }
+      }
+      // Otherwise the input is not applied. A composition ends first, so the
+      // IME does not compose on over text the note does not have.
+      const focused = view.hasFocus
+      if (view.compositionStarted) view.contentDOM.blur()
+      view.setState(view.state)
+      if (focused) view.focus()
+    }
     const editor = new EditorView({
       parent: host.current,
+      ...(place
+        ? {
+            scrollTo: EditorView.scrollIntoView(place.top, {
+              y: 'start',
+              yMargin: place.margin,
+            }),
+          }
+        : {}),
       dispatchTransactions(transactions, editor) {
+        // Input no Markdown can keep is refused unapplied, its features kept.
+        for (const transaction of transactions) {
+          const error = transaction.annotation(rejectedInput)
+          if (error) {
+            reject(editor, error)
+            return
+          }
+        }
         try {
           bridge.dispatch(transactions, editor, exactChanges.current)
-          setInputError('')
+          // Only the user's next action clears a failure, not the view's own.
+          if (
+            transactions.some((transaction) =>
+              transaction.annotation(Transaction.userEvent),
+            )
+          )
+            setInputError('')
         } catch (error) {
-          setInputError(error instanceof Error ? error.message : String(error))
-          editor.update([editor.state.update({})])
+          // A transaction made after a failed one may start from either state,
+          // so the failed one is replayed alone, from the state it started at.
+          const failed = transactions.find(
+            (transaction) => !transactionState(transaction),
+          )
+          reject(editor, error, failed && [failed], failed?.startState)
         }
       },
       state: EditorState.create({
-        doc: sourceEditorText(bridge.snapshot()),
+        doc: preparedText.text,
         ...(selection ? { selection } : {}),
         extensions: [
+          firstStateRead,
+          restore ? restore.extension : [],
+          ViewPlugin.define((view) => ({
+            destroy: observeClipboard(view.contentDOM),
+          })),
+          EditorView.domEventHandlers({
+            scroll: (_event, editor) => record(editor),
+          }),
+          // The first transaction typing makes, as CodeMirror made it, before
+          // anything else can fail on it.
+          Prec.highest(
+            EditorState.changeFilter.of((transaction) => {
+              if (inputEdit === null) inputEdit = transaction
+              return true
+            }),
+          ),
           addons.current.of([]),
+          findHighlights.current.of([]),
           search({
             createPanel: () => {
               const dom = window.document.createElement('div')
@@ -984,13 +1852,21 @@ export function SourceEditor({
             override: [sourceCompletions],
             selectOnOpen: false,
             defaultKeymap: false,
+            // Like the rich view's list, the formatted view's answers keys as
+            // soon as it opens, whatever the wall clock does. The source view
+            // keeps CodeMirror's delay.
+            ...(formatted
+              ? { interactionDelay: Number.NEGATIVE_INFINITY }
+              : {}),
           }),
           EditorState.transactionExtender.of((transaction) => {
-            const options = currentCompletions(transaction.state)
+            const state = transactionState(transaction)
+            if (!state) return null
+            const options = currentCompletions(state)
             if (
               !options.length ||
               options === currentCompletions(transaction.startState) ||
-              selectedCompletion(transaction.state)
+              selectedCompletion(state)
             )
               return null
             const option = options[0]
@@ -1024,16 +1900,46 @@ export function SourceEditor({
               })),
             ]),
           ),
-          indentation.current.of(sourceIndentation(tabIndent.snapshot().unit)),
-          keymap.of([
-            // Like Enter, a Tab the open list declines (it just opened, or its
-            // item keeps Tab) does what it would without the list.
-            {
-              key: 'Tab',
-              run: (view) => indentSource(view, indentMore),
-              shift: (view) => indentSource(view, indentLess),
-            },
-          ]),
+          indentation.current.of(
+            formatted
+              ? [
+                  sourceIndentation(tabIndent.snapshot().unit),
+                  formattedTabIndents.of(tabIndent.snapshot().enabled),
+                ]
+              : sourceIndentation(tabIndent.snapshot().unit),
+          ),
+          formatted
+            ? []
+            : keymap.of([
+                // Like Enter, a Tab the open list declines (it just opened, or its
+                // item keeps Tab) does what it would without the list.
+                {
+                  key: 'Tab',
+                  run: (view) => indentSource(view, indentMore),
+                  shift: (view) => indentSource(view, indentLess),
+                },
+              ]),
+          // Table cells follow their links through the view's own resolution.
+          formatted ? formattedFollowLink.of(followLink) : [],
+          // Reference links render with the labels the reference worker resolves.
+          formatted
+            ? formattedReferences.of({
+                syntax: () => {
+                  const { markdownMode, referenceSyntax } =
+                    parserOptions.current
+                  return markdownMode && referenceSyntax
+                    ? JSON.stringify(referenceSyntax)
+                    : ''
+                },
+                resolve: (label, signal) => {
+                  const { markdownMode, referenceSyntax } =
+                    parserOptions.current
+                  return markdownMode && referenceSyntax
+                    ? resolveReference(referenceSyntax, label, signal)
+                    : Promise.resolve({ status: 'unavailable' })
+                },
+              })
+            : [],
           EditorView.domEventHandlers({
             keydown(event, view) {
               // CodeMirror arms Tab focus for two seconds after an unhandled Escape;
@@ -1048,7 +1954,44 @@ export function SourceEditor({
                 })
               return false
             },
-            beforeinput(event) {
+            beforeinput(event, view) {
+              const data = event.data
+              if (
+                event.inputType === 'insertText' &&
+                data &&
+                /[\r\n]/.test(data) &&
+                !view.composing &&
+                !view.state.readOnly
+              ) {
+                // Chromium applies each line break of a text input as its own
+                // editing step, quadratic in the lines. Insert it as CodeMirror's
+                // own text input would, in one transaction, with handlers and
+                // the default insert seeing the same normalized line breaks.
+                event.preventDefault()
+                const { from, to } = view.state.selection.main
+                const lines = view.state.toText(data),
+                  text = lines.toString()
+                const insert = () =>
+                  view.state.update(view.state.replaceSelection(lines), {
+                    userEvent: 'input.type',
+                    scrollIntoView: true,
+                  })
+                if (
+                  !view.state
+                    .facet(EditorView.inputHandler)
+                    .some((handler) => handler(view, from, to, text, insert))
+                )
+                  view.dispatch(insert())
+                // Listeners such as typing state get the input the browser would have sent.
+                view.contentDOM.dispatchEvent(
+                  new InputEvent('input', {
+                    inputType: 'insertText',
+                    data,
+                    bubbles: true,
+                  }),
+                )
+                return true
+              }
               if (
                 event.inputType !== 'historyUndo' &&
                 event.inputType !== 'historyRedo'
@@ -1075,100 +2018,84 @@ export function SourceEditor({
                   ),
                 })
             },
-            click(event, view) {
+            mousedown(event) {
               if (
-                !event.shiftKey ||
+                !formatted ||
+                !followsLink(event) ||
                 !parserOptions.current.markdownMode ||
-                !parserOptions.current.linksEnabled
+                !parserOptions.current.linksEnabled ||
+                !(event.target instanceof Element) ||
+                !event.target.closest('.hibi-lp-link')
               )
+                return false
+              // Following a link must not first extend the selection: revealing
+              // intervening embeds moves the target before its click arrives.
+              event.preventDefault()
+              return true
+            },
+            click(event, view) {
+              if (formatted ? !followsLink(event) : !event.shiftKey)
                 return false
               const position = view.posAtCoords({
                 x: event.clientX,
                 y: event.clientY,
               })
-              if (position == null) return false
-              let node = syntaxTree(view.state).resolveInner(position, -1)
-              const lexical = node
-              while (node.parent && !['Link', 'Autolink'].includes(node.name))
-                node = node.parent
-              if (!['Link', 'Autolink'].includes(node.name)) {
-                let parent = lexical
-                while (parent.parent) {
-                  if (/code|frontmatter/i.test(parent.name)) return false
-                  parent = parent.parent
-                }
-                const line = view.state.doc.lineAt(position)
-                for (const match of line.text.matchAll(
-                  /!?\[\[([^\]\r\n]+)\]\]/g,
-                )) {
-                  const from = line.from + match.index
-                  if (position < from || position > from + match[0].length)
-                    continue
-                  event.preventDefault()
-                  const target = (match[1] ?? '').split('|')[0]?.trim() ?? ''
-                  if (!target) return false
-                  openLink.current(wikiHref(target))
-                  return true
-                }
-                return false
-              }
-              const target = markdownLink(
-                view.state.sliceDoc(node.from, node.to),
-              )
-              if (!target) return false
-              const syntax = parserOptions.current.referenceSyntax
-              if ('label' in target) {
-                if (!syntax) return false
-                event.preventDefault()
-                const pending = activeReference.current
-                activeReference.current = null
-                if (pending?.link) pending.settle({ status: 'stale' })
-                else if (pending) referenceQueue.current.unshift(pending)
-                referenceQueue.current.unshift({
-                  version: session.snapshot().version,
-                  syntax: { ...syntax },
-                  label: target.label,
-                  link: true,
-                  settle(result) {
-                    if (
-                      parserOptions.current.linksEnabled &&
-                      result.status === 'resolved' &&
-                      result.value?.href
-                    )
-                      openLink.current(result.value.href)
-                  },
-                })
-                requestReference()
-                return true
-              }
-              if (!target.href) return false
-              if (activeReference.current?.link) {
-                const pending = activeReference.current
-                activeReference.current = null
-                pending.settle({ status: 'stale' })
-                requestReference()
-                if (!activeReference.current)
-                  sourceFind.current?.releaseMetadata()
-              }
-              event.preventDefault()
-              openLink.current(target.href)
-              return true
+              return position != null && followLink(view, position)
+            },
+            // A Ctrl+Cmd-click arrives as a context menu on macOS.
+            contextmenu(event, view) {
+              if (!formatted || !event.ctrlKey || !event.metaKey) return false
+              const position = view.posAtCoords({
+                x: event.clientX,
+                y: event.clientY,
+              })
+              return position != null && followLink(view, position)
             },
           }),
           keymap.of([
-            { key: 'Ctrl-a', run: selectAll },
-            ...defaultKeymap,
-            { key: 'Mod-z', run: bridge.undo, shift: bridge.redo },
-            { key: 'Mod-y', run: bridge.redo },
+            { key: 'Ctrl-a', run: sourceCommands.selectAll },
+            ...sourceCommands.defaultKeymap,
+            {
+              key: 'Mod-z',
+              run: bridge.undo,
+              shift: bridge.redo,
+              preventDefault: true,
+            },
+            { key: 'Mod-y', run: bridge.redo, preventDefault: true },
           ]),
-          syntaxHighlighting(highlighting),
-          syntaxHighlighting(codeHighlighter),
+          formatted
+            ? []
+            : [
+                syntaxHighlighting(highlighting),
+                syntaxHighlighting(codeHighlighter),
+              ],
           EditorView.lineWrapping,
           placeholder('Start typing'),
-          EditorView.contentAttributes.of({
-            spellcheck: 'false',
-          }),
+          display.current.of(
+            formatted
+              ? [
+                  showMarkdownMarkers.of(displayOptions.current.markers),
+                  EditorView.contentAttributes.of({
+                    spellcheck: String(displayOptions.current.spellCheck),
+                  }),
+                  formattedDocument.of({
+                    revision: displayOptions.current.documentRevision,
+                    tabId: document.tabId,
+                  }),
+                ]
+              : EditorView.contentAttributes.of({ spellcheck: 'false' }),
+          ),
           EditorView.updateListener.of((update) => {
+            if (update.docChanged && shownPlace.current)
+              shownPlace.current.top = update.changes.mapPos(
+                shownPlace.current.top,
+                1,
+              )
+            if (
+              !update.transactions.length &&
+              (update.geometryChanged || update.viewportChanged)
+            )
+              record(update.view)
             const newline = update.docChanged && newlineInput
             if (update.docChanged) newlineInput = false
             if (update.docChanged && completionBroker.hasTypingListeners()) {
@@ -1207,7 +2134,7 @@ export function SourceEditor({
               }
             }
             if (update.selectionSet || update.docChanged)
-              editorViewRegistry.changed(viewId as ViewId, 'source')
+              editorViewRegistry.changed(viewId as ViewId, kind)
             if (
               update.docChanged ||
               update.selectionSet ||
@@ -1248,6 +2175,7 @@ export function SourceEditor({
               completionStatus(update.state) === null
             )
               cancelCompletion()
+            pendingSyntax?.update()
             if (update.docChanged || update.selectionSet || update.focusChanged)
               update.view.contentDOM.dispatchEvent(
                 new Event('hibi:source-caret', { bubbles: true }),
@@ -1264,21 +2192,106 @@ export function SourceEditor({
               )
             )
               reportFormatting.current(formatting.current)
-            if (
-              find.current.active &&
-              !applyingFind.current &&
-              (update.docChanged || update.selectionSet)
-            ) {
-              findActions.current = []
-              navigatingFind.current = false
-              requestFind()
+            if (find.current.active && !applyingFind.current) {
+              const config = renderedConfig.current?.(update.state) ?? null
+              if (
+                update.docChanged ||
+                update.selectionSet ||
+                JSON.stringify(config) !== findConfig.current
+              ) {
+                findActions.current = []
+                navigatingFind.current = false
+                requestFind()
+              } else if (!navigatingFind.current) {
+                const moved = movedFindWindow(update)
+                const shown = renderedPage.current
+                if (
+                  moved &&
+                  shown &&
+                  (moved.from !== shown.from || moved.to !== shown.to)
+                )
+                  requestFind()
+              }
             }
           }),
+          failedEditGuard,
+          // Typing read from the DOM is made into an edit here, last, so an
+          // extension that fails while it is made is named from that edit,
+          // with every range CodeMirror changed and selected.
+          Prec.lowest(
+            EditorView.inputHandler.of((view, from, to, text, insert) => {
+              inputEdit = null
+              try {
+                insert()
+                return false
+              } catch (error) {
+                reject(
+                  view,
+                  error,
+                  inputEdit
+                    ? [inputEdit]
+                    : [
+                        {
+                          changes: { from, to, insert: text },
+                          userEvent: 'input',
+                        },
+                      ],
+                )
+                return true
+              } finally {
+                inputEdit = undefined
+              }
+            }),
+          ),
         ],
       }),
     })
+    // A filter or extender may also fail while a transaction is made, before
+    // dispatch: from specs here, and from typing CodeMirror reads in the
+    // DOM observer (internal to CodeMirror). That input is rejected too.
+    const dispatch = editor.dispatch.bind(editor) as (
+      ...input: unknown[]
+    ) => void
+    editor.dispatch = ((...input: unknown[]) => {
+      if (
+        input.some(
+          (value) => value instanceof Transaction || Array.isArray(value),
+        )
+      )
+        return dispatch(...input)
+      let transaction: Transaction
+      try {
+        transaction = editor.state.update(...(input as TransactionSpec[]))
+      } catch (error) {
+        reject(editor, error, input as TransactionSpec[])
+        return
+      }
+      dispatch(transaction)
+    }) as EditorView['dispatch']
+    const observer = (
+      editor as unknown as {
+        observer: { flush: (readSelection?: boolean) => boolean }
+      }
+    ).observer
+    const flush = observer.flush.bind(observer)
+    observer.flush = (readSelection) => {
+      try {
+        return flush(readSelection)
+      } catch (error) {
+        reject(editor, error)
+        return true
+      }
+    }
     view.current = editor
-    const detachSession = bridge.attach(editor)
+    setMountedView(editor)
+    const detachSession = bridge.attach(editor, (error) =>
+      setFailedEcho({
+        bridge,
+        message:
+          (error instanceof Error ? error.message : String(error)) ||
+          'The source editor is synchronizing.',
+      }),
+    )
     const removeTypingHistory = session.subscribeOperations((prepared) => {
       if (
         !completionBroker.hasTypingListeners() ||
@@ -1296,6 +2309,17 @@ export function SourceEditor({
         ChangeSet.of(changes, previousLength),
       )
     })
+    // The keys of a started composition are the input method's, as in the
+    // rich view. CodeMirror ignores them only once the composition changes
+    // the text; before that, its keymap and focus keys would still take them.
+    // The open list closes; nothing prevents the key's default.
+    const passComposingKey = (event: KeyboardEvent) => {
+      if (!event.isComposing && !editor.compositionStarted) return
+      cancelCompletion()
+      closeCompletion(editor)
+      event.stopPropagation()
+    }
+    editor.dom.addEventListener('keydown', passComposingKey, true)
     const onTypingCommand = (event: KeyboardEvent) => {
       if (
         completion &&
@@ -1354,7 +2378,7 @@ export function SourceEditor({
     editor.contentDOM.addEventListener('compositionend', endCompositionSignal)
     const removeAnnotations = observeSourceAnnotations(editor)
     const unregisterProjection = documentProjections.register(
-      'source',
+      kind,
       (cached) => {
         const context = editContext.current
         const current = editorDocument.get()
@@ -1434,39 +2458,36 @@ export function SourceEditor({
           status: 'stale',
           message: 'The editor is synchronizing. Review the edits again.',
         }
-      let expected: string
+      let transaction: Transaction | null
       try {
-        const source = snapshot.materialize()
-        expected = editedSource(source, request.changes, MAX_DOCUMENT_BYTES)
-        if (expected === source)
+        transaction = sourceEditTransaction(
+          editor.state,
+          snapshot,
+          request.changes,
+        )
+        if (!transaction)
           return { status: 'applied', contentVersion: current.contentVersion }
       } catch (error) {
         return { status: 'invalid', message: String(error) }
       }
-      if (normalizeSource(expected) === editor.state.doc.toString())
-        return {
-          status: 'invalid',
-          message:
-            'Edits must keep line-ending pairs intact. Use a whole-source transform to change only line endings.',
-        }
-      let changes: readonly RawEdit[]
-      try {
-        changes = editorChangesFromSource(snapshot, request.changes)
-      } catch (error) {
-        return { status: 'invalid', message: String(error) }
+      if (formatted) {
+        const proof = formattedLiteralEdits(
+          transaction,
+          syntax.parser(editor.state),
+          tree(editor.state),
+        )
+        if (proof === null)
+          return {
+            status: 'busy',
+            message:
+              'The document index is still building. Try the edits again in a moment.',
+          }
+        if (!proof)
+          return {
+            status: 'unsupported-view',
+            message: 'Open source view to apply these edits.',
+          }
       }
-      const transaction = editor.state.update({
-        changes,
-        annotations: [
-          isolateHistory.of('full'),
-          Transaction.userEvent.of('input.addon'),
-        ],
-      })
-      if (transaction.newDoc.toString() !== normalizeSource(expected))
-        return {
-          status: 'invalid',
-          message: 'An editor extension changed this edit.',
-        }
       exactChanges.current = request.changes
       try {
         editor.dispatch(transaction)
@@ -1499,7 +2520,7 @@ export function SourceEditor({
       ? mountedDocumentEdits.register(
           document.tabId,
           target,
-          'source',
+          kind,
           (target, request) => applySourceEdits(request, target),
         )
       : () => {}
@@ -1575,15 +2596,21 @@ export function SourceEditor({
     const unregister = registerSourceView(
       editor,
       (raw) => {
-        const anchor = bridge.snapshot().rawToEditor(raw)
-        if (anchor !== null)
-          editor.dispatch({
-            selection: { anchor },
-            effects: EditorView.scrollIntoView(anchor, {
-              y: 'start',
-              yMargin: 48,
-            }),
-          })
+        const at = bridge.snapshot().rawToEditor(raw)
+        if (at === null) return
+        // Like the rich view, the formatted view puts the caret in a heading's
+        // text, after the opening mark and the space it hides with it.
+        const end = Math.min(editor.state.doc.lineAt(at).to, at + 7),
+          mark = formatted
+            ? /^#{1,6}(?:[ \t]|$)/.exec(editor.state.sliceDoc(at, end))
+            : null
+        editor.dispatch({
+          selection: { anchor: at + (mark?.[0].length ?? 0) },
+          effects: EditorView.scrollIntoView(at, {
+            y: 'start',
+            yMargin: 48,
+          }),
+        })
       },
       {
         toSource: (position) =>
@@ -1592,14 +2619,20 @@ export function SourceEditor({
       },
       resolveReference,
     )
+    bridges.set(editor, bridge)
     const unregisterViewApi = editorViewRegistry.register(
       document.tabId,
       viewId as ViewId,
-      'source',
+      kind,
       {
+        surface: () => editor.contentDOM,
         read: () => {
           const source = bridge.snapshot()
-          if (view.current !== editor || !session.ownsCurrentSnapshot(source))
+          if (
+            view.current !== editor ||
+            !bridge.isCurrent() ||
+            !session.ownsCurrentSnapshot(source)
+          )
             return null
           const selection = editor.state.selection.main
           return {
@@ -1653,8 +2686,48 @@ export function SourceEditor({
       )
       reportFormatting.current(formatting.current)
     }
-    const unsubscribe = codeLanguages.subscribe(() => configureParser.current())
+    // The formatted view parses changed code languages again in its own syntax.
+    const unsubscribe = formatted
+      ? () => {}
+      : codeLanguages.subscribe(() => configureParser.current())
+    // Flavors that bring no source syntax keep the parser and its parse.
+    configureFlavors.current = () => {
+      const configs = formatted ? null : flavorConfigs()
+      if (
+        !configs ||
+        configs.length !== parsedFlavors.length ||
+        configs.some((config, index) => config !== parsedFlavors[index])
+      )
+        configureParser.current()
+    }
+    const unsubscribeFlavors = markdownFlavors.subscribe(() => {
+      if (!formatted) configureFlavors.current()
+    })
     configureParser.current()
+    // The index's code blocks keep their height in the formatted view before
+    // it has drawn or parsed them. A late listener gets the index replayed.
+    const unsubscribeCode = formatted
+      ? getWorker().subscribeCodeExtents((page) => {
+          if (
+            disposed ||
+            page.version !== session.snapshot().version ||
+            !bridge.isCurrent()
+          )
+            return
+          editor.dispatch({
+            effects: setCodeExtents.of({
+              from: page.from,
+              to: page.to,
+              extents: page.records.map((record) => ({
+                from: record.from,
+                to: record.to,
+                lines: record.contentLines,
+                columns: record.contentColumns,
+              })),
+            }),
+          })
+        })
+      : () => {}
     const measure = () => {
       if (!disposed) editor.requestMeasure()
     }
@@ -1669,10 +2742,12 @@ export function SourceEditor({
       })
     }
     void window.document.fonts
-      .load('13px "Geist Mono"')
+      .load(formatted ? '16px "Geist"' : '13px "Geist Mono"')
       .then(finishFont, finishFont)
     return () => {
+      restoreFocus.current ??= captureEditorFocus(editor.contentDOM)
       cancelAnimationFrame(compositionFrame)
+      editor.dom.removeEventListener('keydown', passComposingKey, true)
       editor.contentDOM.removeEventListener('keydown', onTypingCommand, true)
       editor.contentDOM.removeEventListener(
         'compositionstart',
@@ -1688,16 +2763,22 @@ export function SourceEditor({
       clearReferences('unavailable', false)
       sourceFind.current?.dispose()
       sourceFind.current = null
+      renderedConfig.current = null
+      renderedPage.current = null
       referenceUsed.current = false
       referenceFailed.current = false
       unsubscribe()
+      unsubscribeFlavors()
+      unsubscribeCode()
       configureParser.current = () => {}
+      configureFlavors.current = () => {}
       disposed = true
       unsubscribeInteractions()
       unregisterSelection()
       formatting.current = null
       reportFormatting.current(null)
       unregister()
+      bridges.delete(editor)
       unregisterViewApi()
       detachInteractions()
       editor.contentDOM.removeEventListener(
@@ -1712,93 +2793,174 @@ export function SourceEditor({
       detachSession()
       editor.destroy()
       view.current = null
+      setMountedView(null)
     }
   }, [
     bridge,
+    preparedText,
     session,
     document.tabId,
     document.revision,
     requestFind,
     requestReference,
     resolveReference,
+    getWorker,
     clearReferences,
     viewId,
+    formatted,
+    kind,
   ])
 
   useEffect(() => {
-    if (disabled || !editTarget || !inputReady) {
+    if (mountedView !== view.current) return
+    if (mountedView && (disabled || !editTarget || !inputReady))
+      closeCompletion(mountedView)
+  }, [mountedView, disabled, editTarget, inputReady])
+
+  // Before paint and before focus moves here, a shown or targeted view catches up.
+  useLayoutEffect(() => {
+    shown.current = sourceVisible || editTarget
+    bridge.setVisible(shown.current)
+    documentProjections.invalidate()
+  }, [bridge, sourceVisible, editTarget])
+
+  // A view keeps its place while its pane still lays out: the cleanup that
+  // destroys it runs after the pane has left the page.
+  useLayoutEffect(
+    () => () => {
       const editor = view.current
-      if (editor) closeCompletion(editor)
-    }
-  }, [disabled, editTarget, inputReady])
+      if (!keepingPlace.current || !editor) return
+      const { top, margin } = shownPlace.current ?? placeOf(editor)
+      bridge.keepPlace(editor, top, margin)
+    },
+    [bridge],
+  )
 
   useEffect(() => {
     const editor = view.current
     setExtensionError('')
-    if (!editor) return
+    if (!editor || preparedText?.bridge !== bridge) return
     let canceled = false
     const context = Object.freeze({ viewId: viewId as ViewId })
-    void Promise.all(
-      sourceExtensions.map(async (extension) => extension.create(context)),
-    )
-      .then((extensions) => {
-        if (!canceled) {
-          editor.dispatch({ effects: addons.current.reconfigure(extensions) })
-          setInstalledExtensions({ bridge, extensions: sourceExtensions })
-        }
+    void Promise.allSettled(
+      sourceExtensions.map(async (feature) => feature.create(context)),
+    ).then((results) => {
+      if (canceled) return
+      const errors: unknown[] = []
+      let parts: InstalledFeature[] = []
+      results.forEach((result, index) => {
+        const feature = sourceExtensions[index]!
+        if (result.status === 'fulfilled')
+          parts.push({ feature, extension: result.value })
+        else if (feature.fail) feature.fail(result.reason)
+        else errors.push(result.reason)
       })
-      .catch((error: unknown) => {
-        if (!canceled) {
-          setExtensionError(String(error))
-        }
-      })
+      const install = () =>
+        reconfiguration(
+          editor.state,
+          addons.current.reconfigure(featureExtensions(parts, formatted)),
+        )
+      let transaction = install()
+      if (!transactionState(transaction)) {
+        parts = isolateFeatures(
+          editor.state,
+          [],
+          parts,
+          addons.current,
+          formatted,
+        )
+        transaction = install()
+      }
+      installed.current = parts
+      editor.dispatch(transaction)
+      if (errors.length) setExtensionError(String(errors[0]))
+      else setInstalledExtensions({ bridge, extensions: sourceExtensions })
+    })
     return () => {
       canceled = true
     }
-  }, [bridge, sourceExtensions, viewId])
+  }, [bridge, preparedText, sourceExtensions, viewId, formatted])
   useEffect(
     () =>
       tabIndent.subscribe(() =>
         view.current?.dispatch({
           effects: indentation.current.reconfigure(
-            sourceIndentation(tabIndent.snapshot().unit),
+            formatted
+              ? [
+                  sourceIndentation(tabIndent.snapshot().unit),
+                  formattedTabIndents.of(tabIndent.snapshot().enabled),
+                ]
+              : sourceIndentation(tabIndent.snapshot().unit),
           ),
         }),
       ),
-    [],
+    [formatted],
   )
   useEffect(() => {
-    view.current?.dispatch({
+    if (!formatted || mountedView !== view.current) return
+    mountedView?.dispatch({
+      effects: display.current.reconfigure([
+        showMarkdownMarkers.of(markers),
+        EditorView.contentAttributes.of({ spellcheck: String(spellCheck) }),
+        formattedDocument.of({
+          revision: documentRevision,
+          tabId: document.tabId,
+        }),
+      ]),
+    })
+  }, [
+    mountedView,
+    formatted,
+    markers,
+    spellCheck,
+    documentRevision,
+    document.tabId,
+  ])
+  useEffect(() => {
+    if (mountedView !== view.current) return
+    if (mountedView && (disabled || !inputReady))
+      restoreFocus.current ??= captureEditorFocus(mountedView.contentDOM)
+    mountedView?.dispatch({
       effects: editable.current.reconfigure([
         EditorView.editable.of(!disabled && inputReady),
         EditorState.readOnly.of(disabled || !inputReady),
+        ...(echoError
+          ? [EditorView.contentAttributes.of({ tabindex: '0' })]
+          : []),
       ]),
     })
-  }, [disabled, inputReady])
+  }, [mountedView, disabled, inputReady, echoError])
 
   useEffect(() => {
     // Publish readiness after CodeMirror configures input, before its next frame.
-    ready.current(
-      extensionError || languageError
+    const status =
+      extensionError || languageError || echoError
         ? 'failed'
         : inputReady && (!waitForFont || fontReadyBridge === bridge)
           ? 'ready'
-          : 'loading',
-    )
+          : 'loading'
+    ready.current(status)
+    if (status === 'ready' && !disabled) {
+      const restore = restoreFocus.current
+      restoreFocus.current = null
+      restore?.()
+    }
   }, [
     bridge,
+    disabled,
     inputReady,
     waitForFont,
     fontReadyBridge,
     extensionError,
     languageError,
+    echoError,
   ])
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: a new bridge replaces the editor view.
   useEffect(() => {
-    view.current?.dispatch({
+    if (mountedView !== view.current) return
+    mountedView?.dispatch({
       effects: numbers.current.reconfigure(
-        showLineNumbers
+        showLineNumbers && !formatted
           ? lineNumbers({
               domEventHandlers: {
                 mousedown(view, line, event) {
@@ -1815,29 +2977,34 @@ export function SourceEditor({
           : [],
       ),
     })
-  }, [bridge, showLineNumbers])
+  }, [mountedView, showLineNumbers, formatted])
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: a new bridge replaces the editor view.
   useEffect(() => {
-    const editor = view.current
-    if (!editor) return
+    const editor = mountedView
+    if (!editor || editor !== view.current) return
     const stopFind = () => {
-      if (referenceUsed.current) sourceFind.current?.cancelFind()
+      if (referenceUsed.current || formatted) sourceFind.current?.cancelFind()
       else {
         sourceFind.current?.dispose()
         sourceFind.current = null
       }
     }
     if (!findActive) {
+      renderedPage.current = null
       closeSearchPanel(editor)
+      editor.dispatch({ effects: findHighlights.current.reconfigure([]) })
       stopFind()
       findActions.current = []
       navigatingFind.current = false
       return
     }
-    openSearchPanel(editor)
     const query = new SearchQuery({ search: findQuery, literal: true })
-    editor.dispatch({ effects: setSearchQuery.of(query) })
+    editor.dispatch({
+      effects: [
+        setSearchQuery.of(query),
+        findHighlights.current.reconfigure([]),
+      ],
+    })
     findActions.current = []
     navigatingFind.current = query.valid
     if (query.valid) requestFind('first')
@@ -1845,12 +3012,17 @@ export function SourceEditor({
       stopFind()
       find.current.report({ current: 0, total: 0 })
     }
-  }, [bridge, findActive, findQuery, requestFind])
+  }, [mountedView, formatted, findActive, findQuery, requestFind])
 
   useEffect(() => {
-    if (handledFindMove.current === findMove.id) return
+    if (
+      !mountedView ||
+      mountedView !== view.current ||
+      handledFindMove.current === findMove.id
+    )
+      return
     handledFindMove.current = findMove.id
-    if (findActive && view.current && findMove.id) {
+    if (findActive && findMove.id) {
       if (findActions.current.length >= 128) {
         find.current.report({
           current: 0,
@@ -1865,19 +3037,24 @@ export function SourceEditor({
         requestFind(findActions.current.shift()!)
       }
     }
-  }, [findActive, findMove, requestFind])
+  }, [mountedView, findActive, findMove, requestFind])
 
   return (
     <>
-      {(extensionError || languageError || inputError) && (
+      {(extensionError || languageError || inputError || echoError) && (
         <DocumentNotice
           title={
-            inputError
+            echoError || inputError
               ? 'Edit could not be applied'
               : 'Editor addon unavailable'
           }
-          message={inputError || extensionError || languageError}
+          message={echoError || inputError || extensionError || languageError}
         >
+          {echoError && (
+            <Button onClick={() => retryBridge((retry) => retry + 1)}>
+              Retry
+            </Button>
+          )}
           {!inputError && !extensionError && languageError && codeLanguage && (
             <Button onClick={() => void codeLanguages.retry(codeLanguage)}>
               Retry language
@@ -1885,7 +3062,10 @@ export function SourceEditor({
           )}
         </DocumentNotice>
       )}
-      <div className="source-editor" ref={host} />
+      <div
+        className={formatted ? 'formatted-editor' : 'source-editor'}
+        ref={host}
+      />
     </>
   )
 }

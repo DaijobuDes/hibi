@@ -7,17 +7,19 @@ import { ADDON_TRUST_CHANNELS } from '../shared/addon-trust'
 import { ADDON_WINDOW_CHANNELS } from '../shared/addon-windows'
 import { ANALYSIS_CHANNELS } from '../shared/analysis'
 import { BACKGROUND_CHANNELS } from '../shared/background'
+import { CLIPBOARD_CHANNELS } from '../shared/clipboard'
 import { APPEARANCE_CHANNEL } from '../shared/colorschemes'
 import { DEPENDENCY_CHANNELS } from '../shared/dependencies'
 import {
+  ACCESSIBILITY_CHANNELS,
   APP_INFO_CHANNEL,
   BOOTSTRAP_CHANNELS,
   type DesktopApi,
   DOCUMENT_CHANNELS,
-  MAX_DOCUMENT_BYTES,
 } from '../shared/desktop'
 import type { JournalCheckpoint } from '../shared/document-checkpoint'
 import { createDocumentJournal } from '../shared/document-journal'
+import type { DocumentTransferApi } from '../shared/document-transfer'
 import { ASSOCIATION_CHANNELS } from '../shared/file-associations'
 import type {
   WorkspaceChangeEvent,
@@ -34,6 +36,10 @@ import { DIAGNOSTIC_CHANNEL } from '../shared/local-diagnostics'
 import { MEDIA_CHANNELS } from '../shared/media'
 import { SELECTED_TEXT_CHANNELS } from '../shared/selected-text'
 import { SIDELOAD_CHANNELS } from '../shared/sideload'
+import type {
+  SourceTransferChunk,
+  SourceTransferRequest,
+} from '../shared/source-transfer'
 import { TABLE_LAYOUT_CHANNELS } from '../shared/table-layout'
 import { UI_CASE_CHANNEL } from '../shared/ui-case'
 import { UPDATE_CHANNELS } from '../shared/updates'
@@ -61,21 +67,54 @@ if (process.isMainFrame) {
   } catch {
     /* Diagnostics cannot prevent the document bridge from starting. */
   }
-  let checkpoint: ((tabId: string) => JournalCheckpoint) | undefined
+  let checkpoint:
+    | ((tabId: string) => JournalCheckpoint | Promise<JournalCheckpoint>)
+    | undefined
+  let checkpointRead:
+    | ((request: SourceTransferRequest) => SourceTransferChunk)
+    | undefined
+  let checkpointClose: ((request: SourceTransferRequest) => void) | undefined
   const journal = createDocumentJournal(
     (change) => transport.invoke(DOCUMENT_CHANNELS.append, change),
     {
       timeoutMs: 5000,
       retryDelays: [100, 500, 2000],
-      maximumCheckpointUnits: MAX_DOCUMENT_BYTES,
       checkpoint: (tabId) => {
         if (!checkpoint)
           throw new Error('Document recovery is not ready. Retry saving.')
         return checkpoint(tabId)
       },
       head: (tabId) => transport.invoke(DOCUMENT_CHANNELS.recoveryHead, tabId),
-      verify: (snapshot) =>
-        transport.invoke(DOCUMENT_CHANNELS.verifyCheckpoint, snapshot),
+      verify: async (snapshot, progress) => {
+        if (!checkpointRead)
+          throw new Error('Document recovery is not ready. Retry saving.')
+        let request: SourceTransferRequest = {
+          streamId: snapshot.streamId,
+          sequence: 0,
+        }
+        try {
+          await transport.invoke(DOCUMENT_CHANNELS.verifyCheckpoint, snapshot)
+          progress()
+          for (;;) {
+            const chunk = checkpointRead(request)
+            request = await transport.invoke(
+              DOCUMENT_CHANNELS.checkpointChunk,
+              chunk,
+            )
+            progress()
+            if (chunk.done) break
+          }
+          return await transport.invoke(
+            DOCUMENT_CHANNELS.checkpointFinish,
+            request,
+          )
+        } finally {
+          checkpointClose?.(request)
+          await transport
+            .invoke(DOCUMENT_CHANNELS.checkpointAbort, request)
+            .catch(() => {})
+        }
+      },
     },
   )
   const invoke: typeof transport.invoke = (channel, ...args) =>
@@ -112,6 +151,15 @@ if (process.isMainFrame) {
   const startupKnown: Promise<KnownWorkspace[]> = ipcRenderer.invoke(
     WORKSPACE_CHANNELS.known,
   )
+  let legacyWorkspaceListeners = 0
+  const setLegacyWorkspaceSubscription = (enabled: boolean) => {
+    void ipcRenderer
+      .invoke(WORKSPACE_CHANNELS.legacySubscribe, enabled)
+      .catch((error: unknown) =>
+        console.error('could not subscribe to workspace changes:', error),
+      )
+  }
+  setLegacyWorkspaceSubscription(false)
   async function subscribeWorkspaceChanges(callback: WorkspaceChangeListener) {
     let pending: WorkspaceChangeEvent[] = []
     let latest: WorkspaceChangeEvent | null = null
@@ -181,7 +229,15 @@ if (process.isMainFrame) {
   for (const pending of [startupDocument, startupAddons, startupKnown])
     void pending.catch(() => {})
   let backgroundSettingsReady = false
-  contextBridge.exposeInMainWorld('hibi', {
+  contextBridge.exposeInMainWorld('hibiTransport', {
+    openDocumentTransfer: (tabId) =>
+      transport.invoke(DOCUMENT_CHANNELS.transferOpen, tabId),
+    readDocumentTransfer: (request) =>
+      transport.invoke(DOCUMENT_CHANNELS.transferRead, request),
+    finishDocumentTransfer: (request) =>
+      transport.invoke(DOCUMENT_CHANNELS.transferFinish, request),
+    abortDocumentTransfer: (request) =>
+      transport.invoke(DOCUMENT_CHANNELS.transferAbort, request),
     registerGlobalShortcut: (id, accelerator, token) =>
       ipcRenderer.invoke(
         GLOBAL_SHORTCUT_CHANNELS.register,
@@ -273,10 +329,15 @@ if (process.isMainFrame) {
     appendSourceOperation: journal.appendOperation,
     admitSourceOperation: journal.assertCapacity,
     getDocumentRecoveryState: journal.state,
-    onDocumentCheckpoint: (callback) => {
+    onDocumentCheckpoint: (callback, read, close) => {
       checkpoint = callback
+      checkpointRead = read
+      checkpointClose = close
       return () => {
-        if (checkpoint === callback) checkpoint = undefined
+        if (checkpoint !== callback) return
+        checkpoint = undefined
+        checkpointRead = undefined
+        checkpointClose = undefined
       }
     },
     flushDocumentChanges: journal.flush,
@@ -316,8 +377,18 @@ if (process.isMainFrame) {
       ),
     readDocumentMedia: (source, revision) =>
       ipcRenderer.invoke(MEDIA_CHANNELS.read, source, revision),
-    openDroppedFile: (file) =>
-      ipcRenderer.invoke(MEDIA_CHANNELS.open, webUtils.getPathForFile(file)),
+    resolveDocumentMedia: (source, revision, request) =>
+      ipcRenderer.invoke(MEDIA_CHANNELS.resolve, source, revision, request),
+    cancelDocumentMedia: (request) =>
+      ipcRenderer.invoke(MEDIA_CHANNELS.cancel, request),
+    onDocumentMediaScopeChanged: (callback) =>
+      subscribe(MEDIA_CHANNELS.scopeChanged, callback),
+    openDroppedFile: (file, includeEntries = true) =>
+      ipcRenderer.invoke(
+        MEDIA_CHANNELS.open,
+        webUtils.getPathForFile(file),
+        includeEntries,
+      ),
     getInstalledAddons: () => ipcRenderer.invoke(SIDELOAD_CHANNELS.list),
     getAddonTrustSettings: () => ipcRenderer.invoke(ADDON_TRUST_CHANNELS.get),
     setAddonTrustSettings: (changes) =>
@@ -386,6 +457,14 @@ if (process.isMainFrame) {
     getLicenses: () => ipcRenderer.invoke(ABOUT_CHANNELS.licenses),
     getLicense: (id) => ipcRenderer.invoke(ABOUT_CHANNELS.license, id),
     openSponsor: () => ipcRenderer.invoke(ABOUT_CHANNELS.sponsor),
+    writeClipboardText: (text) =>
+      ipcRenderer.invoke(CLIPBOARD_CHANNELS.writeText, text),
+    copyWorkspacePaths: (paths, options) =>
+      ipcRenderer.invoke(
+        CLIPBOARD_CHANNELS.writeWorkspacePaths,
+        paths,
+        options,
+      ),
     setAppearance: (appearance) =>
       ipcRenderer.invoke(APPEARANCE_CHANNEL, appearance),
     getAddonStates: () => ipcRenderer.invoke(ADDON_CHANNELS.states),
@@ -430,7 +509,14 @@ if (process.isMainFrame) {
       ipcRenderer.invoke(ADDON_CHANNELS.invoke, id, method, input),
     queryAddon: (id, method, input) =>
       ipcRenderer.invoke(ADDON_CHANNELS.query, id, method, input),
+    invokeAddonProfile: (id, method, input) =>
+      ipcRenderer.invoke(ADDON_CHANNELS.profile, id, method, input),
     getWorkspace: () => ipcRenderer.invoke(WORKSPACE_CHANNELS.get),
+    getWorkspaceHeader: () => ipcRenderer.invoke(WORKSPACE_CHANNELS.header),
+    readWorkspaceViewPage: (request) =>
+      ipcRenderer.invoke(WORKSPACE_CHANNELS.viewPage, request),
+    onWorkspaceHeaderChanged: (callback) =>
+      subscribe(WORKSPACE_CHANNELS.headerChanged, callback),
     getWorkspaceChangeSnapshot: () =>
       ipcRenderer.invoke(WORKSPACE_CHANNELS.changeSnapshot),
     listWorkspaceEntryPage: (owner, request) =>
@@ -502,6 +588,7 @@ if (process.isMainFrame) {
       ),
     queryWorkspaceReferences: (request) =>
       ipcRenderer.invoke(WORKSPACE_CHANNELS.queryReferences, request),
+    cancelWorkspaceImport: () => ipcRenderer.invoke(IMPORT_CHANNELS.cancel),
     listImporters: () => ipcRenderer.invoke(IMPORT_CHANNELS.list),
     importIntoWorkspace: (request) =>
       ipcRenderer.invoke(IMPORT_CHANNELS.run, request),
@@ -511,8 +598,8 @@ if (process.isMainFrame) {
       ipcRenderer.invoke(WORKSPACE_SETTINGS_CHANNELS.update, action),
     getRecentWorkspaces: () => ipcRenderer.invoke(WORKSPACE_CHANNELS.recent),
     getKnownWorkspaces: () => ipcRenderer.invoke(WORKSPACE_CHANNELS.known),
-    openRecentWorkspace: (id) =>
-      ipcRenderer.invoke(WORKSPACE_CHANNELS.openRecent, id),
+    openRecentWorkspace: (id, includeEntries = true) =>
+      ipcRenderer.invoke(WORKSPACE_CHANNELS.openRecent, id, includeEntries),
     setKnownWorkspace: (id, action) =>
       ipcRenderer.invoke(WORKSPACE_CHANNELS.setKnown, id, action),
     deleteKnownWorkspace: (id) =>
@@ -520,26 +607,48 @@ if (process.isMainFrame) {
     getWorkspaceSnapshot: () => ipcRenderer.invoke(WORKSPACE_CHANNELS.snapshot),
     getWorkspaceIndex: (verifyAll = false) =>
       ipcRenderer.invoke(WORKSPACE_CHANNELS.index, verifyAll),
-    workspaceAction: (action) =>
-      ipcRenderer.invoke(WORKSPACE_CHANNELS.action, action),
-    openWorkspace: () => ipcRenderer.invoke(WORKSPACE_CHANNELS.open),
-    refreshWorkspace: () => ipcRenderer.invoke(WORKSPACE_CHANNELS.refresh),
+    workspaceAction: (action, includeEntries = true) =>
+      ipcRenderer.invoke(WORKSPACE_CHANNELS.action, action, includeEntries),
+    openWorkspace: (includeEntries = true) =>
+      ipcRenderer.invoke(WORKSPACE_CHANNELS.open, includeEntries),
+    refreshWorkspace: (includeEntries = true) =>
+      ipcRenderer.invoke(WORKSPACE_CHANNELS.refresh, includeEntries),
     openWorkspaceFile: (path, target) =>
       ipcRenderer.invoke(WORKSPACE_CHANNELS.openFile, path, target),
     onWorkspaceChanged: (callback) => {
+      let active = true
       const listener = (
         _event: Electron.IpcRendererEvent,
         workspace: WorkspaceState | null,
         change?: WorkspaceChange,
       ) => callback(workspace, change)
       ipcRenderer.on(WORKSPACE_CHANNELS.changed, listener)
+      if (++legacyWorkspaceListeners === 1) setLegacyWorkspaceSubscription(true)
       return () => {
+        if (!active) return
+        active = false
         ipcRenderer.removeListener(WORKSPACE_CHANNELS.changed, listener)
+        if (--legacyWorkspaceListeners === 0)
+          setLegacyWorkspaceSubscription(false)
       }
     },
     onWorkspaceListChanged: (callback) =>
       subscribe(WORKSPACE_CHANNELS.listChanged, callback),
     getAppInfo: () => ipcRenderer.invoke(APP_INFO_CHANNEL),
+    onAccessibilitySupport: (callback) => {
+      let current = true
+      const stop = subscribe<boolean>(ACCESSIBILITY_CHANNELS.changed, (on) => {
+        current = false
+        callback(on)
+      })
+      void transport.invoke(ACCESSIBILITY_CHANNELS.get).then((on) => {
+        if (current) callback(on)
+      }, console.error)
+      return () => {
+        current = false
+        stop()
+      }
+    },
     setUiCase: (value) => ipcRenderer.invoke(UI_CASE_CHANNEL, value),
     getDocument: () => ipcRenderer.invoke(DOCUMENT_CHANNELS.get),
     selectDocumentTab: (id) =>
@@ -548,6 +657,8 @@ if (process.isMainFrame) {
       ipcRenderer.invoke(DOCUMENT_CHANNELS.focusTab, id, expected),
     closeDocumentTab: (id) =>
       ipcRenderer.invoke(DOCUMENT_CHANNELS.closeTab, id),
+    closeDocumentTabs: (ids, preferredTab) =>
+      ipcRenderer.invoke(DOCUMENT_CHANNELS.closeTabs, ids, preferredTab),
     moveDocumentTab: (id, beforeId) =>
       ipcRenderer.invoke(DOCUMENT_CHANNELS.moveTab, id, beforeId),
     setTabsEnabled: (enabled) =>
@@ -602,5 +713,6 @@ if (process.isMainFrame) {
     setHotkeyRecording: (recording) =>
       ipcRenderer.invoke(HOTKEY_CHANNELS.record, recording),
     onCommand: (callback) => subscribe(HOTKEY_CHANNELS.command, callback),
-  } satisfies DesktopApi)
+    onHistory: (callback) => subscribe(HOTKEY_CHANNELS.history, callback),
+  } satisfies DesktopApi & DocumentTransferApi)
 }

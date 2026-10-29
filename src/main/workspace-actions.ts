@@ -1,6 +1,16 @@
 import { lstat, mkdir } from 'node:fs/promises'
-import { basename, dirname, extname, join, relative, sep } from 'node:path'
+import {
+  basename,
+  dirname,
+  extname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+  sep,
+} from 'node:path'
 import { type BrowserWindow, shell } from 'electron'
+import type { WorkspaceTarget } from '../shared/foundation-contracts'
 import type { WorkspaceActionResult } from '../shared/workspace'
 import {
   closeDeletedDocuments,
@@ -18,6 +28,7 @@ import {
   isCurrentWorkspaceTarget,
   notifyWorkspaceContent,
   refreshWorkspace,
+  type WorkspaceReply,
   workspaceRoot,
 } from './workspace'
 import { copyEntry, moveEntry } from './workspace-entry-transfer'
@@ -37,6 +48,40 @@ const missing = (error: NodeJS.ErrnoException) => {
 function contains(parent: string, child: string | null) {
   if (!child) return false
   return isPathInside(parent, child)
+}
+
+/** Validates and joins workspace paths for the clipboard, resolving absolutes in main. */
+export function workspaceClipboardPaths(
+  paths: unknown,
+  options: unknown,
+): string {
+  if (
+    !Array.isArray(paths) ||
+    paths.length === 0 ||
+    paths.some((path) => typeof path !== 'string')
+  )
+    throw new Error('Hibi could not copy this path.')
+  const config = options as {
+    absolute?: unknown
+    target?: WorkspaceTarget
+  } | null
+  if (!config || typeof config.absolute !== 'boolean')
+    throw new Error('Hibi could not copy this path.')
+  if (config.target !== undefined && !isCurrentWorkspaceTarget(config.target))
+    throw new Error('The workspace changed, so the path was not copied.')
+  const base = config.absolute ? workspaceRoot() : null
+  if (config.absolute && !base) throw new Error('Open a workspace first.')
+  return (paths as string[])
+    .map((path) => {
+      if (!path || isAbsolute(path) || path.split('/').includes('..'))
+        throw new Error('Choose a file or folder inside this workspace.')
+      if (!config.absolute || !base) return path
+      const absolute = resolve(base, ...path.split('/'))
+      if (!contains(base, absolute))
+        throw new Error('Choose a file or folder inside this workspace.')
+      return absolute
+    })
+    .join('\n')
 }
 async function unique(parent: string, name: string) {
   const extension = extname(name),
@@ -78,10 +123,21 @@ async function rethrowPartialCopy(
   throw error
 }
 
+type WorkspaceActionReply<IncludeEntries extends boolean = false> = Omit<
+  WorkspaceActionResult,
+  'workspace'
+> & { workspace: WorkspaceReply<IncludeEntries> | null }
+
+export function workspaceAction<IncludeEntries extends boolean = false>(
+  window: BrowserWindow,
+  input: unknown,
+  includeEntries?: IncludeEntries,
+): Promise<WorkspaceActionReply<IncludeEntries> | null>
 export async function workspaceAction(
   window: BrowserWindow,
   input: unknown,
-): Promise<WorkspaceActionResult | null> {
+  includeEntries = false,
+): Promise<WorkspaceActionReply<boolean> | null> {
   const base = workspaceRoot()
   if (!base) throw new Error('Open a workspace first.')
   if (!input || typeof input !== 'object')
@@ -154,7 +210,7 @@ export async function workspaceAction(
         throw new Error('Use a supported file extension.')
       if (source === resultPath)
         return {
-          workspace: getWorkspace(),
+          workspace: getWorkspace(undefined, includeEntries),
           document: getDocument(),
           path: relative(base, source).split(sep).join('/'),
         }
@@ -232,11 +288,11 @@ export async function workspaceAction(
   const paths = [sourcePath, resultPath]
     .filter((path): path is string => path !== null)
     .map((path) => relative(base, path).split(sep).join('/'))
-  let workspace: WorkspaceActionResult['workspace']
+  let workspace: WorkspaceReply<boolean> | null
   try {
     workspace = treeChanged
-      ? await refreshWorkspace(paths)
-      : await notifyWorkspaceContent(paths)
+      ? await refreshWorkspace(paths, includeEntries)
+      : await notifyWorkspaceContent(paths, includeEntries)
   } catch (error) {
     if (!treeChanged) throw error
     throw new Error(

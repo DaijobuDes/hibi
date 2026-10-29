@@ -4,7 +4,6 @@ import { once } from 'node:events'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import test from 'node:test'
 import {
   crashAndReload,
   electron,
@@ -12,6 +11,10 @@ import {
   waitForDocumentEditor,
   waitForElectronShutdown,
 } from './electron.mjs'
+import {
+  selectFormattedEngine,
+  testFormattedEngines as test,
+} from './formatted-engine.mjs'
 import { clickMenu, replaceRichText } from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
 
@@ -63,6 +66,7 @@ async function launch(t) {
     }
   })
   const page = await app.firstWindow()
+  await selectFormattedEngine(app, page, t.formattedEngine)
   await waitForDocumentEditor(app, page)
   const id = await app.evaluate(
     ({ BrowserWindow }) =>
@@ -376,6 +380,20 @@ test('tray preserves drafts, restores the same renderer and cancels unsafe quits
   assert.equal(await readFile(file, 'utf8'), 'external change')
 })
 
+test('a tray click opens the main window on Windows and Linux', {
+  timeout: 30000,
+}, async (t) => {
+  if (process.platform === 'darwin')
+    return t.skip('macOS opens the menu on click')
+  const { app, child, page } = await launch(t)
+  await page.evaluate(() => window.hibi.setBackgroundMode(true))
+  await closeMain(app)
+  await waitVisible(app, false)
+  await app.evaluate(() => globalThis.backgroundTestTray.emit('click'))
+  await waitVisible(app, true)
+  await quitFromTray(app, child)
+})
+
 test('tray quick note follows UI registration and opens capture without the main window', {
   timeout: 30000,
 }, async (t) => {
@@ -574,7 +592,7 @@ test('hidden renderer crash shows recovery and clean tray quit stays hidden', {
   await crashAndReload(app)
   await waitForAsync(app, () =>
     globalThis.backgroundTestContents.executeJavaScript(
-      `!!document.querySelector('.app[aria-busy="false"] #document-editor-panel[aria-busy="false"] .tiptap[contenteditable="true"]')`,
+      `!!document.querySelector('.app[aria-busy="false"] #document-editor-panel[aria-busy="false"] [aria-label="Document editor"][contenteditable="true"]')`,
     ),
   )
   await waitVisible(app, true)
@@ -586,7 +604,7 @@ test('hidden renderer crash shows recovery and clean tray quit stays hidden', {
   assert.equal(
     await app.evaluate(() =>
       globalThis.backgroundTestContents.executeJavaScript(
-        "document.querySelector('.tiptap').textContent",
+        'document.querySelector(\'.rich-pane [aria-label="Document editor"]\').textContent',
       ),
     ),
     'recover hidden draft',
@@ -598,10 +616,14 @@ test('hidden renderer crash shows recovery and clean tray quit stays hidden', {
   )
   assert.equal(recovered.markdown, 'recover hidden draft')
   assert.equal(recovered.dirty, true)
-  await app.evaluate(() =>
-    globalThis.backgroundTestContents.executeJavaScript(
-      `document.querySelector('.tiptap').editor.commands.setContent('<p></p>')`,
-    ),
+  await app.evaluate(
+    (_, engine) =>
+      globalThis.backgroundTestContents.executeJavaScript(
+        engine === 'tiptap'
+          ? `document.querySelector('.tiptap').editor.commands.setContent('<p></p>')`
+          : `window.hibi.updateDocument('')`,
+      ),
+    t.formattedEngine,
   )
   await waitForAsync(
     app,

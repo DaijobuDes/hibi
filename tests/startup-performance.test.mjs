@@ -6,9 +6,19 @@ import test from 'node:test'
 import { createServer } from 'vite'
 import { codeHtml, codeLanguages } from '../src/renderer/src/code-languages.ts'
 import { electron, waitForDocumentEditor } from './electron.mjs'
+import {
+  testFormattedEngines as it,
+  selectFormattedEngine,
+} from './formatted-engine.mjs'
 import { clickMenu, pressShortcut } from './keyboard.mjs'
 
-test('language loading deduplicates aliases and respects disabled preferences during import', async () => {
+test('language loading deduplicates aliases and respects disabled preferences during import', async (t) => {
+  const changes = []
+  t.after(
+    codeLanguages.subscribe((names) => {
+      if (names.size) changes.push([...names].sort())
+    }),
+  )
   assert.equal(codeLanguages.resolve('rust'), null)
   const [rust, alias] = await Promise.all([
     codeLanguages.ensure('rust'),
@@ -20,8 +30,14 @@ test('language loading deduplicates aliases and respects disabled preferences du
   codeLanguages.setEnabled('python', false)
   await codeLanguages.settle()
   assert.equal(codeLanguages.resolve('py'), null)
+  // Arrivals name only the changed language; a parser loaded while disabled publishes nothing.
+  assert.deepEqual(changes, [
+    ['rs', 'rust'],
+    ['py', 'python'],
+  ])
   codeLanguages.setEnabled('python', true)
   assert.ok(codeLanguages.resolve('py'))
+  assert.deepEqual(changes.at(-1), ['py', 'python'])
   assert.match(codeHtml('def sample(): return 1', 'py'), /hibi-token-keyword/)
 })
 
@@ -46,6 +62,15 @@ test('production entry keeps editor implementations behind demand imports', asyn
     /src\/renderer\/src\/(?:Editor|SourceEditor|FormatEditor)\.tsx/,
   )
   assert.doesNotMatch(initial, /node_modules\/@tiptap\//)
+  assert.doesNotMatch(
+    initial,
+    /src\/renderer\/src\/FormattedEditor\.tsx|node_modules\/@codemirror\//,
+  )
+  assert.ok(
+    chunks.some((chunk) =>
+      chunk.modules.includes('src/renderer/src/FormattedEditor.tsx'),
+    ),
+  )
   assert.ok(
     chunks.some((chunk) =>
       chunk.modules.includes('src/renderer/src/Editor.tsx'),
@@ -76,10 +101,27 @@ test('startup catalog stays within the main byte budget and leaves notices and a
   }
   for (const chunk of chunks) if (chunk.entry) visit(chunk.file)
   const initial = chunks.filter((chunk) => reached.has(chunk.file))
-  // Catalog baseline: 689137 bytes, plus 318 bytes for declarative styles/themes (#218).
+  // Catalog baseline: 689137 bytes, plus 318 bytes for declarative styles/themes (#218)
+  // and 430 bytes for releasing closed tabs' sources from document states (#440),
+  // and 63 bytes for opening large notes in the CodeMirror formatted view (#450),
+  // and 1122 bytes for closing several tabs and middle-click closing (#455),
+  // and 10 bytes for keeping footnote notes in the formatted view (#419),
+  // plus 34 bytes for shared context-free search folding (#399),
+  // and 9 bytes for the formatted view's copy importing the synchronous export
+  // renderer from the startup chunk (#459),
+  // plus 1 byte of minified import aliases in the entry that the source outline's
+  // lazy chunks renamed; no module moved into startup (#460).
+  // API 3 adds 713 bytes for formatted registrations, publication and lazy compatibility dispatch.
+  // Its render-error route adds 22 bytes; callback guards stay in the lazy flavor module.
+  // Syntax ownership adds 115 bytes for synchronous registration identity and cleanup;
+  // parser callbacks and recovery stay behind editor imports.
   const bytes = initial.reduce((sum, chunk) => sum + chunk.bytes, 0)
-  assert.ok(bytes <= 689455, `startup catalog grew to ${bytes} bytes`)
+  assert.ok(
+    bytes <= 691124 + 713 + 22 + 115,
+    `startup catalog grew to ${bytes} bytes`,
+  )
   const modules = initial.flatMap((chunk) => chunk.modules).join('\n')
+  assert.doesNotMatch(modules, /markdown-flavor-guard\.ts|flavor-syntax\.ts/)
   assert.doesNotMatch(
     modules,
     /addons\/authors\.ts|addons\/[^/]+\/(?:manifest\.ts|hibi-addon\.json)|docs\/licenses\//,
@@ -92,7 +134,12 @@ test('startup catalog stays within the main byte budget and leaves notices and a
     chunks.flatMap((chunk) => chunk.modules).join('\n'),
     /src\/(?:user)?addons\/[^/]+\/native\.tsx?/,
   )
+  assert.doesNotMatch(
+    modules,
+    /addons\/sdk-(?:loader|formatted|legacy-rich)\.ts|renderer\/src\/formatted-(?:flavor|addon-compatibility|compatibility)\.ts/,
+  )
   assert.doesNotMatch(modules, /src\/renderer\/src\/window-desktop\.ts/)
+  assert.doesNotMatch(modules, /src\/shared\/marked-blocks\.ts/)
   assert.ok(
     chunks.some(
       (chunk) =>
@@ -189,7 +236,7 @@ test('shared format registration does not statically load source parsers', async
   assert.doesNotMatch(modules, /src\/addons\/_shared\/format-language\.ts/)
 })
 
-test('blank startup leaves disabled runtimes and closed settings unloaded and source unmounted', {
+it('blank startup leaves disabled runtimes and closed settings unloaded and source unmounted', {
   timeout: 30000,
 }, async (t) => {
   const profile = await mkdtemp(join(tmpdir(), 'hibi-startup-performance-'))
@@ -204,17 +251,29 @@ test('blank startup leaves disabled runtimes and closed settings unloaded and so
     await rm(profile, { recursive: true, force: true })
   })
   const page = await app.firstWindow()
+  await selectFormattedEngine(app, page, t.formattedEngine)
   await page
     .getByRole('textbox', { name: 'Document editor', exact: true })
     .waitFor()
   await page.evaluate(
     () => new Promise((resolve) => requestIdleCallback(resolve)),
   )
-  assert.equal(
-    await page.evaluate(() => document.activeElement?.matches('.tiptap')),
-    true,
-  )
-  assert.equal(await page.locator('.cm-editor').count(), 0)
+  if (t.formattedEngine === 'tiptap') {
+    assert.equal(
+      await page.evaluate(() => document.activeElement?.matches('.tiptap')),
+      true,
+    )
+    assert.equal(await page.locator('.cm-editor').count(), 0)
+  } else {
+    assert.equal(
+      await page
+        .getByRole('textbox', { name: 'Document editor', exact: true })
+        .evaluate((element) => element === document.activeElement),
+      true,
+    )
+    assert.equal(await page.locator('.rich-pane .cm-editor').count(), 1)
+  }
+  assert.equal(await page.locator('.source-pane .cm-editor').count(), 0)
   const chunks = JSON.parse(
     await readFile('out/renderer/startup-bundle.json', 'utf8'),
   )
@@ -241,8 +300,13 @@ test('blank startup leaves disabled runtimes and closed settings unloaded and so
     initial,
     /src\/renderer\/src\/(?:SettingsScreen|VersionHistory)\.tsx/,
   )
-  assert.doesNotMatch(initial, /@codemirror\//)
-  assert.doesNotMatch(initial, /src\/renderer\/src\/SourceEditor\.tsx/)
+  if (t.formattedEngine === 'tiptap') {
+    assert.doesNotMatch(initial, /@codemirror\//)
+    assert.doesNotMatch(initial, /src\/renderer\/src\/SourceEditor\.tsx/)
+  } else {
+    // The formatted engine uses SourceEditor; its separate source pane stays unmounted.
+    assert.match(initial, /src\/renderer\/src\/SourceEditor\.tsx/)
+  }
   assert.doesNotMatch(initial, /src\/renderer\/src\/FormatEditor\.tsx/)
   await page.evaluate(() => {
     const editor = document.querySelector('.editor-surface')
@@ -312,14 +376,10 @@ test('blank startup leaves disabled runtimes and closed settings unloaded and so
   )
 })
 
-test('enabled mermaid starts with markdown documents but loads its engine on demand', {
+it('default diagrams start with markdown documents and load pele only for a diagram', {
   timeout: 30000,
 }, async (t) => {
   const profile = await mkdtemp(join(tmpdir(), 'hibi-startup-mermaid-'))
-  await writeFile(
-    join(profile, 'addons.json'),
-    JSON.stringify({ mermaid: true }),
-  )
   const app = await electron.launch({
     args: [resolve('.'), `--user-data-dir=${profile}`],
   })
@@ -328,6 +388,7 @@ test('enabled mermaid starts with markdown documents but loads its engine on dem
     await rm(profile, { recursive: true, force: true })
   })
   const page = await app.firstWindow()
+  await selectFormattedEngine(app, page, t.formattedEngine)
   await page
     .getByRole('textbox', { name: 'Document editor', exact: true })
     .waitFor()
@@ -343,15 +404,46 @@ test('enabled mermaid starts with markdown documents but loads its engine on dem
     if (url.startsWith('app://hibi/')) files.add(new URL(url).pathname.slice(1))
   })
   await session.send('Debugger.enable')
-  const loaded = chunks
-    .filter((chunk) => files.has(chunk.file))
+  const loaded = () =>
+    chunks
+      .filter((chunk) => files.has(chunk.file))
+      .flatMap((chunk) => chunk.modules)
+  assert.match(loaded().join('\n'), /src\/addons\/mermaid\/index\.tsx/)
+  if (t.formattedEngine === 'tiptap')
+    assert.doesNotMatch(
+      loaded().join('\n'),
+      /node_modules\/(?:pele|mermaid|@mermaid-js)\/|@codemirror\//,
+    )
+  else
+    assert.doesNotMatch(
+      loaded().join('\n'),
+      /node_modules\/(?:pele|mermaid|@mermaid-js)\//,
+    )
+  const note = join(profile, 'diagram.md')
+  await writeFile(note, '```mermaid\nflowchart LR\n  A --> B\n```\n')
+  await app.evaluate(({ dialog }, path) => {
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] })
+  }, note)
+  await pressShortcut(
+    app,
+    process.platform === 'darwin' ? 'Meta+o' : 'Control+o',
+  )
+  await page.locator('.mermaid-block .mermaid-diagram > svg').waitFor()
+  // Pele's core loads with the first diagram; other diagram types stay unloaded.
+  const pele = chunks
     .flatMap((chunk) => chunk.modules)
-    .join('\n')
-  assert.match(loaded, /src\/addons\/mermaid\/index\.tsx/)
-  assert.doesNotMatch(loaded, /node_modules\/(?:mermaid|@mermaid-js)\//)
+    .filter((module) => module.includes('node_modules/pele/'))
+  const loadedPele = loaded().filter((module) =>
+    module.includes('node_modules/pele/'),
+  )
+  assert.ok(loadedPele.some((module) => module.endsWith('/esm/lazy.js')))
+  assert.ok(
+    loadedPele.length < pele.length / 2,
+    `${loadedPele.length} of ${pele.length} pele modules loaded`,
+  )
 })
 
-test('unrelated enabled formats defer source parsers until first source use', async (t) => {
+it('unrelated enabled formats defer source parsers until first source use', {}, async (t) => {
   const profile = await mkdtemp(join(tmpdir(), 'hibi-startup-formats-'))
   await writeFile(
     join(profile, 'addons.json'),
@@ -365,6 +457,7 @@ test('unrelated enabled formats defer source parsers until first source use', as
     await rm(profile, { recursive: true, force: true })
   })
   const page = await app.firstWindow()
+  await selectFormattedEngine(app, page, t.formattedEngine)
   await page.waitForFunction(
     () => performance.getEntriesByName('hibi:addon:rst').length,
   )
@@ -394,10 +487,16 @@ test('unrelated enabled formats defer source parsers until first source use', as
       .filter((chunk) => files.has(chunk.file))
       .flatMap((chunk) => chunk.modules)
       .join('\n')
-  assert.doesNotMatch(
-    modules(),
-    /src\/addons\/_shared\/format-language\.ts|@codemirror\//,
-  )
+  if (t.formattedEngine === 'tiptap')
+    assert.doesNotMatch(
+      modules(),
+      /src\/addons\/_shared\/format-language\.ts|@codemirror\//,
+    )
+  else
+    assert.doesNotMatch(
+      modules(),
+      /src\/addons\/_shared\/format-language\.ts|node_modules\/@codemirror\/lang-html\//,
+    )
   const file = join(profile, 'note.html')
   await writeFile(file, '<h1>hello</h1>\r\n')
   await app.evaluate(({ dialog }, file) => {
@@ -414,6 +513,9 @@ test('unrelated enabled formats defer source parsers until first source use', as
   assert.match(modules(), /src\/addons\/_shared\/format-language\.ts/)
   assert.match(modules(), /node_modules\/@codemirror\/lang-html\//)
   assert.doesNotMatch(modules(), /node_modules\/@codemirror\/lang-markdown\//)
+  // The formatted host loads the shared chunked language.
+  if (t.formattedEngine === 'codemirror')
+    assert.match(modules(), /src\/shared\/chunked-markdown\.ts/)
   assert.doesNotMatch(
     modules(),
     /node_modules\/@codemirror\/legacy-modes\/mode\/(?:stex|textile|r)\./,

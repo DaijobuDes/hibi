@@ -1,14 +1,25 @@
 export const APP_INFO_CHANNEL = 'app:info'
+export const ACCESSIBILITY_CHANNELS = {
+  get: 'accessibility:get',
+  changed: 'accessibility:changed',
+} as const
 export const BOOTSTRAP_CHANNELS = {
   document: 'bootstrap:document',
   addons: 'bootstrap:addons',
 } as const
 export const DOCUMENT_CHANNELS = {
   get: 'document:get',
+  transferOpen: 'document:transfer-open',
+  transferRead: 'document:transfer-read',
+  transferFinish: 'document:transfer-finish',
+  transferAbort: 'document:transfer-abort',
   update: 'document:update',
   append: 'document:append',
   recoveryHead: 'document:recovery-head',
   verifyCheckpoint: 'document:verify-checkpoint',
+  checkpointChunk: 'document:checkpoint-chunk',
+  checkpointFinish: 'document:checkpoint-finish',
+  checkpointAbort: 'document:checkpoint-abort',
   flush: 'document:flush',
   flushed: 'document:flushed',
   open: 'document:open',
@@ -21,6 +32,7 @@ export const DOCUMENT_CHANNELS = {
   selectTab: 'document:select-tab',
   focusTab: 'document:focus-tab',
   closeTab: 'document:close-tab',
+  closeTabs: 'document:close-tabs',
   moveTab: 'document:move-tab',
   tabsEnabled: 'document:tabs-enabled',
   rename: 'document:rename',
@@ -31,7 +43,6 @@ export const DOCUMENT_CHANNELS = {
   requestRemote: 'document:request-remote',
 } as const
 
-export const MAX_DOCUMENT_BYTES = 2 * 1024 * 1024
 export type DocumentState = {
   /** Stable window-local tab identity, including across save and rename. */
   tabId: string
@@ -44,6 +55,10 @@ export type DocumentState = {
   ephemeral: boolean
   markdown: string
   savedMarkdown: string
+  /** Main explicitly replaced this tab's source, rather than only its metadata. */
+  replaced?: boolean
+  /** Native source generation already transferred to this renderer. */
+  sourceId?: string | undefined
   name: string
   dirty: boolean
   revision: number
@@ -54,9 +69,14 @@ export type DocumentState = {
 }
 export type DocumentTab = { id: string; name: string; dirty: boolean }
 export type DocumentFocus = Omit<DocumentState, 'markdown' | 'savedMarkdown'>
+export type DocumentSaveReceipt = DocumentFocus & {
+  saveReceipt: true
+  savedVersion: number
+}
+export type DocumentSaveReply = DocumentState | DocumentSaveReceipt
 export type AutosaveResult = {
   status: 'saved' | 'skipped' | 'conflict'
-  document: DocumentState | null
+  document: DocumentSaveReply | null
 }
 export type DocumentCommand =
   | 'new'
@@ -184,6 +204,7 @@ export type DesktopApi = {
     recentWorkspaces: () => Promise<import('./workspace').RecentWorkspace[]>
     knownWorkspaces: () => Promise<import('./workspace').KnownWorkspace[]>
   }
+  cancelWorkspaceImport: () => Promise<void>
   listImporters: () => Promise<import('./imports').Importer[]>
   importIntoWorkspace: (
     request: import('./imports').ImportRequest,
@@ -214,7 +235,20 @@ export type DesktopApi = {
     source: string,
     revision: number,
   ) => Promise<import('./media').DocumentMedia | null>
-  openDroppedFile: (file: File) => Promise<{
+  /** Internal cancellable display resolution; addon byte reads retain their existing bridge. */
+  resolveDocumentMedia: (
+    source: string,
+    revision: number,
+    request: string,
+  ) => Promise<import('./media').DocumentMediaResolution | null>
+  cancelDocumentMedia: (request: string) => Promise<void>
+  onDocumentMediaScopeChanged: (
+    callback: (revision: number) => void,
+  ) => () => void
+  openDroppedFile: (
+    file: File,
+    includeEntries?: boolean,
+  ) => Promise<{
     document: DocumentState | null
     workspace?: WorkspaceState | null
   } | null>
@@ -265,6 +299,16 @@ export type DesktopApi = {
   getLicenses: () => Promise<import('./about').LicenseInfo[]>
   getLicense: (id: string) => Promise<string>
   openSponsor: () => Promise<void>
+  /** Writes plain text to the system clipboard. */
+  writeClipboardText: (text: string) => Promise<void>
+  /** Copies workspace paths, one per line; absolute paths are resolved in main. */
+  copyWorkspacePaths: (
+    paths: string[],
+    options: {
+      absolute: boolean
+      target?: import('./foundation-contracts').WorkspaceTarget
+    },
+  ) => Promise<void>
   setAppearance: (
     appearance: import('./colorschemes').NativeAppearance,
   ) => Promise<void>
@@ -343,7 +387,21 @@ export type DesktopApi = {
   >
   invokeAddon: (id: string, method: string, input?: unknown) => Promise<unknown>
   queryAddon: (id: string, method: string, input?: unknown) => Promise<unknown>
+  invokeAddonProfile: (
+    id: string,
+    method: string,
+    input?: unknown,
+  ) => Promise<unknown>
   getWorkspace: () => Promise<WorkspaceState | null>
+  getWorkspaceHeader: () => Promise<
+    import('./workspace-view').WorkspaceHeader | null
+  >
+  readWorkspaceViewPage: (
+    request: import('./workspace-view').WorkspaceViewPageRequest,
+  ) => Promise<import('./workspace-view').WorkspaceViewPageResult>
+  onWorkspaceHeaderChanged: (
+    callback: (change?: import('./workspace').WorkspaceChange) => void,
+  ) => () => void
   getWorkspaceChangeSnapshot: () => Promise<
     import('./workspace').WorkspaceStreamSnapshot
   >
@@ -358,9 +416,12 @@ export type DesktopApi = {
   readTableLayout: (
     tabId: string,
   ) => Promise<import('./table-layout').TableLayout[] | null>
+  /** All of a note's tables, or an update of some of them. */
   writeTableLayout: (
     tabId: string,
-    tables: import('./table-layout').TableLayout[],
+    tables:
+      | import('./table-layout').TableLayout[]
+      | import('./table-layout').TableLayoutUpdate,
   ) => Promise<void>
   readWorkspaceText: (
     owner: string,
@@ -449,7 +510,10 @@ export type DesktopApi = {
   ) => Promise<import('./workspace-settings').WorkspaceSettings>
   getRecentWorkspaces: () => Promise<import('./workspace').RecentWorkspace[]>
   getKnownWorkspaces: () => Promise<import('./workspace').KnownWorkspace[]>
-  openRecentWorkspace: (id: string) => Promise<WorkspaceState | null>
+  openRecentWorkspace: (
+    id: string,
+    includeEntries?: boolean,
+  ) => Promise<WorkspaceState | null>
   setKnownWorkspace: (
     id: string,
     action: 'pin' | 'unpin' | 'hide',
@@ -462,9 +526,10 @@ export type DesktopApi = {
   ) => Promise<import('./workspace').WorkspaceIndex | null>
   workspaceAction: (
     action: import('./workspace').WorkspaceAction,
+    includeEntries?: boolean,
   ) => Promise<import('./workspace').WorkspaceActionResult | null>
-  openWorkspace: () => Promise<WorkspaceState | null>
-  refreshWorkspace: () => Promise<WorkspaceState | null>
+  openWorkspace: (includeEntries?: boolean) => Promise<WorkspaceState | null>
+  refreshWorkspace: (includeEntries?: boolean) => Promise<WorkspaceState | null>
   /** `target` rejects the request if another workspace session replaced it. */
   openWorkspaceFile: (
     path: string,
@@ -480,6 +545,8 @@ export type DesktopApi = {
     callback: (known: import('./workspace').KnownWorkspace[]) => void,
   ) => () => void
   getAppInfo: () => Promise<AppInfo>
+  /** Calls back with whether Chromium serves a screen reader, now and on each change. */
+  onAccessibilitySupport: (callback: (enabled: boolean) => void) => () => void
   setUiCase: (value: import('./ui-case').UiCase) => Promise<void>
   getDocument: () => Promise<DocumentState>
   selectDocumentTab: (id: string) => Promise<DocumentState>
@@ -488,6 +555,10 @@ export type DesktopApi = {
     expected: Pick<DocumentFocus, 'contentVersion' | 'revision'>,
   ) => Promise<DocumentFocus>
   closeDocumentTab: (id: string) => Promise<DocumentState | null>
+  closeDocumentTabs: (
+    ids: string[],
+    preferredTab?: string,
+  ) => Promise<DocumentState | null>
   moveDocumentTab: (
     id: string,
     beforeId: string | null,
@@ -506,7 +577,15 @@ export type DesktopApi = {
   onDocumentCheckpoint: (
     callback: (
       tabId: string,
-    ) => import('./document-checkpoint').JournalCheckpoint,
+    ) =>
+      | import('./document-checkpoint').JournalCheckpoint
+      | Promise<import('./document-checkpoint').JournalCheckpoint>,
+    read?: (
+      request: import('./source-transfer').SourceTransferRequest,
+    ) => import('./source-transfer').SourceTransferChunk,
+    close?: (
+      request: import('./source-transfer').SourceTransferRequest,
+    ) => void,
   ) => () => void
   getDocumentRecoveryState: () => ReturnType<
     ReturnType<
@@ -521,7 +600,7 @@ export type DesktopApi = {
   }>
   onExternalDocuments: (callback: () => void) => () => void
   newDocument: () => Promise<DocumentState | null>
-  saveDocument: (saveAs: boolean) => Promise<DocumentState | null>
+  saveDocument: (saveAs: boolean) => Promise<DocumentSaveReply | null>
   saveTargetDocument: (
     owner: string,
     tabId: string,
@@ -538,6 +617,8 @@ export type DesktopApi = {
   saveHotkeys: (hotkeys: Hotkeys) => Promise<Hotkeys>
   setHotkeyRecording: (recording: boolean) => Promise<void>
   onCommand: (callback: (command: AppCommand) => void) => () => void
+  /** Edit menu undo and redo for the focused editor or field. */
+  onHistory: (callback: (direction: 'undo' | 'redo') => void) => () => void
 }
 
 import type { AddonState } from '../addons/api'

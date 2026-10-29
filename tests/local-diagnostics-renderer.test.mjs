@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { pathToFileURL } from 'node:url'
 import { build } from 'vite'
-import { electron } from './electron.mjs'
+import { electron, startupDiagnostics } from './electron.mjs'
 
 test('both renderer profiles preserve native error propagation, safe original locations, recovery actions and listener disposal', {
   timeout: 30000,
@@ -49,6 +49,18 @@ test('both renderer profiles preserve native error propagation, safe original lo
   )
   app = await electron.launch({ args: [join(root, 'main.cjs')] })
   const page = await app.firstWindow()
+  await app.evaluate(({ BrowserWindow }) => {
+    const contents = BrowserWindow.getAllWindows()[0].webContents
+    const state = { lastResponsivenessEvent: null, gone: null }
+    globalThis.diagnosticRendererState = state
+    for (const event of ['unresponsive', 'responsive'])
+      contents.on(event, () => {
+        state.lastResponsivenessEvent = event
+      })
+    contents.on('render-process-gone', (_event, { reason, exitCode }) => {
+      state.gone = { reason, exitCode }
+    })
+  })
   page.setDefaultTimeout(6000)
   const read = () => page.evaluate(() => window.diagnosticHarness.snapshot())
   const count = (records, code) =>
@@ -132,7 +144,41 @@ test('both renderer profiles preserve native error propagation, safe original lo
       window.diagnosticHarness.install()
       window.diagnosticHarness.clear()
     })
-    await page.getByRole('button', { name: 'Trigger render failure' }).click()
+    try {
+      await page.getByRole('button', { name: 'Trigger render failure' }).click()
+    } catch (error) {
+      let timer
+      try {
+        const [startup, native] = await Promise.all([
+          startupDiagnostics(app, page),
+          Promise.race([
+            app
+              .evaluate(({ BrowserWindow }) => {
+                const contents = BrowserWindow.getAllWindows()[0]?.webContents
+                const alive = contents && !contents.isDestroyed()
+                return {
+                  ...globalThis.diagnosticRendererState,
+                  destroyed: !alive,
+                  crashed: alive ? contents.isCrashed() : null,
+                }
+              })
+              .catch(() => ({ unavailable: true })),
+            new Promise((resolve) => {
+              timer = setTimeout(() => resolve({ unavailable: true }), 1000)
+            }),
+          ]),
+        ])
+        console.error(
+          'renderer diagnostics click:',
+          JSON.stringify({ profile, native, ...startup }),
+        )
+      } catch {
+        // Keep the original click failure even if its renderer cannot respond.
+      } finally {
+        clearTimeout(timer)
+      }
+      throw error
+    }
     await page.getByRole('main', { name: 'Editor recovery' }).waitFor()
     await page.getByRole('button', { name: 'Save a copy' }).click()
     await page.getByText('Copy saved.', { exact: true }).waitFor()

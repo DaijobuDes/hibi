@@ -11,15 +11,23 @@ import {
   PanelLeft,
   Search,
 } from 'lucide-react'
-import { marked } from 'marked'
-import MiniSearch from 'minisearch'
-import { type CSSProperties, useEffect, useMemo, useState } from 'react'
+import {
+  type CSSProperties,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react'
 import type { Root } from 'react-dom/client'
 import { GraphCanvas } from '../addons/graph/Canvas'
+import GraphLayoutWorker from '../addons/graph/layout.worker.ts?worker&inline'
 import {
   CommandPalette,
   type PaletteCommand,
 } from '../renderer/src/CommandPalette'
+import { headingAnchors } from '../shared/heading-anchor'
+import { parseMarkdown } from '../shared/marked-blocks.ts'
+import { renderedHtmlOptions } from '../shared/rendered-html'
 import '../addons/graph/style.css'
 import { ColorschemeSettings } from '../ui/ColorschemeSettings'
 import { IconButton, TextInput } from '../ui/Controls'
@@ -28,8 +36,19 @@ import { DialogProvider, useDialogs } from '../ui/DialogProvider'
 import { ShortcutKeys } from '../ui/ShortcutKeys'
 import { Sidebar, type SidebarItem } from '../ui/Sidebar'
 import { useSidebarResize } from '../ui/useSidebarResize'
-import { homePage, isMermaidImage, pageRoute, type SiteData } from './data'
+import {
+  homePage,
+  isMermaidImage,
+  pageRoute,
+  type SiteData,
+  siteMediaType,
+} from './data'
+import { createSiteSearchWorker } from './search-worker-client'
+import { pageTitle } from './title'
 import './site.css'
+
+// Exported sites ship one script, so the layout worker is inlined.
+const layoutWorker = () => new GraphLayoutWorker()
 
 export function startSite(workspace: SiteData, root: Root) {
   const options = workspace.options
@@ -61,27 +80,16 @@ export function startSite(workspace: SiteData, root: Root) {
     ].join('\n')
     document.head.append(styles)
   }
-  const pages = workspace.pages.map((page) => {
-    const heading = marked
-      .lexer(page.markdown)
-      .find((token) => token.type === 'heading')
-    return {
-      ...page,
-      id: page.path,
-      title:
-        page.title ||
-        (heading?.type === 'heading'
-          ? heading.text.replace(/[*`]/g, '')
-          : (page.path
-              .split('/')
-              .at(-1)
-              ?.replace(/\.[^./]+$/, '') ?? page.path)),
-    }
-  })
+  const pages = workspace.pages.map((page) => ({
+    ...page,
+    id: page.path,
+    title: pageTitle(page),
+  }))
   const home = homePage(pages, options.homePage)
   const byPath = new Map(pages.map((page) => [page.path, page]))
   const folderLabels = new Map<string, string>()
   const navigation: SidebarItem[] = []
+  const foldersByPath = new Map<string, SidebarItem>()
   for (const page of pages) {
     const parts = page.path.split('/')
     let siblings = navigation
@@ -91,7 +99,7 @@ export function startSite(workspace: SiteData, root: Root) {
       if (depth === parts.length - 1)
         siblings.push({ id: path, label: page.title, icon: FileText })
       else {
-        let folder = siblings.find((item) => item.id === path)
+        let folder = foldersByPath.get(path)
         if (!folder) {
           const overview =
             byPath.get(`${path}/README.md`) ?? byPath.get(`${path}/index.md`)
@@ -101,6 +109,7 @@ export function startSite(workspace: SiteData, root: Root) {
             icon: Folder,
             children: [],
           }
+          foldersByPath.set(path, folder)
           folderLabels.set(path, folder.label)
           siblings.push(folder)
         }
@@ -124,6 +133,7 @@ export function startSite(workspace: SiteData, root: Root) {
     }
   }
   arrange(navigation)
+  const positions = new Map(ordered.map((page, index) => [page.path, index]))
 
   const siteRoot = new URL(
     document.querySelector('meta[name="hibi-root"]')?.getAttribute('content') ??
@@ -177,7 +187,7 @@ export function startSite(workspace: SiteData, root: Root) {
 
   function renderMarkdown(path: string, markdown: string, html?: string) {
     const fragment = DOMPurify.sanitize(
-      html ?? marked.parse(markdown, { async: false }),
+      html ?? parseMarkdown(markdown),
       html === undefined
         ? {
             RETURN_DOM_FRAGMENT: true,
@@ -226,23 +236,7 @@ export function startSite(workspace: SiteData, root: Root) {
               'type',
             ],
           }
-        : {
-            RETURN_DOM_FRAGMENT: true,
-            USE_PROFILES: { html: true, mathMl: true, svg: true },
-            FORBID_TAGS: [
-              'style',
-              'form',
-              'button',
-              'textarea',
-              'select',
-              'iframe',
-              'object',
-              'embed',
-              'audio',
-              'video',
-            ],
-            FORBID_ATTR: ['name'],
-          },
+        : { ...renderedHtmlOptions, RETURN_DOM_FRAGMENT: true },
     )
     for (const element of fragment.querySelectorAll('[id]')) {
       const id = element.id
@@ -255,18 +249,22 @@ export function startSite(workspace: SiteData, root: Root) {
         continue
       element.removeAttribute('id')
     }
-    const slugs = new Map<string, number>()
+    const headings = [...fragment.querySelectorAll('h1,h2,h3,h4,h5,h6')].filter(
+      (heading) => heading.id !== 'footnote-label',
+    )
+    const anchors = headingAnchors(
+      headings.map((heading) => heading.textContent ?? ''),
+    )
     const outline: { id: string; label: string; depth: number }[] = []
-    for (const heading of fragment.querySelectorAll('h1,h2,h3,h4,h5,h6')) {
-      if (heading.id === 'footnote-label') continue
-      const slug = (heading.textContent ?? '')
-        .toLowerCase()
-        .replace(/[^\p{L}\p{N}\s-]/gu, '')
-        .trim()
-        .replace(/\s+/g, '-')
-      const count = slugs.get(slug) ?? 0
-      slugs.set(slug, count + 1)
-      heading.id = `doc-${slug}${count ? `-${count}` : ''}`
+    for (const [index, heading] of headings.entries()) {
+      const { anchor, legacy } = anchors[index]!
+      heading.id = `doc-${anchor}`
+      if (legacy !== null && legacy !== anchor) {
+        const alias = document.createElement('span')
+        alias.id = `doc-${legacy}`
+        alias.setAttribute('aria-hidden', 'true')
+        heading.prepend(alias)
+      }
       if (heading.tagName !== 'H1' && heading.textContent?.trim())
         outline.push({
           id: heading.id,
@@ -288,19 +286,27 @@ export function startSite(workspace: SiteData, root: Root) {
     for (const image of fragment.querySelectorAll('img')) {
       const embedded =
         byPath.get(path)?.images?.[image.getAttribute('src') ?? '']
+      const type =
+        typeof embedded === 'string' ? siteMediaType(embedded) : undefined
+      const blob = type && workspace.media?.[embedded!]
+      const assetType = blob || type !== 'image/svg+xml' ? type : undefined
+      const media =
+        blob || (assetType ? new URL(embedded!, siteRoot).href : embedded)
       if (
-        typeof embedded === 'string' &&
-        /^data:video\/(mp4|webm|ogg);base64,/i.test(embedded)
+        typeof media === 'string' &&
+        (assetType?.startsWith('video/') ||
+          /^data:video\/(mp4|webm|ogg);base64,/i.test(media))
       ) {
         const video = document.createElement('video')
         video.controls = true
         video.preload = 'metadata'
         video.setAttribute('aria-label', image.alt || 'Video attachment')
-        video.src = embedded
+        video.src = media
         image.replaceWith(video)
         continue
       }
-      if (typeof embedded === 'string') image.setAttribute('src', embedded)
+      if (typeof media === 'string') image.setAttribute('src', media)
+      if (assetType?.startsWith('image/')) continue
       const src = image.getAttribute('src') ?? ''
       if (
         !/^data:image\/(png|jpeg|gif|webp|avif|svg\+xml);base64,/i.test(src) &&
@@ -344,57 +350,44 @@ export function startSite(workspace: SiteData, root: Root) {
     return { html: container.innerHTML, outline }
   }
 
-  const rendered = new Map<string, ReturnType<typeof renderMarkdown>>()
+  const rendered = new Map<
+    string,
+    { result: ReturnType<typeof renderMarkdown>; bytes: number }
+  >()
+  let renderedBytes = 0
   const renderPage = (page: (typeof pages)[number]) => {
-    let result = rendered.get(page.path)
-    if (!result) {
-      result = renderMarkdown(page.path, page.markdown, page.html)
-      rendered.set(page.path, result)
+    const cached = rendered.get(page.path)
+    if (cached) {
+      rendered.delete(page.path)
+      rendered.set(page.path, cached)
+      return cached.result
+    }
+    const result = renderMarkdown(page.path, page.markdown, page.html)
+    const bytes =
+      2 *
+        (result.html.length +
+          result.outline.reduce(
+            (sum, heading) => sum + heading.id.length + heading.label.length,
+            0,
+          )) +
+      result.outline.length * 64
+    if (bytes <= 4 * 1024 * 1024) {
+      while (rendered.size >= 8 || renderedBytes + bytes > 4 * 1024 * 1024) {
+        const [path, oldest] = rendered.entries().next().value!
+        rendered.delete(path)
+        renderedBytes -= oldest.bytes
+      }
+      rendered.set(page.path, { result, bytes })
+      renderedBytes += bytes
     }
     return result
   }
-  type SearchEntry = {
-    id: string
-    path: string
-    anchor: string
-    title: string
-    text: string
-  }
-  let searchIndex: MiniSearch<SearchEntry> | undefined
-  // ponytail: the first search renders every page to index its headings; prebuild the index in the exporter if large sites feel slow.
-  const search = (query: string) => {
-    if (!searchIndex) {
-      searchIndex = new MiniSearch<SearchEntry>({
-        fields: ['title', 'text'],
-        storeFields: ['path', 'anchor', 'title'],
-        searchOptions: {
-          prefix: true,
-          fuzzy: 0.2,
-          boost: { title: 4 },
-          combineWith: 'AND',
-        },
-      })
-      searchIndex.addAll(
-        ordered.flatMap((page) => [
-          {
-            id: page.path,
-            path: page.path,
-            anchor: '',
-            title: page.title,
-            text: `${page.path} ${page.markdown}`,
-          },
-          ...renderPage(page).outline.map((heading) => ({
-            id: `${page.path}#${heading.id}`,
-            path: page.path,
-            anchor: heading.id.slice(4),
-            title: heading.label,
-            text: page.title,
-          })),
-        ]),
-      )
-    }
-    return searchIndex.search(query) as unknown as SearchEntry[]
-  }
+  let search: ReturnType<typeof createSiteSearchWorker> | undefined
+  const getSearch = () =>
+    (search ??= createSiteSearchWorker(
+      ordered,
+      (page) => renderMarkdown(page.path, page.markdown, page.html).outline,
+    ))
 
   function DocumentationSite() {
     const dialogs = useDialogs()
@@ -507,40 +500,66 @@ export function startSite(workspace: SiteData, root: Root) {
             },
           })
       }
-      if (current.anchor)
-        (
+      if (current.anchor) {
+        const target =
           document.getElementById(`doc-${current.anchor}`) ??
           document.getElementById(current.anchor)
-        )?.scrollIntoView()
-      else document.querySelector('.site-content')?.scrollTo(0, 0)
+        ;(target?.closest('h1,h2,h3,h4,h5,h6') ?? target)?.scrollIntoView()
+      } else document.querySelector('.site-content')?.scrollTo(0, 0)
     }, [page, current.path, current.anchor])
     useEffect(() => {
-      const scroller = document.querySelector('.site-content')
+      const scroller = document.querySelector<HTMLElement>('.site-content')
       const headings = outline
         .map(({ id }) => document.getElementById(id))
         .filter((node): node is HTMLElement => Boolean(node))
-      let frame = 0
-      const update = () => {
-        frame = 0
-        const edge = (scroller?.getBoundingClientRect().top ?? 0) + 48
-        let active = headings[0]?.id ?? ''
-        for (const heading of headings) {
-          if (heading.getBoundingClientRect().top > edge) break
-          active = heading.id
-        }
-        setActiveHeading(active)
+      if (!scroller || !headings.length) {
+        setActiveHeading('')
+        return
       }
-      const scroll = () => {
-        if (!frame) frame = requestAnimationFrame(update)
+      const indices = new Map(
+        headings.map((heading, index) => [heading, index]),
+      )
+      let observer: IntersectionObserver | undefined
+      let margin = '',
+        active = 0,
+        mounted = true
+      const observe = () => {
+        // Expand above the viewport so jumps across several sections cross the same boundary.
+        const nextMargin = `${scroller.scrollHeight}px 0px ${48 - scroller.clientHeight}px 0px`
+        if (nextMargin === margin) return
+        margin = nextMargin
+        observer?.disconnect()
+        const passed = new Set<number>()
+        const current = new IntersectionObserver(
+          (entries) => {
+            if (!mounted || observer !== current) return
+            for (const entry of entries) {
+              const index = indices.get(entry.target as HTMLElement)!
+              if (entry.isIntersecting) {
+                passed.add(index)
+                active = Math.max(active, index)
+              } else passed.delete(index)
+            }
+            while (active > 0 && !passed.has(active)) active--
+            setActiveHeading(headings[active]?.id ?? '')
+          },
+          { root: scroller, rootMargin: margin },
+        )
+        observer = current
+        for (const heading of headings) current.observe(heading)
       }
-      update()
-      scroller?.addEventListener('scroll', scroll, { passive: true })
+      observe()
+      const resize = new ResizeObserver(observe)
+      resize.observe(scroller)
+      const article = scroller.querySelector('article')
+      if (article) resize.observe(article)
       return () => {
-        scroller?.removeEventListener('scroll', scroll)
-        cancelAnimationFrame(frame)
+        mounted = false
+        observer?.disconnect()
+        resize.disconnect()
       }
     }, [outline])
-    const pageIndex = ordered.findIndex((entry) => entry.path === current.path)
+    const pageIndex = positions.get(current.path) ?? -1
     const previous = options.pagination ? ordered[pageIndex - 1] : undefined
     const next =
       options.pagination && pageIndex >= 0 ? ordered[pageIndex + 1] : undefined
@@ -569,20 +588,72 @@ export function startSite(workspace: SiteData, root: Root) {
         ))}
       </nav>
     )
-    const command = (
-      path: string,
-      anchor = '',
-      label = byPath.get(path)?.title ?? path,
-    ): PaletteCommand => ({
-      id: anchor ? `${path}#${anchor}` : path,
-      label,
-      detail: anchor ? (byPath.get(path)?.title ?? path) : path,
-      category: 'documents',
-      run: () => {
-        navigate(path, anchor)
-        if (innerWidth <= 700) setSidebar(false)
-      },
-    })
+    const command = useCallback(
+      (
+        path: string,
+        anchor = '',
+        label = byPath.get(path)?.title ?? path,
+      ): PaletteCommand => ({
+        id: anchor ? `${path}#${anchor}` : path,
+        label,
+        detail: anchor ? (byPath.get(path)?.title ?? path) : path,
+        category: 'documents',
+        run: () => {
+          navigate(path, anchor)
+          if (innerWidth <= 700) setSidebar(false)
+        },
+      }),
+      [],
+    )
+
+    const initialCommands = useMemo(
+      () => ordered.slice(0, 50).map((page) => command(page.path)),
+      [command],
+    )
+    const [searchQuery, setSearchQuery] = useState('')
+    const [matches, setMatches] = useState<{
+      query: string
+      commands: PaletteCommand[]
+    }>({ query: '', commands: [] })
+    useEffect(() => () => search?.dispose(), [])
+    useEffect(() => {
+      let current = true
+      const request = new AbortController()
+      if (palette && searchQuery.trim())
+        void getSearch()
+          .find(searchQuery, request.signal)
+          .then(
+            (entries) => {
+              if (current)
+                setMatches({
+                  query: searchQuery.trim(),
+                  commands: entries.map((result) =>
+                    command(result.path, result.anchor, result.title),
+                  ),
+                })
+            },
+            (error) => {
+              if (current) {
+                console.error(error)
+                setMatches({ query: searchQuery.trim(), commands: [] })
+              }
+            },
+          )
+      else if (palette) {
+        setMatches((current) =>
+          current.query ? { query: '', commands: [] } : current,
+        )
+        void getSearch()
+          .preload()
+          .catch((error) => {
+            if (current) console.error(error)
+          })
+      }
+      return () => {
+        current = false
+        request.abort()
+      }
+    }, [palette, searchQuery, command])
     return (
       // biome-ignore lint/a11y/noStaticElementInteractions: delegates native anchor clicks, including keyboard activation, to history navigation.
       // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard activation of native anchors already emits click.
@@ -814,16 +885,14 @@ export function startSite(workspace: SiteData, root: Root) {
         </div>
         {palette && (
           <CommandPalette
-            commands={ordered.map((page) => command(page.path))}
+            commands={initialCommands}
             platform={/Mac/.test(navigator.platform) ? 'darwin' : 'linux'}
+            onQueryChange={setSearchQuery}
+            pending={(query) =>
+              !!query.trim() && matches.query !== query.trim()
+            }
             searchCommands={(query) =>
-              query.trim()
-                ? search(query)
-                    .slice(0, 50)
-                    .map((result) =>
-                      command(result.path, result.anchor, result.title),
-                    )
-                : ordered.slice(0, 50).map((page) => command(page.path))
+              query.trim() && matches.query ? matches.commands : initialCommands
             }
             onClose={() => setPalette(false)}
           />
@@ -842,9 +911,9 @@ export function startSite(workspace: SiteData, root: Root) {
     const [query, setQuery] = useState('')
     const graph = useMemo(() => {
       const nodes =
-        workspace.graph?.nodes
-          .filter((node) => node.id.toLowerCase().includes(query.toLowerCase()))
-          .slice(0, 500) ?? []
+        workspace.graph?.nodes.filter((node) =>
+          node.id.toLowerCase().includes(query.toLowerCase()),
+        ) ?? []
       const ids = new Set(nodes.map((node) => node.id))
       return {
         nodes,
@@ -868,6 +937,7 @@ export function startSite(workspace: SiteData, root: Root) {
           active={active}
           open={open}
           resetKey={query}
+          worker={layoutWorker}
         />
       </div>
     )

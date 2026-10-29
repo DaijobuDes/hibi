@@ -1,10 +1,16 @@
 import { useEffect, useMemo, useSyncExternalStore } from 'react'
 import type { AddonManifest, MarkdownFlavor } from '../../addons/api'
+import { builtInFlavors } from '../../shared/built-in-grammar'
 import type { ViewId } from '../../shared/foundation-contracts'
 import { needsOwnedSource } from '../../shared/preservation'
 import { addonRegistry } from './addon-registry'
 import { documentRuntime } from './document-runtime'
-import { afterDocumentQuiet, editorDocumentUpdates } from './document-shell'
+import {
+  afterDocumentQuiet,
+  editorDocumentUpdates,
+  largeOpening,
+  preferSourceOpening,
+} from './document-shell'
 import type { MarkdownEditor } from './Editor'
 import { type FlavorChoice, flavorMatches } from './flavors'
 import { projectMarkdown } from './markdown-projection'
@@ -65,17 +71,13 @@ export function ActiveDocumentEditor({
     [knownFlavors, chosenFlavors],
   )
   // The strict proof permits only letters/digits/spaces in the changed paragraph.
-  // These built-in detectors require punctuation; arbitrary addon markers do not.
+  // Built-in grammar detectors require punctuation; arbitrary addon markers do not.
   const certifiedVisual =
     !manifests.some((manifest) => manifest.syntax?.length) &&
     protectionFlavors.every(
       (flavor) =>
         addonRegistry.origin(flavor.addonId) === 'built-in' &&
-        ((flavor.addonId === 'math' && flavor.id === 'math.latex') ||
-          (flavor.addonId === 'markdown' &&
-            ['markdown.github', 'markdown.obsidian'].includes(flavor.id)) ||
-          (flavor.addonId === 'text-extras' &&
-            flavor.id === 'text-extras.text-extras')),
+        builtInFlavors.get(flavor.id)?.owner === flavor.addonId,
     )
   const syntaxVersion = useSyncExternalStore(
     markdownSyntax.subscribe,
@@ -116,23 +118,12 @@ export function ActiveDocumentEditor({
     current.revision === props.document.revision
       ? current
       : props.document
-  const source = markdown ? document.markdown : ''
-  const unsupported = useMemo(() => {
-    if (!markdown) return false
-    if (needsOwnedSource(source, manifests, enabledAddons)) return true
-    if (!protectionFlavors.length) return false
-    const body = projectMarkdown(source, props.markdownExtensions).content
-    return protectionFlavors.some((flavor) => flavorMatches(flavor, body))
-  }, [
-    markdown,
-    source,
-    manifests,
-    enabledAddons,
-    protectionFlavors,
-    props.markdownExtensions,
-  ])
+  // Checks that read the whole source wait for notes that open in parts.
+  const deferredSource = markdown && largeOpening(documentRuntime, document)
+  const sourceFirst = markdown && preferSourceOpening(documentRuntime, document)
+  const source = markdown && !deferredSource ? document.markdown : ''
   useEffect(() => {
-    if (!markdown) return
+    if (!markdown || deferredSource) return
     // Display-only flavor detection can wait for typing to pause.
     return afterDocumentQuiet(
       documentRuntime,
@@ -151,19 +142,25 @@ export function ActiveDocumentEditor({
             .filter((flavor) => flavor.kind === 'syntax')
             .map((flavor) => flavor.name),
         ].join(' + ')
+        const unsupported =
+          needsOwnedSource(source, manifests, enabledAddons) ||
+          protectionFlavors.some((flavor) => detected.includes(flavor))
         onFlavorStatus({ label, unsupported })
       },
       document.tabId,
     )
   }, [
     markdown,
+    deferredSource,
     document,
     source,
     props.markdownExtensions,
     knownFlavors,
     chosenFlavors,
     flavorChoice,
-    unsupported,
+    manifests,
+    enabledAddons,
+    protectionFlavors,
     onFlavorStatus,
   ])
   return (
@@ -172,6 +169,29 @@ export function ActiveDocumentEditor({
       {...(viewId ? { viewId } : {})}
       document={document}
       value={source}
+      mode={sourceFirst ? 'markdown' : props.mode}
+      largePreview={sourceFirst && props.mode !== 'markdown'}
+      previewSupported={
+        certifiedVisual &&
+        chosenFlavors.every(
+          (flavor) =>
+            [
+              'markdown.github',
+              'markdown.obsidian',
+              'github-markdown.github',
+              'text-extras.text-extras',
+              'math.latex',
+            ].includes(flavor.id) &&
+            knownFlavors.some(
+              (known) =>
+                known.id === flavor.id &&
+                addonRegistry.origin(known.addonId) === 'built-in',
+            ),
+        ) &&
+        props.markdownExtensions.every(
+          ({ id }) => id === 'frontmatter.metadata',
+        )
+      }
     />
   )
 }

@@ -1,50 +1,6 @@
 import { Extension } from '@tiptap/core'
 import { Plugin, TextSelection } from '@tiptap/pm/state'
-
-const indentUnits = ['\t', '  ', '    '] as const
-type Preferences = { enabled: boolean; unit: (typeof indentUnits)[number] }
-const key = 'hibi:tab-indent'
-let preferences: Preferences = { enabled: true, unit: '\t' }
-try {
-  const stored = JSON.parse(localStorage.getItem(key) ?? '{}')
-  preferences = {
-    enabled: stored.enabled !== false,
-    unit: indentUnits.includes(stored.unit) ? stored.unit : '\t',
-  }
-} catch {
-  /* Use defaults if preferences are unavailable. */
-}
-const listeners = new Set<() => void>()
-export const tabIndent = {
-  snapshot: () => preferences,
-  subscribe(listener: () => void) {
-    listeners.add(listener)
-    return () => {
-      listeners.delete(listener)
-    }
-  },
-  set(next: { enabled?: boolean; unit?: string }) {
-    preferences = {
-      enabled: next.enabled ?? preferences.enabled,
-      unit: indentUnits.find((unit) => unit === next.unit) ?? preferences.unit,
-    }
-    localStorage.setItem(key, JSON.stringify(preferences))
-    for (const listener of listeners) listener()
-  },
-}
-
-const indented = /\t| {2,}(?=[^ \n])/y
-/** The first indented line's unit, scanning only as far as that line. */
-export function detectIndentUnit(text: string) {
-  for (let at = 0; ; ) {
-    indented.lastIndex = at
-    const match = indented.exec(text)?.[0]
-    if (match)
-      return match === '\t' ? match : ' '.repeat(Math.min(match.length, 4))
-    at = text.indexOf('\n', at) + 1
-    if (!at) return undefined
-  }
-}
+import { codeIndentLines, detectIndentUnit, tabIndent } from './indentation.ts'
 
 /** Rich-text Tab: lists and tables first, then code indentation, then a mid-line tab. */
 export const TabIndent = Extension.create({
@@ -101,7 +57,8 @@ export const TabIndent = Extension.create({
       if (code) {
         const start = $from.start()
         const text = $from.parent.textContent
-        const unit = detectIndentUnit(text) ?? tabIndent.snapshot().unit
+        const unit =
+          detectIndentUnit(text, codeIndentLines) ?? tabIndent.snapshot().unit
         if (!outdent && from === to) tr.insertText(unit, from)
         else {
           // One replacement for every line: per-line steps would each keep a whole-block copy.

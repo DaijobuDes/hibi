@@ -1,8 +1,12 @@
 import type { DocumentState } from '../../shared/desktop.ts'
+import { hasFootnoteDefinitions } from '../../shared/markdown-footnotes.ts'
 import type { SourceSnapshot } from '../../shared/source-buffer.ts'
 import type { DocumentRuntime } from './document-runtime.ts'
+import { codemirrorFormattedView } from './formatted-engine.ts'
 
 const certifiedVisualEchoes = new WeakSet<SourceSnapshot>()
+// Weak entries leave with their source snapshot, including when a tab closes.
+const footnoteSources = new WeakMap<SourceSnapshot, boolean>()
 
 /** Internal, one-shot proof from the strict native visual edit path after reconciliation. */
 export function certifyVisualEcho(source: SourceSnapshot) {
@@ -84,6 +88,49 @@ export function subscribeDocumentShell(
     edit(next, changes)
     if (changed) update(next)
   })
+}
+
+/** Notes over 262,144 units, whose source opening does not read whole. */
+export function largeOpening(
+  runtime: Pick<DocumentRuntime, 'openingLength'>,
+  document: DocumentState | null,
+) {
+  return !!document && runtime.openingLength(document) > 256 * 1024
+}
+
+/** Notes over 262,144 units now, read from the live source length alone. */
+export function largeSource(
+  runtime: Pick<DocumentRuntime, 'session'>,
+  tabId: string,
+) {
+  return (runtime.session(tabId)?.snapshot().utf16Length ?? 0) > 256 * 1024
+}
+
+/**
+ * ponytail: the ProseMirror view opens large notes in source view. The
+ * CodeMirror formatted view parses them in bounded steps, so it opens them.
+ */
+export function preferSourceOpening(
+  runtime: Pick<DocumentRuntime, 'openingLength'>,
+  document: DocumentState | null,
+) {
+  return !codemirrorFormattedView && largeOpening(runtime, document)
+}
+
+/** Shell and pane renders share one full footnote lex per immutable source. */
+export function hasDocumentFootnotes(
+  runtime: Pick<DocumentRuntime, 'sourceFor'>,
+  document: DocumentState | null,
+) {
+  if (!document || (runtime.sourceFor(document)?.utf16Length ?? 0) > 256 * 1024)
+    return false
+  const source = runtime.sourceFor(document)
+  let found = source && footnoteSources.get(source)
+  if (found === undefined) {
+    found = hasFootnoteDefinitions(document.markdown)
+    if (source) footnoteSources.set(source, found)
+  }
+  return found
 }
 
 /** Content versions belong to the editor; shell consumers only need these fields. */

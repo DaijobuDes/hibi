@@ -33,6 +33,8 @@ export type SidebarItem = {
 
 export type SidebarProps = {
   items: readonly SidebarItem[]
+  /** Row `dirty` and `decoration` values by id, used before the item's own. Changing them keeps the tree model, expansion, and focus. */
+  status?: ReadonlyMap<string, Pick<SidebarItem, 'dirty' | 'decoration'>>
   selected: string | null
   onSelect: (id: string) => void
   label: string
@@ -46,6 +48,10 @@ export type SidebarProps = {
   overlay?: boolean
   onDismiss?: () => void
   disabled?: boolean
+  /** Tree pages are being refreshed; rows remain visible but unavailable. */
+  pending?: boolean
+  /** Drags belong to the tree revision where they started. */
+  interactionRevision?: number | undefined
   className?: string
   idPrefix?: string
   panelPrefix?: string
@@ -132,6 +138,7 @@ function RenameInput({
 
 export function Sidebar({
   items,
+  status,
   selected,
   onSelect,
   label,
@@ -156,6 +163,8 @@ export function Sidebar({
   side = 'left',
   onDismiss,
   disabled = false,
+  pending = false,
+  interactionRevision,
 }: SidebarProps) {
   const container = useRef<HTMLDivElement>(null)
   const focusedElement = useRef<HTMLElement | null>(null)
@@ -218,7 +227,11 @@ export function Sidebar({
     null,
   )
   const [dragging, setDragging] = useState(false)
-  const draggedItem = useRef<{ id: string; ids: string[] } | null>(null)
+  const draggedItem = useRef<{
+    id: string
+    ids: string[]
+    revision: number | undefined
+  } | null>(null)
   const [dragged, setDragged] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
@@ -240,7 +253,13 @@ export function Sidebar({
     const key = JSON.stringify([selected, editing?.id, ancestors])
     if (revealed.current === key) return
     revealed.current = key
-    if (ancestors.length) setExpanded((old) => new Set([...old, ...ancestors]))
+    // Selecting inside open folders keeps the row model.
+    if (ancestors.length)
+      setExpanded((old) =>
+        ancestors.every((id) => old.has(id))
+          ? old
+          : new Set([...old, ...ancestors]),
+      )
   }, [parents, selected, mode, editing?.id, collapsible])
   const model = useMemo(
     () => sidebarRows(items, expanded, collapsible),
@@ -252,6 +271,8 @@ export function Sidebar({
   const picked = useMemo(() => {
     if (!selectionIds) return null
     const ids = new Set(selectionIds)
+    // Following the active file needs no ordering pass over the whole tree.
+    if (ids.size < 2) return [...ids].filter((id) => parents.has(id))
     return [...parents.keys()].filter((id) => ids.has(id))
   }, [selectionIds, parents])
   const pickedSet = useMemo(() => picked && new Set(picked), [picked])
@@ -393,7 +414,7 @@ export function Sidebar({
       const index = indices.get(id)
       if (index !== undefined) rowWindow.reveal(index)
     }
-    if (mode === 'tabs' && !overlay) onSelect(id)
+    if (mode === 'tabs' && !overlay && !disabled && !pending) onSelect(id)
   }
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: the shared navigation dismisses after its child controls handle Escape.
@@ -449,7 +470,14 @@ export function Sidebar({
           hidden={content !== undefined}
           data-drop-target={dropTarget === ''}
           onDragOver={(event) => {
-            if (disabled || !onMove || !draggedItem.current) return
+            if (
+              disabled ||
+              pending ||
+              !onMove ||
+              !draggedItem.current ||
+              draggedItem.current.revision !== interactionRevision
+            )
+              return
             event.preventDefault()
             event.dataTransfer.dropEffect = 'move'
             setDropTarget('')
@@ -461,7 +489,14 @@ export function Sidebar({
               setDropTarget(null)
           }}
           onDrop={(event) => {
-            if (disabled || !onMove || !draggedItem.current) return
+            if (
+              disabled ||
+              pending ||
+              !onMove ||
+              !draggedItem.current ||
+              draggedItem.current.revision !== interactionRevision
+            )
+              return
             event.preventDefault()
             event.stopPropagation()
             onMove(draggedItem.current.id, null, draggedItem.current.ids)
@@ -482,6 +517,7 @@ export function Sidebar({
             }
             role={mode === 'tabs' ? 'tablist' : 'tree'}
             aria-label={label}
+            aria-busy={pending || undefined}
             aria-orientation={mode === 'tabs' ? 'vertical' : undefined}
             aria-multiselectable={picked ? true : undefined}
           >
@@ -508,6 +544,9 @@ export function Sidebar({
               const { item, depth, parent, position, size, sections } =
                 rows[index]!
               const Icon = item.icon
+              const shown = status?.get(item.id)
+              const dirty = shown?.dirty ?? item.dirty
+              const decoration = shown?.decoration ?? item.decoration
               return (
                 <Fragment key={item.id}>
                   {item.section && (
@@ -544,7 +583,14 @@ export function Sidebar({
                     data-drop-target={dropTarget === item.id}
                     onDragOver={(event) => {
                       const source = draggedItem.current
-                      if (disabled || !onMove || !source) return
+                      if (
+                        disabled ||
+                        pending ||
+                        !onMove ||
+                        !source ||
+                        source.revision !== interactionRevision
+                      )
+                        return
                       event.stopPropagation()
                       const target = item.children ? item.id : parent
                       if (
@@ -561,7 +607,14 @@ export function Sidebar({
                     }}
                     onDrop={(event) => {
                       const source = draggedItem.current
-                      if (disabled || !onMove || !source) return
+                      if (
+                        disabled ||
+                        pending ||
+                        !onMove ||
+                        !source ||
+                        source.revision !== interactionRevision
+                      )
+                        return
                       event.preventDefault()
                       event.stopPropagation()
                       const target = item.children ? item.id : parent
@@ -611,11 +664,17 @@ export function Sidebar({
                         }}
                         id={`${idPrefix}-${item.id}`}
                         type="button"
-                        disabled={disabled}
-                        draggable={mode === 'tree' && !!onMove && !disabled}
+                        aria-disabled={disabled || pending || undefined}
+                        draggable={
+                          mode === 'tree' && !!onMove && !disabled && !pending
+                        }
                         onDragStart={(event) => {
-                          if (!onMove) return
+                          if (disabled || pending || !onMove) {
+                            event.preventDefault()
+                            return
+                          }
                           draggedItem.current = {
+                            revision: interactionRevision,
                             id: item.id,
                             ids: menuGroup(item.id),
                           }
@@ -653,24 +712,21 @@ export function Sidebar({
                         tabIndex={focusId === item.id ? 0 : -1}
                         style={{
                           paddingLeft: 16 + depth * 14,
-                          color: item.decoration?.color
-                            ? `var(--${item.decoration.color})`
+                          color: decoration?.color
+                            ? `var(--${decoration.color})`
                             : undefined,
                         }}
-                        data-tooltip={[item.label, item.decoration?.label]
+                        data-tooltip={[item.label, decoration?.label]
                           .filter(Boolean)
                           .join(' · ')}
                         data-verbatim={mode === 'tree' || undefined}
                         aria-description={
-                          [
-                            item.dirty ? 'unsaved changes' : '',
-                            item.decoration?.label,
-                          ]
+                          [dirty ? 'unsaved changes' : '', decoration?.label]
                             .filter(Boolean)
                             .join('; ') || undefined
                         }
                         onContextMenu={(event) => {
-                          if (onMenu && !disabled) {
+                          if (onMenu && !disabled && !pending) {
                             event.preventDefault()
                             setFocused(item.id)
                             onMenu(
@@ -685,6 +741,7 @@ export function Sidebar({
                           rowWindow.reveal(index)
                         }}
                         onClick={(event) => {
+                          if (disabled || pending) return
                           if (picked) {
                             if (event.shiftKey)
                               return selectRange(item.id, picked[0] ?? item.id)
@@ -702,6 +759,21 @@ export function Sidebar({
                             event.preventDefault()
                         }}
                         onKeyDown={(event) => {
+                          if (
+                            (disabled || pending) &&
+                            ([
+                              'Enter',
+                              'Delete',
+                              'Backspace',
+                              'F2',
+                              'ContextMenu',
+                              'F10',
+                            ].includes(event.key) ||
+                              (event.key === ' ' && !picked))
+                          ) {
+                            event.preventDefault()
+                            return
+                          }
                           if (
                             onMenu &&
                             (event.key === 'ContextMenu' ||
@@ -794,17 +866,17 @@ export function Sidebar({
                           <Icon size={15} strokeWidth={1.5} aria-hidden />
                         )}
                         <span className="sidebar-label">{item.label}</span>
-                        {item.dirty && (
+                        {dirty && (
                           <span className="sidebar-dirty" aria-hidden="true">
                             ●
                           </span>
                         )}
-                        {item.decoration?.badge && (
+                        {decoration?.badge && (
                           <span
                             className="sidebar-decoration"
                             aria-hidden="true"
                           >
-                            {item.decoration.badge}
+                            {decoration.badge}
                           </span>
                         )}
                       </button>
@@ -813,13 +885,14 @@ export function Sidebar({
                       <button
                         type="button"
                         className="sidebar-more"
-                        disabled={disabled}
+                        aria-disabled={disabled || pending || undefined}
                         tabIndex={
                           windowed && focusId !== item.id ? -1 : undefined
                         }
                         aria-label={`Actions for ${item.label}`}
                         aria-haspopup="menu"
                         onClick={(event) => {
+                          if (disabled || pending) return
                           setFocused(item.id)
                           onMenu(
                             item.id,

@@ -9,8 +9,11 @@ import {
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import test from 'node:test'
 import { electron, waitForDocumentEditor } from './electron.mjs'
+import {
+  selectFormattedEngine,
+  testFormattedEngines as test,
+} from './formatted-engine.mjs'
 import {
   clickMenu,
   pressShortcut,
@@ -122,6 +125,7 @@ test('sideloads reviewed packages disabled, discovers their settings/themes/comm
     }
   }, extension)
   const page = await app.firstWindow()
+  await selectFormattedEngine(app, page, t.formattedEngine)
   await page.evaluate(() =>
     window.hibi.setAddonTrustSettings({
       allowUnsigned: true,
@@ -142,6 +146,12 @@ test('sideloads reviewed packages disabled, discovers their settings/themes/comm
   }
   const rich = page.getByRole('textbox', { name: /document editor/i })
   await rich.waitFor()
+  await page.evaluate(() =>
+    window.hibi.setAddonTrustSettings({
+      allowUnsigned: true,
+      checkRevocations: false,
+    }),
+  )
   await page.evaluate(() =>
     localStorage.setItem(
       'sidebar-pinned-views',
@@ -245,8 +255,10 @@ test('sideloads reviewed packages disabled, discovers their settings/themes/comm
     .locator('.rich-pane .hibi-token-keyword')
     .waitFor({ state: 'attached' })
   await page.evaluate(() => {
-    window.syntaxSource = document.querySelector('.cm-content')
-    window.syntaxRich = document.querySelector('.tiptap')
+    window.syntaxSource = document.querySelector('.source-pane .cm-content')
+    window.syntaxRich = document.querySelector(
+      '.rich-pane [aria-label="Document editor"]',
+    )
   })
   await choose('disable fixture addon')
   await page
@@ -263,17 +275,35 @@ test('sideloads reviewed packages disabled, discovers their settings/themes/comm
     0,
   )
   assert.equal(await page.locator('.app').getAttribute('data-sidebar'), 'true')
-  await page.waitForFunction(
-    () =>
-      ![...document.querySelectorAll('.hibi-token-keyword')].some(
-        (node) => node.textContent === 'hello addon',
-      ),
+  await t.test(
+    'disabling an addon removes syntax colors from both panes',
+    async () => {
+      await page.waitForFunction(
+        () =>
+          ![...document.querySelectorAll('.hibi-token-keyword')].some(
+            (node) => node.textContent === 'hello addon',
+          ),
+      )
+    },
+  )
+  t.diagnostic(
+    JSON.stringify(
+      await page.evaluate(() => ({
+        remainingSyntax: [...document.querySelectorAll('.hibi-token-keyword')]
+          .filter((node) => node.textContent === 'hello addon')
+          .map((node) =>
+            node.closest('.source-pane') ? 'source' : 'formatted',
+          ),
+      })),
+    ),
   )
   assert.equal(
     await page.evaluate(
       () =>
-        window.syntaxSource === document.querySelector('.cm-content') &&
-        window.syntaxRich === document.querySelector('.tiptap'),
+        window.syntaxSource ===
+          document.querySelector('.source-pane .cm-content') &&
+        window.syntaxRich ===
+          document.querySelector('.rich-pane [aria-label="Document editor"]'),
     ),
     true,
   )

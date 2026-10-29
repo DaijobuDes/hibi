@@ -9,14 +9,18 @@ import {
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import test from 'node:test'
 import { crashAndReload, electron, waitForDocumentEditor } from './electron.mjs'
+import {
+  selectFormattedEngine,
+  testFormattedEngines as test,
+} from './formatted-engine.mjs'
 import { clickMenu, replaceRichText, replaceSourceText } from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
 
 test('native file operations preserve drafts and avoid silent overwrites', {
   timeout: 30000,
 }, async (t) => {
+  const engine = t.formattedEngine
   const folder = await mkdtemp(join(tmpdir(), 'hibi-files-'))
   const alias = join(folder, 'linked')
   await symlink(folder, alias, 'junction')
@@ -40,7 +44,7 @@ test('native file operations preserve drafts and avoid silent overwrites', {
   })
   const page = await app.firstWindow()
   const rich = page.getByRole('textbox', { name: /document editor/i })
-  await waitForDocumentEditor(app, page)
+  await selectFormattedEngine(app, page, engine)
   await app.evaluate(({ dialog }, path) => {
     dialog.showSaveDialog = async () => ({ canceled: false, filePath: path })
   }, destination)
@@ -156,7 +160,17 @@ test('native file operations preserve drafts and avoid silent overwrites', {
   await crashAndReload(app)
   const recovered = await app.evaluate(({ BrowserWindow }) => {
     const contents = BrowserWindow.getAllWindows()[0].webContents
-    return contents.executeJavaScript('window.hibi.getDocument()')
+    // Playwright retains its crashed target; wait in the replacement renderer.
+    return contents.executeJavaScript(`
+      new Promise(resolve => {
+        const ready = () => {
+          if (!document.querySelector('.app[aria-busy="false"] #document-editor-panel [contenteditable="true"]'))
+            return requestAnimationFrame(ready)
+          window.hibi.getDocument().then(resolve)
+        }
+        ready()
+      })
+    `)
   })
   assert.equal(recovered.markdown, draft)
   assert.equal(recovered.dirty, true)

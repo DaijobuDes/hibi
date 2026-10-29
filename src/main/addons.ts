@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { lstat, readFile, realpath, rename, writeFile } from 'node:fs/promises'
+import { lstat, readFile, realpath } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import catalog from 'virtual:hibi-addon-catalog/main'
 import { app, type BrowserWindow, dialog } from 'electron'
@@ -18,9 +18,10 @@ import {
 import { parseDependencies } from '../shared/dependencies'
 import { validDocumentExtensions } from '../shared/document-types'
 import type { AddonId, AddonOwner } from '../shared/foundation-contracts'
+import type { ImportFile, ImportStream } from '../shared/imports'
+import { stopNativeAddon } from './addon-stop'
 import { getAddonRevocation, loadAddonTrust } from './addon-trust'
 import { exportedAppearance } from './appearance'
-import { retryRename } from './atomic-rename'
 import {
   clearDocument,
   getDocument,
@@ -44,10 +45,10 @@ import {
 } from './sideload'
 import { testPause } from './test-pauses'
 import {
-  getWorkspace,
   refreshWorkspace,
   resolveWorkspaceFile,
   snapshotWorkspace,
+  workspaceEntries,
   workspaceId,
   workspaceRoot,
 } from './workspace'
@@ -192,8 +193,7 @@ export async function loadAddons(): Promise<void> {
   if (enabledModal.length > 1) {
     for (const manifest of enabledModal) enabled[manifest.id] = false
     const path = join(app.getPath('userData'), 'addons.json')
-    await writeFile(`${path}.tmp`, JSON.stringify(enabled), { mode: 0o600 })
-    await retryRename(() => rename(`${path}.tmp`, path))
+    await writeText(path, JSON.stringify(enabled))
     addonStartupNotices.push(
       'Multiple modal addons were enabled. They were disabled to keep regular editing mode safe.',
     )
@@ -210,6 +210,10 @@ export async function applyAddonRevocations(): Promise<void> {
   await savePreferences(next)
 }
 
+export async function stopNativeAddons() {
+  await Promise.all([...natives.values()].map(stopNativeAddon))
+}
+
 export function getAddonStartupNotices() {
   return [...addonStartupNotices]
 }
@@ -218,7 +222,11 @@ export function getAddonStates(): AddonState[] {
   setDocumentExtensions(
     manifests().flatMap((manifest) => manifest.fileExtensions ?? []),
   )
-  return addonStates(enabled)
+  return addonStates(enabled).map((state) =>
+    active(state)
+      ? { ...state, activation: generations.get(state.id) ?? 0 }
+      : state,
+  )
 }
 
 function addonStates(
@@ -287,6 +295,8 @@ export function invalidateAddonActivations(): void {
   for (const state of getAddonStates())
     if (state.enabled)
       generations.set(state.id, (generations.get(state.id) ?? 0) + 1)
+  // Editor windows compare failures by activation.
+  onAddonStatesChanged(getAddonStates())
 }
 
 export function getImporters(): import('../shared/imports').Importer[] {
@@ -309,7 +319,8 @@ export function getImporters(): import('../shared/imports').Importer[] {
 }
 export async function convertImport(
   id: string,
-  files: readonly import('../shared/imports').ImportFile[],
+  files: readonly ImportFile[],
+  stream?: ImportStream,
 ) {
   const generation = getAddonActivationGeneration(id)
   if (
@@ -324,7 +335,44 @@ export async function convertImport(
     )
   if (!addon?.import)
     throw new Error('This addon does not provide an importer.')
-  return addon.import(files)
+  const streamConvert = (
+    addon as NativeAddon & {
+      importStream?: (stream: ImportStream) => Promise<string[]>
+    }
+  ).importStream
+  let result: Awaited<ReturnType<NonNullable<NativeAddon['import']>>>
+  if (stream && streamConvert)
+    result = { files: [], warnings: await streamConvert(stream) }
+  else {
+    let input = files
+    if (stream) {
+      // Older compiled importers require all bytes at once; bound that legacy contract.
+      const buffered: ImportFile[] = []
+      let size = 0
+      for (let index = 0; index < stream.paths.length; index++) {
+        stream.signal?.throwIfAborted()
+        const data = await stream.read(index)
+        size += data.byteLength
+        if (size > 256 * 1024 * 1024)
+          throw new Error(
+            'This importer requires an in-memory export under 256 MiB.',
+          )
+        buffered.push({ path: stream.paths[index] as string, data })
+      }
+      input = buffered
+    }
+    result = await addon.import(input)
+    if (stream)
+      for (const file of result.files) {
+        stream.signal?.throwIfAborted()
+        await stream.write(file)
+      }
+  }
+  if (!isAddonActivationCurrent(id, generation))
+    throw new Error(
+      'This importer is no longer enabled or its required addons are unavailable.',
+    )
+  return result
 }
 
 /** Name of an enabled addon compiled with Hibi; only these can open addon windows. */
@@ -453,8 +501,7 @@ async function commitPreferences(
   // The list already masks revoked states; retain the previous preference for runtime cleanup.
   const before = addonStates(enabled, true)
   const path = join(app.getPath('userData'), 'addons.json')
-  await writeFile(`${path}.tmp`, JSON.stringify(next), { mode: 0o600 })
-  await retryRename(() => rename(`${path}.tmp`, path))
+  await writeText(path, JSON.stringify(next))
   enabled = next
   await deactivateUnavailable(before)
   const states = getAddonStates()
@@ -483,14 +530,14 @@ async function deactivateUnavailable(before: readonly AddonState[]) {
       generations.set(id, generation + 1)
       return { id, generation }
     })
-  for (const { id, generation } of owners) {
-    try {
-      natives.get(id)?.stop?.()
-    } catch (error) {
-      console.error(`could not stop native addon ${id}:`, error)
-    }
+  await Promise.all(
+    owners.map(({ id }) => {
+      const native = natives.get(id)
+      return native ? stopNativeAddon(native) : undefined
+    }),
+  )
+  for (const { id, generation } of owners)
     await onAddonDeactivated(id, generation)
-  }
 }
 
 async function disableAddonForReplacement(
@@ -629,7 +676,7 @@ export async function invokeAddon(
   id: unknown,
   method: unknown,
   input: unknown,
-  query = false,
+  kind: 'invoke' | 'query' | 'profile' = 'invoke',
 ): Promise<unknown> {
   if (typeof id !== 'string' || typeof method !== 'string')
     throw new Error('Enable this addon in Settings → Addons first.')
@@ -641,13 +688,19 @@ export async function invokeAddon(
     throw new Error(
       'This addon was disabled. Enable it in Settings → Addons to continue.',
     )
-  const handlers = query ? addon?.queries : addon?.methods
+  const handlers =
+    kind === 'profile'
+      ? addon?.profileMethods
+      : kind === 'query'
+        ? addon?.queries
+        : addon?.methods
   if (!handlers || !Object.hasOwn(handlers, method))
     throw new Error('This addon does not support the requested action.')
   const handler = handlers[method]
   if (!handler)
     throw new Error('This addon does not support the requested action.')
   return handler(input, {
+    isCurrent: () => isAddonActivationCurrent(id, generation),
     dependencies: {
       resolve: async (dependency) =>
         (await import('./dependencies')).resolveDependency(id, dependency),
@@ -662,7 +715,7 @@ export async function invokeAddon(
             'This document is no longer in the workspace. Open it again.',
           )
         async function find(
-          entries: import('../shared/workspace').WorkspaceEntry[],
+          entries: readonly import('../shared/workspace').WorkspaceEntry[],
         ): Promise<string | null> {
           for (const entry of entries) {
             if (entry.children) {
@@ -676,7 +729,7 @@ export async function invokeAddon(
           }
           return null
         }
-        const path = await find(getWorkspace()?.entries ?? [])
+        const path = await find(workspaceEntries())
         if (!path)
           throw new Error(
             'This document is no longer in the workspace. Open it again.',

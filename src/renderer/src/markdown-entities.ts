@@ -8,11 +8,13 @@ import type {
 import type { MarkdownManager } from '@tiptap/markdown'
 import { decodeHTMLStrict, encodeHTML } from 'entities'
 import type { Marked, Token } from 'marked'
-import { preserveInlineHtml } from './RawHtml.ts'
+import { preserveInlineHtml } from '../../shared/markdown-inline-html.ts'
+import { blockMarkdown } from '../../shared/marked-blocks.ts'
 
 const richParsers = new WeakSet<object>()
 
 export function richTextParser(parser: Marked) {
+  parser.use(blockMarkdown)
   const BaseLexer = parser.Lexer
   class RichLexer<
     ParserOutput = string,

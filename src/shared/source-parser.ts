@@ -1,4 +1,5 @@
 import {
+  type ChangedRange,
   type Input,
   type Parser,
   type PartialParse,
@@ -11,6 +12,7 @@ import {
   type SourceSnapshot,
   type SourceStorageChange,
 } from './source-buffer.ts'
+import { safePosition } from './source-operations.ts'
 import {
   editorChangesFromSource,
   normalizedSource,
@@ -38,29 +40,57 @@ export function sourceParserInput(
   source: SourceSnapshot,
   work = emptyWork(),
 ): Input {
-  const read = (from: number, to: number) => {
-    const rawFrom = source.editorToRaw(from),
-      rawTo = source.editorToRaw(to)
-    if (rawFrom === null || rawTo === null || to < from)
+  const length = source.normalizedLength
+  let cachedFrom = -1,
+    cachedTo = -1,
+    lineTo = -1,
+    text = ''
+  const range = (from: number, to: number) => {
+    if (!safePosition(from) || !safePosition(to) || to < from || to > length)
       throw new Error('Parser input range is outside its source snapshot.')
+  }
+  const lineAt = (from: number) => {
+    if (
+      from >= cachedFrom &&
+      (from < cachedTo || (from === length && lineTo === length))
+    )
+      return
+    const raw = source.editorToRaw(from),
+      line = raw === null ? null : source.lineAt(raw)
+    if (!line)
+      throw new Error('Parser input range is outside its source snapshot.')
+    cachedFrom = source.rawToEditor(line.from)!
+    // Lezer may scan a fragment boundary backwards one character at a time.
+    // Keep that work on this snapshot's normalized line instead of the piece table.
+    text = normalizedSource(source.sliceRaw(line.from, line.to))
+    lineTo = cachedFrom + text.length
+    if (line.number < source.lineCount) text += '\n'
+    cachedTo = cachedFrom + text.length
+  }
+  const read = (from: number, to: number) => {
+    range(from, to)
     work.readCalls++
     work.readUnits += to - from
     work.maximumRead = Math.max(work.maximumRead, to - from)
+    // The unit before a cached line start is its normalized line break.
+    if (from === cachedFrom - 1 && to === cachedFrom) return '\n'
+    lineAt(from)
+    if (to <= cachedTo) return text.slice(from - cachedFrom, to - cachedFrom)
+    const rawFrom = source.editorToRaw(from),
+      rawTo = source.editorToRaw(to)
+    if (rawFrom === null || rawTo === null)
+      throw new Error('Parser input range is outside its source snapshot.')
     return normalizedSource(source.sliceRaw(rawFrom, rawTo))
   }
   return Object.freeze({
-    length: source.normalizedLength,
+    length,
     lineChunks: true,
     chunk: (from: number) => {
-      const raw = source.editorToRaw(from),
-        line = raw === null ? null : source.lineAt(raw)
-      if (!line)
-        throw new Error('Parser input range is outside its source snapshot.')
+      range(from, from)
+      lineAt(from)
       // ponytail: Markdown scanner needs whole physical lines. One long line can
       // allocate its full length; bounded chunks need scanner support for split lines.
-      let to = source.rawToEditor(line.to)!
-      if (to === from && from < source.normalizedLength) to++
-      return read(from, to)
+      return read(from, from === lineTo && from < length ? from + 1 : lineTo)
     },
     read,
   })
@@ -137,16 +167,85 @@ export class SourceParserSession {
       shift += change.insert.length - (change.to - change.from)
       return range
     })
+    this.#invalidateFragments(ranges, prepared.after)
+  }
+  /** invalidate grammar lookahead dependencies without changing canonical source. */
+  invalidate(from: number, to: number) {
+    const source = this.#state.source,
+      start = source.rawToEditor(from),
+      end = source.rawToEditor(to)
+    if (
+      this.#disposed ||
+      !safePosition(from) ||
+      !safePosition(to) ||
+      to <= from ||
+      start === null ||
+      end === null
+    )
+      throw new Error('Parser invalidation is outside its source snapshot.')
+    this.#invalidateFragments(
+      [{ fromA: start, toA: end, fromB: start, toB: end }],
+      source,
+    )
+  }
+  #invalidateFragments(
+    ranges: readonly ChangedRange[],
+    source: SourceSnapshot,
+  ) {
+    // All fragments refer to the last completed tree. Mapping another edit
+    // can close an earlier open edge; its tree position still stays fixed.
+    const openStarts = new Set<number>(),
+      openEnds = new Set<number>()
+    for (const fragment of this.#fragments) {
+      this.#work.fragmentVisits++
+      if (fragment.openStart) openStarts.add(fragment.from + fragment.offset)
+      if (fragment.openEnd) openEnds.add(fragment.to + fragment.offset)
+    }
     this.#work.fragmentVisits += this.#fragments.length
     const fragments = TreeFragment.applyChanges(this.#fragments, ranges)
     // A burst may outgrow useful reuse. Release that table; a background full
     // parse is preferable to retaining an unbounded edit-fragment directory.
     this.#fragments =
-      fragments.length <= this.#maximumFragments ? fragments : []
+      fragments.length <= this.#maximumFragments
+        ? fragments.map((fragment) => {
+            this.#work.fragmentVisits++
+            const openStart =
+                fragment.openStart ||
+                openStarts.has(fragment.from + fragment.offset),
+              openEnd =
+                fragment.openEnd || openEnds.has(fragment.to + fragment.offset)
+            // markdown can reuse an open fragment at an indented line start.
+            // keep its first unit outside reuse to reparse that line.
+            const rawFrom = openStart ? source.editorToRaw(fragment.from) : null
+            const lineStart =
+              rawFrom !== null &&
+              source.lineAt(rawFrom)?.from === rawFrom &&
+              (rawFrom === 0 ||
+                /^[ \t]/.test(
+                  source.sliceRaw(
+                    rawFrom,
+                    Math.min(rawFrom + 1, source.utf16Length),
+                  ),
+                ))
+            const from = lineStart ? fragment.from + 1 : fragment.from
+            return from === fragment.from &&
+              openStart === fragment.openStart &&
+              openEnd === fragment.openEnd
+              ? fragment
+              : new TreeFragment(
+                  from,
+                  fragment.to,
+                  fragment.tree,
+                  fragment.offset,
+                  openStart,
+                  openEnd,
+                )
+          })
+        : []
     this.#pending = null
     this.#state = Object.freeze({
       ...this.#state,
-      source: prepared.after,
+      source,
       tree: null,
       complete: false,
     })

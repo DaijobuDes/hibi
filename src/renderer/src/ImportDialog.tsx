@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { errorMessage } from '../../shared/errors'
 import type { Importer, ImportResult, ImportSource } from '../../shared/imports'
-import type { WorkspaceState } from '../../shared/workspace'
+import type { WorkspaceHeader } from '../../shared/workspace-view'
 import { Button, Select } from '../../ui/Controls'
 import { DocumentNotice } from '../../ui/DocumentNotice'
 import type { DialogApi } from '../../ui/dialogs'
@@ -14,15 +14,21 @@ function ImportDialog({
   settings: () => void
 }) {
   const [importers, setImporters] = useState<Importer[]>([])
-  const [workspace, setWorkspace] = useState<WorkspaceState | null>(null)
+  const [workspace, setWorkspace] = useState<WorkspaceHeader | null>(null)
   const [id, setId] = useState('folder')
   const [source, setSource] = useState<ImportSource>('folder')
   const [busy, setBusy] = useState(false)
+  const [cancelling, setCancelling] = useState(false)
+  const cancelRequested = useRef(false)
+  const importing = useRef(false)
   const [error, setError] = useState('')
   const [result, setResult] = useState<ImportResult | null>(null)
   useEffect(() => {
     let active = true
-    void Promise.all([window.hibi.listImporters(), window.hibi.getWorkspace()])
+    void Promise.all([
+      window.hibi.listImporters(),
+      window.hibi.getWorkspaceHeader(),
+    ])
       .then(([items, workspace]) => {
         if (active) {
           setImporters(items)
@@ -34,6 +40,8 @@ function ImportDialog({
       })
     return () => {
       active = false
+      if (importing.current)
+        void window.hibi.cancelWorkspaceImport().catch(() => {})
     }
   }, [])
   const importer = importers.find((item) => item.id === id)
@@ -114,7 +122,21 @@ function ImportDialog({
       {error && <DocumentNotice title="Import failed" message={error} />}
       {busy && <DocumentNotice title="Importing files…" busy />}
       <div className="dialog-actions">
-        <Button disabled={busy} onClick={close}>
+        <Button
+          disabled={cancelling}
+          onClick={async () => {
+            if (!busy) return close()
+            cancelRequested.current = true
+            setCancelling(true)
+            try {
+              await window.hibi.cancelWorkspaceImport()
+            } catch (error) {
+              cancelRequested.current = false
+              setCancelling(false)
+              setError(errorMessage(error))
+            }
+          }}
+        >
           {result ? 'Done' : 'Cancel'}
         </Button>
         {!result && (
@@ -122,20 +144,24 @@ function ImportDialog({
             disabled={busy || !workspace?.manifest || !importer}
             onClick={async () => {
               if (!workspace?.id) return
+              cancelRequested.current = false
+              importing.current = true
               setBusy(true)
               setError('')
               try {
-                setResult(
-                  await window.hibi.importIntoWorkspace({
-                    id,
-                    source,
-                    workspaceId: workspace.id,
-                  }),
-                )
+                const imported = await window.hibi.importIntoWorkspace({
+                  id,
+                  source,
+                  workspaceId: workspace.id,
+                })
+                if (!imported && cancelRequested.current) close()
+                else setResult(imported)
               } catch (error) {
                 setError(errorMessage(error))
               } finally {
+                importing.current = false
                 setBusy(false)
+                setCancelling(false)
               }
             }}
           >

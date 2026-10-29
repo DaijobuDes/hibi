@@ -13,12 +13,12 @@ import {
 } from 'react'
 import { flushSync } from 'react-dom'
 import { createRoot } from 'react-dom/client'
+import { legacySdk } from '../../addons/sdk-host'
 import type {
   AppInfo,
   DocumentCommand,
   DocumentState,
 } from '../../shared/desktop'
-import { MAX_DOCUMENT_BYTES } from '../../shared/desktop'
 import type {
   CommandExecutionContext,
   FileId,
@@ -26,21 +26,22 @@ import type {
   WorkspaceId,
   WorkspaceTarget,
 } from '../../shared/foundation-contracts'
+import { headingAnchors } from '../../shared/heading-anchor'
 import {
   type AppCommand,
   actions,
   defaultHotkeys,
   type Hotkeys,
 } from '../../shared/hotkeys'
-import { hasFootnoteDefinitions } from '../../shared/markdown-footnotes'
 import { isMediaFile } from '../../shared/media'
+import type { SourceTransferSender } from '../../shared/source-transfer'
 import { startupMark } from '../../shared/startup'
-import { exceedsUtf8Limit } from '../../shared/text-size'
 import { workspaceSyntaxEvents } from '../../shared/workspace-syntax-events.ts'
 import { DialogProvider, useDialogs } from '../../ui/DialogProvider'
 import { MenuHost } from '../../ui/MenuHost'
 import { ToastProvider, useToasts } from '../../ui/Sonner'
 import type { ToastHandle } from '../../ui/toasts'
+import { createWorkspaceView, type WorkspaceView } from './workspace-view'
 import './styles.css'
 import '../../ui/ui-case'
 import { Minimize2, X } from 'lucide-react'
@@ -61,10 +62,7 @@ import {
   SIDEBAR_OVERLAY_WIDTH,
   useSidebarResize,
 } from '../../ui/useSidebarResize'
-import {
-  ActiveDocumentEditor,
-  type DocumentFlavorStatus,
-} from './ActiveDocumentEditor'
+import type { DocumentFlavorStatus } from './ActiveDocumentEditor'
 import { AddonPanel } from './AddonPanel'
 import type { AddonRequest } from './AddonSettings'
 import { AddonSidebar, builtInViews, viewShortcut } from './AddonSidebar'
@@ -82,10 +80,15 @@ import {
   documentRuntime,
   observeDocumentErrors,
 } from './document-runtime'
-import { subscribeDocumentShell } from './document-shell'
+import {
+  hasDocumentFootnotes,
+  preferSourceOpening,
+  subscribeDocumentShell,
+} from './document-shell'
 import type { ViewMode } from './Editor'
 import { EditorToolbar } from './EditorToolbar'
 import { isEditorCommandTargetCurrent } from './editor-command-targets'
+import { focusEditor } from './editor-focus'
 import { setEditorCommandMenu } from './editor-interaction-presence'
 import { editorPreferences, useEditorPreference } from './editor-preferences'
 import { FlavorPicker } from './FlavorPicker'
@@ -96,6 +99,7 @@ import {
   loadFlavor,
   selectedFlavors,
 } from './flavors'
+import { codemirrorFormattedView } from './formatted-engine'
 import { LoadingScreen } from './LoadingScreen'
 import { installRendererDiagnostics } from './local-diagnostics'
 import { transformMarkdown } from './markdown-projection'
@@ -104,7 +108,7 @@ import {
   type OutlineRequest,
   OutlineSidebar,
 } from './OutlineSidebar'
-import { RecoveryBoundary } from './RecoveryScreen'
+import { RecoveryBoundary } from './RecoveryBoundary'
 import { StartupPlaceholder } from './StartupPlaceholder'
 import { StatusBar, type StatusBarVisibility } from './StatusBar'
 import { settingsCategories } from './settings-categories'
@@ -115,6 +119,11 @@ import { viewNotifications } from './view-notifications'
 import { WorkspaceSidebar } from './WorkspaceSidebar'
 import { WorkspacesSidebar } from './WorkspacesSidebar'
 import { type WorkspaceRename, workspaceMenuItems } from './workspace-menu'
+
+if (!codemirrorFormattedView) {
+  legacySdk.all = () => import('../../addons/sdk')
+  legacySdk.rich = () => import('@tiptap/core')
+}
 
 const stopLocalDiagnostics = installRendererDiagnostics(window.hibiDiagnostics)
 import.meta.hot?.dispose(stopLocalDiagnostics)
@@ -300,6 +309,7 @@ function App() {
     !document || documentFormats.isMarkdown(document.name)
   const [richEditor, setRichEditor] = useState<{
     Component?: typeof import('./Editor').MarkdownEditor
+    Adapter?: typeof import('./ActiveDocumentEditor').ActiveDocumentEditor
     error?: Error
   }>({})
   const needsRichEditor =
@@ -313,13 +323,27 @@ function App() {
         })
       ))
   useEffect(() => {
-    if (!needsRichEditor || richEditor.Component || richEditor.error) return
+    if (
+      !needsRichEditor ||
+      (richEditor.Component && richEditor.Adapter) ||
+      richEditor.error
+    )
+      return
     let active = true
     // Publish the demanded module as ordinary state: a first Suspense retry can
     // otherwise hold an already loaded editor behind React's reveal throttle.
-    void import('./Editor').then(
-      ({ MarkdownEditor }) => {
-        if (active) setRichEditor({ Component: MarkdownEditor })
+    void Promise.all([
+      codemirrorFormattedView
+        ? import('./FormattedEditor')
+        : import('./Editor'),
+      import('./ActiveDocumentEditor'),
+    ]).then(
+      ([{ MarkdownEditor }, { ActiveDocumentEditor }]) => {
+        if (active)
+          setRichEditor({
+            Component: MarkdownEditor,
+            Adapter: ActiveDocumentEditor,
+          })
       },
       (error: Error) => {
         if (active) setRichEditor({ error })
@@ -331,6 +355,7 @@ function App() {
   }, [needsRichEditor, richEditor])
   const [formatEditor, setFormatEditor] = useState<{
     Component?: typeof import('./FormatEditor').FormatEditor
+    Adapter?: typeof import('./ActiveDocumentEditor').ActiveDocumentEditor
     error?: Error
   }>({})
   const needsFormatEditor =
@@ -354,21 +379,54 @@ function App() {
   const shellDocument = useRef(document)
   shellDocument.current = document
   currentDocument.current = documentRuntime.get() ?? document
-  useLayoutEffect(
-    () =>
-      window.hibi.onDocumentCheckpoint((tabId) => {
-        const source = documentRuntime.session(tabId)?.snapshot()
-        if (!source)
+  useLayoutEffect(() => {
+    const checkpoints = new Map<
+      string,
+      { sender: SourceTransferSender; current: () => boolean }
+    >()
+    const tabs = new Map<string, string>()
+    return window.hibi.onDocumentCheckpoint(
+      async (tabId) => {
+        const session = documentRuntime.session(tabId),
+          source = session?.snapshot()
+        if (!session || !source)
           throw new Error('No retained document recovery checkpoint.')
-        return {
+        const { SourceTransferSender } = await import(
+          '../../shared/source-transfer'
+        )
+        if (!session.ownsCurrentSnapshot(source))
+          throw new Error('The document changed during recovery verification.')
+        const previous = tabs.get(tabId)
+        if (previous) {
+          checkpoints.get(previous)?.sender.close()
+          checkpoints.delete(previous)
+        }
+        const head = {
           tabId: source.document.tabId,
           revision: source.document.revision,
           contentVersion: source.version,
-          source: source.materialize(),
+          streamId: crypto.randomUUID(),
+          length: source.utf16Length,
         }
-      }),
-    [],
-  )
+        checkpoints.set(head.streamId, {
+          sender: new SourceTransferSender(head, source.chunks()),
+          current: () => session.ownsCurrentSnapshot(source),
+        })
+        tabs.set(tabId, head.streamId)
+        return head
+      },
+      (request) => {
+        const checkpoint = checkpoints.get(request.streamId)
+        if (!checkpoint?.current())
+          throw new Error('The document changed during recovery verification.')
+        return checkpoint.sender.read(request)
+      },
+      (request) => {
+        checkpoints.get(request.streamId)?.sender.close()
+        checkpoints.delete(request.streamId)
+      },
+    )
+  }, [])
   useLayoutEffect(
     () =>
       subscribeDocumentShell(
@@ -500,38 +558,17 @@ function App() {
   useEffect(() => {
     const side = focusSplitSide.current
     if (busy || !DocumentEditor || !side || splitTabs?.active !== side) return
-    const reveal = () => {
-      if (
-        window.document.activeElement?.matches('.document-tabs [role="tab"]')
-      ) {
-        focusSplitSide.current = null
-        observer.disconnect()
-        return
-      }
-      const target = Array.from(
-        window.document.querySelectorAll<HTMLElement>(
-          `.editor-page[data-side="${side}"] [contenteditable="true"]`,
-        ),
-      ).find(
-        (element) =>
-          !element.closest('[inert]') && element.getClientRects().length,
-      )
-      if (target) {
-        target.focus({ preventScroll: true })
-        focusSplitSide.current = null
-        observer.disconnect()
-      }
-    }
-    const observer = new MutationObserver(reveal)
-    observer.observe(window.document.body, { childList: true, subtree: true })
-    const frame = requestAnimationFrame(reveal)
-    return () => {
-      observer.disconnect()
-      cancelAnimationFrame(frame)
-    }
+    focusSplitSide.current = null
+    if (window.document.activeElement?.matches('.document-tabs [role="tab"]'))
+      return
+    focusEditor({ preventScroll: true })
   }, [busy, DocumentEditor, splitTabs?.active])
   const acknowledgeSave = useCallback(
-    (saved: DocumentState, token: DocumentSaveToken, expectedId?: string) => {
+    (
+      saved: import('../../shared/desktop').DocumentSaveReply,
+      token: DocumentSaveToken,
+      expectedId?: string,
+    ) => {
       const previous = documentRuntime.get(saved.tabId)
       const acknowledged = documentRuntime.acknowledgeSave(
         saved,
@@ -558,7 +595,19 @@ function App() {
     return saved && isDocumentView(saved) ? saved : 'normal'
   })
   const [selectedMode, setSelectedMode] = useState<ViewMode>(defaultView)
+  const [richRequests, setRichRequests] = useState<ReadonlyMap<string, number>>(
+    new Map(),
+  )
   const setMode = useCallback((view: ViewMode) => {
+    const document = currentDocument.current
+    if (document)
+      setRichRequests((current) => {
+        const open = new Set(document.tabs.map((tab) => tab.id))
+        const next = new Map([...current].filter(([id]) => open.has(id)))
+        if (view === 'markdown') next.delete(document.tabId)
+        else next.set(document.tabId, document.revision)
+        return next
+      })
     setSelectedMode(view)
     setSplitTabs((current) =>
       current
@@ -626,7 +675,18 @@ function App() {
     if (settingsOpen || paletteOpen) setSettingsLoaded(true)
   }, [settingsOpen, paletteOpen])
   const [findOpen, setFindOpen] = useState(false)
-  const [workspace, setWorkspace] = useState<WorkspaceState | null>(null)
+  const [workspace, setWorkspace] = useState<WorkspaceView | null>(null)
+  const workspaceView = useMemo(
+    () => createWorkspaceView(window.hibi, setWorkspace),
+    [],
+  )
+  const refreshWorkspaceView = useCallback(() => {
+    void workspaceView
+      .refresh()
+      .catch((error: unknown) =>
+        setError(error instanceof Error ? error.message : String(error)),
+      )
+  }, [workspaceView, setError])
   const fileMenuTarget = useRef<{
     workspace: WorkspaceState
     file: FileTarget
@@ -808,7 +868,11 @@ function App() {
   function captureFileCommandContext(
     entry: WorkspaceEntry,
   ): CommandExecutionContext | null {
-    if (!workspace?.id || workspace.workspaceGeneration === undefined)
+    if (
+      !workspaceView.isCurrent(workspace) ||
+      !workspace?.id ||
+      workspace.workspaceGeneration === undefined
+    )
       return null
     const file: FileTarget = {
       workspaceId: workspace.id as WorkspaceId,
@@ -867,6 +931,10 @@ function App() {
           context.view.viewGeneration === current.view.viewGeneration))
     )
   }
+  const sourceFirst =
+    markdownDocument &&
+    preferSourceOpening(documentRuntime, currentDocument.current ?? document) &&
+    richRequests.get(document?.tabId ?? '') !== document?.revision
   const addonHost = useAddons(
     {
       captureCommandContext: captureAddonCommandContext,
@@ -895,7 +963,7 @@ function App() {
       },
       focusDocument,
       isBusy: () => busyRef.current,
-      getMarkdown: () => editorDocument.get()?.markdown ?? '',
+      getEditorDocument: () => editorDocument.get(),
       runAction: (command) => runAction(command),
       runCommand: (command) => runCommand(command),
       updateMarkdown(transform, options) {
@@ -916,7 +984,8 @@ function App() {
         index: () => window.hibi.getWorkspaceIndex(),
         snapshot: () => window.hibi.getWorkspaceSnapshot(),
         get: () => window.hibi.getWorkspace(),
-        open: openFolder,
+        open: async () =>
+          (await openFolder()) ? window.hibi.getWorkspace() : null,
         openFile: async (path, owner) => {
           await openFile(path, owner)
         },
@@ -933,7 +1002,7 @@ function App() {
           if (next.revision !== document?.revision) {
             await acceptOperationDocument(next)
           }
-          setWorkspace(await window.hibi.getWorkspace())
+          refreshWorkspaceView()
           return result
         } finally {
           endBusy()
@@ -947,24 +1016,34 @@ function App() {
         ),
     },
     document?.name,
-    documentFormat?.views && !documentFormat.views.includes(selectedMode)
-      ? documentFormat.views.includes('side-by-side')
-        ? 'side-by-side'
-        : 'markdown'
-      : selectedMode,
+    markdownDocument &&
+      preferSourceOpening(documentRuntime, currentDocument.current ?? document)
+      ? 'markdown'
+      : documentFormat?.views && !documentFormat.views.includes(selectedMode)
+        ? documentFormat.views.includes('side-by-side')
+          ? 'side-by-side'
+          : 'markdown'
+        : selectedMode,
   )
   useEffect(() => {
     if (
       !addonHost.ready ||
       !needsFormatEditor ||
-      formatEditor.Component ||
+      (formatEditor.Component && formatEditor.Adapter) ||
       formatEditor.error
     )
       return
     let active = true
-    void import('./FormatEditor').then(
-      ({ FormatEditor }) => {
-        if (active) setFormatEditor({ Component: FormatEditor })
+    void Promise.all([
+      import('./FormatEditor'),
+      import('./ActiveDocumentEditor'),
+    ]).then(
+      ([{ FormatEditor }, { ActiveDocumentEditor }]) => {
+        if (active)
+          setFormatEditor({
+            Component: FormatEditor,
+            Adapter: ActiveDocumentEditor,
+          })
       },
       (error: Error) => {
         if (active) setFormatEditor({ error })
@@ -993,21 +1072,23 @@ function App() {
       flavors: chosenFlavors,
       projections: addonHost.markdownExtensions,
     }
+  // The CodeMirror formatted view edits footnotes in place.
   const footnoteDocument =
     markdownDocument &&
-    hasFootnoteDefinitions(
-      currentDocument.current?.markdown ?? document?.markdown ?? '',
-    )
+    !codemirrorFormattedView &&
+    hasDocumentFootnotes(documentRuntime, currentDocument.current ?? document)
   const availableViews = addonHost.sourceOnly
     ? ['markdown' as const]
     : documentFormats
         .views(document?.name ?? 'untitled.md')
         .filter((view) => !footnoteDocument || view !== 'normal')
-  const mode: ViewMode = availableViews.includes(selectedMode)
-    ? selectedMode
-    : availableViews.includes('side-by-side')
-      ? 'side-by-side'
-      : 'markdown'
+  const mode: ViewMode = sourceFirst
+    ? 'markdown'
+    : availableViews.includes(selectedMode)
+      ? selectedMode
+      : availableViews.includes('side-by-side')
+        ? 'side-by-side'
+        : 'markdown'
   useLayoutEffect(() => {
     if (settingsOpen || !settingsFocus.current) return
     const { intent, previous } = settingsFocus.current
@@ -1021,14 +1102,8 @@ function App() {
       !(active instanceof HTMLElement && active.closest('.settings-screen'))
     )
       return
-    window.document
-      .querySelector<HTMLElement>(
-        mode === 'markdown'
-          ? '.editor-surface:not([inert]) .cm-content'
-          : '.editor-surface:not([inert]) .tiptap',
-      )
-      ?.focus()
-  }, [settingsOpen, mode])
+    focusEditor()
+  }, [settingsOpen])
   const sidebarViews = [
     ...builtInViews,
     ...addonHost.sidebarViews.map(viewShortcut),
@@ -1076,11 +1151,8 @@ function App() {
     localStorage.removeItem('sidebar-open')
   }, [])
   useEffect(
-    () =>
-      window.hibi.onWorkspaceChanged((next) => {
-        setWorkspace(next)
-      }),
-    [],
+    () => window.hibi.onWorkspaceHeaderChanged(refreshWorkspaceView),
+    [refreshWorkspaceView],
   )
   // biome-ignore lint/correctness/useExhaustiveDependencies: the dialog callback uses the current settings opener after a one-time vault prompt.
   useEffect(() => {
@@ -1245,12 +1317,7 @@ function App() {
   openUpdates.current = () => openSetting('hibi', 'install-update')
 
   function startWriting() {
-    const focus = () =>
-      window.document
-        .querySelector<HTMLElement>(
-          mode === 'normal' ? '.tiptap' : '.cm-content',
-        )
-        ?.focus()
+    const focus = () => focusEditor()
     // Wait for a closing dialog to restore focus before moving it to the editor.
     if (!showWelcome) requestAnimationFrame(focus)
     else
@@ -1285,37 +1352,31 @@ function App() {
     startupMark('bootstrap-document-effect')
     window.hibi.bootstrap
       .document()
-      .then(
-        ({
-          info,
-          document,
-          hotkeys,
-          workspace,
-          externalPending,
-          introduction,
-        }) => {
-          startupMark('bootstrap-document-result')
-          if (active) {
-            initialExternalPending.current = externalPending
-            setIntroductionOpen(
-              introduction && localStorage.getItem('introduction') === 'pending'
-                ? 'automatic'
-                : null,
-            )
-            setWorkspace(workspace)
-            setInfo(info)
-            acceptDocument(document)
-            setHotkeys(hotkeys)
-          }
-        },
-      )
+      .then(({ info, document, hotkeys, externalPending, introduction }) => {
+        startupMark('bootstrap-document-result')
+        if (active) {
+          initialExternalPending.current = externalPending
+          setIntroductionOpen(
+            introduction && localStorage.getItem('introduction') === 'pending'
+              ? 'automatic'
+              : null,
+          )
+          void workspaceView.refresh().catch((error: unknown) => {
+            if (active)
+              setError(error instanceof Error ? error.message : String(error))
+          })
+          setInfo(info)
+          acceptDocument(document)
+          setHotkeys(hotkeys)
+        }
+      })
       .catch(() => {
         if (active) setFailed(true)
       })
     return () => {
       active = false
     }
-  }, [acceptDocument])
+  }, [acceptDocument, workspaceView, setError])
 
   // A file opened from outside takes over; the introduction stays pending for the next launch.
   useEffect(() => {
@@ -1347,7 +1408,7 @@ function App() {
         if (result.document) {
           await acceptOperationDocument(result.document, true)
           showDocument(intent)
-          setWorkspace(await window.hibi.getWorkspace())
+          refreshWorkspaceView()
         }
         if (result.errors.length) setError(result.errors.join('\n'))
       } catch (error) {
@@ -1389,7 +1450,6 @@ function App() {
       startBusy()
       setSavingTab(saving ? (currentDocument.current?.tabId ?? null) : null)
       setError('')
-      let refresh: Promise<WorkspaceState | null> | undefined
       try {
         const next = await (command === 'new'
           ? window.hibi.newDocument()
@@ -1399,16 +1459,13 @@ function App() {
         if (saving) saveCancellation.current.canceled = !next
         if (next) {
           if (saving && token) acknowledgeSave(next, token, expectedId)
-          else
+          else if (!('saveReceipt' in next))
             await acceptOperationDocument(
               next,
               command === 'new' || command === 'open',
             )
           if (command === 'new' || command === 'open') showDocument()
-          // After a save the refresh only updates the file tree, so it doesn't
-          // hold the window busy. Requesting it first keeps later replies after it.
-          if (saving) refresh = window.hibi.getWorkspace()
-          else setWorkspace(await window.hibi.getWorkspace())
+          refreshWorkspaceView()
         }
         return Boolean(next)
       } catch (error) {
@@ -1419,12 +1476,10 @@ function App() {
         )
         return false
       } finally {
+        documentRuntime.endSave(token)
         if (source) flushSync(endBusy)
         else endBusy()
         setSavingTab(null)
-        refresh?.then(setWorkspace, (error: unknown) =>
-          setError(error instanceof Error ? error.message : String(error)),
-        )
         if (source)
           requestAnimationFrame(() => {
             const active = window.document.activeElement
@@ -1438,7 +1493,7 @@ function App() {
           })
       }
     },
-    [dialogs, acknowledgeSave, setError],
+    [dialogs, acknowledgeSave, setError, refreshWorkspaceView],
   )
 
   const runCommand = useCallback(
@@ -1478,10 +1533,11 @@ function App() {
     const intent = settingsIntent.current
     try {
       const next = await (recentId
-        ? window.hibi.openRecentWorkspace(recentId)
-        : window.hibi.openWorkspace())
+        ? window.hibi.openRecentWorkspace(recentId, false)
+        : window.hibi.openWorkspace(false))
       if (next) {
-        setWorkspace(next)
+        workspaceView.invalidate()
+        refreshWorkspaceView()
         selectSidebarView('workspace')
         setWorkspaceRename(null)
         setSidebarOpen(true)
@@ -1519,7 +1575,7 @@ function App() {
         if (!owner || selected?.definition.owner !== owner)
           addonViews.selectDocument()
         setSettingsOpen(false)
-        setWorkspace(await window.hibi.getWorkspace())
+        refreshWorkspaceView()
         if (sidebarResize.overlay) setSidebarOpen(false)
       }
       return !!next
@@ -1535,7 +1591,9 @@ function App() {
 
   async function refreshFiles() {
     try {
-      setWorkspace(await window.hibi.refreshWorkspace())
+      await window.hibi.refreshWorkspace(false)
+      workspaceView.invalidate()
+      refreshWorkspaceView()
     } catch (error) {
       setError(
         error instanceof Error
@@ -1551,7 +1609,8 @@ function App() {
     setError('')
     try {
       await acceptOperationDocument(await window.hibi.renameDocument(name))
-      setWorkspace(await window.hibi.getWorkspace())
+      workspaceView.invalidate()
+      refreshWorkspaceView()
     } catch (error) {
       setError(
         error instanceof Error ? error.message : 'Could not rename this file.',
@@ -1563,6 +1622,27 @@ function App() {
 
   useEffect(() =>
     window.hibi.onCommand((command) => addonHost.app.runAction(command)),
+  )
+  // Edit menu undo and redo. Editors cancel this event to run their session's
+  // history, which the browser's own redo never reaches; other fields keep the
+  // browser's undo and redo. Read-only editors take neither, as with their
+  // shortcuts.
+  useEffect(() =>
+    window.hibi.onHistory((direction) => {
+      const target = window.document.activeElement
+      if (
+        target instanceof HTMLElement &&
+        target.hasAttribute('contenteditable')
+      ) {
+        const history = new InputEvent('beforeinput', {
+          inputType: direction === 'undo' ? 'historyUndo' : 'historyRedo',
+          bubbles: true,
+          cancelable: true,
+        })
+        if (!target.isContentEditable || !target.dispatchEvent(history)) return
+      }
+      window.document.execCommand(direction)
+    }),
   )
   useEffect(() => window.hibi.onOpenSettings(() => openSetting('hibi')))
   // hibi://addons/install?id= and /open?id= links; main has already validated the ID.
@@ -1603,13 +1683,6 @@ function App() {
     tabId?: string,
     viewId?: string,
   ) {
-    if (exceedsUtf8Limit(markdown, MAX_DOCUMENT_BYTES)) {
-      setError(
-        'This edit would exceed the 2 MiB document limit, so it was not applied.',
-      )
-      setResetEditor((value) => value + 1)
-      return
-    }
     try {
       documentRuntime.replace(markdown, 'visual', historyGroup, tabId, viewId)
     } catch (error) {
@@ -1627,13 +1700,14 @@ function App() {
       )
     startBusy()
     try {
-      const result = await window.hibi.workspaceAction(action)
+      const result = await window.hibi.workspaceAction(action, false)
       if (result) {
+        workspaceView.invalidate()
         await acceptOperationDocument(
           result.document,
           action.action === 'new-file',
         )
-        setWorkspace(result.workspace)
+        refreshWorkspaceView()
         if (action.action === 'new-file') showDocument()
         if (action.action === 'new-file' || action.action === 'new-folder') {
           selectSidebarView('workspace')
@@ -1671,7 +1745,7 @@ function App() {
       const result = await window.hibi.attachMedia(files, target.revision)
       if (!result) return null
       await acceptOperationDocument(result.document)
-      setWorkspace(await window.hibi.getWorkspace())
+      refreshWorkspaceView()
       return result.attachments
     } finally {
       // Restore editor editability before the caller inserts its captured selection.
@@ -1684,11 +1758,12 @@ function App() {
     startBusy()
     const intent = settingsIntent.current
     try {
-      const result = await window.hibi.openDroppedFile(file)
+      const result = await window.hibi.openDroppedFile(file, false)
       if (result?.document) {
+        if ('workspace' in result) workspaceView.invalidate()
         await acceptOperationDocument(result.document, true)
         showDocument(intent)
-        setWorkspace(await window.hibi.getWorkspace())
+        refreshWorkspaceView()
         if ('workspace' in result) {
           selectSidebarView('workspace')
           setSettingsOpen(settingsOpenedSince(intent))
@@ -1716,18 +1791,16 @@ function App() {
       const next = await operation()
       if (!next) return
       await acceptOperationDocument(next, replaceLocal)
-      setWorkspace(await window.hibi.getWorkspace())
+      refreshWorkspaceView()
       if (revealDocument) {
         showDocument()
         settingsNavigation.current.forward = []
       }
       if (next.tabs.length === 0)
         requestAnimationFrame(() =>
-          window.document
-            .querySelector<HTMLElement>(
-              mode === 'normal' ? '.tiptap' : '.cm-content',
-            )
-            ?.focus({ preventScroll: true }),
+          focusEditor({
+            preventScroll: true,
+          }),
         )
     } catch (error) {
       setError(
@@ -1959,18 +2032,17 @@ function App() {
       const pane = window.document.querySelector<HTMLElement>(
         split ? `.editor-page[data-side="${side}"]` : '#document-editor-panel',
       )
-      const heading = Array.from(
+      const headings = Array.from(
         pane?.querySelectorAll<HTMLElement>('.tiptap :is(h1,h2,h3,h4,h5,h6)') ??
           [],
-      ).find(
-        (element) =>
-          (element.textContent ?? '')
-            .trim()
-            .toLowerCase()
-            .replace(/[^\p{L}\p{N}\s_-]/gu, '')
-            .replace(/\s+/g, '-') === anchor,
       )
-      heading?.scrollIntoView({ block: 'start' })
+      const anchors = headingAnchors(
+        headings.map((heading) => heading.textContent ?? ''),
+      )
+      const index = anchors.findIndex(
+        (heading) => heading.anchor === anchor || heading.legacy === anchor,
+      )
+      headings[index]?.scrollIntoView({ block: 'start' })
       return
     }
     void applyDocumentOperation(() =>
@@ -2020,20 +2092,9 @@ function App() {
     setSettingsOpen(false)
     requestAnimationFrame(() => {
       if (currentDocument.current?.tabId !== tabId) return
-      const current = splitTabsRef.current
-      const pane = window.document.querySelector<HTMLElement>(
-        current
-          ? `.editor-page[data-side="${current.active}"]`
-          : '#document-editor-panel',
-      )
-      Array.from(
-        pane?.querySelectorAll<HTMLElement>('[contenteditable="true"]') ?? [],
-      )
-        .find(
-          (element) =>
-            !element.closest('[inert]') && element.getClientRects().length,
-        )
-        ?.focus({ preventScroll: true })
+      focusEditor({
+        preventScroll: true,
+      })
     })
     return true
   }
@@ -2175,13 +2236,7 @@ function App() {
         setZen(!zen)
         setSettingsOpen(false)
         showTitlebar()
-        requestAnimationFrame(() =>
-          window.document
-            .querySelector<HTMLElement>(
-              mode === 'normal' ? '.tiptap' : '.cm-content',
-            )
-            ?.focus(),
-        )
+        requestAnimationFrame(() => focusEditor())
         break
       case 'install-addon':
         void addonHost.install()
@@ -2636,11 +2691,18 @@ function App() {
       : undefined
     const paneMarkdown =
       !paneDocument || documentFormats.isMarkdown(paneDocument.name)
+    const paneSourceFirst =
+      paneMarkdown &&
+      preferSourceOpening(documentRuntime, paneDocument) &&
+      richRequests.get(paneDocument?.tabId ?? '') !== paneDocument?.revision
     const paneFootnoteDocument =
-      paneMarkdown && hasFootnoteDefinitions(paneDocument?.markdown ?? '')
+      paneMarkdown &&
+      !codemirrorFormattedView &&
+      hasDocumentFootnotes(documentRuntime, paneDocument)
     const PaneEditor = paneMarkdown
       ? richEditor.Component
       : formatEditor.Component
+    const PaneAdapter = paneMarkdown ? richEditor.Adapter : formatEditor.Adapter
     const requestedMode = splitTabs
       ? side === 'left'
         ? splitTabs.leftMode
@@ -2651,11 +2713,13 @@ function App() {
       : documentFormats
           .views(paneDocument?.name ?? 'untitled.md')
           .filter((view) => !paneFootnoteDocument || view !== 'normal')
-    const paneMode: ViewMode = paneViews.includes(requestedMode)
-      ? requestedMode
-      : paneViews.includes('side-by-side')
-        ? 'side-by-side'
-        : 'markdown'
+    const paneMode: ViewMode = paneSourceFirst
+      ? 'markdown'
+      : paneViews.includes(requestedMode)
+        ? requestedMode
+        : paneViews.includes('side-by-side')
+          ? 'side-by-side'
+          : 'markdown'
     const paneChoice = splitFlavors?.[side].choice ?? flavorChoice
     const paneChosen = splitFlavors?.[side].selected ?? chosenFlavors
     const paneSourceName =
@@ -2728,10 +2792,18 @@ function App() {
             )}
           </header>
         )}
-        {(!editorStarted.current || !PaneEditor) && <LoadingScreen />}
-        {paneDocument && editorStarted.current && PaneEditor && (
+        {paneSourceFirst && selectedMode !== 'markdown' && (
+          <DocumentNotice
+            title="Opened in source view"
+            message="This note opens in source view to keep editing responsive. Choose Normal to prepare its formatted view."
+          />
+        )}
+        {(!editorStarted.current || !PaneEditor || !PaneAdapter) && (
+          <LoadingScreen />
+        )}
+        {paneDocument && editorStarted.current && PaneEditor && PaneAdapter && (
           <Suspense fallback={<LoadingScreen />}>
-            <ActiveDocumentEditor
+            <PaneAdapter
               Component={PaneEditor}
               {...(splitTabs ? { viewId: side } : {})}
               focused={active}
@@ -2762,6 +2834,7 @@ function App() {
               flavors={paneChosen}
               footnoteDocument={paneFootnoteDocument}
               sourceExtensions={addonHost.sourceExtensions}
+              formattedExtensions={addonHost.formattedExtensions}
               richExtensions={addonHost.richExtensions}
               documentRevision={paneDocument.revision}
               showLineNumbers={showLineNumbers}
@@ -2983,6 +3056,12 @@ function App() {
             false,
           )
         }
+        onCloseTabs={(ids, preferred) =>
+          void applyDocumentOperation(
+            () => window.hibi.closeDocumentTabs(ids, preferred),
+            false,
+          )
+        }
         onMoveTab={(id, beforeId) =>
           void applyDocumentOperation(
             () => window.hibi.moveDocumentTab(id, beforeId),
@@ -3067,6 +3146,7 @@ function App() {
           sidebarOpen && !zen && !settingsOpen && sidebarView === 'workspace'
         }
         workspace={workspace}
+        isCurrent={() => workspaceView.isCurrent(workspace)}
         onOpen={() => addonHost.app.runAction('open-workspace')}
         onFile={(path, target) => openFile(path, undefined, target)}
         tabs={document?.tabsEnabled !== false}

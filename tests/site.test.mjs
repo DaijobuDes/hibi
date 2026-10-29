@@ -3,7 +3,13 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { electron } from './electron.mjs'
+import { electron, waitForDocumentEditor } from './electron.mjs'
+import {
+  testFormattedEngines as it,
+  selectFormattedEngine,
+} from './formatted-engine.mjs'
+import { replaceRichText } from './keyboard.mjs'
+import { waitForAsync } from './poll.mjs'
 
 async function openSite(t, folder, snapshot) {
   const html = join(folder, 'docs.html')
@@ -21,7 +27,9 @@ async function openSite(t, folder, snapshot) {
     await app.close()
     await rm(folder, { recursive: true, force: true })
   })
-  await app.firstWindow()
+  const desktop = await app.firstWindow()
+  if (t.formattedEngine)
+    await selectFormattedEngine(app, desktop, t.formattedEngine)
   const nextWindow = app.waitForEvent('window')
   await app.evaluate(({ BrowserWindow }, html) => {
     const window = new BrowserWindow({
@@ -39,7 +47,7 @@ async function openSite(t, folder, snapshot) {
   }, html)
   const page = await nextWindow
   await page.setViewportSize({ width: 1440, height: 900 })
-  return page
+  return { app, page }
 }
 
 test('documentation breadcrumbs, outline, pagination, and phone navigation', {
@@ -71,7 +79,7 @@ test('documentation breadcrumbs, outline, pagination, and phone navigation', {
     assert.ok(
       template.includes(await readFile(`docs/licenses/${name}.md`, 'utf8')),
     )
-  const page = await openSite(t, folder, snapshot)
+  const { page } = await openSite(t, folder, snapshot)
   const errors = []
   page.on('pageerror', (error) => errors.push(error.message))
   await page.getByRole('heading', { name: /^welcome$/i, exact: true }).waitFor()
@@ -282,7 +290,7 @@ test('exported site applies layout options, addon themes, and heading search', {
   timeout: 45000,
 }, async (t) => {
   const folder = await mkdtemp(join(tmpdir(), 'hibi-site-'))
-  const page = await openSite(t, folder, {
+  const { page } = await openSite(t, folder, {
     name: 'custom site',
     appearance: { mode: 'dark', light: 'vscode-light', dark: 'hibi-dark' },
     pages: [
@@ -366,4 +374,209 @@ test('exported site applies layout options, addon themes, and heading search', {
   await mkdir('test-results', { recursive: true })
   await page.screenshot({ path: 'test-results/documentation-custom.png' })
   assert.deepEqual(errors, [])
+})
+
+it('app and exported site share heading destinations and retain legacy links', {
+  timeout: 30000,
+}, async (t) => {
+  const folder = await mkdtemp(join(tmpdir(), 'hibi-heading-anchors-'))
+  const texts = ['api_v2', 'title', 'title', 'é 日本語', '!!!', 'apiv2']
+  const anchors = ['api_v2', 'title', 'title-1', 'é-日本語', '', 'apiv2-1']
+  const html = texts.map((text) => `<h2>${text}</h2>`).join('')
+  const { app, page } = await openSite(t, folder, {
+    name: 'heading destinations',
+    pages: [
+      {
+        path: 'README.md',
+        markdown: texts.map((text) => `## ${text}`).join('\n\n'),
+      },
+    ],
+  })
+  await page.locator('.tiptap h2').first().waitFor()
+  const desktop = await app.firstWindow()
+  desktop.setDefaultTimeout(7000)
+  await waitForDocumentEditor(app, desktop)
+  await app.evaluate(({ dialog }) => {
+    dialog.showMessageBox = async () => ({ response: 1 })
+  })
+  const rich = desktop.getByRole('textbox', {
+    name: 'Document editor',
+    exact: true,
+  })
+  const markdown = `[${anchors.map((anchor, index) => `jump ${index}](#${encodeURIComponent(anchor)})`).join(' [')} [legacy jump](#apiv2)\n\n${texts.map((text) => `## ${text}`).join('\n\n')}`
+  if (t.formattedEngine === 'codemirror')
+    await replaceRichText(desktop, rich, markdown)
+  else
+    await rich.evaluate(
+      (element, html) => {
+        element.editor.commands.setContent(html)
+      },
+      `<p>${anchors
+        .map(
+          (anchor, index) =>
+            `<a href="#${encodeURIComponent(anchor)}">jump ${index}</a>`,
+        )
+        .join(' ')} <a href="#apiv2">legacy jump</a></p>${html}`,
+    )
+
+  const assertDesktopTarget = async (index) => {
+    if (t.formattedEngine === 'tiptap') {
+      assert.deepEqual(
+        await desktop.evaluate(() => globalThis.headingTargets),
+        [index],
+      )
+      return
+    }
+    const heading = [...markdown.matchAll(/^## /gm)][index]
+    const from = heading.index + heading[0].length
+    await waitForAsync(
+      desktop,
+      (from) =>
+        document.querySelector('.rich-pane .cm-content').cmTile.root.view.state
+          .selection.main.head === from,
+      from,
+    )
+    assert.equal(
+      await rich.evaluate((element, from) => {
+        const view = element.cmTile.root.view
+        const caret = view.coordsAtPos(from)
+        const pane = element.closest('.rich-pane').getBoundingClientRect()
+        return (
+          !!caret &&
+          caret.top >= pane.top - 1 &&
+          caret.bottom <= pane.bottom + 1
+        )
+      }, from),
+      true,
+      'the requested heading is visible after link activation',
+    )
+    assert.equal(
+      (await desktop.evaluate(() => window.hibi.getDocument())).markdown,
+      markdown,
+    )
+  }
+
+  for (const window of t.formattedEngine === 'tiptap'
+    ? [desktop, page]
+    : [page])
+    await window.evaluate(() => {
+      globalThis.headingTargets = []
+      HTMLElement.prototype.scrollIntoView = function () {
+        const heading = this.closest('h1,h2,h3,h4,h5,h6')
+        if (heading)
+          globalThis.headingTargets.push(
+            [...document.querySelectorAll('.tiptap h2')].indexOf(heading),
+          )
+      }
+    })
+
+  await t.test(
+    'site assigns canonical ids without losing legacy ids',
+    async () => {
+      assert.deepEqual(
+        await page
+          .locator('.tiptap h2')
+          .evaluateAll((headings) => headings.map((heading) => heading.id)),
+        anchors.map((anchor) => `doc-${anchor}`),
+      )
+      for (const [anchor, index] of [
+        ['api_v2', 0],
+        ['title-1', 2],
+        ['apiv2', 0],
+        ['apiv2-1', 5],
+        ['doc-apiv2', 0],
+        ['doc-apiv2-1', 5],
+      ]) {
+        await page.evaluate((anchor) => {
+          globalThis.headingTargets = []
+          location.hash = new URLSearchParams({ page: 'README.md', anchor })
+        }, anchor)
+        await page.waitForFunction(() => globalThis.headingTargets.length > 0)
+        assert.equal(
+          await page.evaluate(() => globalThis.headingTargets.at(-1)),
+          index,
+        )
+      }
+      assert.equal(
+        await page
+          .locator('[id]')
+          .evaluateAll(
+            (elements) =>
+              new Set(elements.map((element) => element.id)).size ===
+              elements.length,
+          ),
+        true,
+      )
+    },
+  )
+
+  await t.test(
+    'app resolves the same canonical and legacy destinations',
+    async () => {
+      for (const index of [0, 1, 2, 3, 5]) {
+        await desktop.evaluate(() => {
+          globalThis.headingTargets = []
+        })
+        await rich
+          .getByRole('link', { name: `jump ${index}`, exact: true })
+          .click({ modifiers: ['Shift'] })
+        await assertDesktopTarget(index)
+      }
+      await desktop.evaluate(() => {
+        globalThis.headingTargets = []
+      })
+      await rich
+        .getByRole('link', { name: 'legacy jump', exact: true })
+        .click({ modifiers: ['Shift'] })
+      await assertDesktopTarget(0)
+    },
+  )
+})
+
+test('outline scroll tracking reads nearby geometry on a thousand-heading page', {
+  timeout: 45000,
+}, async (t) => {
+  const folder = await mkdtemp(join(tmpdir(), 'hibi-site-outline-scale-'))
+  const { page } = await openSite(t, folder, {
+    name: 'outline scale',
+    pages: [
+      {
+        path: 'README.md',
+        markdown:
+          '# Top\n\n' +
+          Array.from(
+            { length: 1000 },
+            (_, i) => `## Section ${i}\n\nsection text\n\n`,
+          ).join(''),
+      },
+    ],
+  })
+  await page.getByRole('button', { name: /^toggle navigation$/i }).waitFor()
+  await page.evaluate(() => {
+    window.headingRectReads = 0
+    const rect = Element.prototype.getBoundingClientRect
+    Element.prototype.getBoundingClientRect = function (...args) {
+      if (this.matches('article h2')) window.headingRectReads++
+      return rect.apply(this, args)
+    }
+    const scroller = document.querySelector('.site-content')
+    const heading = document.getElementById('doc-section-900')
+    scroller.scrollTop +=
+      heading.getBoundingClientRect().top -
+      scroller.getBoundingClientRect().top -
+      24
+  })
+  await page
+    .locator('.site-outline a[aria-current="location"]')
+    .filter({ hasText: /^Section 900$/ })
+    .waitFor()
+  assert.ok((await page.evaluate(() => window.headingRectReads)) <= 4)
+  await page.evaluate(() => {
+    document.querySelector('.site-content').scrollTop = 0
+  })
+  await page
+    .locator('.site-outline a[aria-current="location"]')
+    .filter({ hasText: /^Section 0$/ })
+    .waitFor()
+  assert.ok((await page.evaluate(() => window.headingRectReads)) <= 4)
 })

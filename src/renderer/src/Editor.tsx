@@ -5,14 +5,6 @@ import { AllSelection, TextSelection, type Transaction } from '@tiptap/pm/state'
 import { Mapping, ReplaceStep } from '@tiptap/pm/transform'
 import { EditorContent, useEditor } from '@tiptap/react'
 import {
-  findNext,
-  findPrev,
-  getMatchHighlights,
-  getSearchState,
-  SearchQuery,
-  setSearchState,
-} from 'prosemirror-search'
-import {
   lazy,
   type MouseEvent,
   Suspense,
@@ -26,11 +18,16 @@ import {
 } from 'react'
 import type {
   DocumentFormat,
+  FormattedExtension,
   MarkdownExtension,
   MarkdownFlavor,
   RichExtension,
   SourceExtension,
 } from '../../addons/api'
+import {
+  builtInFlavors,
+  builtInRichAttachments,
+} from '../../shared/built-in-grammar'
 import {
   type CompletionItem,
   type CompletionRequest,
@@ -40,7 +37,6 @@ import {
   type TypingContext,
 } from '../../shared/completions'
 import type { DocumentState } from '../../shared/desktop'
-import { MAX_DOCUMENT_BYTES } from '../../shared/desktop'
 import {
   editedSource,
   type SourceEditRequest,
@@ -60,6 +56,10 @@ import {
 import type { ViewId, ViewTarget } from '../../shared/foundation-contracts'
 import { isMediaFile } from '../../shared/media'
 import type { SourceSnapshot } from '../../shared/source-buffer'
+import {
+  composeSourceBatches,
+  type RawEdit,
+} from '../../shared/source-operations'
 import {
   mapSourceSelection,
   type SourceSelection,
@@ -84,7 +84,7 @@ import { editorDocument } from './document-formats'
 import { documentHistory } from './document-history'
 import { documentProjections } from './document-projections'
 import { documentRuntime } from './document-runtime'
-import { certifyVisualEcho } from './document-shell'
+import { certifyVisualEcho, preferSourceOpening } from './document-shell'
 import { type CursorSettings, EditorCursor } from './EditorCursor'
 import { registerEditorSelectionCapture } from './editor-command-targets'
 import { emitEditorKeyEvent } from './editor-events'
@@ -96,6 +96,7 @@ import { editorViewRegistry } from './editor-view-api'
 import { FindBar, type FindMove, type FindStatus } from './FindBar'
 import { useFormattingToolbar } from './FormattingToolbar'
 import { flavors as flavorRegistry } from './flavors'
+import { LargeMarkdownPreview } from './LargeMarkdownPreview'
 import { LoadingScreen } from './LoadingScreen'
 import { linkScroll } from './linked-scroll'
 import { MarkdownFootnotePreview } from './MarkdownFootnotePreview'
@@ -107,15 +108,22 @@ import {
   type MarkdownPositionLookup,
 } from './markdown-positions'
 import { mountedDocumentEdits } from './mounted-document-edits'
+import { multiLineInput } from './multi-line-input'
 import './markdown-markers.css'
-import type { ReferenceValue } from '../../shared/source-references'
-import { createMarkdownSemantics } from './markdown-semantics'
 import { markdownSerializer } from './markdown-serialization'
 import { markdownSyntax } from './markdown-syntax'
 import type { OutlineHeading, OutlineRequest } from './OutlineSidebar'
 import { outlineHeadingAt } from './outline-position'
 import { createPlainSourceSync } from './plain-source-sync'
 import { observeRichAnnotations } from './rich-annotations'
+import { richChangeMap, richEditMap } from './rich-change-map'
+import {
+  findNext,
+  findPrev,
+  richFindKey,
+  scanRichFind,
+  setRichFindQuery,
+} from './rich-find'
 import { createRichParagraphProof } from './rich-paragraph-proof'
 import {
   preserveRichSource,
@@ -128,16 +136,11 @@ import {
 } from './rich-source-session'
 import { flushRich, registerRichSync, richSourceCurrent } from './rich-sync'
 import { exactRichRange } from './rich-text-range'
-import { type SourceOutlineHeading, SourceOutlineModel } from './source-outline'
-import {
-  resolveSourceReference,
-  revealSourcePosition,
-  sourcePosition,
-  sourceView,
-} from './source-view'
+import { revealSourcePosition, sourcePosition, sourceView } from './source-view'
 import { tableLayout } from './table-layout'
 import { textProjection } from './text-projection'
 import { useEditorPanes } from './use-editor-panes'
+import { sourceOutlineSyntax, useSourceOutline } from './use-source-outline'
 
 const SourceEditor = lazy(() =>
   import('./MarkdownSourceEditor').then((module) => ({
@@ -150,15 +153,12 @@ const parseParagraph = (editor: Editor, source: string) =>
     editor.markdown!.parse(source),
   )
 
-// These built-in attachments observe or dispatch edits without replacing codecs.
-const grammarPreservingRich = new Map([
-  ['word-count.text', 'word-count'],
-  ['block-drag.handle', 'block-drag'],
-  ['dictionary.lookup', 'dictionary'],
-  ['math.editing', 'math'],
-  ['slash-commands.menu', 'slash-commands'],
-  ['tags.highlights', 'tags'],
-])
+// Addons whose syntax features the plain codec models.
+const plainTextOwners = new Set(
+  [...builtInFlavors.values()].flatMap(({ owner, plainText }) =>
+    plainText === false ? [] : [owner],
+  ),
+)
 
 // ProseMirror skips scrollIntoView while DOM focus is outside the editor.
 function revealRichRange(editor: Editor, from: number, to = from) {
@@ -227,6 +227,14 @@ function revealRichRange(editor: Editor, from: number, to = from) {
 }
 
 export type ViewMode = DocumentView
+// Source edits since a pending split preview last matched `snapshot`: one batch
+// per operation, with the length of the source it applied to. Typing appends;
+// catch-up composes them once.
+type PreviewBase = {
+  snapshot: SourceSnapshot
+  document: RichNode
+  batches: { changes: readonly RawEdit[]; length: number }[]
+}
 
 export function MarkdownEditor({
   document: documentState,
@@ -251,6 +259,8 @@ export function MarkdownEditor({
   documentRevision,
   flavors,
   footnoteDocument,
+  largePreview = false,
+  previewSupported = false,
   onAttach,
   onLink,
   onOutline,
@@ -272,6 +282,7 @@ export function MarkdownEditor({
   findOpen: boolean
   onCloseFind: () => void
   markdownExtensions: readonly MarkdownExtension[]
+  formattedExtensions: readonly FormattedExtension[]
   sourceExtensions: readonly SourceExtension[]
   richExtensions: readonly RichExtension[]
   cursorSettings: CursorSettings
@@ -281,6 +292,8 @@ export function MarkdownEditor({
   documentRevision: number
   flavors: readonly MarkdownFlavor[]
   footnoteDocument: boolean
+  largePreview?: boolean
+  previewSupported?: boolean
   onAttach: (
     files: File[] | null,
   ) => Promise<import('../../shared/media').MediaAttachment[] | null>
@@ -298,6 +311,12 @@ export function MarkdownEditor({
   const exactHistory = useRef(
     new WeakMap<Editor, Map<string, { source: string; document: RichNode }>>(),
   )
+  // The caret each rich edit started from and left, by the session history
+  // state it started from (undo) and reached (redo).
+  const historyCarets = useRef({
+    undo: new WeakMap<object, { document: RichNode; head: number }>(),
+    redo: new WeakMap<object, { document: RichNode; head: number }>(),
+  })
   const serializers = useRef(
     new WeakMap<Editor, ReturnType<typeof markdownSerializer>>(),
   )
@@ -314,11 +333,13 @@ export function MarkdownEditor({
     certificate: NonNullable<ReturnType<typeof createPlainSourceSync>>
     deferEcho?: boolean
   } | null>(null)
+  // A pending preview carried into the next synchronization effect.
   const retainedPreview = useRef<{
     editor: Editor
     session: DocumentSession
     snapshot: SourceSnapshot
-    selection: SourceSelection
+    selection: SourceSelection | null
+    base?: PreviewBase
   } | null>(null)
   const syntaxVersion = useSyncExternalStore(
     markdownSyntax.subscribe,
@@ -332,7 +353,7 @@ export function MarkdownEditor({
     (extension) =>
       'addonId' in extension &&
       typeof extension.addonId === 'string' &&
-      grammarPreservingRich.get(extension.id) === extension.addonId &&
+      builtInRichAttachments.get(extension.id) === extension.addonId &&
       addonRegistry.origin(extension.addonId) === 'built-in',
   )
   // biome-ignore lint/correctness/useExhaustiveDependencies: syntaxVersion invalidates the current registry preferences.
@@ -343,13 +364,7 @@ export function MarkdownEditor({
         (flavor) =>
           (flavor.export?.extensions?.length ||
             flavor.richExtensions?.length) &&
-          ![
-            'markdown.github',
-            'markdown.obsidian',
-            'github-markdown.github',
-            'text-extras.text-extras',
-            'math.latex',
-          ].includes(flavor.id),
+          !builtInFlavors.has(flavor.id),
       ) ||
       markdownExtensions.some(
         (extension) => extension.id !== 'frontmatter.metadata',
@@ -372,85 +387,32 @@ export function MarkdownEditor({
     }
   }, [flavors, markdownExtensions, syntaxVersion])
   // biome-ignore lint/correctness/useExhaustiveDependencies: registry preferences invalidate outline grammar ownership.
-  const outlineSyntax = useMemo(() => {
-    const known = new Map([
-      ['markdown.github', 'markdown'],
-      ['markdown.obsidian', 'markdown'],
-      ['github-markdown.github', 'github-markdown'],
-      ['text-extras.text-extras', 'text-extras'],
-      ['math.latex', 'math'],
-    ])
-    if (
-      !richSyntaxCompatible ||
-      flavors.some((flavor) => {
-        const entry = flavorRegistry
-          .snapshot()
-          .find((entry) => entry === flavor)
-        return (
-          !entry ||
-          known.get(entry.id) !== entry.addonId ||
-          addonRegistry.origin(entry.addonId) !== 'built-in'
-        )
-      }) ||
-      markdownExtensions.some(
-        (extension) =>
-          extension.id !== 'frontmatter.metadata' ||
-          !('addonId' in extension) ||
-          extension.addonId !== 'frontmatter' ||
-          addonRegistry.origin('frontmatter') !== 'built-in',
-      ) ||
-      markdownSyntax
-        .snapshot()
-        .some(
-          (feature) =>
-            !markdownSyntax.isCore(feature.id) &&
-            feature.scope !== 'document' &&
-            (![...known.values()].includes(feature.owner) ||
-              addonRegistry.origin(feature.owner) !== 'built-in'),
-        )
-    )
-      return null
-    return {
-      gfm: Object.assign(
-        { gfm: false },
-        ...flavors.map((flavor) => flavor.markedOptions),
-      ).gfm,
-      alerts: flavors.some((flavor) => flavor.id === 'markdown.github'),
-      textExtras: flavors.some(
-        (flavor) => flavor.id === 'text-extras.text-extras',
-      ),
-      math: flavors.some((flavor) => flavor.id === 'math.latex'),
-      frontmatter: markdownExtensions.some(
-        (extension) => extension.id === 'frontmatter.metadata',
-      ),
-    }
-  }, [
-    flavors,
-    markdownExtensions,
-    syntaxVersion,
-    richSyntaxCompatible,
-    richExtensions,
-  ])
+  const outlineSyntax = useMemo(
+    () => sourceOutlineSyntax(flavors, markdownExtensions, richExtensions),
+    [
+      flavors,
+      markdownExtensions,
+      syntaxVersion,
+      richSyntaxCompatible,
+      richExtensions,
+    ],
+  )
   // biome-ignore lint/correctness/useExhaustiveDependencies: syntaxVersion invalidates parser contribution compatibility.
   const plainSyncEligible = useMemo(() => {
     const knownOwner = (owner: string) =>
-      ['markdown', 'github-markdown', 'text-extras'].includes(owner) &&
-      addonRegistry.origin(owner) === 'built-in'
+      plainTextOwners.has(owner) && addonRegistry.origin(owner) === 'built-in'
     return (
       richSyntaxCompatible &&
       flavors.every((flavor) => {
         const registered = flavorRegistry
           .snapshot()
           .find((entry) => entry === flavor)
+        if (!registered) return false
+        const grammar = builtInFlavors.get(registered.id)
         return (
-          registered &&
-          knownOwner(registered.addonId) &&
-          [
-            'markdown.github',
-            'markdown.obsidian',
-            'github-markdown.github',
-            'text-extras.text-extras',
-          ].includes(registered.id)
+          grammar?.owner === registered.addonId &&
+          grammar.plainText !== false &&
+          knownOwner(registered.addonId)
         )
       }) &&
       markdownExtensions.every(
@@ -500,6 +462,7 @@ export function MarkdownEditor({
     direction: 'next',
   })
   const handledFindMove = useRef(0)
+  const queuedFindMoves = useRef<FindMove['direction'][]>([])
   const {
     content,
     paneMode,
@@ -510,7 +473,11 @@ export function MarkdownEditor({
     setSourceReady,
     setSourceSettled,
     focusOwnedByEditor,
-  } = useEditorPanes(mode, markdownDocument)
+  } = useEditorPanes(
+    mode,
+    markdownDocument,
+    mode === 'markdown' && preferSourceOpening(documentRuntime, documentState),
+  )
   // Temporarily disable split visual editing while its typing performance is
   // unresolved. Keep preview synchronization and the performance work intact.
   const splitReadOnly = mode === 'side-by-side' || paneMode === 'side-by-side'
@@ -546,7 +513,24 @@ export function MarkdownEditor({
       richSourceSession.configure({
         // Only a completed visible-pane synchronization may claim source ownership.
         initialSource: null,
-        prepare: (event) => prepareRichRef.current(event),
+        prepare: (event) => {
+          const session = documentRuntime.session(documentState.tabId),
+            before = session?.historyIdentity()
+          const accepted = prepareRichRef.current(event)
+          if (accepted && session && before)
+            for (const [carets, identity, { doc, selection }] of [
+              [historyCarets.current.undo, before, event.editor.state],
+              [
+                historyCarets.current.redo,
+                session.historyIdentity(),
+                event.nextState,
+              ],
+            ] as const)
+              if (selection.empty)
+                carets.set(identity, { document: doc, head: selection.head })
+              else carets.delete(identity)
+          return accepted
+        },
         reject: (error) => {
           plainSync.current = null
           pendingPlainSync.current = null
@@ -609,6 +593,30 @@ export function MarkdownEditor({
             }
             return false
           },
+          beforeinput(view, event) {
+            const text = event.data
+            // Chromium applies each line break of a text input as its own
+            // editing step, quadratic in the lines. Make the same edit in one
+            // step, and send the input signal the browser would have.
+            const transaction =
+              event.inputType === 'insertText' &&
+              text &&
+              /[\r\n]/.test(text) &&
+              !view.composing &&
+              view.editable &&
+              multiLineInput(view, text)
+            if (!transaction) return false
+            event.preventDefault()
+            view.dispatch(transaction)
+            view.dom.dispatchEvent(
+              new InputEvent('input', {
+                inputType: 'insertText',
+                data: text,
+                bubbles: true,
+              }),
+            )
+            return true
+          },
         },
         attributes: {
           'aria-label': 'Document editor',
@@ -637,6 +645,7 @@ export function MarkdownEditor({
       viewId as ViewId,
       'rich',
       {
+        surface: () => editor.view.dom,
         read: () => {
           const source = richSourceSnapshot(editor)
           if (!source || !richSourceCurrent(editor)) return null
@@ -1633,17 +1642,21 @@ export function MarkdownEditor({
     }
   }, [editor, markdownDocument])
   // biome-ignore lint/correctness/useExhaustiveDependencies: maps belong to this rich editor and syntax generation.
+  const positionCache = useMemo(createMarkdownPositionCache, [
+    editor,
+    syntaxVersion,
+  ])
+  // biome-ignore lint/correctness/useExhaustiveDependencies: maps belong to this rich editor and syntax generation.
   const positions = useMemo<MarkdownPositionLookup>(() => {
-    const fallback = createMarkdownPositionCache()
     return (source, document) => (position, from) => {
       const snapshot = documentRuntime.session(documentState.tabId)?.snapshot()
       const exact =
         snapshot && markdownSyntax.version() === syntaxVersion
           ? plainSync.current?.map(snapshot, document, position, from)
           : null
-      return exact ?? fallback(source, document)(position, from)
+      return exact ?? positionCache(source, document)(position, from)
     }
-  }, [editor, syntaxVersion])
+  }, [positionCache])
   const geometryContent = useMemo(
     () => () => {
       if (!editor || !richSourceCurrent(editor)) return null
@@ -1664,10 +1677,6 @@ export function MarkdownEditor({
       new Event('hibi:rich-content', { bubbles: true }),
     )
   }, [content, documentState, projection.content])
-  const sourceOutline = useRef<{
-    version: number
-    headings: readonly SourceOutlineHeading[]
-  } | null>(null)
   function prepareRich({
     editor,
     transaction,
@@ -1967,7 +1976,10 @@ export function MarkdownEditor({
     let paragraphIdle: number | undefined
     let preview: {
       snapshot: SourceSnapshot
-      selection: SourceSelection
+      // A raw text bookmark when the codec can map it. Otherwise catch-up maps
+      // the untouched preview selection, of any kind, where documents agree.
+      selection: SourceSelection | null
+      base?: PreviewBase
     } | null =
       retained?.editor === editor &&
       retained.session === session &&
@@ -1976,17 +1988,14 @@ export function MarkdownEditor({
       retained.snapshot.version === session.snapshot().version
         ? retained
         : null
+    // A read-only split preview may lag behind source typing when its rich
+    // attachments accept that. An incremental codec only makes catch-up cheaper.
     const canWait =
       paneMode === 'side-by-side' &&
-      plainSyncEligible &&
       !projectionReadOnly &&
       !disabled &&
       !richExtensionError &&
-      richExtensions.every((extension) =>
-        ['word-count.text', 'slash-commands.menu', 'tags.highlights'].includes(
-          extension.id,
-        ),
-      )
+      richExtensions.every((extension) => extension.preview === 'deferred')
     plainSync.current = null
     pendingPlainSync.current = null
     const matches = (snapshot: SourceSnapshot) => {
@@ -2000,7 +2009,9 @@ export function MarkdownEditor({
     const certify = (snapshot: SourceSnapshot) => {
       if (paragraphIdle !== undefined) cancelIdleCallback(paragraphIdle)
       paragraphIdle = undefined
+      // Only visual editing uses this proof; the read-only split preview never does.
       if (
+        paneMode === 'normal' &&
         outlineSyntax?.math &&
         editor.markdown &&
         markdownSyntax.version() === syntaxVersion
@@ -2053,7 +2064,86 @@ export function MarkdownEditor({
         serialize(editor.state.doc),
       )
     }
-    const sync = () => {
+    // The recorded source edits as a map from the old preview into the new one.
+    // Edits before the body (front matter) only move it, so body edits map from
+    // each side's own body start; an edit across the boundary gives null.
+    const editMap = (
+      base: PreviewBase,
+      after: RichNode,
+      source: string,
+      projected: ReturnType<typeof projectMarkdown>,
+    ) => {
+      const old = base.snapshot.materialize(),
+        body = projectMarkdown(old, markdownExtensions),
+        from = body.sourceOffset ?? old.lastIndexOf(body.content),
+        to = projected.sourceOffset ?? source.lastIndexOf(projected.content)
+      if (from < 0 || to < 0) return null
+      let changes: readonly RawEdit[]
+      try {
+        changes = composeSourceBatches(base.batches)
+      } catch {
+        return null
+      }
+      const edits: RawEdit[] = []
+      let moved = 0
+      for (const change of changes) {
+        // Without the text a replacement kept, such as a retyped delimiter.
+        let start = change.from,
+          end = change.to,
+          head = 0,
+          tail = 0
+        const { insert } = change
+        while (
+          start + head < end &&
+          head < insert.length &&
+          old.charCodeAt(start + head) === insert.charCodeAt(head)
+        )
+          head++
+        while (
+          end - tail > start + head &&
+          tail < insert.length - head &&
+          old.charCodeAt(end - tail - 1) ===
+            insert.charCodeAt(insert.length - tail - 1)
+        )
+          tail++
+        start += head
+        end -= tail
+        const kept = insert.slice(head, insert.length - tail)
+        if (start === end && !kept) continue
+        if (start >= from)
+          edits.push({ from: start - from, to: end - from, insert: kept })
+        else if (end <= from) moved += kept.length - (end - start)
+        else return null
+      }
+      if (
+        to !== from + moved ||
+        edits.some((change) => change.to > body.content.length)
+      )
+        return null
+      return richEditMap(
+        base.document,
+        after,
+        edits,
+        body.content.length,
+        // The old map is usually still cached from before the preview went
+        // stale, and the caret and outline reuse the new one.
+        [
+          positionCache(body.content, base.document),
+          positionCache(projected.content, after),
+        ],
+      )
+    }
+    // History puts back the caret its edit started from or left, in the
+    // document that caret was taken in.
+    const historyCaret = (origin: string, tr: Transaction) => {
+      const caret =
+        origin === 'undo' || origin === 'redo'
+          ? historyCarets.current[origin].get(session.historyIdentity())
+          : undefined
+      if (caret?.document.eq(tr.doc))
+        tr.setSelection(TextSelection.create(tr.doc, caret.head))
+    }
+    const sync = (origin?: string) => {
       clearTimeout(timer)
       timer = undefined
       scheduled = false
@@ -2068,7 +2158,9 @@ export function MarkdownEditor({
       const snapshot = session.snapshot(),
         source = snapshot.materialize(),
         projected = projectMarkdown(source, markdownExtensions),
-        bookmark = preview?.selection.ranges[0]
+        bookmark = preview?.selection?.ranges[0],
+        pending = preview?.base,
+        kept = editor.state.selection
       syncing = true
       try {
         editor
@@ -2078,6 +2170,15 @@ export function MarkdownEditor({
             emitUpdate: false,
           })
           .command(({ tr }) => {
+            // Wherever the old and new previews agree, the selection keeps its
+            // exact place and kind, including select-all, nodes and cells.
+            const edited =
+              pending?.document === tr.before
+                ? editMap(pending, tr.doc, source, projected)
+                : null
+            tr.setSelection(
+              kept.map(tr.doc, edited ?? richChangeMap(tr.before, tr.doc)),
+            )
             if (bookmark) {
               const offset =
                 projected.sourceOffset ?? source.lastIndexOf(projected.content)
@@ -2094,6 +2195,7 @@ export function MarkdownEditor({
                   ),
                 )
             }
+            if (origin) historyCaret(origin, tr)
             tr.setMeta(richSourceEcho, snapshot).setMeta('addToHistory', false)
             return true
           })
@@ -2143,59 +2245,103 @@ export function MarkdownEditor({
         return
       }
       if (preview) {
+        // Recording only continues from the snapshot it last saw.
+        const base =
+          preview.snapshot.version === prepared.before.version
+            ? preview.base
+            : undefined
+        base?.batches.push({
+          changes: prepared.operation.changes,
+          length: prepared.before.utf16Length,
+        })
         preview = {
           snapshot: prepared.after,
           selection: mapSourceSelection(
             prepared.after,
             preview.selection,
             prepared.operation.changes,
-          )!,
+          ),
+          ...(base ? { base } : {}),
         }
       }
-      // Hidden rich state stays untouched; only its pending raw selection advances.
-      if (!visible) return
+      // Hidden rich state stays untouched until it is shown again. Its pending
+      // selection and the source edits since it last matched advance.
+      if (!visible) {
+        if (!preview && matches(prepared.before))
+          preview = {
+            snapshot: prepared.after,
+            selection: null,
+            base: {
+              snapshot: prepared.before,
+              document: editor.state.doc,
+              batches: [
+                {
+                  changes: prepared.operation.changes,
+                  length: prepared.before.utf16Length,
+                },
+              ],
+            },
+          }
+        return
+      }
       const active = window.document.activeElement
       if (
         canWait &&
-        (prepared.operation.origin === 'source' ||
-          prepared.operation.origin === 'composition') &&
+        ['source', 'composition', 'undo', 'redo'].includes(
+          prepared.operation.origin,
+        ) &&
         active instanceof HTMLElement &&
         active.classList.contains('cm-content') &&
         content.current?.contains(active)
       ) {
-        if (!preview && editor.state.selection instanceof TextSelection) {
+        if (!preview) {
+          // Only a text bookmark survives remapping through source edits.
           const selection = editor.state.selection
-          const anchor = plainSync.current?.map(
-            prepared.before,
-            editor.state.doc,
-            selection.anchor,
-            'rich',
-          )
-          const head = plainSync.current?.map(
-            prepared.before,
-            editor.state.doc,
-            selection.head,
-            'rich',
-          )
-          if (anchor != null && head != null)
-            preview = {
-              snapshot: prepared.after,
-              selection: mapSourceSelection(
-                prepared.after,
-                {
-                  ranges: [{ anchor, head, association: 1 }],
-                  mainIndex: 0,
-                },
-                prepared.operation.changes,
-              )!,
-            }
+          const map = (position: number) =>
+            selection instanceof TextSelection
+              ? plainSync.current?.map(
+                  prepared.before,
+                  editor.state.doc,
+                  position,
+                  'rich',
+                )
+              : null
+          const anchor = map(selection.anchor)
+          const head = map(selection.head)
+          preview = {
+            snapshot: prepared.after,
+            selection:
+              anchor != null && head != null
+                ? mapSourceSelection(
+                    prepared.after,
+                    {
+                      ranges: [{ anchor, head, association: 1 }],
+                      mainIndex: 0,
+                    },
+                    prepared.operation.changes,
+                  )
+                : null,
+            ...(matches(prepared.before)
+              ? {
+                  base: {
+                    snapshot: prepared.before,
+                    document: editor.state.doc,
+                    batches: [
+                      {
+                        changes: prepared.operation.changes,
+                        length: prepared.before.utf16Length,
+                      },
+                    ],
+                  },
+                }
+              : {}),
+          }
         }
-        if (preview) {
-          plainSync.current = null
-          clearTimeout(timer)
-          timer = setTimeout(sync, 200)
-          return
-        }
+        // One coalesced catch-up after typing pauses; interaction flushes it sooner.
+        plainSync.current = null
+        clearTimeout(timer)
+        timer = setTimeout(sync, 200)
+        return
       }
       if (preview) {
         sync()
@@ -2208,6 +2354,7 @@ export function MarkdownEditor({
             )
           : null
       if (incremental) {
+        historyCaret(prepared.operation.origin, incremental.transaction)
         editor.view.dispatch(
           incremental.transaction
             .setMeta(richSourceEcho, prepared.after)
@@ -2226,7 +2373,7 @@ export function MarkdownEditor({
         prepared.operation.origin === 'undo' ||
         prepared.operation.origin === 'redo'
       )
-        sync()
+        sync(prepared.operation.origin)
       else if (!scheduled) {
         scheduled = true
         queueMicrotask(sync)
@@ -2246,7 +2393,11 @@ export function MarkdownEditor({
       disposed = true
       clearTimeout(timer)
       if (paragraphIdle !== undefined) cancelIdleCallback(paragraphIdle)
-      retainedPreview.current = preview ? { editor, session, ...preview } : null
+      // Otherwise the editor keeps its own stale selection for the next effect.
+      retainedPreview.current =
+        preview?.selection || preview?.base
+          ? { editor, session, ...preview }
+          : null
       plainSync.current = null
       pendingPlainSync.current = null
       retryRich.current = () => {}
@@ -2273,6 +2424,7 @@ export function MarkdownEditor({
     documentState.revision,
     content,
     positions,
+    positionCache,
     updateRichEditable,
   ])
   const richEditContext = useRef({
@@ -2380,11 +2532,13 @@ export function MarkdownEditor({
         }
       if (request.changes.length > 32) return unsupported
       try {
-        const source = editedSource(
-          current.markdown,
-          request.changes,
-          MAX_DOCUMENT_BYTES,
-        )
+        const snapshot = documentRuntime.session(current.tabId)?.snapshot()
+        if (!snapshot || snapshot.version !== current.contentVersion)
+          return {
+            status: 'stale',
+            message: 'The document changed. Review the edits again.',
+          }
+        const source = editedSource(snapshot, request.changes)
         if (source === current.markdown)
           return { status: 'applied', contentVersion: current.contentVersion }
         const offset = projection.sourceOffset!
@@ -2527,199 +2681,25 @@ export function MarkdownEditor({
       editor.off('mount', focus)
     }
   }, [editor, autoFocus])
-  // biome-ignore lint/correctness/useExhaustiveDependencies: parser ownership and syntax preferences change independently of its source snapshot.
-  useEffect(() => {
-    if (
-      paneMode !== 'markdown' ||
-      !markdownDocument ||
-      !outlineActive ||
-      !sourceReady
-    )
-      return
-    const session = documentRuntime.session(documentState.tabId)
-    if (!session) return
-    const semantics =
-      outlineSyntax && createMarkdownSemantics(flavors, documentState.revision)
-    if (!outlineSyntax || !semantics) {
-      sourceOutline.current = null
-      onOutline([])
-      onActiveOutline(null)
-      onOutlineUnavailable?.(
-        'Source outline is unavailable for the active addon syntax. Switch to visual mode to see its headings.',
-      )
-      return
-    }
-    onOutlineUnavailable?.(null)
-    const model = new SourceOutlineModel(session.snapshot(), {
-      ...outlineSyntax,
-      renderLabel: (tokens, level) =>
-        semantics.read(
-          [
-            {
-              type: 'heading',
-              raw: '',
-              text: '',
-              depth: level,
-              tokens: [...tokens],
-            },
-          ],
-          { before: false, after: false },
-        )?.headings[0]?.label ?? null,
-      disabled: markdownSyntax
-        .snapshot()
-        .filter((feature) => !feature.enabled)
-        .map((feature) => feature.id),
-    })
-    let disposed = false,
-      timer: ReturnType<typeof setTimeout> | null = null,
-      idle: number | null = null,
-      work: ReturnType<SourceOutlineModel['read']> | null = null,
-      referenceValue: ReferenceValue | null | undefined,
-      referenceAbort = new AbortController()
-    const root = content.current
-    const reportActive = () => {
-      const current = sourceOutline.current,
-        element = root?.querySelector<HTMLElement>('.cm-content'),
-        view = element && sourceView(element)
-      onActiveOutline(
-        current?.version === session.snapshot().version && view
-          ? (outlineHeadingAt(
-              current.headings,
-              sourcePosition(view, view.state.selection.main.head),
-              (heading) => heading.from,
-            )?.id ?? null)
-          : null,
-      )
-    }
-    const cancel = () => {
-      referenceAbort.abort()
-      referenceAbort = new AbortController()
-      referenceValue = undefined
-      if (timer !== null) clearTimeout(timer)
-      if (idle !== null) cancelIdleCallback(idle)
-      timer = idle = null
-      work?.return([])
-      work = null
-    }
-    const queue = () => {
-      if (typeof requestIdleCallback === 'function')
-        idle = requestIdleCallback(read, { timeout: 16 })
-      else timer = setTimeout(read, 16)
-    }
-    const read = () => {
-      timer = idle = null
-      if (disposed) return
-      work ??= model.read()
-      const started = performance.now(),
-        version = session.snapshot().version
-      try {
-        do {
-          const step = work.next(referenceValue)
-          referenceValue = undefined
-          if (step.done) {
-            work = null
-            if (version !== session.snapshot().version) return
-            const headings = step.value.map((heading) => ({
-              ...heading,
-              id: `${heading.id}:${version}`,
-            }))
-            sourceOutline.current = { version, headings }
-            onOutlineUnavailable?.(null)
-            onOutline(headings)
-            reportActive()
-            return
-          }
-          if (step.value) {
-            const pending = work,
-              element = root?.querySelector<HTMLElement>('.cm-content'),
-              view = element && sourceView(element)
-            if (!view)
-              throw new Error('Source outline reference lookup is unavailable.')
-            void resolveSourceReference(
-              view,
-              outlineSyntax,
-              step.value.reference,
-              referenceAbort.signal,
-            ).then((result) => {
-              if (
-                disposed ||
-                work !== pending ||
-                version !== session.snapshot().version
-              )
-                return
-              if (result.status !== 'resolved') {
-                cancel()
-                if (result.status === 'unavailable')
-                  onOutlineUnavailable?.(
-                    'Source outline could not resolve this note’s references. Reopen the outline to retry.',
-                  )
-                return
-              }
-              referenceValue = result.value
-              queue()
-            })
-            return
-          }
-        } while (performance.now() - started < 2)
-        // Continue a started read on the next task; waiting for idle between
-        // every short slice makes large outlines stall on busy pages.
-        timer = setTimeout(read, 0)
-      } catch (error) {
-        work = null
-        sourceOutline.current = null
-        onOutline([])
-        onActiveOutline(null)
-        onOutlineUnavailable?.(
-          'Source outline could not read this note’s syntax. Switch to visual mode to see its headings.',
-        )
-        console.error('Source outline failed:', error)
-      }
-    }
-    const schedule = () => {
-      cancel()
-      timer = setTimeout(queue, 120)
-    }
-    const removeOperations = session.subscribeOperations((prepared) => {
-      cancel()
-      sourceOutline.current = null
-      model.apply(prepared)
-      schedule()
-    })
-    const removeStorage = session.subscribeStorage((change) => {
-      cancel()
-      model.adoptStorage(change)
-      schedule()
-    })
-    sourceOutline.current = null
-    onOutline([])
-    onActiveOutline(null)
-    root?.addEventListener('hibi:source-caret', reportActive)
-    schedule()
-    return () => {
-      disposed = true
-      cancel()
-      sourceOutline.current = null
-      removeOperations()
-      removeStorage()
-      root?.removeEventListener('hibi:source-caret', reportActive)
-      model.dispose()
-    }
-  }, [
-    paneMode,
-    markdownDocument,
-    outlineActive,
-    sourceReady,
+  const sourceOutline = useSourceOutline({
+    active:
+      paneMode === 'markdown' &&
+      markdownDocument &&
+      outlineActive &&
+      sourceReady,
     content,
-    documentState.tabId,
-    documentState.revision,
+    tabId: documentState.tabId,
+    revision: documentState.revision,
     flavors,
-    markdownExtensions,
-    syntaxVersion,
     outlineSyntax,
+    view: () => {
+      const element = content.current?.querySelector<HTMLElement>('.cm-content')
+      return element && sourceView(element)
+    },
     onOutline,
     onOutlineUnavailable,
     onActiveOutline,
-  ])
+  })
   type VisualOutlineHeading = OutlineHeading & {
     position: number
     raw: number | null
@@ -2944,23 +2924,8 @@ export function MarkdownEditor({
       return
     if (mode !== 'normal' && !sourceReady) return
     if (paneMode === 'markdown') {
-      const current = sourceOutline.current,
-        session = documentRuntime.session(documentState.tabId),
-        heading = current?.headings.find(
-          (item) => item.id === outlineTarget.id,
-        ),
-        element = content.current?.querySelector<HTMLElement>('.cm-content'),
-        view = element && sourceView(element)
-      if (
-        !session ||
-        current?.version !== session.snapshot().version ||
-        !heading ||
-        !view
-      )
-        return
-      handledOutline.current = outlineTarget
-      revealSourcePosition(view, heading.from)
-      view.focus()
+      if (sourceOutline.reveal(outlineTarget.id))
+        handledOutline.current = outlineTarget
       return
     }
     handledOutline.current = outlineTarget
@@ -3006,6 +2971,7 @@ export function MarkdownEditor({
     sourceReady,
     paneMode,
     documentState.tabId,
+    sourceOutline,
   ])
   useEffect(() => {
     if (paneMode !== 'side-by-side' || !sourceReady || !editor) return
@@ -3109,21 +3075,21 @@ export function MarkdownEditor({
   useEffect(() => {
     if (!editor || !findOpen || findTarget !== 'rich') return
     const report = () => {
-      const matches = getMatchHighlights(editor.state).find()
-      const selection = editor.state.selection
-      const total = matches.length
-      const current =
-        matches.findIndex(
-          (match) => match.from === selection.from && match.to === selection.to,
-        ) + 1
+      const find = richFindKey.getState(editor.state)
+      // The total is pending until every textblock has been scanned.
+      const pending = find?.total === null
+      const total = find?.total ?? 0
+      const current = find?.current ?? 0
       // Keep the status object when matches and the current match are unchanged, so selection moves do not re-render the editor.
       setFindStatus((status) =>
         status.total === total &&
         status.current === current &&
-        !status.pending &&
+        !status.pending === !pending &&
         !status.error
           ? status
-          : { total, current },
+          : pending
+            ? { total, current, pending }
+            : { total, current },
       )
     }
     editor.on('transaction', report)
@@ -3134,44 +3100,59 @@ export function MarkdownEditor({
   }, [editor, findOpen, findTarget])
 
   useEffect(() => {
+    queuedFindMoves.current = []
     if (!editor) return
-    const query = new SearchQuery({
-      search: findOpen && findTarget === 'rich' ? findQuery : '',
-      literal: true,
-    })
-    if (!query.valid && !getSearchState(editor.state)?.query.valid) return
+    const query = findOpen && findTarget === 'rich' ? findQuery : ''
+    if (!query && !richFindKey.getState(editor.state)?.query) return
     if (!flushRich(editor)) return
-    editor.view.dispatch(setSearchState(editor.state.tr, query))
-    const first = query.valid ? query.findNext(editor.state, 0) : null
-    if (!first) return
-    editor.view.dispatch(
-      editor.state.tr
-        .setSelection(
-          TextSelection.create(editor.state.doc, first.from, first.to),
-        )
-        .scrollIntoView(),
-    )
-    revealRichRange(editor, first.from, first.to)
+    editor.view.dispatch(setRichFindQuery(editor.state.tr, query))
+    const selection = editor.state.selection
+    return scanRichFind(editor.view, (first) => {
+      // A long scan must not take over a selection made while it ran.
+      if (!editor.state.selection.eq(selection)) return
+      editor.view.dispatch(
+        editor.state.tr
+          .setSelection(
+            TextSelection.create(editor.state.doc, first.from, first.to),
+          )
+          .scrollIntoView(),
+      )
+      revealRichRange(editor, first.from, first.to)
+    })
   }, [editor, findQuery, findOpen, findTarget])
 
   useEffect(() => {
-    if (handledFindMove.current === findMove.id) return
-    handledFindMove.current = findMove.id
-    if (editor && findOpen && findTarget === 'rich' && findMove.id) {
-      if (!flushRich(editor)) return
-      const command = findMove.direction === 'next' ? findNext : findPrev
-      if (
+    if (handledFindMove.current !== findMove.id) {
+      handledFindMove.current = findMove.id
+      if (editor && findOpen && findTarget === 'rich' && findMove.id)
+        queuedFindMoves.current.push(findMove.direction)
+    }
+    // Moves made while a long note is still being searched run, in order,
+    // once its matches are counted, as in source view.
+    if (
+      !editor ||
+      !queuedFindMoves.current.length ||
+      findStatus.pending ||
+      richFindKey.getState(editor.state)?.total === null
+    )
+      return
+    const moves = queuedFindMoves.current.splice(0)
+    if (!flushRich(editor)) return
+    let moved = false
+    for (const direction of moves) {
+      const command = direction === 'next' ? findNext : findPrev
+      moved =
         command(editor.state, (transaction) =>
           editor.view.dispatch(transaction),
-        )
-      )
-        revealRichRange(
-          editor,
-          editor.state.selection.from,
-          editor.state.selection.to,
-        )
+        ) || moved
     }
-  }, [editor, findMove, findOpen, findTarget])
+    if (moved)
+      revealRichRange(
+        editor,
+        editor.state.selection.from,
+        editor.state.selection.to,
+      )
+  }, [editor, findMove, findOpen, findTarget, findStatus.pending])
 
   function updateFromSource(markdown: string) {
     onChange(markdown)
@@ -3208,13 +3189,13 @@ export function MarkdownEditor({
           onCloseFind()
           if (findTarget === 'rich') editor?.commands.focus()
           else
-            window.document
-              .querySelector<HTMLElement>('.source-pane .cm-content')
+            content.current
+              ?.querySelector<HTMLElement>('.source-pane .cm-content')
               ?.focus()
         }}
       />
       <main
-        className={`editor-panes mode-${paneMode}`}
+        className={`editor-panes mode-${largePreview ? 'side-by-side' : paneMode}`}
         data-source-ready={sourceReady}
         onClickCapture={followClickedLink}
         onContextMenuCapture={(event) => {
@@ -3253,15 +3234,17 @@ export function MarkdownEditor({
           <section
             className="rich-pane"
             onFocusCapture={() => {
+              if (largePreview) return
               setFocusedPane('rich')
               editorViewRegistry.setActive(viewId as ViewId, 'rich')
               documentRuntime.focusView(viewId as ViewId)
             }}
             aria-label="Formatted document"
-            aria-hidden={paneMode === 'markdown'}
-            inert={paneMode === 'markdown'}
+            aria-hidden={!largePreview && paneMode === 'markdown'}
+            inert={!largePreview && paneMode === 'markdown'}
           >
-            {markdownDocument &&
+            {!largePreview &&
+              markdownDocument &&
               markdownExtensions.map(({ id, Editor }) =>
                 Editor ? (
                   <Editor
@@ -3276,7 +3259,7 @@ export function MarkdownEditor({
               )}
             <div
               className="rich-editor-host"
-              hidden={!markdownDocument || footnoteDocument}
+              hidden={!markdownDocument || footnoteDocument || largePreview}
             >
               {(richExtensionError || projectionReadOnly) && (
                 <DocumentNotice
@@ -3302,6 +3285,14 @@ export function MarkdownEditor({
               )}
               <EditorContent editor={editor} />
             </div>
+            {largePreview && documentRuntime.session(documentState.tabId) && (
+              <LargeMarkdownPreview
+                session={documentRuntime.session(documentState.tabId)!}
+                documentId={documentState.id}
+                version={`${syntaxVersion}:${flavors.map((flavor) => flavor.id).join(',')}`}
+                supported={previewSupported}
+              />
+            )}
             {footnoteDocument && paneMode !== 'markdown' && (
               <MarkdownFootnotePreview
                 source={projection.content}
@@ -3346,6 +3337,7 @@ export function MarkdownEditor({
                   onLink={onLink}
                   onFormatting={attachSourceFormatting}
                   sourceExtensions={sourceExtensions}
+                  flavors={flavors.map((flavor) => flavor.id)}
                   showLineNumbers={showLineNumbers}
                   onReady={(status) => {
                     setSourceReady(status === 'ready')

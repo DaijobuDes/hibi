@@ -2,9 +2,13 @@ import assert from 'node:assert/strict'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import test from 'node:test'
 import { electron } from './electron.mjs'
+import {
+  selectFormattedEngine,
+  testFormattedEngines as test,
+} from './formatted-engine.mjs'
 import { clickMenu } from './keyboard.mjs'
+import { waitForAsync } from './poll.mjs'
 
 async function install(profile, id, source) {
   const directory = join(profile, 'installed-addons', id)
@@ -110,7 +114,7 @@ test('installed toolbar command captures rich and source selection and stays own
       JSON.stringify({ visible: true, autoHide: false, mode: 'icons' }),
     ),
   )
-  await page.reload()
+  await selectFormattedEngine(app, page, t.formattedEngine)
   await page.waitForFunction(
     () => window.toolbarProbe && window.otherAddonReady,
   )
@@ -118,30 +122,45 @@ test('installed toolbar command captures rich and source selection and stays own
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] })
   }, file)
   await clickMenu(app, 'Open…')
-  const rich = page.locator('.rich-pane .tiptap[contenteditable="true"]')
+  const rich = page.locator(
+    t.formattedEngine === 'tiptap'
+      ? '.rich-pane .tiptap[contenteditable="true"]'
+      : '.rich-pane .hibi-formatted .cm-content[contenteditable="true"]',
+  )
   await rich.waitFor()
   await rich.click()
-  await rich.evaluate((element) =>
-    element.editor.commands.setTextSelection({
-      from: 1,
-      to: element.editor.state.doc.content.size - 1,
-    }),
-  )
+  if (t.formattedEngine === 'tiptap')
+    await rich.evaluate((element) =>
+      element.editor.commands.setTextSelection({
+        from: 1,
+        to: element.editor.state.doc.content.size - 1,
+      }),
+    )
+  else await rich.press('ControlOrMeta+a')
   await clickToolbar(page, 'toolbar-probe.inspect')
   await page.waitForFunction(() => window.toolbarProbe.runs.length === 1)
   const richInvocation = await page.evaluate(() => window.toolbarProbe.runs[0])
   assert.equal(richInvocation.source, 'toolbar')
   assert.equal(richInvocation.selection.editor, 'rich')
-  assert.equal(richInvocation.selection.selectedText, 'hello\nworld')
+  await t.test('api 2 rich selection reports rendered text', () => {
+    assert.equal(richInvocation.selection.selectedText, 'hello\nworld')
+  })
   assert.equal(
     richInvocation.document.documentId,
     richInvocation.view.documentId,
   )
 
   await rich.click()
-  await rich.evaluate((element) =>
-    element.editor.commands.setTextSelection({ from: 8, to: 13 }),
-  )
+  if (t.formattedEngine === 'tiptap')
+    await rich.evaluate((element) =>
+      element.editor.commands.setTextSelection({ from: 8, to: 13 }),
+    )
+  else {
+    await rich.press('ControlOrMeta+a')
+    await rich.press('ArrowRight')
+    await rich.press('ArrowLeft')
+    for (let index = 0; index < 5; index++) await rich.press('Shift+ArrowLeft')
+  }
   await clickToolbar(page, 'toolbar-probe.inspect')
   await page.waitForFunction(() => window.toolbarProbe.runs.length === 2)
   const codeInvocation = await page.evaluate(() => window.toolbarProbe.runs[1])
@@ -166,6 +185,36 @@ test('installed toolbar command captures rich and source selection and stays own
   assert.equal(
     sourceInvocation.document.documentId,
     sourceInvocation.view.documentId,
+  )
+
+  const sampleSource = 'a'.repeat(255) + '&#x1f600;' + 'b'.repeat(300)
+  await source.focus()
+  await source.press('ControlOrMeta+a')
+  await page.keyboard.insertText(sampleSource)
+  await waitForAsync(
+    page,
+    async (expected) => (await window.hibi.getDocument()).markdown === expected,
+    sampleSource,
+  )
+  await page.getByRole('button', { name: /^normal$/i, exact: true }).click()
+  await rich.waitFor()
+  await rich.click()
+  if (t.formattedEngine === 'tiptap')
+    await rich.evaluate((element) =>
+      element.editor.commands.setTextSelection({
+        from: 1,
+        to: element.editor.state.doc.content.size - 1,
+      }),
+    )
+  else await rich.press('ControlOrMeta+a')
+  await clickToolbar(page, 'toolbar-probe.inspect')
+  await page.waitForFunction(() => window.toolbarProbe.runs.length === 4)
+  const sampleInvocation = await page.evaluate(
+    () => window.toolbarProbe.runs[3],
+  )
+  assert.equal(sampleInvocation.selection.selectedText, 'a'.repeat(255))
+  assert.ok(
+    sampleInvocation.selection.head - sampleInvocation.selection.anchor > 256,
   )
 
   await clickToolbar(page, 'toolbar-probe.legacy')

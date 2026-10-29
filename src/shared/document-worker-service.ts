@@ -1,17 +1,25 @@
-import type {
-  DocumentWorkerReply,
-  DocumentWorkerRequest,
-  MarkdownReferenceSyntax,
-  MarkdownSemanticResult,
-  MarkdownSemanticRow,
+import {
+  boundaryKey,
+  type DocumentWorkerReply,
+  type DocumentWorkerRequest,
+  type MarkdownReferenceSyntax,
+  type MarkdownSemanticResult,
+  type MarkdownSemanticRow,
 } from './document-worker-protocol.ts'
+import type { BoundaryConfig } from './markdown-boundary-syntax.ts'
 import type { MarkdownSemanticCache } from './markdown-semantic-cache.ts'
 import type { MarkdownSourceModel } from './markdown-source-model.ts'
 import type { MarkdownSourceReferences } from './markdown-source-references.ts'
-import { SourceStore } from './source-buffer.ts'
+import { type SourceSnapshot, SourceStore } from './source-buffer.ts'
 import { SourceMaintenance } from './source-maintenance.ts'
+import type { SourceOwners } from './source-owners.ts'
 import type { ReferenceValue } from './source-references.ts'
 import { SourceSearchIndex } from './source-search-index.ts'
+import {
+  parseTransferHead,
+  parseTransferRequest,
+  SourceTransferReceiver,
+} from './source-transfer.ts'
 
 type FindRequest = Extract<DocumentWorkerRequest, { type: 'find' }>
 type MetadataRequest = Extract<DocumentWorkerRequest, { type: 'metadata' }>
@@ -30,44 +38,206 @@ const validSyntax = (
 
 /** Trusted derived replica. The renderer/native journal remain the source authority. */
 export class DocumentWorkerService {
+  #boundaryModel:
+    | import('./markdown-boundary-index.ts').MarkdownBoundaryIndex
+    | null = null
+  #boundaryRequest: Extract<
+    DocumentWorkerRequest,
+    { type: 'boundaries' }
+  > | null = null
+  #boundaryModule: typeof import('./markdown-boundary-index.ts') | null = null
+  #boundaryLoading = false
+  #boundaryChannel: MessageChannel | null = null
+  #boundaryScheduled = false
+  #boundaryPages: Generator<{
+    records: import('./chunked-markdown.ts').BoundaryRecord[]
+    done: boolean
+  }> | null = null
+  #boundarySequence = 0
+  #boundaryAwaiting: number | null = null
+  #boundaryFinal = false
+
   readonly #post: (reply: DocumentWorkerReply) => void
   #store: SourceStore | null = null
+  #bootstrap: {
+    loader: ReturnType<typeof SourceStore.loader>
+    receiver: SourceTransferReceiver
+  } | null = null
   #maintenance: SourceMaintenance | null = null
   #epoch = ''
   #index: SourceSearchIndex | null = null
   #query = ''
+  #findKey = ''
+  #rendered: import('./rendered-text.ts').RenderedTextIndex | null = null
+  #renderedModule: typeof import('./rendered-text.ts') | null = null
+  #renderedLoading = false
+  #renderedReferenceModule:
+    | typeof import('./rendered-reference-resolver.ts')
+    | null = null
+  #renderedReferenceLoading = false
+  #renderedReferenceError: unknown = null
+  #renderedReferenceIndex: {
+    source: SourceSnapshot
+    key: string
+    references: MarkdownSourceReferences
+  } | null = null
+  #renderedKey = ''
+  #location: import('./source-search-index.ts').SearchLocation | null = null
   #findId = 0
   #request: FindRequest | null = null
   #work: Generator<unknown, unknown> | null = null
-  #stage: 'build' | 'locate' = 'build'
-  #timer: ReturnType<typeof setTimeout> | undefined
+  #stage: 'build' | 'locate' | 'highlights' | 'replacement' = 'build'
+  #highlights: import('./source-search-index.ts').SearchHighlights | undefined
+  #findChannel: MessageChannel | null = null
+  #findScheduled = false
   #disposed = false
   #model: MarkdownSourceModel | null = null
   #metadata: MetadataRequest | null = null
   #metadataId = 0
   #metadataLoading = false
   #metadataTimer: ReturnType<typeof setTimeout> | undefined
+  #metadataChannel: MessageChannel | null = null
+  #metadataScheduled = false
   #metadataServiced = 0
   #references: MarkdownSourceReferences | null = null
   #referenceSyntax = ''
   #referenceWork: Generator<void> | null = null
   #referencesReady = false
+  #referenceOwners: SourceOwners | null = null
   #semantics: MarkdownSemanticCache | null = null
   #semanticWork: Generator<void, MarkdownSemanticResult | undefined> | null =
     null
   constructor(post: (reply: DocumentWorkerReply) => void) {
     this.#post = post
   }
+  #stopBoundaries(release = false) {
+    this.#boundaryChannel?.port1.close()
+    this.#boundaryChannel?.port2.close()
+    this.#boundaryChannel = null
+    this.#boundaryScheduled = false
+    this.#boundaryPages?.return(undefined)
+    this.#boundaryPages = null
+    this.#boundarySequence = 0
+    this.#boundaryAwaiting = null
+    this.#boundaryFinal = false
+    if (release) {
+      this.#boundaryRequest = null
+      this.#boundaryModel = null
+    }
+  }
+  #scheduleBoundaries() {
+    if (!this.#boundaryRequest || this.#disposed || !this.#store) return
+    if (!this.#boundaryModule) {
+      if (this.#boundaryLoading) return
+      this.#boundaryLoading = true
+      void import('./markdown-boundary-index.ts').then(
+        (module) => {
+          this.#boundaryLoading = false
+          this.#boundaryModule = module
+          this.#scheduleBoundaries()
+        },
+        () => this.#declineBoundaries(),
+      )
+      return
+    }
+    if (this.#boundaryScheduled || this.#boundaryAwaiting !== null) return
+    if (!this.#boundaryChannel) {
+      const channel = new MessageChannel()
+      this.#boundaryChannel = channel
+      channel.port1.onmessage = () => {
+        if (this.#boundaryChannel !== channel) return
+        this.#boundaryScheduled = false
+        this.#runBoundaries()
+      }
+    }
+    this.#boundaryScheduled = true
+    this.#boundaryChannel.port2.postMessage(null)
+  }
+  #declineBoundaries() {
+    const request = this.#boundaryRequest
+    if (request)
+      this.#post({
+        type: 'boundary-declined',
+        epoch: this.#epoch,
+        id: request.id,
+        version: request.version,
+        key: boundaryKey(request.config),
+      })
+    this.#stopBoundaries(true)
+  }
+  #runBoundaries() {
+    const request = this.#boundaryRequest
+    if (
+      !request ||
+      !this.#store ||
+      request.version !== this.#store.snapshot().version
+    )
+      return
+    try {
+      this.#boundaryModel ??= new this.#boundaryModule!.MarkdownBoundaryIndex(
+        this.#store.snapshot(),
+        request.config,
+        undefined,
+        request.codeVersion !== undefined,
+      )
+      if (!this.#boundaryPages) {
+        const deadline = performance.now() + 4
+        let complete: boolean
+        do {
+          complete = this.#boundaryModel.advance()
+        } while (!complete && performance.now() < deadline)
+        if (!complete) {
+          this.#scheduleBoundaries()
+          return
+        }
+        this.#boundaryPages = this.#boundaryModel.pages(
+          request.from ?? 0,
+          request.baseVersion,
+          request.codeVersion,
+          request.codeOnly,
+          // Geometry follows syntax completion in a separately acknowledged watch.
+          request.codeOnly === true,
+        )
+      }
+      const page = this.#boundaryPages.next()
+      if (page.done) {
+        this.#stopBoundaries()
+        return
+      }
+      const sequence = this.#boundarySequence++
+      this.#boundaryAwaiting = sequence
+      this.#boundaryFinal = page.value.done
+      this.#post({
+        type: 'boundaries',
+        epoch: this.#epoch,
+        id: request.id,
+        version: request.version,
+        key: this.#boundaryModel.key,
+        sequence,
+        length: this.#boundaryModel.length,
+        ...page.value,
+      })
+    } catch {
+      this.#declineBoundaries()
+    }
+  }
   #cancel() {
-    clearTimeout(this.#timer)
-    this.#timer = undefined
+    this.#findChannel?.port1.close()
+    this.#findChannel?.port2.close()
+    this.#findChannel = null
+    this.#findScheduled = false
     this.#work?.return(undefined)
     this.#work = null
     this.#request = null
+    this.#location = null
   }
   #cancelMetadata(release = false) {
     clearTimeout(this.#metadataTimer)
     this.#metadataTimer = undefined
+    this.#metadataChannel?.port1.close()
+    this.#metadataChannel?.port2.close()
+    this.#metadataChannel = null
+    this.#metadataScheduled = false
     this.#referenceWork?.return(undefined)
     this.#referenceWork = null
     this.#referencesReady = false
@@ -79,6 +249,7 @@ export class DocumentWorkerService {
       this.#semantics = null
       this.#references?.dispose()
       this.#references = null
+      this.#referenceOwners = null
       this.#referenceSyntax = ''
       this.#model?.dispose()
       this.#model = null
@@ -102,18 +273,61 @@ export class DocumentWorkerService {
     }
     this.#cancel()
     this.#index = null
+    this.#rendered = null
+    this.#clearRenderedReferences()
     if (stage === 'replica') {
+      this.#stopBoundaries(true)
       this.#cancelMetadata(true)
       this.#maintenance?.dispose()
       this.#maintenance = null
       this.#store = null
+      this.#bootstrap = null
     }
     this.#post({
       type: 'error',
       epoch: this.#epoch,
       stage,
       ...(id === undefined ? {} : { id }),
+      ...(this.#renderedModule &&
+      error instanceof this.#renderedModule.UnsupportedRenderedFind
+        ? { reason: 'unsupported' as const }
+        : {}),
       message: error instanceof Error ? error.message : String(error),
+    })
+  }
+  #reset(epoch: string) {
+    this.#stopBoundaries(true)
+    this.#cancel()
+    this.#cancelMetadata(true)
+    this.#metadataId = 0
+    this.#maintenance?.dispose()
+    this.#maintenance = null
+    this.#index = null
+    this.#rendered = null
+    this.#clearRenderedReferences()
+    this.#store = null
+    this.#bootstrap = null
+    this.#epoch = epoch
+    this.#findId = 0
+  }
+  #publish(store: SourceStore) {
+    this.#store = store
+    this.#maintenance = new SourceMaintenance(
+      store,
+      (change) => {
+        store.commitCompaction(change)
+        this.#index?.adoptStorage(change)
+        this.#rendered?.adoptSource(change.after)
+        if (this.#renderedReferenceIndex?.source === change.before)
+          this.#renderedReferenceIndex.source = change.after
+        this.#model?.adoptStorage(change)
+      },
+      (error) => this.#fail('replica', error),
+    )
+    this.#post({
+      type: 'ack',
+      epoch: this.#epoch,
+      version: store.snapshot().version,
     })
   }
   receive(message: DocumentWorkerRequest) {
@@ -125,58 +339,65 @@ export class DocumentWorkerService {
         !/^[\w.:-]{1,128}$/.test(message.epoch)
       )
         throw new Error('Invalid document worker identity.')
-      if (message.type === 'load') {
-        this.#cancel()
-        this.#cancelMetadata(true)
-        this.#metadataId = 0
-        this.#maintenance?.dispose()
-        this.#maintenance = null
-        this.#index = null
-        this.#store = null
-        this.#epoch = message.epoch
-        this.#findId = 0
-        if (
-          !Array.isArray(message.chunks) ||
-          message.chunks.length > 8192 ||
-          message.chunks.some(
-            (chunk) => typeof chunk !== 'string' || chunk.length > 65536,
-          ) ||
-          message.chunks.reduce((sum, chunk) => sum + chunk.length, 0) >
-            32 * 1024 * 1024
-        )
-          throw new Error('Document worker bootstrap exceeds its limit.')
-        this.#store = new SourceStore(
-          message.chunks,
-          message.document,
-          message.version,
-          { maximumBytes: 32 * 1024 * 1024 },
-        )
-        const store = this.#store
-        this.#maintenance = new SourceMaintenance(
-          store,
-          (change) => {
-            store.commitCompaction(change)
-            this.#index?.adoptStorage(change)
-            this.#model?.adoptStorage(change)
-          },
-          (error) => this.#fail('replica', error),
-        )
+      if (message.type === 'load-start') {
+        this.#reset(message.epoch)
+        const head = parseTransferHead(message.head),
+          loader = SourceStore.loader(
+            { tabId: head.tabId, revision: head.revision },
+            head.contentVersion,
+          ),
+          receiver = new SourceTransferReceiver(head, loader.append)
+        this.#bootstrap = { loader, receiver }
         this.#post({
-          type: 'ack',
+          type: 'load-ack',
           epoch: this.#epoch,
-          version: this.#store.snapshot().version,
+          request: receiver.request,
         })
         return
       }
       if (message.epoch !== this.#epoch) return
+      if (message.type === 'load-chunk' || message.type === 'load-finish') {
+        const bootstrap = this.#bootstrap
+        if (!bootstrap) throw new Error('Document worker is not initialized.')
+        if (message.type === 'load-chunk') {
+          bootstrap.receiver.receive(message.chunk)
+          this.#post({
+            type: 'load-ack',
+            epoch: this.#epoch,
+            request: bootstrap.receiver.request,
+          })
+        } else {
+          const request = parseTransferRequest(message.request),
+            expected = bootstrap.receiver.finish()
+          if (
+            request.streamId !== expected.streamId ||
+            request.sequence !== expected.sequence
+          )
+            throw new Error('The document transfer is stale or out of order.')
+          const store = bootstrap.loader.finish()
+          this.#bootstrap = null
+          this.#publish(store)
+        }
+        return
+      }
       if (!this.#store) throw new Error('Document worker is not initialized.')
       if (message.type === 'edit') {
         const prepared = this.#store.prepare(message.operation)
         this.#cancel()
         this.#cancelMetadata()
         this.#index = null
+        this.#rendered = null
+        this.#clearRenderedReferences()
         this.#store.commit(prepared)
         this.#model?.apply(prepared)
+        this.#stopBoundaries()
+        this.#boundaryModel?.apply(prepared)
+        if (this.#boundaryRequest)
+          this.#boundaryRequest = {
+            ...this.#boundaryRequest,
+            version: prepared.after.version,
+          }
+        this.#scheduleBoundaries()
         this.#maintenance!.changed(
           prepared.operation.changes.reduce(
             (sum, edit) => sum + edit.to - edit.from + edit.insert.length,
@@ -188,6 +409,68 @@ export class DocumentWorkerService {
           epoch: this.#epoch,
           version: prepared.after.version,
         })
+      } else if (message.type === 'boundaries') {
+        if (message.version !== this.#store.snapshot().version) return
+        if (
+          !Number.isSafeInteger(message.from ?? 0) ||
+          (message.from ?? 0) < 0 ||
+          (message.from ?? 0) > this.#store.snapshot().normalizedLength ||
+          (message.baseVersion !== undefined &&
+            (!Number.isSafeInteger(message.baseVersion) ||
+              message.baseVersion < 0 ||
+              message.baseVersion > message.version)) ||
+          (message.codeVersion !== undefined &&
+            message.codeVersion !== null &&
+            (!Number.isSafeInteger(message.codeVersion) ||
+              message.codeVersion < 0 ||
+              message.codeVersion > message.version))
+        )
+          throw new Error('Could not read a document worker reply.')
+        if (
+          message.codeOnly !== undefined &&
+          typeof message.codeOnly !== 'boolean'
+        )
+          throw new Error('Could not read a document worker reply.')
+        if (
+          this.#boundaryRequest?.id === message.id &&
+          this.#boundaryRequest.version === message.version &&
+          this.#boundaryRequest.from === message.from &&
+          this.#boundaryRequest.baseVersion === message.baseVersion &&
+          this.#boundaryRequest.codeVersion === message.codeVersion &&
+          this.#boundaryRequest.codeOnly === message.codeOnly &&
+          JSON.stringify(this.#boundaryRequest.config) ===
+            JSON.stringify(message.config)
+        )
+          return
+        this.#stopBoundaries()
+        if (
+          this.#boundaryModel?.key !== boundaryKey(message.config) ||
+          this.#boundaryModel?.config.prefix !== message.config.prefix
+        )
+          this.#boundaryModel = null
+        this.#boundaryModel?.setCodeCoverage(message.codeVersion !== undefined)
+        this.#boundaryRequest = message
+        this.#scheduleBoundaries()
+      } else if (message.type === 'boundary-ack') {
+        const request = this.#boundaryRequest
+        if (
+          !request ||
+          message.id !== request.id ||
+          message.version !== request.version ||
+          message.key !== this.#boundaryModel?.key ||
+          message.sequence !== this.#boundaryAwaiting
+        )
+          return
+        if (this.#boundaryFinal && request.codeOnly)
+          this.#boundaryModel?.acknowledgeCode(message.version)
+        this.#boundaryAwaiting = null
+        this.#scheduleBoundaries()
+      } else if (message.type === 'cancel-boundaries') {
+        if (message.retain !== undefined && typeof message.retain !== 'boolean')
+          throw new Error('Could not read a document worker reply.')
+        this.#stopBoundaries(!message.retain)
+        this.#boundaryModel?.setCodeCoverage(false)
+        this.#boundaryRequest = null
       } else if (message.type === 'cancel-find') {
         if (this.#request?.id === message.id) {
           this.#cancel()
@@ -265,24 +548,50 @@ export class DocumentWorkerService {
           message.to > this.#store.snapshot().normalizedLength
         )
           throw new Error('Find selection is outside its source snapshot.')
+        if (
+          message.replacement !== undefined &&
+          (message.mode !== 'rendered' ||
+            typeof message.replacement !== 'string' ||
+            message.replacement.length > 65536)
+        )
+          throw new Error('Find text is too long.')
         if (typeof message.query !== 'string' || message.query.length > 65536)
           throw new Error('Find text is too long.')
-        if (!this.#index || message.query !== this.#query) {
+        const mode = message.mode ?? 'source',
+          prefix = message.prefix ?? 0
+        const viewport = message.viewport
+        const rawPrefix = this.#store.snapshot().editorToRaw(prefix)
+        if (
+          (mode !== 'source' && mode !== 'rendered') ||
+          !Number.isSafeInteger(prefix) ||
+          prefix < 0 ||
+          prefix > this.#store.snapshot().normalizedLength ||
+          rawPrefix === null ||
+          !this.#store.snapshot().isEditBoundary(rawPrefix) ||
+          (viewport !== undefined &&
+            (!viewport ||
+              typeof viewport !== 'object' ||
+              Array.isArray(viewport) ||
+              !Number.isSafeInteger(viewport.from) ||
+              !Number.isSafeInteger(viewport.to) ||
+              viewport.from < 0 ||
+              viewport.to < viewport.from ||
+              viewport.to > this.#store.snapshot().normalizedLength ||
+              !Number.isSafeInteger(viewport.limit ?? 512) ||
+              (viewport.limit ?? 512) < 1 ||
+              (viewport.limit ?? 512) > 512))
+        )
+          throw new Error('Find selection is outside its source snapshot.')
+        if (
+          mode === 'rendered' &&
+          (!message.config || message.config.prefix !== prefix)
+        )
+          throw new Error('Formatted find configuration is unsupported.')
+        if (mode === 'rendered' && !this.#renderedModule) {
           this.#cancel()
-          this.#index = new SourceSearchIndex(
-            this.#store.snapshot(),
-            message.query,
-          )
-          this.#query = message.query
-          this.#stage = 'build'
-          this.#work = this.#index.build()
-        } else if (this.#stage !== 'build' || !this.#work) {
-          this.#cancel()
-          this.#stage = 'locate'
-          this.#work = this.#index.locate(message.from, message.to)
-        }
-        this.#request = { ...message }
-        this.#schedule()
+          this.#request = { ...message }
+          this.#loadRendered()
+        } else this.#startFind(message)
       } else throw new Error('Unknown document worker request.')
     } catch (error) {
       this.#fail(
@@ -297,6 +606,159 @@ export class DocumentWorkerService {
           : undefined,
       )
     }
+  }
+  #loadRendered() {
+    if (this.#renderedLoading) return
+    this.#renderedLoading = true
+    void import('./rendered-text.ts').then(
+      (module) => {
+        this.#renderedLoading = false
+        this.#renderedModule = module
+        const request = this.#request
+        if (
+          request?.mode === 'rendered' &&
+          this.#store &&
+          request.version === this.#store.snapshot().version
+        )
+          try {
+            this.#startFind(request)
+          } catch (error) {
+            this.#fail('find', error, request.id)
+          }
+      },
+      (error) => {
+        this.#renderedLoading = false
+        if (this.#request?.mode === 'rendered') this.#fail('find', error)
+      },
+    )
+  }
+  #clearRenderedReferences() {
+    this.#renderedReferenceIndex?.references.dispose()
+    this.#renderedReferenceIndex = null
+  }
+  *#resolveRenderedReferences(
+    source: SourceSnapshot,
+    config: BoundaryConfig,
+    labels: ReadonlySet<string>,
+  ): Generator<void, ReadonlySet<string>> {
+    if (!this.#renderedReferenceModule && !this.#renderedReferenceLoading) {
+      this.#renderedReferenceLoading = true
+      void import('./rendered-reference-resolver.ts').then(
+        (module) => {
+          this.#renderedReferenceModule = module
+          this.#renderedReferenceLoading = false
+        },
+        (error) => {
+          this.#renderedReferenceError = error
+          this.#renderedReferenceLoading = false
+        },
+      )
+    }
+    while (!this.#renderedReferenceModule) {
+      if (this.#renderedReferenceError) throw this.#renderedReferenceError
+      yield
+    }
+    const module = this.#renderedReferenceModule
+    const collect = function* (references: MarkdownSourceReferences) {
+      const found = new Set<string>()
+      let work = 0
+      for (const label of labels) {
+        if (references.lookup(label)) found.add(label)
+        if (++work === 1024) {
+          work = 0
+          yield
+        }
+      }
+      return found
+    }
+    const syntax = module.renderedReferenceSyntax(config)
+    const key = JSON.stringify([
+      syntax.gfm,
+      syntax.alerts,
+      syntax.textExtras,
+      syntax.math,
+    ])
+    const state = this.#model?.state()
+    const owners = state?.owners
+    const first = owners?.get(0)
+    const prefix =
+      first?.owner.kind === 'markdown:Frontmatter'
+        ? source.rawToEditor(first.to)
+        : 0
+    const available = this.#references
+    const current = () =>
+      !!state?.complete &&
+      !!owners &&
+      !!available &&
+      this.#references === available &&
+      this.#referenceOwners === owners &&
+      this.#model?.state().source === source &&
+      this.#model?.state().owners === owners &&
+      this.#referenceSyntax === key &&
+      prefix === config.prefix
+    if (current()) {
+      const found = yield* collect(available!)
+      if (current()) return found
+    }
+    if (source !== this.#store?.snapshot()) {
+      const references = yield* module.prepareRenderedReferences(source, config)
+      try {
+        return yield* collect(references)
+      } finally {
+        references.dispose()
+      }
+    }
+    const configKey = JSON.stringify(config)
+    let cached = this.#renderedReferenceIndex
+    if (!cached || cached.source !== source || cached.key !== configKey) {
+      this.#clearRenderedReferences()
+      const references = yield* module.prepareRenderedReferences(source, config)
+      cached = { source, key: configKey, references }
+      this.#renderedReferenceIndex = cached
+    }
+    return yield* collect(cached.references)
+  }
+  #startFind(message: FindRequest) {
+    const mode = message.mode ?? 'source',
+      prefix = message.prefix ?? 0
+    const renderedKey = JSON.stringify(message.config)
+    const key = mode + ':' + (mode === 'rendered' ? renderedKey : 0)
+    if (
+      mode === 'rendered' &&
+      (!this.#rendered || this.#renderedKey !== renderedKey)
+    ) {
+      this.#rendered = new this.#renderedModule!.RenderedTextIndex(
+        this.#store!.snapshot(),
+        prefix,
+        message.config,
+        (source, config, labels) =>
+          this.#resolveRenderedReferences(source, config, labels),
+      )
+      this.#renderedKey = renderedKey
+    }
+    if (
+      !this.#index ||
+      message.query !== this.#query ||
+      key !== this.#findKey
+    ) {
+      this.#cancel()
+      this.#index = new SourceSearchIndex(
+        this.#store!.snapshot(),
+        message.query,
+        {},
+        mode === 'rendered' ? this.#rendered! : undefined,
+      )
+      this.#query = message.query
+      this.#findKey = key
+      this.#stage = 'build'
+      this.#work = this.#index.build()
+    } else if (this.#stage !== 'build' || !this.#work) {
+      this.#cancel()
+      this.#stage = 'locate'
+      this.#work = this.#index.locate(message.from, message.to)
+    }
+    this.#request = { ...message }
+    this.#schedule()
   }
   #loadMetadata() {
     if (this.#metadataLoading) return
@@ -343,6 +805,7 @@ export class DocumentWorkerService {
             this.#semantics = null
             this.#references?.dispose()
             this.#references = null
+            this.#referenceOwners = null
             this.#model?.dispose()
             const Model = request.frontmatter
               ? FrontmatterSourceModel!
@@ -361,6 +824,7 @@ export class DocumentWorkerService {
               this.#semantics?.clear()
               this.#semantics = null
               this.#references?.dispose()
+              this.#referenceOwners = null
               this.#references = new MarkdownSourceReferences!({
                 gfm,
                 alerts,
@@ -381,8 +845,25 @@ export class DocumentWorkerService {
       })
   }
   #scheduleMetadata() {
-    if (this.#metadataTimer || !this.#metadata || !this.#model) return
-    this.#metadataTimer = setTimeout(this.#advanceMetadata, 0)
+    if (
+      this.#metadataTimer ||
+      this.#metadataScheduled ||
+      !this.#metadata ||
+      !this.#model
+    )
+      return
+    if (!this.#metadataChannel) {
+      const channel = new MessageChannel()
+      this.#metadataChannel = channel
+      channel.port1.onmessage = () => {
+        if (this.#metadataChannel !== channel) return
+        this.#metadataScheduled = false
+        // Reset timer nesting without starving cancellation timers.
+        this.#metadataTimer = setTimeout(this.#advanceMetadata, 0)
+      }
+    }
+    this.#metadataScheduled = true
+    this.#metadataChannel.port2.postMessage(null)
   }
   *#readSemantics(
     request: MetadataRequest,
@@ -507,6 +988,7 @@ export class DocumentWorkerService {
             if (!this.#referenceWork.next().done) continue
             this.#referenceWork = null
             this.#referencesReady = true
+            this.#referenceOwners = state.owners
           }
           if (request.reference)
             reference = this.#references!.lookup(request.reference.label)
@@ -518,7 +1000,7 @@ export class DocumentWorkerService {
             this.#semanticWork = null
             semantic = step.value
           }
-          this.#metadata = null
+          this.#cancelMetadata()
           this.#post({
             type: 'metadata',
             epoch: this.#epoch,
@@ -531,51 +1013,135 @@ export class DocumentWorkerService {
           return
         }
       } while (performance.now() - this.#metadataServiced < 2)
+      this.#post({
+        type: 'metadata-progress',
+        epoch: this.#epoch,
+        id: request.id,
+        version: request.version,
+      })
       this.#scheduleMetadata()
     } catch (error) {
       this.#fail('metadata', error, request.id)
     }
   }
   #schedule() {
-    if (this.#timer || !this.#work) return
-    this.#timer = setTimeout(() => {
-      this.#timer = undefined
-      const started = performance.now()
-      try {
-        while (this.#work && performance.now() - started < 2) {
-          const step = this.#work.next()
-          if (!step.done) continue
-          const request = this.#request!
-          if (this.#stage === 'build') {
-            this.#stage = 'locate'
-            this.#work = this.#index!.locate(request.from, request.to)
-          } else {
-            this.#work = null
-            this.#post({
-              type: 'find',
-              epoch: this.#epoch,
-              id: request.id,
-              version: request.version,
-              location: step.value as Extract<
-                DocumentWorkerReply,
-                { type: 'find' }
-              >['location'],
-            })
-          }
-        }
-        this.#schedule()
-      } catch (error) {
-        this.#fail('find', error)
+    if (this.#findScheduled || !this.#work) return
+    if (!this.#findChannel) {
+      const channel = new MessageChannel()
+      channel.port1.onmessage = () => {
+        if (this.#findChannel === channel) this.#advanceFind()
       }
-    }, 0)
+      this.#findChannel = channel
+    }
+    this.#findScheduled = true
+    this.#findChannel.port2.postMessage(null)
+  }
+  #advanceFind() {
+    this.#findScheduled = false
+    const started = performance.now()
+    let advanced = false
+    try {
+      while (this.#work && performance.now() - started < 2) {
+        const step = this.#work.next()
+        advanced = true
+        if (!step.done) continue
+        const request = this.#request!
+        if (this.#stage === 'build') {
+          this.#stage = 'locate'
+          this.#work = this.#index!.locate(request.from, request.to)
+        } else if (
+          this.#stage === 'locate' &&
+          (request.viewport || request.replacement !== undefined)
+        ) {
+          this.#location =
+            step.value as import('./source-search-index.ts').SearchLocation
+          this.#highlights = undefined
+          if (request.viewport) {
+            this.#stage = 'highlights'
+            this.#work = this.#index!.highlights(request.viewport)
+          } else {
+            this.#stage = 'replacement'
+            this.#work = this.#index!.replacement(
+              request.from,
+              request.to,
+              request.replacement!,
+            )
+          }
+        } else if (
+          this.#stage === 'highlights' &&
+          request.replacement !== undefined
+        ) {
+          this.#highlights =
+            step.value as import('./source-search-index.ts').SearchHighlights
+          this.#stage = 'replacement'
+          this.#work = this.#index!.replacement(
+            request.from,
+            request.to,
+            request.replacement,
+          )
+        } else {
+          const replacement =
+            this.#stage === 'replacement'
+              ? (step.value as import('./rendered-replace.ts').RenderedReplacement)
+              : undefined
+          const highlights = replacement
+            ? this.#highlights
+            : this.#stage === 'highlights'
+              ? (step.value as import('./source-search-index.ts').SearchHighlights)
+              : undefined
+          this.#work = null
+          this.#post({
+            type: 'find',
+            epoch: this.#epoch,
+            id: request.id,
+            version: request.version,
+            location:
+              highlights || replacement
+                ? this.#location!
+                : (step.value as Extract<
+                    DocumentWorkerReply,
+                    { type: 'find' }
+                  >['location']),
+            ...(request.mode === 'rendered'
+              ? { mode: 'rendered' as const }
+              : {}),
+            ...(highlights ? { highlights } : {}),
+            ...(replacement ? { replacement } : {}),
+            ...(request.highlights && request.mode !== 'rendered'
+              ? { highlightStarts: this.#index!.highlightStarts() }
+              : {}),
+          })
+        }
+      }
+      if (!this.#work) {
+        this.#cancel()
+        return
+      }
+      if (advanced) {
+        const request = this.#request!
+        this.#post({
+          type: 'find-progress',
+          epoch: this.#epoch,
+          id: request.id,
+          version: request.version,
+        })
+      }
+      this.#schedule()
+    } catch (error) {
+      this.#fail('find', error)
+    }
   }
   dispose() {
     this.#disposed = true
+    this.#stopBoundaries(true)
     this.#cancel()
     this.#cancelMetadata(true)
     this.#maintenance?.dispose()
     this.#maintenance = null
     this.#index = null
+    this.#rendered = null
+    this.#clearRenderedReferences()
     this.#store = null
+    this.#bootstrap = null
   }
 }

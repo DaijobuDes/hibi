@@ -4,12 +4,15 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import test from 'node:test'
 import {
   electron,
   waitForAppState,
   waitForDocumentEditor,
 } from './electron.mjs'
+import {
+  selectFormattedEngine,
+  testFormattedEngines as test,
+} from './formatted-engine.mjs'
 import { clickMenu, replaceRichText } from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
 
@@ -87,7 +90,7 @@ test('bundled MCP server serves a real HTTP client and preserves workspace edits
   }, workspace)
   const page = await app.firstWindow()
   page.setDefaultTimeout(8000)
-  await waitForDocumentEditor(app, page)
+  const rich = await selectFormattedEngine(app, page, t.formattedEngine)
   await page.evaluate(
     (preferences) => {
       localStorage.setItem(
@@ -100,7 +103,7 @@ test('bundled MCP server serves a real HTTP client and preserves workspace edits
   await page.getByRole('button', { name: /toggle workspace sidebar/i }).click()
   await page.evaluate(() => window.hibi.openWorkspace())
   await page.getByRole('treeitem', { name: 'active.md', exact: true }).click()
-  await page.locator('.tiptap').getByText(saved, { exact: true }).waitFor()
+  await rich.getByText(saved, { exact: true }).waitFor()
   await waitForDocumentEditor(app, page)
   await clickMenu(app, 'Settings')
   await page.getByRole('tab', { name: /^addon manager$/i }).click()
@@ -168,6 +171,20 @@ test('bundled MCP server serves a real HTTP client and preserves workspace edits
     return result.content[0].text
   }
   const jsonOf = (result) => JSON.parse(textOf(result))
+  const searchFirst = async (args) => {
+    let cursor = args.cursor,
+      result
+    do {
+      result = jsonOf(
+        await tool('search_documents', {
+          ...args,
+          ...(cursor ? { cursor } : {}),
+        }),
+      )
+      cursor = result.nextCursor
+    } while (!result.matches.length && cursor)
+    return result
+  }
   const onDisk = (path) => readFile(join(workspace, path), 'utf8')
 
   await t.test(
@@ -283,8 +300,89 @@ test('bundled MCP server serves a real HTTP client and preserves workspace edits
         'notes/../../outside.md',
       ])
         assert.ok(textOf(await tool('read_document', { path }), true))
-      const search = jsonOf(await tool('search_documents', { query: 'NEEDLE' }))
+      let search = await searchFirst({ query: 'NEEDLE' })
+      const matches = [...search.matches]
+      while (search.nextCursor) {
+        search = jsonOf(
+          await tool('search_documents', {
+            query: 'NEEDLE',
+            cursor: search.nextCursor,
+          }),
+        )
+        matches.push(...search.matches)
+      }
+      search = { ...search, matches }
       assert.equal(search.truncated, false)
+      const first = await searchFirst({
+        query: 'NEEDLE',
+        limit: 1,
+        searchId: 'native-pagination',
+      })
+      assert.equal(first.matches.length, 1)
+      assert.ok(first.nextCursor)
+      const paths = first.matches.map((match) => match.path)
+      let next = first.nextCursor
+      while (next) {
+        const page = jsonOf(
+          await tool('search_documents', {
+            query: 'NEEDLE',
+            limit: 1,
+            cursor: next,
+          }),
+        )
+        paths.push(...page.matches.map((match) => match.path))
+        next = page.nextCursor
+      }
+      assert.deepEqual(paths.sort(), ['notes/path-needle.md', 'notes/topic.md'])
+      const cancelled = await searchFirst({
+        query: 'NEEDLE',
+        limit: 1,
+        searchId: 'native-cancellation',
+      })
+      assert.ok(cancelled.nextCursor)
+      assert.deepEqual(
+        jsonOf(
+          await tool('search_documents', {
+            query: 'NEEDLE',
+            searchId: 'native-cancellation',
+            cancel: true,
+          }),
+        ).matches,
+        [],
+      )
+      const stale = jsonOf(
+        await tool('search_documents', {
+          query: 'NEEDLE',
+          cursor: cancelled.nextCursor,
+        }),
+      )
+      assert.equal(stale.stale, true)
+      assert.equal(stale.truncated, true)
+      assert.deepEqual(stale.matches, [])
+      const savedPage = await searchFirst({ query: 'NEEDLE', limit: 1 })
+      assert.ok(savedPage.nextCursor)
+      const sequence = await page.evaluate(
+        async () => (await window.hibi.getWorkspaceChangeSnapshot()).sequence,
+      )
+      await writeFile(
+        join(workspace, 'notes/topic.md'),
+        `${files['notes/topic.md']}\n`,
+      )
+      await waitForAsync(
+        page,
+        async (before) =>
+          (await window.hibi.getWorkspaceChangeSnapshot()).sequence > before,
+        sequence,
+      )
+      const afterSave = jsonOf(
+        await tool('search_documents', {
+          query: 'NEEDLE',
+          cursor: savedPage.nextCursor,
+        }),
+      )
+      assert.equal(afterSave.stale, true)
+      assert.equal(afterSave.truncated, true)
+      assert.deepEqual(afterSave.matches, [])
       assert.deepEqual(
         search.matches.sort((a, b) => a.path.localeCompare(b.path)),
         [
@@ -298,6 +396,49 @@ test('bundled MCP server serves a real HTTP client and preserves workspace edits
           },
         ],
       )
+    },
+  )
+
+  await t.test(
+    'show-all-files permits native search without expanding mcp visibility',
+    async () => {
+      await page.evaluate(() =>
+        window.hibi.updateWorkspaceSettings({
+          action: 'show-all-files',
+          enabled: true,
+        }),
+      )
+      try {
+        const paths = await page.evaluate(async () => {
+          const { target } = await window.hibi.getWorkspaceChangeSnapshot()
+          const paths = []
+          let cursor
+          do {
+            const result = await window.hibi.queryWorkspaceReferences({
+              target,
+              kind: 'search-text',
+              query: 'hidden secret',
+              ...(cursor ? { cursor } : {}),
+            })
+            if (!result.ok) throw new Error(result.message)
+            paths.push(...result.value.items)
+            cursor = result.value.nextCursor
+          } while (cursor)
+          return paths
+        })
+        assert.ok(paths.includes('.secret.md'))
+        assert.deepEqual(
+          (await searchFirst({ query: 'hidden secret' })).matches,
+          [],
+        )
+      } finally {
+        await page.evaluate(() =>
+          window.hibi.updateWorkspaceSettings({
+            action: 'show-all-files',
+            enabled: false,
+          }),
+        )
+      }
     },
   )
 
@@ -468,12 +609,12 @@ test('bundled MCP server serves a real HTTP client and preserves workspace edits
         textOf(await tool('read_document', { path: 'active.md' })),
         'Unsaved MCP draft.',
       )
-      assert.equal(
-        await page
-          .locator('.tiptap')
-          .evaluate((element) => element.editor.commands.undo()),
-        true,
-      )
+      if (t.formattedEngine === 'tiptap')
+        assert.equal(
+          await rich.evaluate((element) => element.editor.commands.undo()),
+          true,
+        )
+      else await rich.press('ControlOrMeta+z')
       await waitForAppState(
         page,
         async () =>

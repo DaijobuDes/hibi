@@ -1,10 +1,17 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import test from 'node:test'
 import { crashAndReload, electron, showTestWindows } from './electron.mjs'
+import {
+  selectFormattedEngine,
+  testFormattedEngines as test,
+} from './formatted-engine.mjs'
 import { clickMenu } from './keyboard.mjs'
+
+const { version: appVersion } = JSON.parse(
+  await readFile('package.json', 'utf8'),
+)
 
 test('desktop launch, isolation, offline reload, and recovery', {
   timeout: 60000,
@@ -22,6 +29,7 @@ test('desktop launch, isolation, offline reload, and recovery', {
   const page = await app.firstWindow()
   const errors = []
   page.on('pageerror', (error) => errors.push(error.message))
+  await selectFormattedEngine(app, page, t.formattedEngine)
   await page.getByRole('textbox', { name: /document editor/i }).waitFor()
   t.diagnostic(
     `launch to ready content: ${Math.round(performance.now() - started)} ms`,
@@ -105,6 +113,9 @@ test('desktop launch, isolation, offline reload, and recovery', {
         'onOpenRemote',
         'attachMedia',
         'readDocumentMedia',
+        'resolveDocumentMedia',
+        'cancelDocumentMedia',
+        'onDocumentMediaScopeChanged',
         'openDroppedFile',
         'getInstalledAddons',
         'getAddonDirectory',
@@ -126,6 +137,8 @@ test('desktop launch, isolation, offline reload, and recovery', {
         'getLicenses',
         'getLicense',
         'openSponsor',
+        'writeClipboardText',
+        'copyWorkspacePaths',
         'setAppearance',
         'getAddonStates',
         'setAddonEnabled',
@@ -145,8 +158,12 @@ test('desktop launch, isolation, offline reload, and recovery', {
         'removeHostCredential',
         'getHostCredentialStatus',
         'invokeAddon',
+        'invokeAddonProfile',
         'queryAddon',
         'getWorkspace',
+        'getWorkspaceHeader',
+        'readWorkspaceViewPage',
+        'onWorkspaceHeaderChanged',
         'getWorkspaceChangeSnapshot',
         'listWorkspaceEntryPage',
         'subscribeWorkspaceChanges',
@@ -160,6 +177,7 @@ test('desktop launch, isolation, offline reload, and recovery', {
         'readTableLayout',
         'writeTableLayout',
         'queryWorkspaceReferences',
+        'cancelWorkspaceImport',
         'listImporters',
         'importIntoWorkspace',
         'getWorkspaceSettings',
@@ -178,11 +196,13 @@ test('desktop launch, isolation, offline reload, and recovery', {
         'onWorkspaceChanged',
         'onWorkspaceListChanged',
         'getAppInfo',
+        'onAccessibilitySupport',
         'setUiCase',
         'getDocument',
         'selectDocumentTab',
         'focusDocumentTab',
         'closeDocumentTab',
+        'closeDocumentTabs',
         'moveDocumentTab',
         'setTabsEnabled',
         'updateDocument',
@@ -206,6 +226,7 @@ test('desktop launch, isolation, offline reload, and recovery', {
         'saveHotkeys',
         'setHotkeyRecording',
         'onCommand',
+        'onHistory',
       ].sort(),
     },
   )
@@ -347,6 +368,13 @@ test('desktop launch, isolation, offline reload, and recovery', {
       await app.context().setOffline(true)
       await page.reload()
       await page.getByRole('textbox', { name: /document editor/i }).waitFor()
+      await page
+        .locator(
+          t.formattedEngine === 'tiptap'
+            ? '.rich-pane .tiptap'
+            : '.rich-pane .hibi-formatted .cm-content',
+        )
+        .waitFor()
       await app.evaluate(({ BrowserWindow }) => {
         const window = BrowserWindow.getAllWindows()[0]
         window.unmaximize()
@@ -392,7 +420,7 @@ test('desktop launch, isolation, offline reload, and recovery', {
         .waitFor()
       assert.equal(
         (await reopened.evaluate(() => window.hibi.getAppInfo())).version,
-        '0.1.0',
+        appVersion,
       )
     })
   }
@@ -403,12 +431,12 @@ test('desktop launch, isolation, offline reload, and recovery', {
       const contents = BrowserWindow.getAllWindows()[0].webContents
       // Playwright retains its crashed target; inspect the new renderer through Electron.
       return contents.executeJavaScript(
-        'new Promise(resolve => { const check = () => document.querySelector(".tiptap") ? window.hibi.getAppInfo().then(info => resolve({ editor: true, version: info.version })) : requestAnimationFrame(check); check() })',
+        'new Promise(resolve => { const check = () => document.querySelector(".rich-pane [role=textbox]") ? window.hibi.getAppInfo().then(info => resolve({ editor: true, version: info.version })) : requestAnimationFrame(check); check() })',
       )
     })
     assert.deepEqual(recovered, {
       editor: true,
-      version: '0.1.0',
+      version: appVersion,
     })
   })
 })

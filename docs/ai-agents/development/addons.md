@@ -51,15 +51,21 @@ Commands receive an `<addon-id>.` prefix and are removed when the addon stops. C
 
 An addon can export a `Settings` React component alongside `manifest` and `start`. Enabled addons get a page under **Plugins**; the section disappears when no pages are available. The host supplies the heading and metadata. Use shared controls such as `SettingRow`, `Toggle`, `Button`, and `Select`.
 
-Settings load when needed for their page or command-palette discovery. Discovery can keep them mounted while hidden, so mount effects must not assume the page is visible. Settings errors are isolated from the editor. See [command discovery](../extensions/command-discovery.md).
+Settings load when needed for their page or command-palette discovery. Discovery can keep them mounted while hidden, so mount effects must not assume the page is visible. Bundled settings read `SettingsPageVisible` from `src/ui/settings-index.ts` to defer long lists and native reads until their page is shown; keep their `SettingRow` controls rendered so discovery still finds them. Settings errors are isolated from the editor. See [command discovery](../extensions/command-discovery.md).
 
 ## Editor behavior
 
+Selection, interaction, completion, and typing-context positions belong to the editor implementation for API 1, 2, and 3. `editor: 'rich'` names the view in either implementation; no public field identifies the engine. Positions are opaque: derive ranges from the request's `selection`, `before`/`after`, and `documentLength`, never from Markdown text or constants. The legacy rich editor uses ProseMirror positions, which count node boundaries as well as UTF-16 text units. CodeMirror source and formatted editors use UTF-16 offsets in normalized source, with CRLF counted as one line break. Typing changes refer to the previous editor document, while their selection and nearby text describe the committed document. Raw source edits use the complete original Markdown coordinates instead.
+
 `context.editor.onKeyEvent(listener)` observes keydown and keyup in active editable rich/source panes. Events include phase (`down`/`up`), view (`normal`/`source`), key/code, repeat, and modifiers. Observers run synchronously and cannot consume input. IME composition, hidden/read-only panes, dialogs, and non-editor fields are excluded. Disposing the listener or stopping the addon removes it; listener errors are contained. A release may be absent when focus leaves, so reset held-key state on blur or focus changes. No operating-system hooks are exposed.
+
+legacy verbatim projections in the CodeMirror formatted view retain their proven body bounds during local typing. interior source echoes map those bounds and defer one whole-source recheck until focus, a document edit or a user event. background syntax and viewport updates keep that check pending. echoes touching a protected region recheck immediately; notes with no protected region also watch both document edges so a restored prefix or suffix becomes protected before input. local typing does not require another check on refocus. adapters must keep their bounds stable under body edits; body-dependent bounds can drift until another source echo or editor reload. use a formatted contribution for live structural changes. hidden suffix text remains in syntax indexes, so headings or definitions there can affect outline and reference results; exclusion from those indexes remains a compatibility gap.
+
+legacy projection protection is installed when a verbatim adapter is present. a transforming adapter in that chain must expose an exact source body; otherwise its matching note is read-only. without a verbatim adapter, the formatted view edits canonical source directly. this is a compatibility difference for non-verbatim transforming projections.
 
 `context.editor.registerSource({ id, create })` installs a CodeMirror extension in each source editor. `create(context)` can return a promise for a lazy import. Keep resources scoped to the editor lifecycle. Reconfiguration preserves content and history; stopping the addon removes registrations. `context.editor.runCommand(command)` uses Hibi's file handling and returns `false` on cancellation or failure. Vim demonstrates both APIs.
 
-`context.editor.registerRich({ id, attach })` adds behavior to each visual editor without rebuilding its schema or history. `attach(editor, context)` receives the Tiptap editor and must return cleanup. Both hooks receive `context.viewId`, the hosting view's `ViewTarget.viewId`; it identifies the editor instance, not the active document, so match it against a captured view target instead of reading pane DOM. Hibi always supplies the context; its optional callback parameter preserves existing manual `create()` and `attach(editor)` calls. Callbacks that use view identity must handle an omitted context. Register/unregister ProseMirror plugins through that editor and remove other listeners during cleanup. The host detaches while only source view is shown and reattaches after the formatted editor catches up. It also detaches on unregister, addon shutdown, editor replacement, or unmount, and reports errors as addon notifications. Use `getDocument()` and `onDocumentChange()` for current source content instead of retaining a hidden visual editor. This hook cannot add schema nodes or marks. Slash commands demonstrate paired rich/source behavior with one popup.
+`context.editor.registerRich({ id, attach })` adds behavior to each visual editor without rebuilding its schema or history. `attach(editor, context)` receives the Tiptap editor and must return cleanup. Both hooks receive `context.viewId`, the hosting view's `ViewTarget.viewId`; it identifies the editor instance, not the active document, so match it against a captured view target instead of reading pane DOM. Hibi always supplies the context; its optional callback parameter preserves existing manual `create()` and `attach(editor)` calls. Callbacks that use view identity must handle an omitted context. Register/unregister ProseMirror plugins through that editor and remove other listeners during cleanup. The host detaches while only source view is shown and reattaches after the formatted editor catches up. Declare `preview: 'deferred'` when the attachment accepts a read-only split preview that catches up after source typing pauses; pointer, focus, and keyboard input in that pane and host formatting bring it up to date first. Without the declaration, the split preview updates after every source edit. It also detaches on unregister, addon shutdown, editor replacement, or unmount, and reports errors as addon notifications. Use `getDocument()` and `onDocumentChange()` for current source content instead of retaining a hidden visual editor. This hook cannot add schema nodes or marks. Slash commands demonstrate paired rich/source behavior with one popup.
 
 `context.toolbar` adds actions below the titlebar. `context.tooltips` shows plain-text help that is removed with its owner. Both use shared controls; see [toolbar and tooltips](toolbar-and-tooltips.md).
 
@@ -85,7 +91,7 @@ Updates after disposal are ignored. Click failures produce an error notification
 
 ## Slash actions
 
-An existing command can join the slash menu with `slash: { label, description, keywords?, when?, transform }`. `when(source)` checks the complete note. `transform(source)` synchronously receives the whole note with its slash query removed, then returns replacement text or `null` to cancel. Keep transforms pure. Frontmatter shares one `addFrontmatter` transform between its palette and slash actions.
+An existing command can join the slash menu with `slash: { label, description, keywords?, available?, when?, transform }`. `available(note)` decides whether the action is offered and reads only what it needs: `note.slice(from, to)` returns part of the note and `note.length` is its length, in UTF-16 code units. `when(source)` receives the complete note instead, which is read again whenever the menu changes, so prefer `available`; Hibi checks `available` when both are set. `transform(source)` synchronously receives the whole note with its slash query removed, then returns replacement text or `null` to cancel. Keep checks and transforms pure. Frontmatter's check reads a few pieces of the note each time, reads on in idle time, and keeps its answer through edits that cannot change it; it shares one `addFrontmatter` transform between its palette and slash actions.
 
 ```typescript
 context.commands.register({
@@ -96,7 +102,7 @@ context.commands.register({
     label: 'properties',
     description: 'add page metadata',
     keywords: 'frontmatter yaml',
-    when: source => !hasProperties(source),
+    available: note => !hasProperties(note),
     transform: addProperties,
   },
 })
@@ -204,6 +210,12 @@ Desktop and exported sidebars default to 256 px while respecting saved widths. D
 
 ## Compatibility
 
-The public API is version 2. Source plugins must include `version` and `apiVersion: 2`; bundled plugins use this contract. Versioned API v1 packages remain runtime-compatible and are normalized on installation. Both processes reject empty/missing versions and unsupported API versions.
+The public API is version 3. New plugins include `version` and `apiVersion: 3`; API v1 and v2 packages remain loadable and are normalized on installation. For the CodeMirror formatted view, flavors contribute `syntax` and `render`, and `context.editor.registerFormatted` installs per-view extensions. The `formatted` SDK capability adds Lezer Markdown as `sdk.codeMirror.markdown`. See [formatted view contributions](architecture.md#formatted-view-contributions) for rendering and legacy compatibility. Both processes reject empty/missing versions and unsupported API versions.
 
 Preserve signatures when adding capabilities. Breaking changes require an API version bump, addon migrations, and documentation updates. `npm start` regenerates references when declarations change. Otherwise run `npm run docs`; `npm run docs:check`, included in `npm run check`, rejects stale references. Update the addon README with behavior changes.
+
+## Selection previews
+
+Formatted toolbar, hover and context-menu requests expose at most 256 rendered UTF-16 units, ending at a scalar boundary. Capture parses and projects one source page near the selection's start, with a shared bounded context cache. It declines if that page cannot prove the complete preview or if context exceeds the read budget. Selection coordinates and replacement targets still describe the full selection.
+
+Capture declines while a selected footnote's definition scan or a reference-label answer is unknown. A label confirmed absent renders literally. It also declines when the shared 64-step syntax seek cannot prove adjacent visible blocks, including long runs of hidden reference definitions. These cases never substitute raw Markdown for rendered text.

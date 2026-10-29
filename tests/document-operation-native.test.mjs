@@ -2,13 +2,17 @@ import assert from 'node:assert/strict'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import test from 'node:test'
 import { electron, waitForDocumentEditor } from './electron.mjs'
+import {
+  selectFormattedEngine,
+  testFormattedEngines as test,
+} from './formatted-engine.mjs'
 import { replaceRichText } from './keyboard.mjs'
 
 test('atomic source operations cross preload barriers, save exact text and recover after reload', {
   timeout: 30_000,
 }, async (t) => {
+  const engine = t.formattedEngine
   const profile = await mkdtemp(join(tmpdir(), 'hibi-atomic-native-'))
   const destination = join(profile, 'saved.md')
   const app = await electron.launch({
@@ -26,7 +30,7 @@ test('atomic source operations cross preload barriers, save exact text and recov
     dialog.showMessageBox = async () => ({ response: 1 })
   }, destination)
   const page = await app.firstWindow()
-  await waitForDocumentEditor(app, page)
+  await selectFormattedEngine(app, page, engine)
   await replaceRichText(
     page,
     page.getByRole('textbox', { name: /document editor/i }),
@@ -56,13 +60,19 @@ test('atomic source operations cross preload barriers, save exact text and recov
     return { document, ack }
   }, result.operation)
   assert.equal(saved.ack.operationId, 'native-batch')
-  assert.equal(saved.document.markdown, 'AbcdeF')
+  assert.equal(saved.document.saveReceipt, true)
+  assert.equal(saved.document.savedVersion, result.operation.contentVersion)
+  assert.equal(saved.document.contentVersion, result.operation.contentVersion)
+  assert.equal('markdown' in saved.document, false)
   assert.equal(saved.document.dirty, false)
   assert.equal(await readFile(destination, 'utf8'), 'AbcdeF')
+  // Raw journal appends bypass the renderer session; reload adopts their source.
   await page.reload()
   await waitForDocumentEditor(app, page)
   const restored = await page.evaluate(() => window.hibi.getDocument())
   assert.equal(restored.markdown, 'AbcdeF')
+  assert.equal(restored.savedMarkdown, 'AbcdeF')
+  assert.equal(restored.dirty, false)
   assert.equal(restored.contentVersion, result.operation.contentVersion)
   if (process.platform === 'darwin') {
     const editor = page.getByRole('textbox', { name: /document editor/i })

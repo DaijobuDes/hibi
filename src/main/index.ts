@@ -6,11 +6,11 @@ import type { IpcMainInvokeEvent, MenuItemConstructorOptions } from 'electron'
 import {
   app,
   BrowserWindow,
+  clipboard,
   dialog,
   globalShortcut,
   ipcMain,
   Menu,
-  nativeImage,
   nativeTheme,
   net,
   protocol,
@@ -34,21 +34,22 @@ import { ADDON_TRUST_CHANNELS } from '../shared/addon-trust'
 import { ADDON_WINDOW_CHANNELS } from '../shared/addon-windows'
 import { ANALYSIS_CHANNELS } from '../shared/analysis'
 import { BACKGROUND_CHANNELS, QUICK_NOTE_COMMAND } from '../shared/background'
+import { CLIPBOARD_CHANNELS, MAX_CLIPBOARD_TEXT } from '../shared/clipboard'
 import { APPEARANCE_CHANNEL } from '../shared/colorschemes'
 import { DEPENDENCY_CHANNELS } from '../shared/dependencies'
 import {
+  ACCESSIBILITY_CHANNELS,
   APP_INFO_CHANNEL,
   type AppInfo,
   BOOTSTRAP_CHANNELS,
   DOCUMENT_CHANNELS,
-  MAX_DOCUMENT_BYTES,
 } from '../shared/desktop'
+import { journalHead } from '../shared/document-checkpoint'
+import { createCheckpointVerifier } from '../shared/document-checkpoint-stream'
 import {
-  journalHead,
-  parseJournalCheckpoint,
-  verifyJournalCheckpoint,
-} from '../shared/document-checkpoint'
-import { createJournalReceiver } from '../shared/document-journal'
+  createJournalReceiver,
+  MAX_JOURNAL_INSERT_UNITS,
+} from '../shared/document-journal'
 import { ASSOCIATION_CHANNELS } from '../shared/file-associations'
 import type { AddonId, WorkspaceTarget } from '../shared/foundation-contracts'
 import {
@@ -76,6 +77,7 @@ import { UI_CASE_CHANNEL } from '../shared/ui-case'
 import { UPDATE_CHANNELS } from '../shared/updates'
 import { WORKSPACE_CHANNELS } from '../shared/workspace'
 import { WORKSPACE_SETTINGS_CHANNELS } from '../shared/workspace-settings'
+import { followAccessibilitySupport } from './accessibility-support'
 import { AddonHotkeys } from './addon-hotkeys'
 import { createAddonStorage } from './addon-storage'
 import {
@@ -117,9 +119,11 @@ import {
   setAddonDeactivationHandler,
   setAddonStatesHandler,
   setAddonWindowOwners,
+  stopNativeAddons,
   windowAddonName,
 } from './addons'
 import { analysisService } from './analysis'
+import { appIconPath, applyAppIcon } from './app-icon'
 import {
   appearanceColors,
   loadAppearance,
@@ -130,11 +134,13 @@ import { BackgroundMode } from './background'
 import {
   autosaveDocument,
   closeDocumentTab,
+  closeDocumentTabs,
   confirmDiscard,
   confirmDiscardAll,
   discardChanges,
   focusDocumentTab,
   getDocument,
+  getDocumentForTab,
   getDocumentPath,
   getDocumentPathForTab,
   getDocumentSource,
@@ -157,7 +163,9 @@ import {
   updateDocument,
   updateDocumentEdited,
 } from './document'
+import { createDocumentTransfers } from './document-transfer'
 import { isDocumentName } from './document-types'
+import { sweepSiteScratch } from './export-scratch'
 import { externalFileArguments } from './external-files'
 import {
   fileOperationDialogOpened,
@@ -165,12 +173,13 @@ import {
   withinFileOperation,
 } from './file-operation-dialog'
 import { GlobalShortcuts } from './global-shortcuts'
-import { listVersions, previewVersion } from './history'
+import { listVersions, previewVersion, readVersionChunks } from './history'
 import { HostCredentials } from './host-credentials'
 import { HostNetwork } from './host-network'
 import { HostSelectedIoService } from './host-selected-io'
 import { hotkeys, loadHotkeys, saveHotkeys } from './hotkeys'
 import { readDocumentImage } from './images'
+import { cancelImport, runCancellableImport } from './import-cancellation'
 import { listLicenses, readLicense } from './licenses'
 import {
   openDocumentLink,
@@ -180,6 +189,7 @@ import {
 import { LocalDiagnostics } from './local-diagnostics/runtime'
 import {
   attachMedia,
+  documentMedia,
   openDroppedFile,
   readDocumentMedia,
   serveDocumentMedia,
@@ -218,10 +228,12 @@ import {
   startUpdateChecks,
 } from './updates'
 import {
+  cancelWorkspaceSelection,
   currentWorkspaceTarget,
   deleteKnownWorkspace,
   documentFileChanged,
   getWorkspace,
+  getWorkspaceHeader,
   indexWorkspace,
   isCurrentWorkspaceTarget,
   listWorkspaceEntryPage,
@@ -229,6 +241,7 @@ import {
   openRecentWorkspace,
   openWorkspace,
   openWorkspaceFile,
+  readWorkspaceViewPage,
   refreshWorkspace,
   snapshotWorkspace,
   subscribeWorkspaceChanges,
@@ -236,7 +249,7 @@ import {
   workspaceRelativePath,
   workspaceRoot,
 } from './workspace'
-import { workspaceAction } from './workspace-actions'
+import { workspaceAction, workspaceClipboardPaths } from './workspace-actions'
 import {
   createWorkspaceBinary,
   createWorkspaceText,
@@ -264,10 +277,6 @@ app.setName('hibi')
 // Let held Vim motions repeat instead of opening macOS's accent picker.
 if (process.platform === 'darwin')
   systemPreferences.setUserDefault('ApplePressAndHoldEnabled', 'boolean', false)
-const iconName = `icon-${process.platform === 'darwin' ? 'mac' : process.platform === 'win32' ? 'win' : 'linux'}.png`
-const appIcon = app.isPackaged
-  ? join(process.resourcesPath, 'icons', iconName)
-  : join(app.getAppPath(), 'build', iconName)
 app.enableSandbox()
 const testing = !app.isPackaged && app.commandLine.hasSwitch('hibi-test')
 const foundationsIpcBenchmark =
@@ -397,6 +406,11 @@ const devUrl = !app.isPackaged ? process.env.ELECTRON_RENDERER_URL : undefined
 const rendererUrl = devUrl ? new URL(devUrl).href : 'app://hibi/'
 const rendererRoot = join(import.meta.dirname, '../renderer')
 let mainWindow: BrowserWindow | null = null
+const accessibility = followAccessibilitySupport(
+  () => app.isAccessibilitySupportEnabled(),
+  (enabled) =>
+    mainWindow?.webContents.send(ACCESSIBILITY_CHANNELS.changed, enabled),
+)
 let networkWindowKey: object = {}
 const addonStorage = createAddonStorage(
   join(app.getPath('userData'), 'addon-storage'),
@@ -642,7 +656,19 @@ if (process.env.NODE_ENV_ELECTRON_VITE === 'development')
       app.quit()
     }
   })
-app.on('will-quit', () => {
+let nativeStopping: Promise<void> | undefined
+let nativeStopped = false
+app.on('will-quit', (event) => {
+  if (!nativeStopped) {
+    event.preventDefault()
+    nativeStopping ??= stopNativeAddons()
+      .catch(console.error)
+      .finally(() => {
+        nativeStopped = true
+        app.quit()
+      })
+    return
+  }
   globalShortcuts.clear()
   background.dispose()
 })
@@ -762,6 +788,25 @@ function runFileOperation<T>(
   })
 }
 
+let workspaceOpenIntent = 0
+function runWorkspaceOpen(
+  event: IpcMainInvokeEvent,
+  operation: (
+    window: BrowserWindow,
+  ) => Promise<ReturnType<typeof getWorkspace>>,
+  includeEntries = false,
+) {
+  trustedWindow(event)
+  if (closing || fileOperationHasDialog()) throw fileOperationUnavailable()
+  const intent = ++workspaceOpenIntent
+  cancelWorkspaceSelection()
+  return runFileOperation(event, (window) =>
+    intent === workspaceOpenIntent
+      ? operation(window)
+      : Promise.resolve(getWorkspace(undefined, includeEntries)),
+  )
+}
+
 async function lockFileOperation<T>(
   window: BrowserWindow,
   operation: (window: BrowserWindow) => Promise<T>,
@@ -777,8 +822,14 @@ async function lockFileOperation<T>(
       const running = fileOperation.catch(() => undefined)
       await Promise.race([running, fileOperationDialogOpened() ?? running])
     }
+    const mediaPath = getDocumentPath()
     const pending = withinFileOperation(() => operation(window)).finally(() => {
       fileOperation = null
+      if (mediaPath !== getDocumentPath())
+        mainWindow?.webContents.send(
+          MEDIA_CHANNELS.scopeChanged,
+          getDocument().revision,
+        )
     })
     fileOperation = pending
     return await pending
@@ -846,6 +897,8 @@ function showStartupError(window: BrowserWindow | null = mainWindow): void {
 
 let windowSetupReady = false
 const appendDocumentChange = createJournalReceiver(getDocumentSourceFor)
+const checkpointVerifier = createCheckpointVerifier(getDocumentSourceFor)
+const documentTransfers = createDocumentTransfers()
 function createWindow(): void {
   if (!windowSetupReady) return
   closing = false
@@ -859,7 +912,7 @@ function createWindow(): void {
     // Linux cannot change focusability after creation; CI shows test windows.
     focusable: !testing || process.platform === 'linux',
     title: 'Hibi',
-    ...(process.platform === 'darwin' ? {} : { icon: appIcon }),
+    ...(process.platform === 'darwin' ? {} : { icon: appIconPath() }),
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
     ...(process.platform === 'darwin'
       ? { trafficLightPosition: { x: 12, y: 11 } }
@@ -882,6 +935,9 @@ function createWindow(): void {
     if (!window.isDestroyed()) window.webContents.setIgnoreMenuShortcuts(false)
   }
   window.on('blur', stopRecording)
+  accessibility.start()
+  window.on('show', accessibility.sample)
+  window.on('focus', accessibility.sample)
   window.webContents.on('did-start-loading', stopRecording)
   window.webContents.on('did-start-loading', () => {
     backgroundSettingsReady = false
@@ -889,7 +945,11 @@ function createWindow(): void {
     addonHotkeys.clearRegistrations()
     installMenu()
   })
-  window.webContents.on('did-start-loading', () => analysisService.cancel())
+  window.webContents.on('did-start-loading', () => {
+    analysisService.cancel()
+    checkpointVerifier.clear()
+    documentTransfers.clear()
+  })
   window.webContents.on('render-process-gone', () => {
     backgroundSettingsReady = false
     stopRecording()
@@ -1005,6 +1065,7 @@ function createWindow(): void {
   }
   window.on('close', (event) => {
     if (allowClose) return
+    cancelImport(window.id)
     event.preventDefault()
     if (confirmingClose) return
     if (background.enabled && !quitting) {
@@ -1071,6 +1132,7 @@ function createWindow(): void {
       new Error('The editor closed before confirming its changes.'),
     )
     mainWindow = null
+    accessibility.stop()
     if (process.platform !== 'darwin' || quitting) globalShortcuts.clear()
     // Hidden addon windows must not keep Hibi running where closing it quits.
     if (process.platform !== 'darwin') releaseAddonWindows(true)
@@ -1131,6 +1193,28 @@ function createWindow(): void {
 function installMenu(): void {
   const command = (action: AppCommand) => () =>
     mainWindow?.webContents.send(HOTKEY_CHANNELS.command, action)
+  // The app window runs undo and redo in its focused editor; its devtools and
+  // other windows keep the browser's own.
+  const history =
+    (
+      direction: 'undo' | 'redo',
+    ): NonNullable<MenuItemConstructorOptions['click']> =>
+    (_item, window) => {
+      if (!(window instanceof BrowserWindow)) return
+      const { webContents } = window
+      if (webContents.isDevToolsFocused())
+        webContents.devToolsWebContents?.[direction]()
+      else if (window === mainWindow)
+        webContents.send(HOTKEY_CHANNELS.history, direction)
+      else webContents[direction]()
+    }
+  // Electron's own Edit menu items, beside undo and redo.
+  const editItems =
+    Menu.buildFromTemplate([
+      { role: 'editMenu' },
+    ]).items[0]?.submenu?.items.filter(
+      ({ role }) => role !== 'undo' && role !== 'redo',
+    ) ?? []
   const addonItems: MenuItemConstructorOptions[] = []
   let group: string | null = null
   for (const item of addonHotkeys.menuContributions()) {
@@ -1195,7 +1279,21 @@ function installMenu(): void {
         },
       ],
     },
-    { role: 'editMenu' },
+    {
+      label: 'Edit',
+      // Editors take these shortcuts first; the menu runs them only when
+      // nothing did.
+      submenu: Menu.buildFromTemplate([
+        { label: 'Undo', accelerator: 'CmdOrCtrl+Z', click: history('undo') },
+        {
+          label: 'Redo',
+          accelerator:
+            process.platform === 'win32' ? 'Control+Y' : 'Shift+CmdOrCtrl+Z',
+          click: history('redo'),
+        },
+        ...editItems,
+      ]),
+    },
     {
       label: 'View',
       submenu: [
@@ -1302,19 +1400,13 @@ if (!app.requestSingleInstanceLock()) {
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit()
   })
+  app.on('accessibility-support-changed', accessibility.sample)
 
   void app
     .whenReady()
     .then(async () => {
       startupMark('app-ready')
-      // Installed macOS apps already carry their full-resolution bundle icon.
-      // A dock-sized development icon avoids re-encoding 1024px images at launch.
-      if (process.platform === 'darwin' && !app.isPackaged)
-        app.dock?.setIcon(
-          nativeImage
-            .createFromPath(appIcon)
-            .resize({ width: 256, height: 256 }),
-        )
+      void sweepSiteScratch(app.getPath('userData')).catch(console.error)
       const hotkeysReady = startupSpan('hotkeys', loadHotkeys)
       const addonsReady = startupSpan('addons', loadAddons)
       const documentReady = startupSpan(
@@ -1337,6 +1429,7 @@ if (!app.requestSingleInstanceLock()) {
       // Handle rejection immediately while appearance and renderer loading overlap it.
       void preferences.catch(() => {})
       await startupSpan('appearance', loadAppearance)
+      applyAppIcon()
       const handle = (
         channel: string,
         listener: Parameters<typeof ipcMain.handle>[1],
@@ -1346,12 +1439,24 @@ if (!app.requestSingleInstanceLock()) {
           trustedWindow(args[0])
           if (!foundationsIpcBenchmark) {
             await ready
-            return listener(...args)
+            return documentTransfers.encode(
+              args[0].sender.id,
+              await listener(...args),
+              channel === DOCUMENT_CHANNELS.save ||
+                channel === DOCUMENT_CHANNELS.saveTarget ||
+                channel === DOCUMENT_CHANNELS.autosave,
+            )
           }
           foundationsIpcBenchmark.request(channel, args.slice(1))
           try {
             await ready
-            const result = await listener(...args)
+            const result = documentTransfers.encode(
+              args[0].sender.id,
+              await listener(...args),
+              channel === DOCUMENT_CHANNELS.save ||
+                channel === DOCUMENT_CHANNELS.saveTarget ||
+                channel === DOCUMENT_CHANNELS.autosave,
+            )
             foundationsIpcBenchmark.response(channel, result)
             return result
           } catch (error) {
@@ -1428,7 +1533,7 @@ if (!app.requestSingleInstanceLock()) {
           info: appInfo(),
           document: getDocument(),
           hotkeys,
-          workspace: getWorkspace(),
+          workspace: getWorkspace(undefined, false),
           externalPending: externalFiles.length > 0 || (await workspacePending),
           // Files named at launch come first; a restored workspace doesn't defer it.
           introduction:
@@ -1453,6 +1558,11 @@ if (!app.requestSingleInstanceLock()) {
           trustedWindow(event)
           return appInfo()
         },
+        Promise.resolve(),
+      )
+      handle(
+        ACCESSIBILITY_CHANNELS.get,
+        accessibility.sample,
         Promise.resolve(),
       )
       handle(
@@ -1535,6 +1645,19 @@ if (!app.requestSingleInstanceLock()) {
         trustedWindow(event)
         return shell.openExternal(SPONSOR_URL)
       })
+      handle(CLIPBOARD_CHANNELS.writeText, (event, text: unknown) => {
+        trustedWindow(event)
+        if (typeof text !== 'string' || text.length > MAX_CLIPBOARD_TEXT)
+          throw new Error('Hibi could not copy this text.')
+        clipboard.writeText(text)
+      })
+      handle(
+        CLIPBOARD_CHANNELS.writeWorkspacePaths,
+        (event, paths: unknown, options: unknown) => {
+          trustedWindow(event)
+          clipboard.writeText(workspaceClipboardPaths(paths, options))
+        },
+      )
       if (import.meta.env.DEV)
         handle(
           'addons:development-manifest',
@@ -1793,8 +1916,28 @@ if (!app.requestSingleInstanceLock()) {
         ADDON_CHANNELS.query,
         (event, id: unknown, method: unknown, input: unknown) =>
           readAfterFileOperation(event, (window) =>
-            invokeAddon(window, id, method, input, true),
+            invokeAddon(window, id, method, input, 'query'),
           ),
+      )
+      handle(
+        ADDON_CHANNELS.profile,
+        (event, id: unknown, method: unknown, input: unknown) => {
+          if (closing) throw fileOperationUnavailable()
+          const operation = invokeAddon(
+            trustedWindow(event),
+            id,
+            method,
+            input,
+            'profile',
+          )
+          const completed = operation.then(
+            () => {},
+            () => {},
+          )
+          pendingFileOperations.add(completed)
+          void completed.then(() => pendingFileOperations.delete(completed))
+          return operation
+        },
       )
       handle(
         ADDON_WINDOW_CHANNELS.open,
@@ -1831,7 +1974,7 @@ if (!app.requestSingleInstanceLock()) {
           const { window, addonId } = addonWindowSender(event)
           return readAfterFileOperation(
             event,
-            () => invokeAddon(window, addonId, method, input, true),
+            () => invokeAddon(window, addonId, method, input, 'query'),
             window,
           )
         },
@@ -1934,6 +2077,23 @@ if (!app.requestSingleInstanceLock()) {
         recordingHotkey = value
         window.webContents.setIgnoreMenuShortcuts(value)
       })
+      handle(DOCUMENT_CHANNELS.transferOpen, (event, id: unknown) => {
+        if (typeof id !== 'string' || !id || id.length > 128)
+          throw new Error('Invalid document transfer identity.')
+        const document = getDocumentForTab(id)
+        if (!document)
+          throw new Error('The document source is not loaded. Try again.')
+        return documentTransfers.encode(event.sender.id, document, false, true)
+      })
+      handle(DOCUMENT_CHANNELS.transferRead, (event, request: unknown) =>
+        documentTransfers.read(event.sender.id, request),
+      )
+      handle(DOCUMENT_CHANNELS.transferFinish, (event, request: unknown) =>
+        documentTransfers.finish(event.sender.id, request),
+      )
+      handle(DOCUMENT_CHANNELS.transferAbort, (event, request: unknown) =>
+        documentTransfers.abort(event.sender.id, request),
+      )
       handle(DOCUMENT_CHANNELS.get, (event) => {
         trustedWindow(event)
         return getDocument()
@@ -1950,6 +2110,13 @@ if (!app.requestSingleInstanceLock()) {
       )
       handle(DOCUMENT_CHANNELS.closeTab, (event, id: unknown) =>
         runFileOperation(event, (window) => closeDocumentTab(window, id)),
+      )
+      handle(
+        DOCUMENT_CHANNELS.closeTabs,
+        (event, ids: unknown, preferred: unknown) =>
+          runFileOperation(event, (window) =>
+            closeDocumentTabs(window, ids, preferred),
+          ),
       )
       handle(
         DOCUMENT_CHANNELS.moveTab,
@@ -1969,7 +2136,7 @@ if (!app.requestSingleInstanceLock()) {
       )
       handle(HISTORY_CHANNELS.restore, (event, id: unknown) =>
         runFileOperation(event, async (window) => {
-          const content = await previewVersion(getDocumentPath(), id)
+          const content = readVersionChunks(getDocumentPath(), id)
           if (!(await confirmDiscard(window))) return null
           return restoreDocument(window, content)
         }),
@@ -1988,10 +2155,26 @@ if (!app.requestSingleInstanceLock()) {
             : null
         },
       )
+      let legacyWorkspaceListeners = false
+      handle(WORKSPACE_CHANNELS.legacySubscribe, (event, enabled: unknown) => {
+        trustedWindow(event)
+        legacyWorkspaceListeners = enabled === true
+      })
       handle(WORKSPACE_CHANNELS.get, (event) => {
         trustedWindow(event)
-        return getWorkspace()
+        return getWorkspace(undefined, true)
       })
+      handle(WORKSPACE_CHANNELS.header, (event) => {
+        trustedWindow(event)
+        return getWorkspaceHeader()
+      })
+      handle(WORKSPACE_CHANNELS.viewPage, (event, request: unknown) =>
+        readAfterFileOperation(event, async () =>
+          readWorkspaceViewPage(
+            request as import('../shared/workspace-view').WorkspaceViewPageRequest,
+          ),
+        ),
+      )
       handle(
         MEDIA_CHANNELS.attach,
         (event, files: unknown, revision: unknown) =>
@@ -1999,8 +2182,12 @@ if (!app.requestSingleInstanceLock()) {
             attachMedia(window, files, revision),
           ),
       )
-      handle(MEDIA_CHANNELS.open, (event, path: unknown) =>
-        runFileOperation(event, (window) => openDroppedFile(window, path)),
+      handle(
+        MEDIA_CHANNELS.open,
+        (event, path: unknown, includeEntries: unknown) =>
+          runFileOperation(event, (window) =>
+            openDroppedFile(window, path, includeEntries !== false),
+          ),
       )
       handle(
         MEDIA_CHANNELS.read,
@@ -2011,6 +2198,26 @@ if (!app.requestSingleInstanceLock()) {
           return readDocumentMedia(source, revision)
         },
       )
+      handle(
+        MEDIA_CHANNELS.resolve,
+        (event, source: unknown, revision: unknown, request: unknown) => {
+          trustedWindow(event)
+          if (
+            typeof source !== 'string' ||
+            typeof revision !== 'number' ||
+            typeof request !== 'string' ||
+            !request ||
+            request.length > 128
+          )
+            return null
+          return documentMedia.resolve(source, revision, request)
+        },
+      )
+      handle(MEDIA_CHANNELS.cancel, (event, request: unknown) => {
+        trustedWindow(event)
+        if (typeof request === 'string' && request.length <= 128)
+          documentMedia.cancel(request)
+      })
       handle(WORKSPACE_CHANNELS.snapshot, (event) =>
         readAfterFileOperation(event, snapshotWorkspace),
       )
@@ -2152,7 +2359,11 @@ if (!app.requestSingleInstanceLock()) {
       handle(WORKSPACE_CHANNELS.queryReferences, (event, request: unknown) =>
         readAfterFileOperation(event, () =>
           import('./workspace-metadata-query').then((module) =>
-            module.queryWorkspaceReferences(request, getOpenDocumentVersions),
+            module.queryWorkspaceReferences(
+              request,
+              getOpenDocumentVersions,
+              String(event.sender.id),
+            ),
           ),
         ),
       )
@@ -2177,20 +2388,33 @@ if (!app.requestSingleInstanceLock()) {
             if (target) await writeTableLayout(target.root, target.path, tables)
           }),
       )
-      handle(WORKSPACE_CHANNELS.action, (event, input: unknown) =>
-        runFileOperation(event, (window) => workspaceAction(window, input)),
+      handle(
+        WORKSPACE_CHANNELS.action,
+        (event, input: unknown, includeEntries: unknown) =>
+          runFileOperation(event, (window) =>
+            workspaceAction(window, input, includeEntries !== false),
+          ),
       )
-      handle(WORKSPACE_CHANNELS.open, (event) =>
-        runFileOperation(event, openWorkspace),
+      handle(WORKSPACE_CHANNELS.open, (event, includeEntries: unknown) =>
+        runWorkspaceOpen(
+          event,
+          (window) => openWorkspace(window, includeEntries !== false),
+          includeEntries !== false,
+        ),
       )
       handle(IMPORT_CHANNELS.list, (event) => {
         trustedWindow(event)
         return import('./imports').then((module) => module.listImporters())
       })
+      handle(IMPORT_CHANNELS.cancel, (event) => {
+        cancelImport(trustedWindow(event).id)
+      })
       handle(IMPORT_CHANNELS.run, (event, request: unknown) =>
-        runFileOperation(event, (window) =>
-          import('./imports').then((module) =>
-            module.importIntoWorkspace(window, request),
+        runCancellableImport(trustedWindow(event).id, (signal) =>
+          runFileOperation(event, (window) =>
+            import('./imports').then((module) =>
+              module.importIntoWorkspace(window, request, signal),
+            ),
           ),
         ),
       )
@@ -2210,8 +2434,14 @@ if (!app.requestSingleInstanceLock()) {
         },
         Promise.resolve(),
       )
-      handle(WORKSPACE_CHANNELS.openRecent, (event, id: unknown) =>
-        runFileOperation(event, () => openRecentWorkspace(id)),
+      handle(
+        WORKSPACE_CHANNELS.openRecent,
+        (event, id: unknown, includeEntries: unknown) =>
+          runWorkspaceOpen(
+            event,
+            () => openRecentWorkspace(id, includeEntries !== false),
+            includeEntries !== false,
+          ),
       )
       handle(WORKSPACE_CHANNELS.known, (event) => {
         trustedWindow(event)
@@ -2227,9 +2457,9 @@ if (!app.requestSingleInstanceLock()) {
       handle(WORKSPACE_CHANNELS.deleteKnown, (event, id: unknown) =>
         runFileOperation(event, (window) => deleteKnownWorkspace(window, id)),
       )
-      handle(WORKSPACE_CHANNELS.refresh, (event) => {
+      handle(WORKSPACE_CHANNELS.refresh, (event, includeEntries: unknown) => {
         trustedWindow(event)
-        return refreshWorkspace()
+        return refreshWorkspace(null, includeEntries !== false)
       })
       handle(
         WORKSPACE_CHANNELS.openFile,
@@ -2238,24 +2468,32 @@ if (!app.requestSingleInstanceLock()) {
             openWorkspaceFile(window, path, target),
           ),
       )
-      observeWorkspace((change) =>
-        mainWindow?.webContents.send(
-          WORKSPACE_CHANNELS.changed,
-          getWorkspace(),
-          change,
-        ),
-      )
+      observeWorkspace((change) => {
+        documentMedia.invalidate(change)
+        mainWindow?.webContents.send(WORKSPACE_CHANNELS.headerChanged, change)
+        if (legacyWorkspaceListeners)
+          mainWindow?.webContents.send(
+            WORKSPACE_CHANNELS.changed,
+            getWorkspace(undefined, true),
+            change,
+          )
+      })
       subscribeWorkspaceChanges((change) => {
         const contents = mainWindow?.webContents
         if (!contents) return
         contents.send(WORKSPACE_CHANNELS.changedV2, change)
         foundationsIpcBenchmark?.send(WORKSPACE_CHANNELS.changedV2, change)
-      })
+      }, false)
       observeKnownWorkspaces((known) =>
         mainWindow?.webContents.send(WORKSPACE_CHANNELS.listChanged, known),
       )
       handle(DOCUMENT_CHANNELS.update, (event, value: unknown) => {
         const window = trustedWindow(event)
+        if (
+          typeof value !== 'string' ||
+          value.length > MAX_JOURNAL_INSERT_UNITS
+        )
+          throw new Error('Invalid document change.')
         updateDocument(value)
         updateDocumentEdited(window)
       })
@@ -2275,14 +2513,21 @@ if (!app.requestSingleInstanceLock()) {
         DOCUMENT_CHANNELS.verifyCheckpoint,
         (event, checkpoint: unknown) => {
           trustedWindow(event)
-          const parsed = parseJournalCheckpoint(checkpoint, MAX_DOCUMENT_BYTES)
-          return verifyJournalCheckpoint(
-            () => getDocumentSourceFor(parsed.tabId),
-            parsed,
-            MAX_DOCUMENT_BYTES,
-          )
+          return checkpointVerifier.begin(checkpoint)
         },
       )
+      handle(DOCUMENT_CHANNELS.checkpointChunk, (event, chunk: unknown) => {
+        trustedWindow(event)
+        return checkpointVerifier.append(chunk)
+      })
+      handle(DOCUMENT_CHANNELS.checkpointFinish, (event, request: unknown) => {
+        trustedWindow(event)
+        return checkpointVerifier.finish(request)
+      })
+      handle(DOCUMENT_CHANNELS.checkpointAbort, (event, request: unknown) => {
+        trustedWindow(event)
+        checkpointVerifier.abort(request)
+      })
       handle(DOCUMENT_CHANNELS.open, (event) =>
         runFileOperation(event, openDocument),
       )
@@ -2291,9 +2536,9 @@ if (!app.requestSingleInstanceLock()) {
           let document = null
           const errors: string[] = []
           try {
-            const hadWorkspace = Boolean(getWorkspace())
+            const hadWorkspace = Boolean(workspaceRoot())
             await openStartupWorkspace(window, externalFiles.length > 0)
-            if (!hadWorkspace && getWorkspace()) document = getDocument()
+            if (!hadWorkspace && workspaceRoot()) document = getDocument()
           } catch (error) {
             errors.push(
               error instanceof Error
@@ -2420,6 +2665,7 @@ if (!app.requestSingleInstanceLock()) {
         }),
       )
       nativeTheme.on('updated', () => {
+        applyAppIcon()
         mainWindow?.setBackgroundColor(appearanceColors().background)
         if (process.platform !== 'darwin')
           mainWindow?.setTitleBarOverlay(titleBarColors())

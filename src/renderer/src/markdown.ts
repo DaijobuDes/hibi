@@ -3,7 +3,6 @@ import { Placeholder } from '@tiptap/extension-placeholder'
 import { Markdown, type MarkdownExtensionOptions } from '@tiptap/markdown'
 import { StarterKit } from '@tiptap/starter-kit'
 import { Marked } from 'marked'
-import { search } from 'prosemirror-search'
 import type { MarkdownFlavor } from '../../addons/api'
 import { BlockExit } from './BlockExit.ts'
 import { CodeHighlight } from './CodeHighlight.ts'
@@ -25,6 +24,7 @@ import {
 } from './markdown-serialization.ts'
 import { markdownSyntax } from './markdown-syntax.ts'
 import { preserveHtml, rawHtml } from './RawHtml.ts'
+import { richFind } from './rich-find.ts'
 import { installSyntaxPreferences } from './syntax-parser.ts'
 import { TabIndent } from './tab-indent.ts'
 
@@ -40,6 +40,15 @@ export function markdownConfiguration(
     ...flavors.map((flavor) => flavor.markedOptions),
   )
   const parser = richTextParser(installSyntaxPreferences(new Marked(options)))
+  const use = parser.use.bind(parser)
+  parser.use = (...extensions) => {
+    const result = use(...extensions)
+    // Native and export tokenizers can share the same pure start hint.
+    const hints = parser.defaults.extensions
+    if (hints?.startBlock) hints.startBlock = [...new Set(hints.startBlock)]
+    if (hints?.startInline) hints.startInline = [...new Set(hints.startInline)]
+    return result
+  }
   for (const flavor of flavors)
     for (const extension of flavor.export?.extensions ?? [])
       parser.use(extension)
@@ -122,7 +131,7 @@ export function editorExtensions(
   return [
     Extension.create({
       name: 'findInNote',
-      addProseMirrorPlugins: () => [search()],
+      addProseMirrorPlugins: () => [richFind()],
     }),
     ...core,
     Markdown.extend({

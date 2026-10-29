@@ -10,7 +10,7 @@ export type SyntaxSlashCommand = {
   cursor?: number
   /** Extra slash-menu search terms. */
   keywords?: string
-  /** Rich-view insertion. Omit when this syntax only supports source insertion. */
+  /** @deprecated Tiptap-only insertion. The CodeMirror formatted view uses markdown and cursor. */
   rich?: (chain: ChainedCommands) => ChainedCommands
 }
 
@@ -26,6 +26,8 @@ export type MarkdownSyntaxFeature = {
   scope?: 'markdown'
   /** Rich extension names to disable with this feature; keep export tokenizers registered. */
   extensions?: readonly string[]
+  /** Lezer Markdown nodes the formatted view renders for this feature; while it is off they show as written. */
+  nodes?: readonly string[]
   /** Optional insertion recipe shown by the slash-command addon while enabled. */
   slash?: SyntaxSlashCommand
 }

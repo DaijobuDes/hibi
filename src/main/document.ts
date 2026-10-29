@@ -25,7 +25,6 @@ import type {
   DocumentState,
   DocumentTab,
 } from '../shared/desktop'
-import { MAX_DOCUMENT_BYTES } from '../shared/desktop'
 import type { DocumentSaveResult } from '../shared/document-edits'
 import { HISTORY_CHANNELS } from '../shared/history'
 import { type SourceSnapshot, SourceStore } from '../shared/source-buffer'
@@ -33,12 +32,13 @@ import { SourceMaintenance } from '../shared/source-maintenance'
 import { documentExtensions, isDocumentName } from './document-types'
 import { runFileDialog } from './file-operation-dialog'
 import {
-  readMarkdown,
+  matchesMarkdown,
+  readMarkdownChunks,
   validateMarkdown,
   writeMarkdown,
   writeText,
 } from './files'
-import { recordVersion } from './history'
+import { recordVersions } from './history'
 import { isPathInside } from './workspace-paths'
 
 let path: string | null = null
@@ -54,6 +54,16 @@ let back: string[] = []
 let forward: string[] = []
 let activeTab: string = randomUUID()
 let activeTabOpen = false
+export const documentSources = new WeakMap<
+  DocumentState,
+  {
+    store: SourceStore
+    current: SourceSnapshot
+    saved: SourceSnapshot
+    owns: () => boolean
+    live: () => boolean
+  }
+>()
 const materialized = new WeakMap<SourceSnapshot, string>()
 const equalSaved = new WeakMap<SourceSnapshot, SourceSnapshot>()
 let dirtyTimer: ReturnType<typeof setTimeout> | undefined
@@ -72,11 +82,28 @@ function releaseMaintenance() {
 }
 function makeSource(text: string, tabId = activeTab, version = 0) {
   releaseMaintenance()
-  const store = new SourceStore(text, { tabId, revision }, version, {
-    maximumBytes: MAX_DOCUMENT_BYTES,
-  })
+  const store = new SourceStore(text, { tabId, revision }, version)
   materialized.set(store.snapshot(), text)
   return store
+}
+async function readSource(file: string, tabId = activeTab, version = 0) {
+  return SourceStore.load(
+    readMarkdownChunks(file),
+    { tabId, revision },
+    version,
+  )
+}
+async function sameSource(a: SourceSnapshot, b: SourceSnapshot) {
+  const comparison = a.compare(b)
+  let started = performance.now()
+  for (;;) {
+    const next = comparison.next()
+    if (next.done) return next.value
+    if (performance.now() - started >= 1) {
+      await new Promise<void>((resolve) => setTimeout(resolve, 0))
+      started = performance.now()
+    }
+  }
 }
 function textOf(snapshot: SourceSnapshot) {
   let text = materialized.get(snapshot)
@@ -295,16 +322,33 @@ function isEmptyTab() {
 }
 export function getOpenDocuments() {
   storeTab()
+  return [...tabs].map(([id, draft]) => {
+    const current = draft.source.snapshot(),
+      baseline = draft.saved
+    return {
+      get markdown() {
+        return textOf(current)
+      },
+      get saved() {
+        return textOf(baseline)
+      },
+      path: draft.path,
+      pendingPath: draft.pendingPath,
+      untitledName: draft.untitledName,
+      draftId: draft.draftId,
+      contentVersion: current.version,
+      tabId: id,
+      file: draft.path ?? draft.pendingPath,
+      dirty: updateTabDirty(id, draft),
+    }
+  })
+}
+/** Explorer metadata without materializing open document text. */
+export function getOpenDocumentMetadata() {
+  storeTab()
   return [...tabs].map(([id, draft]) => ({
-    markdown: textOf(draft.source.snapshot()),
-    saved: textOf(draft.saved),
-    path: draft.path,
+    file: draft.path,
     pendingPath: draft.pendingPath,
-    untitledName: draft.untitledName,
-    draftId: draft.draftId,
-    contentVersion: draft.source.snapshot().version,
-    tabId: id,
-    file: draft.path ?? draft.pendingPath,
     dirty: updateTabDirty(id, draft),
   }))
 }
@@ -369,7 +413,11 @@ export async function selectDocumentTab(
   if (draft.path && !dirty(draft.source, draft.saved)) {
     const target = draft.source.snapshot(),
       baseline = draft.saved
-    const content = await readMarkdown(draft.path)
+    const content = (await matchesMarkdown(draft.path, target))
+      ? null
+      : await readSource(draft.path, id, target.version + 1)
+    const changed =
+      content !== null && !(await sameSource(target, content.snapshot()))
     if (!source.ownsCurrentSnapshot(current))
       throw new Error('The document changed while switching tabs. Try again.')
     const latest = id === activeTab ? snapshot() : tabs.get(id)
@@ -381,11 +429,10 @@ export async function selectDocumentTab(
       latest.path !== draft.path
     )
       throw new Error('The document changed while switching tabs. Try again.')
-    const version =
-      draft.source.snapshot().version +
-      Number(textOf(draft.source.snapshot()) !== content)
-    draft.source = makeSource(content, id, version)
-    draft.saved = draft.source.snapshot()
+    if (changed && content) {
+      draft.source = content
+      draft.saved = content.snapshot()
+    }
   }
   if (remember && id !== activeTab) rememberLocation()
   activateTab(id)
@@ -464,7 +511,11 @@ function containsPath(parent: string, file: string | null) {
   if (!file) return false
   return isPathInside(parent, file)
 }
-function removeTabs(window: BrowserWindow, ids: Set<string>) {
+function removeTabs(
+  window: BrowserWindow,
+  ids: Set<string>,
+  preferredTab?: string,
+) {
   storeTab()
   const order = [...tabs.keys()]
   const currentIndex = order.indexOf(activeTab)
@@ -476,6 +527,7 @@ function removeTabs(window: BrowserWindow, ids: Set<string>) {
   forward = forward.filter((id) => !ids.has(id))
   if (ids.has(activeTab)) {
     const next =
+      (preferredTab && tabs.has(preferredTab) ? preferredTab : undefined) ??
       order.slice(currentIndex + 1).find((id) => tabs.has(id)) ??
       [...tabs.keys()].at(-1)
     if (next) {
@@ -490,12 +542,34 @@ function removeTabs(window: BrowserWindow, ids: Set<string>) {
   refreshDirtyIndicator(window)
   return getDocument()
 }
-export async function closeDocumentTab(window: BrowserWindow, id: unknown) {
+export async function closeDocumentTabs(
+  window: BrowserWindow,
+  ids: unknown,
+  preferredTab?: unknown,
+) {
   storeTab()
-  if (typeof id !== 'string' || !tabs.has(id))
-    throw new Error('This tab is no longer open.')
-  if (!(await confirmTabDiscard(window, id))) return null
-  return removeTabs(window, new Set([id]))
+  if (
+    !Array.isArray(ids) ||
+    ids.length === 0 ||
+    ids.some((id) => typeof id !== 'string' || !tabs.has(id)) ||
+    (preferredTab !== undefined &&
+      (typeof preferredTab !== 'string' || !tabs.has(preferredTab)))
+  )
+    throw new Error('A tab is no longer open.')
+  const closing = new Set<string>(ids as string[])
+  if (typeof preferredTab === 'string' && closing.has(preferredTab))
+    throw new Error('The preferred tab must remain open.')
+  // Confirm in visible order; cancelling any prompt closes nothing.
+  for (const id of tabs.keys())
+    if (closing.has(id) && !(await confirmTabDiscard(window, id))) return null
+  return removeTabs(
+    window,
+    closing,
+    typeof preferredTab === 'string' ? preferredTab : undefined,
+  )
+}
+export async function closeDocumentTab(window: BrowserWindow, id: unknown) {
+  return closeDocumentTabs(window, [id])
 }
 
 export function moveDocumentTab(id: unknown, beforeId: unknown) {
@@ -577,25 +651,54 @@ export function getDocumentPathForTab(id: string): string | null {
 
 export function getDocument(): DocumentState {
   const currentPath = getDocumentPath()
-  const current = getDocumentSource().snapshot()
-  const markdown = textOf(current),
-    savedMarkdown = textOf(saved)
-  return {
+  const store = getDocumentSource(),
+    current = store.snapshot(),
+    baseline = saved
+  const state: DocumentState = {
     tabId: activeTab,
     tabs: getDocumentTabs(),
     tabsEnabled,
     id: currentPath
       ? createHash('sha256').update(currentPath).digest('hex')
       : draftId,
-    markdown,
-    savedMarkdown,
+    get markdown() {
+      return textOf(current)
+    },
+    get savedMarkdown() {
+      return textOf(baseline)
+    },
     name: currentPath ? basename(currentPath) : untitledName,
-    dirty: markdown !== savedMarkdown || !!pendingPath,
+    dirty: dirty(store, baseline) || !!pendingPath,
     ephemeral: !!pendingPath,
     revision,
     contentVersion: current.version,
     canAutosave: path !== null,
   }
+  documentSources.set(state, {
+    store,
+    current,
+    saved: baseline,
+    live: () => {
+      const latest =
+        activeTab === state.tabId ? snapshot() : tabs.get(state.tabId)
+      return (
+        latest?.source === store &&
+        (latest.path ?? latest.pendingPath) === currentPath &&
+        latest.source.snapshot().document.revision === current.document.revision
+      )
+    },
+    owns: () => {
+      const latest =
+        activeTab === state.tabId ? snapshot() : tabs.get(state.tabId)
+      return (
+        latest?.source === store &&
+        (latest.path ?? latest.pendingPath) === currentPath &&
+        store.ownsCurrentSnapshot(current) &&
+        latest.saved === baseline
+      )
+    },
+  })
+  return state
 }
 
 export function getDocumentForTab(id: string): DocumentState | null {
@@ -604,22 +707,48 @@ export function getDocumentForTab(id: string): DocumentState | null {
   if (!draft) return null
   const current = draft.source.snapshot()
   const file = draft.path ?? draft.pendingPath
-  const markdown = textOf(current)
-  const savedMarkdown = textOf(draft.saved)
-  return {
+  const baseline = draft.saved
+  const state: DocumentState = {
     tabId: id,
     tabs: getDocumentTabs(),
     tabsEnabled,
     id: file ? createHash('sha256').update(file).digest('hex') : draft.draftId,
-    markdown,
-    savedMarkdown,
+    get markdown() {
+      return textOf(current)
+    },
+    get savedMarkdown() {
+      return textOf(baseline)
+    },
     name: file ? basename(file) : draft.untitledName,
-    dirty: markdown !== savedMarkdown || !!draft.pendingPath,
+    dirty: dirty(draft.source, baseline) || !!draft.pendingPath,
     ephemeral: !!draft.pendingPath,
     revision: current.document.revision,
     contentVersion: current.version,
     canAutosave: draft.path !== null,
   }
+  documentSources.set(state, {
+    store: draft.source,
+    current,
+    saved: baseline,
+    live: () => {
+      const latest = activeTab === id ? snapshot() : tabs.get(id)
+      return (
+        latest?.source === draft.source &&
+        (latest.path ?? latest.pendingPath) === file &&
+        latest.source.snapshot().document.revision === current.document.revision
+      )
+    },
+    owns: () => {
+      const latest = activeTab === id ? snapshot() : tabs.get(id)
+      return (
+        latest?.source === draft.source &&
+        (latest.path ?? latest.pendingPath) === file &&
+        draft.source.ownsCurrentSnapshot(current) &&
+        latest.saved === baseline
+      )
+    },
+  })
+  return state
 }
 
 export function discardChanges(): void {
@@ -628,7 +757,11 @@ export function discardChanges(): void {
   for (const [id, draft] of tabs) {
     const version =
       draft.source.snapshot().version + Number(dirty(draft.source, draft.saved))
-    draft.source = makeSource(textOf(draft.saved), id, version)
+    draft.source = SourceStore.fromSnapshot(
+      draft.saved,
+      { tabId: id, revision },
+      version,
+    )
     draft.saved = draft.source.snapshot()
     draft.pendingPath = null
   }
@@ -658,12 +791,14 @@ function missingFile(error: NodeJS.ErrnoException) {
 async function recordSaveHistory(
   window: BrowserWindow,
   destination: string,
-  previous: string | null,
-  content: string,
+  previous: SourceSnapshot | null,
+  content: SourceSnapshot,
 ) {
   try {
-    if (previous !== null) await recordVersion(destination, previous)
-    await recordVersion(destination, content)
+    await recordVersions(
+      destination,
+      previous === null ? [content] : [previous, content],
+    )
   } catch (error) {
     console.error('local history failed:', error)
     window.webContents.send(
@@ -682,7 +817,7 @@ export async function saveDocument(
   let destination = path ?? pendingPath
   const exclusive = !!pendingPath && !saveAs
   const saving = source.snapshot(),
-    content = textOf(saving)
+    content = saving
   if (!destination || saveAs) {
     if (automatic) return null
     const result = await runFileDialog(() =>
@@ -715,11 +850,15 @@ export async function saveDocument(
     throw new Error(
       'This file is open in another tab. Choose a different name.',
     )
-  let previous: string | null = null
+  let previous: SourceSnapshot | null = null
   if (destination === path) {
-    const disk = await readMarkdown(destination).catch(missingFile)
-    previous = disk
-    if (disk !== textOf(saved)) {
+    const unchanged = await matchesMarkdown(destination, saved).catch(
+      missingFile,
+    )
+    previous = unchanged
+      ? saved
+      : ((await readSource(destination).catch(missingFile))?.snapshot() ?? null)
+    if (!unchanged) {
       if (automatic) return null
       const choice = await runFileDialog(() =>
         dialog.showMessageBox(window, {
@@ -771,10 +910,11 @@ export async function autosaveDocument(
     return { status: 'skipped', document: null }
   const destination = draft.path
   const saving = draft.source.snapshot()
-  const content = textOf(saving)
-  const disk = await readMarkdown(destination).catch(missingFile)
-  if (disk !== textOf(draft.saved))
-    return { status: 'conflict', document: null }
+  const content = saving
+  const unchanged = await matchesMarkdown(destination, draft.saved).catch(
+    missingFile,
+  )
+  if (!unchanged) return { status: 'conflict', document: null }
   // The source and tab may change while disk I/O is pending.
   const current = id === activeTab ? snapshot() : tabs.get(id)
   if (
@@ -796,7 +936,7 @@ export async function autosaveDocument(
   }
   storeTab()
   refreshDirtyIndicator(window)
-  await recordSaveHistory(window, destination, disk, content)
+  await recordSaveHistory(window, destination, draft.saved, content)
   return { status: 'saved', document: getDocumentForTab(id) }
 }
 
@@ -841,19 +981,30 @@ export async function saveTargetDocument(
   return { status: result.status, document: result.document }
 }
 
-export function restoreDocument(
+export async function restoreDocument(
   window: BrowserWindow,
-  content: string,
-): DocumentState {
-  validateMarkdown(content)
-  updateDocument(content)
+  content: AsyncIterable<string>,
+): Promise<DocumentState> {
+  const previous = source.snapshot()
+  const restored = await SourceStore.load(
+    content,
+    previous.document,
+    previous.version + 1,
+  )
+  if (!source.ownsCurrentSnapshot(previous))
+    throw new Error('The document changed while restoring. Try again.')
+  source = restored
   advanceRevision()
   refreshDirtyIndicator(window)
   return getDocument()
 }
 
 export async function confirmDiscard(window: BrowserWindow): Promise<boolean> {
-  if (textOf(source.snapshot()) === textOf(saved) && !pendingPath) return true
+  if (
+    !pendingPath &&
+    (!dirty(source, saved) || (await sameSource(source.snapshot(), saved)))
+  )
+    return true
   const result = await runFileDialog(() =>
     dialog.showMessageBox(window, {
       type: 'warning',
@@ -868,7 +1019,7 @@ export async function confirmDiscard(window: BrowserWindow): Promise<boolean> {
   if (result.response === 1) return true
   return (
     Boolean(await saveDocument(window)) &&
-    textOf(source.snapshot()) === textOf(saved)
+    (await sameSource(source.snapshot(), saved))
   )
 }
 
@@ -1026,7 +1177,7 @@ export async function loadDocument(
   chosen = await realpath(chosen)
   const existing = getOpenDocuments().find((draft) => draft.file === chosen)
   if (existing) return selectDocumentTab(window, existing.tabId, remember, true)
-  const content = await readMarkdown(chosen)
+  const content = await readSource(chosen)
   if (!source.ownsCurrentSnapshot(current))
     throw new Error(
       'The document changed while opening another file. Try again.',
@@ -1035,7 +1186,9 @@ export async function loadDocument(
   if (!(await startTab(window, true))) return null
   path = chosen
   pendingPath = null
-  source = makeSource(content)
+  releaseMaintenance()
+  source = content
+  source.reidentify({ tabId: activeTab, revision })
   saved = source.snapshot()
   advanceRevision()
   refreshDirtyIndicator(window)

@@ -16,14 +16,14 @@ import type {
   ViewId,
   ViewTarget,
 } from '../../shared/foundation-contracts'
-import { defineAddon } from '../api'
+import { defineAddon, type EditorExtensionContext } from '../api'
 import { Button, PanelMessage } from '../ui'
 import { createDictionaryApi, type DictionaryApi } from './api'
 import {
   addCustomWord,
   customWordsProvider,
-  listCustomWords,
   openCustomWords,
+  readCustomWords,
 } from './custom-words'
 import css from './dictionary.css?inline'
 import { detectLangs, type LookupTarget, matchCase, wordAt } from './lookup'
@@ -41,7 +41,7 @@ import {
   type Source,
 } from './providers'
 import { SideView } from './SideView'
-import { languageNames, readPreferences, readRecentPack } from './settings'
+import { languageNames, readPreferences } from './settings'
 import sideCss from './side-view.css?inline'
 
 function richTarget(
@@ -338,22 +338,6 @@ export default defineAddon({
   stop: () => stopAddon?.(),
   start(context) {
     context.styles.register('dictionary', css)
-    queueMicrotask(() => {
-      const preferences = readPreferences()
-      const recent = readRecentPack()
-      const ids = [
-        ...new Set([
-          preferences.latin,
-          preferences.han,
-          ...(recent ? [recent] : []),
-        ]),
-      ]
-      void context.native
-        .query('preloadPacks', ids)
-        .catch((error) =>
-          console.error('could not preload dictionary packs:', error),
-        )
-    })
     const registry = createRegistry()
     registry.register(wiktionaryProvider(context.host.network.getText))
     registry.register(datamuseProvider(context.host.network.getText))
@@ -382,23 +366,29 @@ export default defineAddon({
     })
     const richEditors = new Map<Editor, ViewId>()
     const sourceViews = new Map<EditorView, ViewId>()
+    const formattedViews = new Map<EditorView, ViewId>()
     context.editor.registerRich({
       id: 'lookup',
+      preview: 'deferred',
       attach(editor, editorContext) {
         if (!editorContext) return () => {}
         richEditors.set(editor, editorContext.viewId)
         return () => richEditors.delete(editor)
       },
     })
-    context.editor.registerSource({
-      id: 'lookup',
-      async create(editorContext) {
+    const track =
+      (views: Map<EditorView, ViewId>) =>
+      async (editorContext?: EditorExtensionContext) => {
         if (!editorContext) return []
         return (await import('./source')).trackSourceViews(
-          sourceViews,
+          views,
           editorContext.viewId,
         )
-      },
+      }
+    context.editor.registerSource({ id: 'lookup', create: track(sourceViews) })
+    context.editor.registerFormatted({
+      id: 'lookup',
+      create: track(formattedViews),
     })
     async function target(invocation: CommandExecutionContext) {
       // Palette and shortcut invocations capture the view but not its selection.
@@ -416,7 +406,21 @@ export default defineAddon({
         head === selection.head
       let found: LookupTarget | null = null
       let inView = () => false
-      if (selection.editor === 'rich') {
+      // CodeMirror views: the source view, or the formatted view as the rich
+      // editor. Their selections are read after the module loads.
+      const views = selection.editor === 'rich' ? formattedViews : sourceViews
+      const source = views.size ? await import('./source') : null
+      const codeMirror = [...views].find(([editor, viewId]) =>
+        at(
+          viewId,
+          editor.state.selection.main.anchor,
+          editor.state.selection.main.head,
+        ),
+      )?.[0]
+      if (source && codeMirror) {
+        found = source.sourceTarget(codeMirror, from, to)
+        inView = () => views.get(codeMirror) === view.viewId
+      } else if (selection.editor === 'rich') {
         const editor = [...richEditors].find(
           ([editor, viewId]) =>
             !editor.isDestroyed &&
@@ -429,19 +433,6 @@ export default defineAddon({
         if (editor) {
           found = richTarget(editor, from, to)
           inView = () => richEditors.get(editor) === view.viewId
-        }
-      } else {
-        const { sourceTarget } = await import('./source')
-        const editor = [...sourceViews].find(([editor, viewId]) =>
-          at(
-            viewId,
-            editor.state.selection.main.anchor,
-            editor.state.selection.main.head,
-          ),
-        )?.[0]
-        if (editor) {
-          found = sourceTarget(editor, from, to)
-          inView = () => sourceViews.get(editor) === view.viewId
         }
       }
       if (!found) return null
@@ -593,7 +584,7 @@ export default defineAddon({
       createDictionaryApi(
         context.native,
         () => detectLangs('word', readPreferences()),
-        listCustomWords,
+        readCustomWords,
       ),
     )
     stopAddon = () => {

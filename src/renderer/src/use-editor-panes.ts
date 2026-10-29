@@ -7,15 +7,25 @@ import {
 } from 'react'
 import type { DocumentView } from '../../shared/document-types'
 
-/** Keep source focus and pane transitions identical across editor surfaces. */
-export function useEditorPanes(mode: DocumentView, markdownDocument: boolean) {
+/**
+ * Keep source focus and pane transitions identical across editor surfaces.
+ * With `releaseSource`, leaving the source view unmounts it, so a large
+ * note's text is not held twice while only the other view shows it.
+ */
+export function useEditorPanes(
+  mode: DocumentView,
+  markdownDocument: boolean,
+  sourceFirst = false,
+  releaseSource = false,
+) {
   const [focusedPane, setFocusedPane] = useState<'rich' | 'source'>('rich')
   const [sourceMounted, setSourceMounted] = useState(mode !== 'normal')
   const [sourceReady, setSourceReady] = useState(false)
   const [sourceSettled, setSourceSettled] = useState(false)
   const [initialMode] = useState(mode)
   // Only the first opening from normal view waits for source layout.
-  const paneMode = sourceSettled || initialMode !== 'normal' ? mode : 'normal'
+  const paneMode =
+    sourceFirst || sourceSettled || initialMode !== 'normal' ? mode : 'normal'
   const content = useRef<HTMLDivElement>(null)
   const previousFocusMode = useRef(mode)
   const focusOwner = useRef<Element | null>(window.document.activeElement)
@@ -61,8 +71,12 @@ export function useEditorPanes(mode: DocumentView, markdownDocument: boolean) {
         return
       }
       setFocusedPane('source')
-      const source = content.current?.querySelector<HTMLElement>('.cm-content')
-      if (source !== window.document.activeElement) source?.focus()
+      const source = content.current?.querySelector<HTMLElement>(
+        '.source-pane .cm-content',
+      )
+      // The view's scroll position, such as a restored place, stays.
+      if (source !== window.document.activeElement)
+        source?.focus({ preventScroll: true })
       if (source === window.document.activeElement) focusOwner.current = null
     }
   }, [markdownDocument, sourceReady, paneMode, mode, focusOwnedByEditor])
@@ -94,7 +108,12 @@ export function useEditorPanes(mode: DocumentView, markdownDocument: boolean) {
   }, [paneMode])
   useEffect(() => {
     if (mode !== 'normal') setSourceMounted(true)
-  }, [mode])
+    else if (releaseSource && paneMode === 'normal') {
+      setSourceMounted(false)
+      setSourceReady(false)
+      setSourceSettled(false)
+    }
+  }, [mode, paneMode, releaseSource])
   return {
     content,
     paneMode,

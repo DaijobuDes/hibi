@@ -1,17 +1,41 @@
 import { isolateHistory } from '@codemirror/commands'
 import { syntaxTree } from '@codemirror/language'
-import { Prec, Transaction } from '@codemirror/state'
+import { type EditorState, Prec, Transaction } from '@codemirror/state'
 import { EditorView, ViewPlugin } from '@codemirror/view'
+import type { SyntaxNode, Tree } from '@lezer/common'
 import { isMarkdownDocument } from '../../shared/document-types'
-import { readFrontmatter } from '../../shared/frontmatter'
 import type { AddonContext } from '../api'
-import { maximumSlashQueryUnits, slashQuery } from './commands'
+import {
+  maximumSlashQueryUnits,
+  type SlashCommand,
+  slashQuery,
+} from './commands'
 import { createSlashMenu } from './menu'
 
-function current(view: EditorView) {
+type FrontmatterReader = (state: EditorState) =>
+  | {
+      end: number
+      prefix?: number
+      open: boolean
+      closer: number
+      searched: number
+      oversized?: boolean
+      complete?: boolean
+    }
+  | undefined
+
+function current(
+  view: EditorView,
+  formattedTree?: (state: EditorState) => Tree | null,
+  sourceBounds?: FrontmatterReader,
+  cell = false,
+) {
+  const formatted = Boolean(formattedTree)
+  const source = !formatted && !cell
   const selection = view.state.selection.main
   if (
     !view.hasFocus ||
+    view.composing ||
     view.state.readOnly ||
     !view.state.facet(EditorView.editable) ||
     !selection.empty ||
@@ -20,28 +44,92 @@ function current(view: EditorView) {
   )
     return null
   const line = view.state.doc.lineAt(selection.head)
-  if (selection.head - line.from > maximumSlashQueryUnits) return null
-  const query = slashQuery(
-    view.state.doc.sliceString(line.from, selection.head),
-  )
-  if (query === null) return null
+  if (source && selection.head - line.from > maximumSlashQueryUnits) return null
+  const sourcePrefix = source
+    ? view.state.doc.sliceString(line.from, selection.head)
+    : null
+  if (sourcePrefix !== null && slashQuery(sourcePrefix) === null) return null
+  // A cell holds no blocks; its query starts after the cell's padding.
+  const tree = cell
+    ? null
+    : formattedTree
+      ? formattedTree(view.state)
+      : syntaxTree(view.state)
+  let block: SyntaxNode | null = null
   for (
-    let node = syntaxTree(view.state).resolveInner(selection.head, -1);
+    let node: SyntaxNode | null =
+      tree?.resolveInner(selection.head, -1) ?? null;
     node;
-    node = node.parent!
+    node = node.parent
   ) {
-    if (/^(FencedCode|CodeBlock|InlineCode|HTMLBlock|HTMLTag)$/.test(node.name))
+    if (
+      /^(FencedCode|CodeBlock|InlineCode|HTMLBlock|HTMLTag|Frontmatter)$/.test(
+        node.name,
+      )
+    )
       return null
+    if (
+      formatted &&
+      !block &&
+      /^(Paragraph|Task|Subtext|ATXHeading[1-6]|SetextHeading[12])$/.test(
+        node.name,
+      )
+    )
+      block = node
   }
-  // Markdown's syntax tree does not recognize YAML frontmatter.
-  if (view.state.doc.sliceString(0, 4).startsWith('---')) {
-    const block = readFrontmatter(view.state.doc.toString())
-    if (block && selection.head < block.prefix.length) return null
+  let from = line.from
+  if (formatted) {
+    if (!block) return null
+    from = block.from
+    const mark = block.firstChild
+    if (mark?.name === 'TaskMarker' || /^ATXHeading/.test(block.name))
+      from = mark?.to ?? from
+    if (block.name === 'Subtext') from += 3
   }
-  return { from: line.from, to: selection.head, query }
+  if (selection.head - from > maximumSlashQueryUnits) return null
+  const prefix =
+    sourcePrefix ?? view.state.doc.sliceString(from, selection.head)
+  const spacing = source ? 0 : (/^[ \t]*/.exec(prefix)?.[0].length ?? 0)
+  from += spacing
+  const query = slashQuery(prefix.slice(spacing))
+  if (query === null) return null
+  // The source language does not recognize YAML; use the host's bounded search.
+  const bounds = source && sourceBounds?.(view.state)
+  if (
+    bounds &&
+    (bounds.oversized ||
+      selection.head < (bounds.prefix ?? bounds.end) ||
+      (bounds.open &&
+        !bounds.complete &&
+        !bounds.closer &&
+        bounds.searched < view.state.doc.length))
+  )
+    return null
+  return { from, to: selection.head, query, block }
 }
 
-export function sourceSlashCommands(context: AddonContext) {
+/**
+ * Slash commands for a source view, the formatted view with its syntax tree,
+ * or the editor of a table cell in the formatted view `main`, which offers
+ * the commands that stay inside a cell.
+ */
+export function sourceSlashCommands(
+  context: AddonContext,
+  formattedTree?: (state: EditorState) => Tree | null,
+  sourceBounds?: FrontmatterReader,
+  main?: EditorView,
+) {
+  const formatted = Boolean(formattedTree)
+  const cell = Boolean(main)
+  /** Inline syntax, plain text and document commands keep a cell's text one line of a table. */
+  const fitsCell = (command: SlashCommand) =>
+    'transform' in command ||
+    command.id === 'text' ||
+    context.editor
+      .getSyntaxFeatures()
+      .some(
+        (feature) => feature.id === command.id && feature.level === 'inline',
+      )
   return Prec.highest(
     ViewPlugin.fromClass(
       class {
@@ -53,11 +141,12 @@ export function sourceSlashCommands(context: AddonContext) {
             view.contentDOM,
             () => this.schedule(),
             context,
+            cell ? fitsCell : undefined,
           )
           this.schedule()
         }
         schedule() {
-          const match = current(this.view)
+          const match = current(this.view, formattedTree, sourceBounds, cell)
           this.menu.observe(match)
           if (!match) this.menu.update(null)
           cancelAnimationFrame(this.frame)
@@ -70,7 +159,7 @@ export function sourceSlashCommands(context: AddonContext) {
             this.menu.update(null)
             return
           }
-          const match = current(this.view)
+          const match = current(this.view, formattedTree, sourceBounds, cell)
           const rect = match ? this.view.coordsAtPos(match.to) : null
           this.menu.update(
             match && rect
@@ -78,7 +167,12 @@ export function sourceSlashCommands(context: AddonContext) {
                   ...match,
                   rect,
                   run: (command) => {
-                    const latest = current(this.view)
+                    const latest = current(
+                      this.view,
+                      formattedTree,
+                      sourceBounds,
+                      cell,
+                    )
                     if (
                       !latest ||
                       latest.from !== match.from ||
@@ -87,12 +181,25 @@ export function sourceSlashCommands(context: AddonContext) {
                     )
                       return
                     if ('transform' in command) {
-                      const source = this.view.state.doc.toString()
+                      // A cell's query ends at the formatted view's caret,
+                      // which follows the cell's.
+                      const target = main ?? this.view
+                      const to = main
+                        ? main.state.selection.main.head
+                        : match.to
+                      const from = to - (match.to - match.from)
+                      if (
+                        main &&
+                        main.state.sliceDoc(from, to) !==
+                          this.view.state.sliceDoc(match.from, match.to)
+                      )
+                        return
+                      const source = target.state.doc.toString()
                       const markdown = command.transform(
-                        source.slice(0, match.from) + source.slice(match.to),
+                        source.slice(0, from) + source.slice(to),
                       )
                       if (markdown === null) return
-                      this.view.dispatch({
+                      target.dispatch({
                         changes: {
                           from: 0,
                           to: source.length,
@@ -105,19 +212,43 @@ export function sourceSlashCommands(context: AddonContext) {
                         ],
                         scrollIntoView: true,
                       })
-                      this.view.focus()
+                      target.focus()
                       return
                     }
+                    const block = latest.block
+                    const replaceBlock =
+                      formatted &&
+                      block &&
+                      (command.id === 'text' ||
+                        context.editor
+                          .getSyntaxFeatures()
+                          .some(
+                            (feature) =>
+                              feature.id === command.id &&
+                              feature.level === 'block',
+                          ))
+                    const from = replaceBlock ? block.from : match.from
+                    const changes = [
+                      { from, to: match.to, insert: command.markdown },
+                    ]
+                    const closing = replaceBlock && block.lastChild
+                    if (
+                      closing &&
+                      closing.name === 'HeaderMark' &&
+                      closing.from >= match.to
+                    )
+                      changes.push({
+                        from: block.name.startsWith('SetextHeading')
+                          ? this.view.state.doc.lineAt(closing.from).from - 1
+                          : closing.from,
+                        to: closing.to,
+                        insert: '',
+                      })
                     this.view.dispatch({
-                      changes: {
-                        from: match.from,
-                        to: match.to,
-                        insert: command.markdown,
-                      },
+                      changes,
                       selection: {
                         anchor:
-                          match.from +
-                          (command.cursor ?? command.markdown.length),
+                          from + (command.cursor ?? command.markdown.length),
                       },
                       annotations: [
                         Transaction.userEvent.of('input.complete'),

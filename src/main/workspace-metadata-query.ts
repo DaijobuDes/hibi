@@ -10,30 +10,28 @@ import type {
   WorkspaceReferenceQueryResult,
 } from '../shared/workspace-query.ts'
 import {
-  indexWorkspace,
   isCurrentWorkspaceTarget,
-  subscribeWorkspaceChanges,
+  listenWorkspaceChanges,
   workspaceChangeCursor,
   workspaceIndexRevision,
+  workspaceMetadataDelta,
+  workspaceMetadataHeadings,
+  workspaceMetadataPages,
 } from './workspace'
+import { LatestIndexJob } from './workspace-index-job'
 import {
   type GraphPosition,
-  type TextSearchPosition,
   WorkspaceReferenceIndex,
 } from './workspace-reference-index'
 import { workspaceSyntax } from './workspace-syntax'
 
 const references = new WorkspaceReferenceIndex()
-type SearchCursorState = {
+const maxFieldBytes = 32 * 1024
+type GraphCursorState = {
   target: WorkspaceTarget
   sequence: number
   revision: number
   sourceVersions: string
-  query: string
-  position: TextSearchPosition
-}
-const searchCursors = new Map<string, SearchCursorState>()
-type GraphCursorState = Omit<SearchCursorState, 'query' | 'position'> & {
   syntaxFingerprint: string
   position: GraphPosition
 }
@@ -44,6 +42,12 @@ let indexedRevision = -1
 let indexedSourceVersions = ''
 let indexedSyntaxFingerprint = ''
 let requestedSyntaxFingerprint = ''
+type ReferenceBuild = (current: () => boolean) => Promise<boolean>
+let latestBuild: { key: string; request: ReferenceBuild } | null = null
+const referenceJob = new LatestIndexJob(
+  () => latestBuild,
+  (build: ReferenceBuild, current) => build(current),
+)
 
 function hasIndexedSnapshot(
   target: WorkspaceTarget,
@@ -63,8 +67,9 @@ function hasIndexedSnapshot(
 }
 
 function clearCache(): void {
+  referenceJob.reset()
+  latestBuild = null
   references.clear()
-  searchCursors.clear()
   graphCursors.clear()
   indexedTarget = null
   indexedSequence = -1
@@ -74,7 +79,7 @@ function clearCache(): void {
   requestedSyntaxFingerprint = ''
 }
 
-subscribeWorkspaceChanges((event) => {
+listenWorkspaceChanges((event) => {
   if (event.kind === 'resync') clearCache()
 })
 
@@ -101,10 +106,11 @@ const failure = (
   message: string,
 ): OperationResult<never, QueryFailure> => ({ ok: false, code, message })
 
-/** Main-process queries reuse indexWorkspace's pages and dirty document overlay. */
+/** Main-process queries share a metadata stream and the dirty document overlay. */
 export async function queryWorkspaceReferences(
   input: unknown,
   getOpenDocumentVersions: () => readonly OpenDocumentVersion[],
+  owner = 'legacy',
 ): Promise<OperationResult<WorkspaceReferenceQueryResult, QueryFailure>> {
   if (!input || typeof input !== 'object')
     return failure('unsupported', 'Choose a workspace query.')
@@ -113,6 +119,10 @@ export async function queryWorkspaceReferences(
   if (!isCurrentWorkspaceTarget(target))
     return failure('stale', 'This workspace is no longer open.')
   const kind = request.kind
+  if (kind === 'search-text')
+    return import('./workspace-text-search').then((module) =>
+      module.queryWorkspaceText(input, getOpenDocumentVersions, owner),
+    )
   if (
     kind !== 'links' &&
     kind !== 'backlinks' &&
@@ -123,8 +133,7 @@ export async function queryWorkspaceReferences(
     kind !== 'graph' &&
     kind !== 'property' &&
     kind !== 'headings' &&
-    kind !== 'search-paths' &&
-    kind !== 'search-text'
+    kind !== 'search-paths'
   )
     return failure('unsupported', 'This workspace query is not supported.')
   const path = request.path
@@ -138,7 +147,7 @@ export async function queryWorkspaceReferences(
   if (
     kind === 'tag' &&
     (typeof request.tag !== 'string' ||
-      request.tag.length > 128 ||
+      Buffer.byteLength(request.tag) > maxFieldBytes ||
       !/^[\p{L}\p{N}_-]+(?:\/[\p{L}\p{N}_-]+)*$/u.test(request.tag) ||
       !/[\p{L}_]/u.test(request.tag))
   )
@@ -155,33 +164,23 @@ export async function queryWorkspaceReferences(
     kind === 'property' &&
     (typeof request.key !== 'string' ||
       !request.key ||
-      request.key.length > 128 ||
+      Buffer.byteLength(request.key) > maxFieldBytes ||
       !(
         request.value === null ||
         typeof request.value === 'boolean' ||
         (typeof request.value === 'number' && Number.isFinite(request.value)) ||
         (typeof request.value === 'string' &&
-          Buffer.byteLength(request.value) <= 4096)
+          Buffer.byteLength(request.value) <= maxFieldBytes)
       ))
   )
     return failure('unsupported', 'Choose a bounded property predicate.')
   if (
-    (kind === 'search-paths' || kind === 'search-text') &&
+    kind === 'search-paths' &&
     (typeof request.query !== 'string' ||
       !request.query.trim() ||
-      request.query.length > (kind === 'search-text' ? 128 : 256))
+      request.query.length > 256)
   )
-    return failure(
-      'unsupported',
-      `Choose a search of 1 to ${kind === 'search-text' ? 128 : 256} characters.`,
-    )
-  if (
-    kind === 'search-text' &&
-    (request.offset !== undefined ||
-      (request.cursor !== undefined &&
-        (typeof request.cursor !== 'string' || request.cursor.length > 64)))
-  )
-    return failure('unsupported', 'Use a valid search cursor.')
+    return failure('unsupported', 'Choose a search of 1 to 256 characters.')
   if (
     kind === 'graph' &&
     (request.offset !== undefined ||
@@ -203,11 +202,7 @@ export async function queryWorkspaceReferences(
     )
       return failure('unsupported', 'Choose a valid link target.')
   } else {
-    if (
-      kind !== 'search-text' &&
-      kind !== 'graph' &&
-      request.offset !== undefined
-    ) {
+    if (kind !== 'graph' && request.offset !== undefined) {
       if (typeof request.offset !== 'number')
         return failure('unsupported', 'Choose a numeric query offset.')
       offset = request.offset
@@ -220,7 +215,6 @@ export async function queryWorkspaceReferences(
     if (
       !Number.isSafeInteger(offset) ||
       offset < 0 ||
-      offset > 2000 ||
       !Number.isSafeInteger(limit) ||
       limit < 1 ||
       limit > 100
@@ -243,86 +237,82 @@ export async function queryWorkspaceReferences(
     sourceVersions,
     syntax.fingerprint,
   )
-  let index: Awaited<ReturnType<typeof indexWorkspace>> = null
-  if (refresh)
-    try {
-      index = await indexWorkspace()
-    } catch (error) {
-      if (
-        error instanceof Error &&
-        error.message.includes('index up to 2,000 documents')
-      )
-        return failure('limit-exceeded', error.message)
-      throw error
-    }
-  const after = workspaceChangeCursor()
-  if (
-    !isCurrentWorkspaceTarget(target) ||
-    after.target?.workspaceId !== target.workspaceId ||
-    after.target.workspaceGeneration !== target.workspaceGeneration ||
-    before.sequence !== after.sequence ||
-    revision !== workspaceIndexRevision() ||
-    sourceVersions !== versionKey(getOpenDocumentVersions()) ||
-    requestedSyntaxFingerprint !== syntax.fingerprint ||
-    (refresh && index?.workspace.id !== target.workspaceId)
-  )
-    return failure('stale', 'This workspace changed. Try again.')
   const sourceCurrent = () => {
     const current = workspaceChangeCursor()
     return (
       isCurrentWorkspaceTarget(target) &&
       current.target?.workspaceId === target.workspaceId &&
       current.target.workspaceGeneration === target.workspaceGeneration &&
-      current.sequence === after.sequence &&
+      current.sequence === before.sequence &&
       workspaceIndexRevision() === revision &&
       versionKey(getOpenDocumentVersions()) === sourceVersions &&
       requestedSyntaxFingerprint === syntax.fingerprint
     )
   }
-  if (
-    index &&
-    !hasIndexedSnapshot(
-      target,
-      after.sequence,
-      revision,
-      sourceVersions,
-      syntax.fingerprint,
-    )
-  ) {
-    const sourceChanged =
-      indexedTarget?.workspaceId !== target.workspaceId ||
-      indexedTarget.workspaceGeneration !== target.workspaceGeneration ||
-      indexedSequence !== after.sequence ||
-      indexedRevision !== revision ||
-      indexedSourceVersions !== sourceVersions
-    if (sourceChanged) searchCursors.clear()
-    graphCursors.clear()
-    const applied = await references.applyCooperatively(
-      target,
-      index.pages,
-      syntax.page,
-      sourceCurrent,
-    )
-    if (!applied) {
-      if (
-        !sourceCurrent() ||
-        !hasIndexedSnapshot(
-          target,
-          after.sequence,
-          revision,
-          sourceVersions,
-          syntax.fingerprint,
+  if (refresh) {
+    latestBuild = {
+      key: JSON.stringify([
+        target.workspaceId,
+        target.workspaceGeneration,
+        before.sequence,
+        revision,
+        sourceVersions,
+        syntax.fingerprint,
+      ]),
+      request: async (current) => {
+        if (!current() || !sourceCurrent()) return false
+        if (
+          hasIndexedSnapshot(
+            target,
+            before.sequence,
+            revision,
+            sourceVersions,
+            syntax.fingerprint,
+          )
         )
-      )
-        return failure('stale', 'This workspace changed. Try again.')
-    } else {
-      indexedTarget = target
-      indexedSequence = after.sequence
-      indexedRevision = revision
-      indexedSourceVersions = sourceVersions
-      indexedSyntaxFingerprint = syntax.fingerprint
+          return true
+        const active = () => current() && sourceCurrent()
+        const sameSnapshot =
+          indexedTarget?.workspaceId === target.workspaceId &&
+          indexedTarget.workspaceGeneration === target.workspaceGeneration &&
+          indexedSyntaxFingerprint === syntax.fingerprint
+        const delta = sameSnapshot
+          ? await workspaceMetadataDelta(syntax, active)
+          : null
+        if (!active()) return false
+        let commit = delta?.commit
+        let applied = delta?.pages.every((page) => references.has(page.path))
+          ? await references.applyDeltaCooperatively(
+              target,
+              delta.pages,
+              active,
+            )
+          : null
+        if (!applied && active()) {
+          const read = workspaceMetadataPages(syntax, active)
+          applied = await references.applyMetadataCooperatively(
+            target,
+            read.pages,
+            active,
+          )
+          commit = read.commit
+        }
+        if (!applied || !commit?.()) return false
+        graphCursors.clear()
+        indexedTarget = target
+        indexedSequence = before.sequence
+        indexedRevision = revision
+        indexedSourceVersions = sourceVersions
+        indexedSyntaxFingerprint = syntax.fingerprint
+        return true
+      },
     }
+    if (!(await referenceJob.request(latestBuild)))
+      return failure('stale', 'This workspace changed. Try again.')
   }
+  const after = workspaceChangeCursor()
+  if (!sourceCurrent())
+    return failure('stale', 'This workspace changed. Try again.')
   const cacheCurrent = () => {
     return (
       sourceCurrent() &&
@@ -345,6 +335,7 @@ export async function queryWorkspaceReferences(
     sequence: after.sequence,
     stale: after.stale,
     complete: after.complete && references.isComplete(),
+    incompletePaths: references.incompletePaths(),
     capReached: after.capReached,
   }
   if (kind === 'resolve')
@@ -406,7 +397,6 @@ export async function queryWorkspaceReferences(
       pathIndex: 0,
       targetIndex: 0,
       nodeEmitted: false,
-      emitted: 0,
     }
     if (request.cursor !== undefined) {
       const old = graphCursors.get(request.cursor as string)
@@ -446,8 +436,7 @@ export async function queryWorkspaceReferences(
         items: result.items,
         hasMore: result.hasMore,
         nextCursor,
-        complete: base.complete && !result.hasMore && !result.capReached,
-        capReached: base.capReached || result.capReached,
+        complete: base.complete && !result.hasMore,
       },
     }
   }
@@ -473,7 +462,14 @@ export async function queryWorkspaceReferences(
       },
     }
   }
-  if (kind === 'search-paths')
+  if (kind === 'search-paths') {
+    const result = await references.searchPathsCooperatively(
+      request.query as string,
+      offset,
+      limit,
+      cacheCurrent,
+    )
+    if (!result) return failure('stale', 'This workspace changed. Try again.')
     return {
       ok: true,
       value: {
@@ -481,60 +477,20 @@ export async function queryWorkspaceReferences(
         complete: after.complete,
         unsupportedSyntax: false,
         kind,
-        ...references.searchPaths(request.query as string, offset, limit),
-      },
-    }
-  if (kind === 'search-text') {
-    let position: TextSearchPosition = { pathIndex: 0, sourceOffset: 0 }
-    if (request.cursor !== undefined) {
-      const old = searchCursors.get(request.cursor as string)
-      if (
-        !old ||
-        old.target.workspaceId !== target.workspaceId ||
-        old.target.workspaceGeneration !== target.workspaceGeneration ||
-        old.sequence !== after.sequence ||
-        old.revision !== revision ||
-        old.sourceVersions !== sourceVersions ||
-        old.query !== request.query
-      )
-        return failure('stale', 'This search changed. Start again.')
-      searchCursors.delete(request.cursor as string)
-      position = old.position
-    }
-    const result = references.searchText(
-      request.query as string,
-      position,
-      limit,
-    )
-    let nextCursor: string | null = null
-    if (result.hasMore) {
-      nextCursor = randomUUID()
-      if (searchCursors.size >= 16)
-        searchCursors.delete(searchCursors.keys().next().value as string)
-      searchCursors.set(nextCursor, {
-        target,
-        sequence: after.sequence,
-        revision,
-        sourceVersions,
-        query: request.query as string,
-        position: result.position,
-      })
-    }
-    return {
-      ok: true,
-      value: {
-        ...base,
-        unsupportedSyntax: false,
-        kind,
-        items: result.items,
-        hasMore: result.hasMore,
-        nextCursor,
-        complete: after.complete && !result.hasMore,
+        ...result,
       },
     }
   }
   if (kind === 'headings') {
-    const result = references.headings(path as string, offset, limit)
+    const result = await workspaceMetadataHeadings(
+      path as string,
+      syntax,
+      offset,
+      limit,
+      cacheCurrent,
+    )
+    if (!result || !cacheCurrent())
+      return failure('stale', 'This workspace changed. Try again.')
     return {
       ok: true,
       value: {
@@ -548,15 +504,21 @@ export async function queryWorkspaceReferences(
       },
     }
   }
+  const result = await references.referencesCooperatively(
+    kind,
+    path as string,
+    offset,
+    limit,
+    cacheCurrent,
+  )
+  if (!result) return failure('stale', 'This workspace changed. Try again.')
   return {
     ok: true,
     value: {
       ...base,
       kind,
       path: path as string,
-      ...(kind === 'links'
-        ? references.links(path as string, offset, limit)
-        : references.backlinks(path as string, offset, limit)),
+      ...result,
     },
   }
 }

@@ -181,6 +181,32 @@ export class MarkdownSourceModel {
     if (owners) {
       for (let at = prepared.operation.changes.length - 1; at >= 0; at--)
         owners = this.#edit(owners, prepared.operation.changes[at]!)
+      // edits can join cr + lf across retained rows; keep the pair in its left owner.
+      let shift = 0
+      for (const change of prepared.operation.changes) {
+        const from = change.from + shift
+        shift += change.insert.length - (change.to - change.from)
+        for (const position of [from, from + change.insert.length]) {
+          if (prepared.after.rawToEditor(position) !== null) continue
+          const right = owners.at(position)
+          if (!right || right.from !== position) continue
+          const left = owners.get(right.index - 1)!
+          owners = owners.update(left.index, {
+            ...left.owner,
+            length: left.owner.length + 1,
+            parsed: false,
+          })
+          if (right.owner.length === 1) {
+            this.#trees.delete(right.owner.slot)
+            owners = owners.splice(right.index, right.index + 1, [])
+          } else
+            owners = owners.update(right.index, {
+              ...right.owner,
+              length: right.owner.length - 1,
+              parsed: false,
+            })
+        }
+      }
       if (owners.length !== prepared.after.utf16Length)
         throw new Error('Source and owner lengths disagree.')
     }
@@ -191,6 +217,17 @@ export class MarkdownSourceModel {
       owners,
       complete: false,
     })
+  }
+  /** grammar lookahead can change an earlier owner without editing its text. */
+  invalidate(from: number, to: number) {
+    this.#parser.invalidate(from, to)
+    let owners = this.#state.owners
+    const first = owners?.at(from),
+      last = owners?.at(to, -1)
+    if (owners && first && last)
+      for (const row of owners.records(first.index, last.index + 1))
+        owners = owners.update(row.index, { ...row.owner, parsed: false })
+    this.#state = Object.freeze({ ...this.#state, owners, complete: false })
   }
   reconfigure(parser: Parser, dialect: string) {
     this.#parser.reconfigure(parser, dialect)
@@ -256,7 +293,7 @@ export class MarkdownSourceModel {
       ? { first, last }
       : null
   }
-  #boundary(tree: Tree, raw: number, side: -1 | 1): Range | null {
+  #boundary(tree: Tree, raw: number, side: -1 | 1): Block | null {
     const position = this.#state.source.rawToEditor(raw)
     if (position === null)
       throw new Error('Owner boundary splits a line ending.')
@@ -271,11 +308,41 @@ export class MarkdownSourceModel {
       if (!node.type.isAnonymous) block = node
     }
     return block
-      ? { from: this.#raw(block.from), to: this.#raw(block.to) }
+      ? {
+          from: this.#raw(block.from),
+          to: this.#raw(block.to),
+          kind: `markdown:${block.name}`,
+        }
       : null
   }
   #expand(tree: Tree, range: Range, owners: SourceOwners): Range {
-    let { from, to } = range
+    // edits can change either neighboring block across unchanged trivia.
+    const boundaryStart = owners.at(range.from),
+      boundaryEnd = owners.at(range.to, -1)
+    let preceding = boundaryStart && owners.get(boundaryStart.index - 1),
+      following = boundaryEnd && owners.get(boundaryEnd.index + 1)
+    if (preceding?.owner.kind === 'trivia')
+      preceding = owners.get(preceding.index - 1)
+    if (following?.owner.kind === 'trivia')
+      following = owners.get(following.index + 1)
+    const previousBlock = preceding && this.#boundary(tree, preceding.to, -1),
+      nextBlock = following && this.#boundary(tree, following.from, 1)
+    let from =
+        preceding &&
+        (!previousBlock ||
+          previousBlock.from !== preceding.from ||
+          previousBlock.to !== preceding.to ||
+          previousBlock.kind !== preceding.owner.kind)
+          ? preceding.from
+          : range.from,
+      to =
+        following &&
+        (!nextBlock ||
+          nextBlock.from !== following.from ||
+          nextBlock.to !== following.to ||
+          nextBlock.kind !== following.owner.kind)
+          ? following.to
+          : range.to
     for (;;) {
       const first = owners.at(from),
         last = owners.at(to, -1)

@@ -3,19 +3,24 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react'
 import type { DocumentState } from '../../shared/desktop'
 import { IconButton } from '../../ui/Controls'
+import type { MenuApi } from '../../ui/menus'
 import type { ViewEntry } from './addon-views'
+import { retainClosingTabs } from './retained-tabs'
 
 export function DocumentTabs({
   document,
   busy,
   onSelect,
   onClose,
+  onCloseTabs,
   onMove,
+  menus,
   addonTabs,
   activeAddonTab,
   onSelectAddon,
@@ -26,7 +31,9 @@ export function DocumentTabs({
   busy: boolean
   onSelect: (id: string) => void
   onClose: (id: string) => void
+  onCloseTabs: (ids: string[], preferredTab: string) => void
   onMove: (id: string, beforeId: string | null) => void
+  menus: MenuApi
   addonTabs: ViewEntry[]
   activeAddonTab: string | null
   onSelectAddon: (id: string) => void
@@ -52,28 +59,29 @@ export function DocumentTabs({
   } | null>(null)
   const [rendered, setRendered] = useState(document.tabs)
   const tabIds = document.tabs.map((tab) => tab.id).join(',')
+  // One membership set per tab-list change serves retention, closing rows, and cleanup.
+  const currentIds = useMemo(() => new Set(tabIds.split(',')), [tabIds])
   const ordered = [
     ...document.tabs.map((tab) => ({ id: tab.id, addon: false })),
     ...addonTabs.map((tab) => ({ id: tab.id, addon: true })),
   ]
   useLayoutEffect(() => {
-    setRendered((previous) => {
-      const next = [...document.tabs]
-      previous.forEach((tab, index) => {
-        if (!document.tabs.some((current) => current.id === tab.id))
-          next.splice(Math.min(index, next.length), 0, tab)
-      })
-      return next
-    })
-  }, [document.tabs])
+    setRendered((previous) =>
+      retainClosingTabs(previous, document.tabs, currentIds),
+    )
+  }, [document.tabs, currentIds])
   useEffect(() => {
-    const ids = new Set(tabIds.split(','))
     const timer = setTimeout(
-      () => setRendered((tabs) => tabs.filter((tab) => ids.has(tab.id))),
+      () =>
+        setRendered((tabs) =>
+          tabs.every((tab) => currentIds.has(tab.id))
+            ? tabs
+            : tabs.filter((tab) => currentIds.has(tab.id)),
+        ),
       matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 200,
     )
     return () => clearTimeout(timer)
-  }, [tabIds])
+  }, [currentIds])
   const revealActive = useCallback(() => {
     const container = strip.current,
       tab = active.current
@@ -104,14 +112,18 @@ export function DocumentTabs({
   useLayoutEffect(() => {
     const next = new Map<string, number>()
     const closing = !!strip.current?.querySelector('[data-closing="true"]')
-    for (const tab of strip.current?.querySelectorAll<HTMLElement>(
-      '[data-tab-key]',
-    ) ?? []) {
+    // Read every tab before writing widths or starting animations, so the strip lays out once.
+    const geometry = [
+      ...(strip.current?.querySelectorAll<HTMLElement>('[data-tab-key]') ?? []),
+    ].map((tab) => ({
+      tab,
+      left: tab.offsetLeft,
+      width: tab.dataset.closing === 'true' ? null : tab.offsetWidth,
+    }))
+    for (const { tab, left, width } of geometry) {
       const id = tab.dataset.tabKey!
       const previous = positions.current.get(id)
-      const left = tab.offsetLeft
-      if (tab.dataset.closing !== 'true')
-        tab.style.setProperty('--tab-width', `${tab.offsetWidth}px`)
+      if (width !== null) tab.style.setProperty('--tab-width', `${width}px`)
       next.set(id, left)
       if (
         previous !== undefined &&
@@ -170,6 +182,43 @@ export function DocumentTabs({
     addonTabs,
     activeAddonTab,
   ])
+  const openTabMenu = (
+    id: string,
+    anchor: HTMLElement | { x: number; y: number },
+  ) => {
+    if (busy || !currentIds.has(id)) return
+    const ids = document.tabs.map((tab) => tab.id)
+    const index = ids.indexOf(id)
+    if (index < 0) return
+    const left = ids.slice(0, index)
+    const right = ids.slice(index + 1)
+    menus.open({
+      label: 'Tab actions',
+      anchor,
+      items: [
+        { id: 'close', label: 'Close tab', onSelect: () => onClose(id) },
+        {
+          id: 'close-others',
+          label: 'Close other tabs',
+          separatorBefore: true,
+          disabled: ids.length === 1,
+          onSelect: () => onCloseTabs([...left, ...right], id),
+        },
+        {
+          id: 'close-right',
+          label: 'Close tabs to the right',
+          disabled: right.length === 0,
+          onSelect: () => onCloseTabs(right, id),
+        },
+        {
+          id: 'close-left',
+          label: 'Close tabs to the left',
+          disabled: left.length === 0,
+          onSelect: () => onCloseTabs(left, id),
+        },
+      ],
+    })
+  }
   return (
     <div
       className="document-tabs"
@@ -186,6 +235,23 @@ export function DocumentTabs({
           return
         const focusedId = event.target.getAttribute('data-tab-id')
         const index = ordered.findIndex((tab) => tab.id === focusedId)
+        if (
+          event.key === 'ContextMenu' ||
+          (event.shiftKey && event.key === 'F10')
+        ) {
+          const tab = ordered[index]
+          if (!tab || tab.addon) return
+          event.preventDefault()
+          event.stopPropagation()
+          const anchor = event.currentTarget.querySelector<HTMLElement>(
+            `[data-tab-id="${CSS.escape(tab.id)}"]`,
+          )
+          if (anchor) {
+            cancelNavigationFocus()
+            openTabMenu(tab.id, anchor)
+          }
+          return
+        }
         if (
           event.altKey &&
           event.shiftKey &&
@@ -236,7 +302,7 @@ export function DocumentTabs({
       }}
     >
       {rendered.map((tab) => {
-        const closing = !document.tabs.some((current) => current.id === tab.id)
+        const closing = !currentIds.has(tab.id)
         const selected = !activeAddonTab && tab.id === document.tabId
         const name = selected ? document.name : tab.name
         const dirty = selected ? document.dirty : tab.dirty
@@ -324,12 +390,27 @@ export function DocumentTabs({
               data-tooltip={name}
               data-verbatim="true"
               onMouseDown={(event) => {
+                if (event.button === 1) event.preventDefault()
                 if (event.button === 0)
                   event.currentTarget.focus({ preventScroll: true })
+              }}
+              onAuxClick={(event) => {
+                if (event.button !== 1) return
+                event.preventDefault()
+                if (!busy && !closing) onClose(tab.id)
               }}
               onClick={() => {
                 cancelNavigationFocus()
                 if (!busy && !selected) onSelect(tab.id)
+              }}
+              onContextMenu={(event) => {
+                event.preventDefault()
+                if (busy || closing) return
+                event.currentTarget.focus({ preventScroll: true })
+                openTabMenu(tab.id, {
+                  x: event.clientX,
+                  y: event.clientY,
+                })
               }}
             >
               <span>{name}</span>

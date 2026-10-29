@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
@@ -41,7 +41,7 @@ async function adapter(t, platform = 'darwin', packaged = false) {
           build.onResolve(
             { filter: /^node:fs\/promises$/ },
             ({ path, importer }) =>
-              importer === resolve('src/main/background.ts')
+              importer === resolve('src/main/files.ts')
                 ? { path, namespace: 'background-fs' }
                 : undefined,
           )
@@ -49,10 +49,15 @@ async function adapter(t, platform = 'darwin', packaged = false) {
             contents: `
               import * as fs from 'node:fs/promises';
               import { state } from 'electron';
-              export const readFile = fs.readFile;
-              export const writeFile = async (...args) => {
-                if (state.writeError) throw state.writeError;
-                return fs.writeFile(...args);
+              export const { copyFile, link, stat, unlink } = fs;
+              export const open = async (...args) => {
+                const file = await fs.open(...args);
+                const write = file.writeFile.bind(file);
+                file.writeFile = async (...args) => {
+                  if (state.writeError) throw state.writeError;
+                  return write(...args);
+                };
+                return file;
               };
               export const rename = async (...args) => {
                 await state.beforeRename?.();
@@ -173,15 +178,15 @@ for (const platform of ['darwin', 'win32', 'linux']) {
     })
   }
 
-  test(`${platform}: only windows click opens; menu callbacks open, capture, show settings, and quit`, async (t) => {
+  test(`${platform}: windows and linux clicks open; menu callbacks open, capture, show settings, and quit`, async (t) => {
     const { background, mock } = await adapter(t, platform)
     mock.hasQuickNote = true
     await background.save(true)
     const tray = mock.trays[0]
-    assert.equal(tray.listenerCount('click'), platform === 'win32' ? 1 : 0)
+    assert.equal(tray.listenerCount('click'), platform === 'darwin' ? 0 : 1)
     assert.deepEqual(mock.calls, [])
     tray.emit('click')
-    assert.deepEqual(mock.calls, platform === 'win32' ? ['open'] : [])
+    assert.deepEqual(mock.calls, platform === 'darwin' ? [] : ['open'])
     mock.calls.length = 0
     const menu = tray.menus.at(-1)
     assert.deepEqual(
@@ -195,12 +200,13 @@ for (const platform of ['darwin', 'win32', 'linux']) {
     assert.equal(mock.quit, 1)
     background.refresh()
     assert.equal(mock.trays.length, 1)
-    assert.equal(tray.listenerCount('click'), platform === 'win32' ? 1 : 0)
+    assert.equal(tray.listenerCount('click'), platform === 'darwin' ? 0 : 1)
   })
 }
 
 test('background saves persist both choices, reload, and serialize without dropping writes', async (t) => {
-  const { background, BackgroundMode, actions, mock, file } = await adapter(t)
+  const { background, BackgroundMode, actions, mock, file, root } =
+    await adapter(t)
   const restored = new BackgroundMode(actions)
   t.after(() => restored.dispose())
   assert.equal(await background.save(true), true)
@@ -223,7 +229,10 @@ test('background saves persist both choices, reload, and serialize without dropp
   )
   assert.equal(background.enabled, true)
   assert.equal(await readFile(file, 'utf8'), 'true')
-  await assert.rejects(readFile(`${file}.tmp`), { code: 'ENOENT' })
+  assert.deepEqual(
+    (await readdir(root)).filter((name) => name.endsWith('.tmp')),
+    [],
+  )
 })
 
 test('background rejects non-boolean saves without changing preferences or tray state', async (t) => {

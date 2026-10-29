@@ -22,7 +22,6 @@ import type {
   WorkspaceAction,
   WorkspaceActionResult,
   WorkspaceEntry,
-  WorkspaceState,
 } from '../../shared/workspace'
 import { IconButton } from '../../ui/Controls'
 import { useDialogs } from '../../ui/DialogProvider'
@@ -39,9 +38,44 @@ import {
   workspaceStep,
   workspaceTarget,
 } from './workspace-menu'
+import type { WorkspaceView } from './workspace-view'
+
+const ignoreDecorations = () => () => {}
+
+/** Reuses unchanged rows, so a workspace reply with the same tree keeps the sidebar model. */
+function workspaceItems(
+  entries: readonly WorkspaceEntry[],
+  previous: SidebarItem[] | undefined,
+  unsaved: Set<string>,
+): SidebarItem[] {
+  let changed = entries.length !== previous?.length
+  const items = entries.map((entry, index) => {
+    if (entry.dirty) unsaved.add(entry.path)
+    const old = previous?.[index]
+    const icon = entry.kind === 'folder' ? Folder : FileText
+    const children =
+      entry.children && workspaceItems(entry.children, old?.children, unsaved)
+    if (
+      old?.id === entry.path &&
+      old.label === entry.name &&
+      old.icon === icon &&
+      old.children === children
+    )
+      return old
+    changed = true
+    return {
+      id: entry.path,
+      label: entry.name,
+      icon,
+      ...(children ? { children } : {}),
+    }
+  })
+  return changed || !previous ? items : previous
+}
 
 export function WorkspaceSidebar({
   workspace,
+  isCurrent,
   onOpen,
   onFile,
   tabs,
@@ -59,7 +93,8 @@ export function WorkspaceSidebar({
   editing,
   onEditing: setEditing,
 }: {
-  workspace: WorkspaceState | null
+  workspace: WorkspaceView | null
+  isCurrent: () => boolean
   onOpen: () => void
   onFile: (path: string, target?: WorkspaceTarget) => Promise<boolean>
   /** Each opened file gets its own tab, so a group can open together. */
@@ -80,12 +115,15 @@ export function WorkspaceSidebar({
   editing: WorkspaceRename
   onEditing: (target: WorkspaceRename) => void
 }) {
+  const pending = workspace?.treePending ?? false
+  const canInteract = () => !busy && !pending && isCurrent()
   const menu = useMenus(onError)
   const dialogs = useDialogs()
   const [renaming, setRenaming] = useState(false)
   const committing = useRef(false)
   const decorations = useSyncExternalStore(
-    explorerDecorations.subscribe,
+    // A closed explorer skips provider updates and reads the latest result when it opens.
+    open ? explorerDecorations.subscribe : ignoreDecorations,
     explorerDecorations.snapshot,
   )
   const rootDecoration = decorations.get('')
@@ -115,7 +153,7 @@ export function WorkspaceSidebar({
     }
   }
   async function commitRename() {
-    if (!editing || committing.current || busy) return
+    if (!editing || committing.current || !canInteract()) return
     committing.current = true
     setRenaming(true)
     try {
@@ -135,7 +173,7 @@ export function WorkspaceSidebar({
     }
   }
   function openMenu(path: string, anchor: HTMLElement, paths = [path]) {
-    if (busy || !workspace) return
+    if (!canInteract() || !workspace) return
     const target = workspaceTarget(workspace)
     const find = (entries: WorkspaceEntry[]): WorkspaceEntry | undefined => {
       for (const entry of entries) {
@@ -202,39 +240,51 @@ export function WorkspaceSidebar({
       ],
     })
   }
-  const items = useMemo(() => {
-    const convert = (entries: WorkspaceEntry[]): SidebarItem[] =>
-      entries.map((entry) => ({
-        id: entry.path,
-        label: entry.name,
-        icon: entry.kind === 'folder' ? Folder : FileText,
-        dirty: workspace?.activePath === entry.path ? dirty : !!entry.dirty,
-        ...(decorations.has(entry.path)
-          ? { decoration: decorations.get(entry.path)! }
-          : {}),
-        ...(entry.children ? { children: convert(entry.children) } : {}),
-      }))
-    return convert(workspace?.entries ?? [])
-  }, [workspace?.entries, workspace?.activePath, dirty, decorations])
+  const tree = useRef<SidebarItem[] | undefined>(undefined)
+  const { items, unsaved } = useMemo(() => {
+    const unsaved = new Set<string>()
+    tree.current = workspaceItems(
+      workspace?.entries ?? [],
+      tree.current,
+      unsaved,
+    )
+    return { items: tree.current, unsaved }
+  }, [workspace?.entries])
+  // Status stays outside the tree model, so badges and unsaved dots update only their rows.
+  const status = useMemo(() => {
+    const rows = new Map<string, Pick<SidebarItem, 'dirty' | 'decoration'>>()
+    for (const path of unsaved) rows.set(path, { dirty: true })
+    for (const [path, decoration] of decorations)
+      rows.set(path, { ...rows.get(path), decoration })
+    if (activePath) rows.set(activePath, { ...rows.get(activePath), dirty })
+    return rows
+  }, [unsaved, decorations, activePath, dirty])
   return (
     <Sidebar
       // Another workspace starts with fresh expansion, focus, and range state.
       key={`${workspace?.id}:${workspace?.workspaceGeneration}`}
       resize={resize}
-      disabled={busy}
+      disabled={busy || !isCurrent()}
+      pending={pending}
+      interactionRevision={workspace?.treeRevision}
       open={open}
       overlay={overlay}
       onDismiss={onDismiss}
       className={`document-sidebar workspace-sidebar ${workspace ? '' : 'workspace-empty'}`}
       items={items}
+      status={status}
       selected={workspace?.activePath ?? null}
       selection={{
         ids: selection,
         onChange: (ids) => setPicked({ scope, ids }),
       }}
-      onSelect={onFile}
+      onSelect={(path) => {
+        if (canInteract())
+          void onFile(path, workspaceTarget(workspace) ?? undefined)
+      }}
       onMenu={openMenu}
       onMove={(path, parent, paths = [path]) => {
+        if (!canInteract()) return
         const target = workspaceTarget(workspace)
         if (!target) return
         const destination = (path: string) =>
@@ -310,7 +360,7 @@ export function WorkspaceSidebar({
         )
       }
       empty={
-        workspace ? (
+        pending ? null : workspace ? (
           'No files to show in this folder.'
         ) : (
           <button

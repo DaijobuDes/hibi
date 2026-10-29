@@ -1,21 +1,11 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import {
-  mkdir,
-  mkdtemp,
-  readdir,
-  readFile,
-  rm,
-  writeFile,
-} from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { pathToFileURL } from 'node:url'
 import { build } from 'esbuild'
-import { parse } from 'yaml'
-import { platforms } from '../scripts/nightly.mjs'
-import { updateFeed } from '../scripts/update-feed.mjs'
 import {
   newerUpdate,
   updateChannel,
@@ -26,14 +16,15 @@ import { electron } from './electron.mjs'
 import { clickMenu } from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
 
-const version = '0.1.0-nightly.20260921.gaaaaaaa.15.1'
-const tag = 'nightly-2026-09-21-aaaaaaa-15-1'
+const version = '0.2.0'
+const tag = 'v0.2.0'
+const nightlyVersion = '0.2.1-nightly.20260921.gaaaaaaa.15.1'
+const nightlyTag = 'nightly-2026-09-21-aaaaaaa-15-1'
 const bytes = Buffer.from('a verified installer')
 const sha512 = createHash('sha512').update(bytes).digest('base64')
-const manifest = (broken = false) => ({
-  tag: broken ? tag.replace('nightly-', 'nightly-broken-') : tag,
+const manifest = (version = '0.2.0', tag = `v${version}`) => ({
+  tag,
   version,
-  status: broken ? 'nightly-broken' : 'nightly-green',
   assets: Object.fromEntries(
     [
       ['win32-x64', 'win-x64.exe'],
@@ -59,200 +50,96 @@ const manifest = (broken = false) => ({
   ),
 })
 
-test('channels fail closed and nightly ordering uses numeric runs rather than commit hashes', () => {
-  assert.equal(updateChannel('nightly'), 'nightly')
-  for (const input of ['stable', 'https://evil.invalid', null, {}, 1])
+test('channels and feeds accept only beta releases or matching nightly identities', () => {
+  for (const channel of ['beta', 'nightly']) {
+    assert.equal(updateChannel(channel), channel)
+    assert.deepEqual(updateRelease(manifest(), channel), manifest())
+  }
+  for (const input of [
+    'nightly-green',
+    'stable',
+    'https://evil.invalid',
+    null,
+    {},
+    1,
+  ])
     assert.throws(() => updateChannel(input))
   for (const input of [0, 2, '6', null])
     assert.throws(() => updateCheckFrequency(input))
   assert.equal(updateCheckFrequency(24), 24)
-  assert.equal(updateRelease(manifest(), 'nightly-green').version, version)
-  assert.equal(
-    updateRelease(manifest(true), 'nightly').status,
-    'nightly-broken',
-  )
-  assert.throws(() => updateRelease(manifest(true), 'nightly-green'))
+  const nightly = manifest(nightlyVersion, nightlyTag)
+  assert.deepEqual(updateRelease(nightly, 'nightly'), nightly)
+  assert.throws(() => updateRelease(nightly, 'beta'))
   for (const patch of [
     { tag: '../../evil' },
+    { tag: null, version: 'invalid' },
+    { version: [nightlyVersion], tag: nightlyTag },
+    { tag: 'v0.2.1' },
     { version: '../package' },
-    { status: 'stable' },
-    {
-      assets: {
-        'darwin-x64': {
-          ...manifest().assets['darwin-x64'],
-          name: '../evil.dmg',
-        },
-      },
-    },
-    {
-      assets: {
-        'darwin-x64': { ...manifest().assets['darwin-x64'], sha512: 'missing' },
-      },
-    },
-    {
-      assets: {
-        'darwin-x64': { ...manifest().assets['darwin-x64'], size: -1 },
-      },
-    },
-    {
-      assets: {
-        'darwin-x64': {
-          ...manifest().assets['darwin-x64'],
-          zip: { ...manifest().assets['darwin-x64'].zip, name: '../evil.zip' },
-        },
-      },
-    },
+    { version: '00.2.0', tag: 'v00.2.0' },
+    { version: '0.2.0-beta.1', tag: 'v0.2.0-beta.1' },
+    { version: '0.2.0+meta', tag: 'v0.2.0+meta' },
+    { assets: [] },
+    { assets: null },
   ])
     assert.throws(() => updateRelease({ ...manifest(), ...patch }, 'nightly'))
-  assert.ok(newerUpdate(version, '0.1.0-nightly.20260921.gfffffff.14.9'))
-  assert.ok(newerUpdate(version, '0.1.0-nightly.20260920.gfffffff.99.9'))
-  assert.ok(newerUpdate(version, '0.1.0-nightly.20260921.fffffff'))
-  assert.ok(newerUpdate(version, '0.1.0'))
-  assert.ok(!newerUpdate(version, version))
-  assert.ok(!newerUpdate(version, '0.1.0-nightly.20260921.g0000000.16.1'))
-  assert.ok(!newerUpdate(version, '0.2.0'))
-  assert.ok(!newerUpdate(version, 'invalid'))
+  for (const patch of [
+    { tag: nightlyTag.replace('nightly-', 'nightly-broken-') },
+    { tag: nightlyTag.replace('aaaaaaa', 'bbbbbbb') },
+    { tag: nightlyTag.replace('-15-1', '-15-2') },
+    { tag: nightlyTag.replace('09-21', '09-22') },
+    { version: nightlyVersion.replace('.15.1', '.015.1') },
+    { version: nightlyVersion.replace('.gaaaaaaa', '.aaaaaaa') },
+    { version: nightlyVersion.replace('.15.1', '') },
+  ])
+    assert.throws(() => updateRelease({ ...nightly, ...patch }, 'nightly'))
+  for (const asset of [
+    { name: '../evil.dmg' },
+    { name: 'hibi-0.1.0-mac-x64.dmg' },
+    { sha512: 'missing' },
+    { size: -1 },
+    { size: 0 },
+    { size: 1.5 },
+    { zip: { ...manifest().assets['darwin-x64'].zip, name: '../evil.zip' } },
+  ])
+    assert.throws(() =>
+      updateRelease(
+        {
+          ...manifest(),
+          assets: {
+            'darwin-x64': { ...manifest().assets['darwin-x64'], ...asset },
+          },
+        },
+        'beta',
+      ),
+    )
 })
 
-test('publication hashes real installers and keeps both feeds pinned to a complete classified release', async (t) => {
-  const root = await mkdtemp(join(tmpdir(), 'hibi-feed-'))
-  t.after(() => rm(root, { recursive: true, force: true }))
-  for (const asset of Object.values(manifest().assets)) {
-    await writeFile(join(root, asset.name), bytes)
-    if (asset.zip) await writeFile(join(root, asset.zip.name), bytes)
-  }
-  const systemPackages = {
-    'x64.deb': 'amd64.deb',
-    'x64.flatpak': 'x86_64.flatpak',
-    'arm64.deb': 'arm64.deb',
-    'arm64.flatpak': 'aarch64.flatpak',
-  }
-  for (const built of Object.values(systemPackages))
-    await writeFile(join(root, `hibi-${version}-linux-${built}`), bytes)
-  const reports = platforms.map((platform) => ({
-    platform,
-    sha: 'a'.repeat(40),
-    build: 'success',
-    package: 'success',
-    checks: 'success',
-  }))
-  for (const broken of [false, true]) {
-    const release = {
-      ...manifest(broken),
-      channel: 'nightly',
-      sha: 'a'.repeat(40),
-      reports: reports.map((report, i) => ({
-        ...report,
-        checks: broken && !i ? 'failure' : 'success',
-      })),
-    }
-    const generated = await updateFeed(release, root)
-    const expected = manifest(broken)
-    expected.assets['linux-x64'].name = `hibi-${version}-linux-x64.AppImage`
-    assert.deepEqual(generated, expected)
-    assert.deepEqual(
-      await readFile(join(root, expected.assets['linux-x64'].name)),
-      bytes,
-    )
-    const files = await readdir(root)
-    assert.ok(!files.includes(manifest().assets['linux-x64'].name))
-    // Debian and Flatpak downloads share AppImage labels but stay out of feeds older updaters validate.
-    for (const [normalized, built] of Object.entries(systemPackages)) {
-      assert.ok(files.includes(`hibi-${version}-linux-${normalized}`))
-      if (normalized !== built)
-        assert.ok(!files.includes(`hibi-${version}-linux-${built}`))
-    }
-    assert.deepEqual(updateRelease(generated, 'nightly'), generated)
-    if (!broken)
-      assert.deepEqual(updateRelease(generated, 'nightly-green'), generated)
-    for (const [platform, name] of [
-      ['win32-x64', 'latest.yml'],
-      ['linux-x64', 'latest-linux.yml'],
-      ['linux-arm64', 'latest-linux-arm64.yml'],
-    ]) {
-      const feed = parse(await readFile(join(root, name), 'utf8'))
-      assert.equal(feed.version, version)
-      assert.deepEqual(feed.files, [
-        { url: expected.assets[platform].name, sha512, size: bytes.length },
-      ])
-    }
-    const macFeed = parse(await readFile(join(root, 'latest-mac.yml'), 'utf8'))
-    assert.equal(macFeed.version, version)
-    assert.deepEqual(macFeed.files, [
-      {
-        url: expected.assets['darwin-x64'].zip.name,
-        sha512,
-        size: bytes.length,
-      },
-      {
-        url: expected.assets['darwin-arm64'].zip.name,
-        sha512,
-        size: bytes.length,
-      },
-    ])
-  }
-  await assert.rejects(
-    updateFeed(
-      {
-        ...manifest(),
-        channel: 'nightly',
-        sha: 'a'.repeat(40),
-        reports: reports.slice(1),
-      },
-      root,
-    ),
-    /Every release platform/,
-  )
-  // An architecture alias beside its normalized name must not overwrite either package.
-  for (const [alias, canonical] of [
-    ['linux-x86_64.AppImage', 'linux-x64.AppImage'],
-    ['linux-amd64.deb', 'linux-x64.deb'],
+test('update ordering uses semver core and release precedence, then nightly date/run/attempt', () => {
+  for (const [next, current] of [
+    ['0.2.0', '0.2.0-nightly.20260921.gaaaaaaa.15.1'],
+    [nightlyVersion, '0.2.0'],
+    [nightlyVersion, '0.2.1-nightly.20260921.gfffffff.14.9'],
+    [nightlyVersion, '0.2.1-nightly.20260920.gfffffff.99.9'],
+    [nightlyVersion, '0.2.1-nightly.20260921.gfffffff.15.0'],
+    [nightlyVersion, '0.2.1-nightly.20260921.fffffff'],
+    ['0.10.0', '0.9.99'],
+    ['1.0.0', '0.99.99'],
+    [
+      '0.2.1-nightly.20260921.gaaaaaaa.100.1',
+      '0.2.1-nightly.20260921.gfffffff.99.9',
+    ],
   ]) {
-    const duplicate = await mkdtemp(join(tmpdir(), 'hibi-feed-duplicate-'))
-    t.after(() => rm(duplicate, { recursive: true, force: true }))
-    await writeFile(join(duplicate, `hibi-${version}-${alias}`), 'alias')
-    await writeFile(
-      join(duplicate, `hibi-${version}-${canonical}`),
-      'canonical',
-    )
-    await assert.rejects(
-      updateFeed(
-        { ...manifest(), channel: 'nightly', sha: 'a'.repeat(40), reports },
-        duplicate,
-      ),
-      /Ambiguous Linux packages/,
-    )
-    assert.deepEqual(
-      await readFile(join(duplicate, `hibi-${version}-${alias}`), 'utf8'),
-      'alias',
-    )
-    assert.deepEqual(
-      await readFile(join(duplicate, `hibi-${version}-${canonical}`), 'utf8'),
-      'canonical',
-    )
+    assert.ok(newerUpdate(next, current), `${next} > ${current}`)
+    assert.ok(!newerUpdate(current, next), `${current} < ${next}`)
   }
-  const workflow = parse(
-    await readFile('.github/workflows/nightly.yml', 'utf8'),
-  )
-  const steps = workflow.jobs.publish.steps
   assert.ok(
-    steps.findIndex((step) => step.name === 'Generate verified update feeds') <
-      steps.findIndex((step) => step.id === 'publish'),
+    !newerUpdate(nightlyVersion, nightlyVersion.replace('aaaaaaa', 'bbbbbbb')),
   )
-  const green = steps.find(
-    (step) => step.name === 'Update recommended nightly pointer',
-  )
-  assert.equal(green.if, "steps.classify.outputs.status == 'nightly-green'")
-  assert.match(
-    green.run,
-    /gh release upload nightly-green installers\/update.json/,
-  )
-  const all = steps.find((step) => step.name === 'Update all-nightlies feed')
-  assert.equal(all.if, "needs.prepare.outputs.channel == 'nightly'")
-  assert.ok(
-    steps.indexOf(all) <
-      steps.findIndex((step) => step.name === 'Surface broken nightly checks'),
-  )
+  for (const input of [version, nightlyVersion, 'invalid', '00.2.0'])
+    assert.ok(!newerUpdate(input, input))
+  assert.ok(!newerUpdate(version, 'invalid'))
+  assert.ok(!newerUpdate('invalid', version))
 })
 
 async function adapter(
@@ -321,16 +208,43 @@ async function adapter(
   return { ...manager, root }
 }
 
+test('channel preferences migrate once on read and invalid or missing choices default to beta', async (t) => {
+  const manager = await adapter(t)
+  const path = join(manager.root, 'update-channel.json')
+  assert.equal(JSON.parse(await readFile(path, 'utf8')), 'beta')
+  for (const [saved, expected] of [
+    ['nightly-green', 'beta'],
+    ['nightly', 'nightly'],
+    ['beta', 'beta'],
+    ['stable', 'beta'],
+    [null, 'beta'],
+    [{ channel: 'nightly' }, 'beta'],
+  ]) {
+    await writeFile(path, JSON.stringify(saved))
+    await manager.loadUpdates()
+    assert.equal(manager.getUpdateState().channel, expected)
+    assert.equal(JSON.parse(await readFile(path, 'utf8')), expected)
+    // A valid stored choice is read without rewriting it.
+    await writeFile(path, `${JSON.stringify(expected)}\n`)
+    await manager.loadUpdates()
+    assert.equal(await readFile(path, 'utf8'), `${JSON.stringify(expected)}\n`)
+  }
+  await writeFile(path, 'not json')
+  await manager.loadUpdates()
+  assert.equal(manager.getUpdateState().channel, 'beta')
+  assert.equal(JSON.parse(await readFile(path, 'utf8')), 'beta')
+})
+
 test('mac pins both signed ZIPs, installs after close confirmation, and persists channel choice', async (t) => {
   const manager = await adapter(t, 'darwin', 'arm64')
   const { mock } = manager
-  assert.equal(manager.getUpdateState().channel, 'nightly-green')
+  assert.equal(manager.getUpdateState().channel, 'beta')
   assert.equal((await manager.checkForUpdates()).status, 'available')
   assert.equal(
     manager.getUpdateState().message,
     `An update is available: ${version}`,
   )
-  assert.match(mock.requests[0], /nightly-green\/update.json$/)
+  assert.match(mock.requests[0], /beta\/feed.json$/)
   mock.badMetadata = true
   assert.equal((await manager.downloadUpdate()).status, 'error')
   assert.match(manager.getUpdateState().message, /metadata changed/)
@@ -355,10 +269,10 @@ test('mac pins both signed ZIPs, installs after close confirmation, and persists
   )
   await manager.loadUpdates()
   assert.equal(manager.getUpdateState().channel, 'nightly')
-  mock.response = manifest(true)
-  assert.equal((await manager.checkForUpdates()).broken, true)
-  assert.match(mock.requests.at(-1), /\/nightly\/update.json$/)
-  await manager.setUpdateChannel('nightly-green')
+  mock.response = manifest(nightlyVersion, nightlyTag)
+  assert.equal((await manager.checkForUpdates()).status, 'available')
+  assert.match(mock.requests.at(-1), /\/nightly\/feed.json$/)
+  await manager.setUpdateChannel('beta')
   assert.equal((await manager.checkForUpdates()).status, 'error')
 
   const install = await adapter(t, 'darwin', 'x64')
@@ -399,7 +313,7 @@ test('checks handle missing feeds, offline failures, concurrent actions, and ins
   await assert.rejects(manager.checkForUpdates(), /Wait for/)
   resume()
   await checking
-  manager.mock.version = '0.2.0'
+  manager.mock.version = '0.3.0'
   assert.equal((await manager.checkForUpdates()).status, 'idle')
   assert.equal(manager.getUpdateState().version, undefined)
   const development = await adapter(t, 'darwin', 'x64', false)
@@ -524,7 +438,7 @@ test('update settings expose both channels, persist choice, and fit narrow windo
     await app?.close()
     await rm(profile, { recursive: true, force: true })
   })
-  for (const expected of ['nightly-green', 'nightly']) {
+  for (const expected of ['beta', 'nightly']) {
     app = await electron.launch({
       args: [resolve('.'), `--user-data-dir=${profile}`],
     })
@@ -548,7 +462,7 @@ test('update settings expose both channels, persist choice, and fit narrow windo
     const startup = page.getByRole('checkbox', {
       name: 'Check for updates on startup',
     })
-    assert.equal(await startup.isChecked(), expected === 'nightly-green')
+    assert.equal(await startup.isChecked(), expected === 'beta')
     if (expected === 'nightly') {
       assert.deepEqual(errors, [])
       await app.close()
@@ -556,8 +470,8 @@ test('update settings expose both channels, persist choice, and fit narrow windo
       continue
     }
     assert.deepEqual(await picker.locator('option').allTextContents(), [
-      'Recommended nightly',
-      'Nightly',
+      'Beta (stable)',
+      'Nightly (bleeding edge)',
     ])
     await assert.rejects(
       page.evaluate(() => window.hibi.setUpdateChannel('https://evil.invalid')),
@@ -602,7 +516,7 @@ test('update settings expose both channels, persist choice, and fit narrow windo
         .isDisabled(),
       true,
     )
-    const showUpdate = (status, progress, broken = false) =>
+    const showUpdate = (status, progress) =>
       app.evaluate(
         ({ BrowserWindow }, update) => {
           BrowserWindow.getAllWindows()[0].webContents.send(
@@ -616,7 +530,6 @@ test('update settings expose both channels, persist choice, and fit narrow windo
           supported: true,
           checkOnStartup: false,
           version,
-          broken,
           progress,
           message: `An update is available: ${version}`,
         },
@@ -661,14 +574,19 @@ test('update settings expose both channels, persist choice, and fit narrow windo
     await page
       .getByRole('button', { name: 'Restart and install', exact: true })
       .waitFor()
-    await showUpdate('available', 0, true)
+    await showUpdate('available', 0)
     await page
       .getByRole('button', { name: 'Download update', exact: true })
       .waitFor()
     await page
-      .getByRole('status')
-      .filter({ hasText: 'failed required checks' })
+      .getByText(
+        'Nightly builds are bleeding edge. Back up your notes before installing.',
+      )
       .waitFor()
+    assert.equal(
+      await page.getByText('failed required checks', { exact: false }).count(),
+      0,
+    )
     for (const width of [480, 1000]) {
       await page.setViewportSize({ width, height: 760 })
       await picker.scrollIntoViewIfNeeded()

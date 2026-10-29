@@ -17,6 +17,9 @@ import { collectLicenses } from '../scripts/licenses.ts'
 import { electron } from './electron.mjs'
 import { clickMenu } from './keyboard.mjs'
 
+const { version: appVersion } = JSON.parse(
+  await readFile('package.json', 'utf8'),
+)
 const { rollup } = createRequire(import.meta.resolve('vite'))('rollup')
 
 test('main builds keep fresh licenses, bundled production workers and dev externals', {
@@ -41,14 +44,29 @@ test('main builds keep fresh licenses, bundled production workers and dev extern
   )
   const worker = parse(
     await readFile('src/addons/_shared/format-worker.ts', 'utf8'),
-    { sourceType: 'module', plugins: ['typescript'] },
+    {
+      sourceType: 'module',
+      plugins: ['typescript'],
+      createImportExpressions: true,
+    },
   )
   const { devDependencies } = JSON.parse(await readFile('package.json', 'utf8'))
-  const dependencies = worker.program.body
-    .filter(
-      (node) => node.type === 'ImportDeclaration' && node.importKind !== 'type',
+  const imports = []
+  function visit(node) {
+    if (
+      (node.type === 'ImportDeclaration' && node.importKind !== 'type') ||
+      (node.type === 'ImportExpression' && node.source.type === 'StringLiteral')
     )
-    .map((node) => node.source.value.match(/^(@[^/]+\/[^/]+|[^/]+)/)[0])
+      imports.push(node.source.value)
+    for (const value of Object.values(node)) {
+      if (Array.isArray(value)) {
+        for (const child of value) if (child?.type) visit(child)
+      } else if (value?.type) visit(value)
+    }
+  }
+  visit(worker)
+  const dependencies = imports
+    .map((source) => source.match(/^(@[^/]+\/[^/]+|[^/]+)/)[0])
     .filter((name) => Object.hasOwn(devDependencies, name))
   assert.equal(
     externalize({ env: {} }),
@@ -268,6 +286,7 @@ test('license catalog retains dependency and palette notices, excluding build to
     'electron',
     'geist',
     'dompurify',
+    'pele',
     '@codemirror/view',
     '@tiptap/core',
     '@tiptap/extension-drag-handle',
@@ -305,6 +324,12 @@ test('license catalog retains dependency and palette notices, excluding build to
         await readFile('node_modules/dompurify/LICENSE-MPL', 'utf8'),
       ),
   )
+  // Pele's notice also covers the Lucide icon it bundles.
+  assert.ok(
+    entries
+      .find((entry) => entry.name === 'pele')
+      .text.includes(await readFile('node_modules/pele/LICENSE', 'utf8')),
+  )
 })
 
 test('licenses open on their own settings page and dialogs stay readable', {
@@ -337,7 +362,7 @@ test('licenses open on their own settings page and dialogs stay readable', {
     'true',
   )
   const panel = page.getByRole('tabpanel', { name: /^about$/i, exact: true })
-  await panel.getByText(/^version 0\.1\.0$/i, { exact: true }).waitFor()
+  await panel.getByText(`Version ${appVersion}`, { exact: true }).waitFor()
   assert.equal(await panel.locator('.license-row').count(), 0)
   await app.evaluate(({ shell }) => {
     shell.openExternal = async (url) => {

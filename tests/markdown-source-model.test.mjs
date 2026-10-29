@@ -42,6 +42,73 @@ const rows = (owners) =>
     }
   })
 
+test('grammar dependency invalidation reparses earlier owners without changing source', () => {
+  for (const eol of ['\n', '\r\n']) {
+    let enabled = false
+    const dialect = parser.configure({
+      defineNodes: [{ name: 'DependentBlock', block: true }],
+      parseBlock: [
+        {
+          name: 'DependentBlock',
+          before: 'LinkReference',
+          parse(cx, line) {
+            if (!enabled || line.text !== 'candidate') return false
+            cx.addElement(
+              cx.elt(
+                'DependentBlock',
+                cx.lineStart,
+                cx.lineStart + line.text.length,
+              ),
+            )
+            cx.nextLine()
+            return true
+          },
+        },
+      ],
+    })
+    const source = `candidate${eol}${eol}${'unchanged paragraph'.concat(eol, eol).repeat(100)}last`
+    const store = new SourceStore(source, {
+      tabId: 'grammar-dependency',
+      revision: 0,
+    })
+    const snapshot = store.snapshot()
+    const model = new MarkdownSourceModel(snapshot, dialect, 'dependency')
+    try {
+      const initial = finish(model).owners
+      const tail = initial.at(source.length - 1).owner
+      assert.equal(initial.at(0).owner.kind, 'markdown:Paragraph')
+      for (const next of [true, false, true]) {
+        enabled = next
+        model.invalidate(0, 1)
+        assert.equal(model.state().complete, false)
+        assert.equal(model.state().owners.at(0).owner.parsed, false)
+        const state = finish(model)
+        assert.equal(state.source, snapshot)
+        assert.equal(store.snapshot(), snapshot)
+        assert.equal(state.owners.at(source.length - 1).owner, tail)
+        assert.deepEqual(rows(state.owners), oracle(snapshot, dialect))
+      }
+      for (const [from, to] of [
+        [-1, 1],
+        [0, 0],
+        [1, 0],
+        [0, source.length + 1],
+        [0, NaN],
+      ])
+        assert.throws(() => model.invalidate(from, to), /outside/)
+      if (eol === '\r\n')
+        assert.throws(
+          () =>
+            model.invalidate('candidate'.length + 1, 'candidate'.length + 2),
+          /outside/,
+        )
+      assert.equal(snapshot.sliceRaw(0, source.length), source)
+    } finally {
+      model.dispose()
+    }
+  }
+})
+
 test('fence pairing changes expand boundary coverage without quadratic interior walks', () => {
   const fences = 1024,
     fence = '`'.repeat(3)
@@ -206,6 +273,131 @@ test('coarse source ownership stays exact through edits, cancellations, fences a
       rows(finish(model).owners),
       oracle(store.snapshot(), dialect),
     )
+    model.dispose()
+  }
+})
+
+test('every single-position edit and undo matches fresh owners across block indentation', (t) => {
+  const corpus = [
+    '```\n```\nd',
+    '~~~typst\nx\n~~~\n\ntail',
+    '\t```\n```\nd',
+    '    a\n\nb',
+    '- a\n  - b\n\nlast',
+    'a\n===\n\ntail',
+    '[ref]: x\n\nlast',
+    '> a\n> b\n\ntail',
+    '<div>\na\n</div>\n\ntail',
+    '- [ ]\tbuy milk',
+  ]
+  const inserts = ['\t', ' ', '  ', '    ', '\n', 'x', '`', '-', '---\n']
+  let checked = 0
+  for (const dialect of [parser, parser.configure(GFM)])
+    for (const prefix of ['', 'before\n\n'])
+      for (const text of corpus) {
+        const source = prefix + text
+        const store = new SourceStore(source, { tabId: 'sweep', revision: 0 })
+        const model = new MarkdownSourceModel(
+          store.snapshot(),
+          dialect,
+          'sweep',
+        )
+        const original = rows(finish(model).owners)
+        try {
+          for (let from = 0; from <= source.length; from++)
+            for (const insert of [...inserts, '']) {
+              const to = from + Number(insert === '')
+              if (to > source.length) continue
+              const change = { from, to, insert }
+              const label = JSON.stringify({ source, change })
+              edit(store, model, [change])
+              assert.deepEqual(
+                rows(finish(model).owners),
+                oracle(store.snapshot(), dialect),
+                label,
+              )
+              edit(store, model, [
+                {
+                  from,
+                  to: from + insert.length,
+                  insert: source.slice(from, to),
+                },
+              ])
+              assert.deepEqual(
+                rows(finish(model).owners),
+                original,
+                `undo ${label}`,
+              )
+              checked += 2
+            }
+        } finally {
+          model.dispose()
+        }
+      }
+  t.diagnostic(`${checked} incremental/fresh and undo comparisons`)
+})
+
+test('an insertion at a block end rechecks the preceding owner bounds', () => {
+  const store = new SourceStore('- ```\n', { tabId: 'block-end', revision: 0 })
+  const dialect = parser.configure(GFM)
+  const model = new MarkdownSourceModel(store.snapshot(), dialect, 'gfm')
+  try {
+    finish(model)
+    edit(store, model, [{ from: 6, to: 6, insert: 'x' }])
+    assert.deepEqual(
+      rows(finish(model).owners),
+      oracle(store.snapshot(), dialect),
+    )
+    edit(store, model, [{ from: 6, to: 7, insert: '' }])
+    assert.deepEqual(
+      rows(finish(model).owners),
+      oracle(store.snapshot(), dialect),
+    )
+  } finally {
+    model.dispose()
+  }
+})
+
+test('a blank line before empty-marker lists keeps fresh owners through undo', () => {
+  const source = '\n  h\n\n1.\n1. \n   c\n\n   e'
+  const store = new SourceStore(source, { tabId: 'blank-line', revision: 0 })
+  const dialect = parser.configure(GFM)
+  const model = new MarkdownSourceModel(store.snapshot(), dialect, 'gfm')
+  try {
+    const original = rows(finish(model).owners)
+    edit(store, model, [{ from: 0, to: 4, insert: '  ' }])
+    assert.deepEqual(
+      rows(finish(model).owners),
+      oracle(store.snapshot(), dialect),
+    )
+    edit(store, model, [{ from: 0, to: 2, insert: source.slice(0, 4) }])
+    assert.deepEqual(rows(finish(model).owners), original)
+  } finally {
+    model.dispose()
+  }
+})
+
+test('indentation before a two mib list keeps parser reads and reconciliation bounded', () => {
+  const item = '- item words here\n'
+  const source =
+    '- a\n' + item.repeat(Math.ceil((2 * 1024 * 1024) / item.length))
+  const store = new SourceStore(source, { tabId: 'list-scale', revision: 0 })
+  const model = new MarkdownSourceModel(
+    store.snapshot(),
+    parser.configure(GFM),
+    'gfm',
+  )
+  try {
+    finish(model)
+    model.counters(true)
+    edit(store, model, [{ from: 0, to: 0, insert: '\t' }])
+    finish(model)
+    const work = model.counters()
+    assert.equal(work.regions, 1)
+    assert.equal(work.rowsWritten, 4)
+    assert.equal(work.parser.readUnits, 56)
+    assert.ok(work.boundarySeeks <= 7)
+  } finally {
     model.dispose()
   }
 })

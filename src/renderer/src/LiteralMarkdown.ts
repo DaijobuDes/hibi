@@ -1,4 +1,5 @@
 import { Node } from '@tiptap/core'
+import { trustedClipboardElements } from './clipboard-source.ts'
 
 /** Disabled formatting remains editable source text and round-trips without added escapes. */
 export const literalMarkdown = ['block', 'inline'].map((level) =>
@@ -10,7 +11,13 @@ export const literalMarkdown = ['block', 'inline'].map((level) =>
     marks: '',
     code: true,
     defining: true,
-    parseHTML: () => [{ tag: `[data-literal-markdown="${level}"]` }],
+    parseHTML: () => [
+      {
+        tag: `[data-literal-markdown="${level}"]`,
+        getAttrs: (element) =>
+          trustedClipboardElements.has(element) ? {} : false,
+      },
+    ],
     renderHTML: () => [
       level === 'block' ? 'div' : 'span',
       { 'data-literal-markdown': level, class: `hibi-literal-${level}` },

@@ -1,16 +1,22 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { createDecipheriv, pbkdf2Sync } from 'node:crypto'
+import { mkdir, mkdtemp, open, readFile, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
+import { pathToFileURL } from 'node:url'
 import katex from 'katex'
 import { marked } from 'marked'
 import {
   exportOptions,
   validateExportOptions,
 } from '../src/addons/documentation/options.ts'
-import { prepareSite, siteFiles } from '../src/addons/documentation/site.ts'
+import {
+  prepareSite,
+  siteFiles,
+  siteOutput,
+} from '../src/addons/documentation/site.ts'
 import { electron } from './electron.mjs'
 import { clickMenu } from './keyboard.mjs'
 
@@ -98,6 +104,43 @@ test('export options validate URLs, images and portable paths; protected files c
       prepareSite(snapshot, { ...options, singleFile }),
       'unit-export-password-482',
     )
+    const payload = singleFile
+      ? encrypted
+          .get('index.html')
+          .match(
+            /<script id="workspace-data" type="application\/json">([\s\S]*?)<\/script>/,
+          )[1]
+      : encrypted
+          .get('hibi-assets/workspace.js')
+          .slice('window.__HIBI_WORKSPACE__='.length, -1)
+    const locked = JSON.parse(payload)
+    const cipher = Buffer.from(locked.ciphertext, 'base64')
+    const key = pbkdf2Sync(
+      'unit-export-password-482',
+      Buffer.from(locked.salt, 'base64'),
+      locked.iterations,
+      32,
+      'sha256',
+    )
+    const decipher = createDecipheriv(
+      'aes-256-gcm',
+      key,
+      Buffer.from(locked.iv, 'base64'),
+    )
+    decipher.setAuthTag(cipher.subarray(-16))
+    const plaintext = Buffer.concat([
+      decipher.update(cipher.subarray(0, -16)),
+      decipher.final(),
+    ]).toString('utf8')
+    const expected = prepareSite(snapshot, { ...options, singleFile })
+    assert.equal(
+      plaintext,
+      JSON.stringify({
+        ...expected,
+        routing: 'hash',
+        options: { ...expected.options, passwordProtected: true },
+      }),
+    )
     const all = [...encrypted.values()].join('\n')
     for (const value of [
       'private-sentinel-9742',
@@ -110,6 +153,37 @@ test('export options validate URLs, images and portable paths; protected files c
     assert.ok(!encrypted.has('sitemap.xml'))
     assert.ok(!encrypted.has('development/README.md/index.html'))
   }
+})
+
+test('static export visits page paths a linear number of times', async () => {
+  const count = 200
+  const site = prepareSite(
+    {
+      name: 'paths',
+      pages: Array.from({ length: count }, (_, index) => ({
+        path: index + '.md',
+        markdown: '# Note',
+      })),
+    },
+    exportOptions({ singleFile: false, graph: false }),
+  )
+  let reads = 0
+  for (const page of site.pages) {
+    const path = page.path
+    Object.defineProperty(page, 'path', {
+      enumerable: true,
+      get() {
+        reads++
+        return path
+      },
+    })
+  }
+  const files = await siteFiles(
+    '<html lang="en"><head><title>site</title></head><body><div id="root"></div><script id="workspace-data" type="application/json">__HIBI_WORKSPACE_DATA__</script></body></html>',
+    site,
+  )
+  assert.ok(files.has('199.md/index.html'))
+  assert.ok(reads < 40 * count, reads + ' path reads for ' + count + ' pages')
 })
 
 test('site export keeps supported static content and omits addon runtime state', async () => {
@@ -174,6 +248,51 @@ test('site export keeps supported static content and omits addon runtime state',
     assert.match(article, /<strong>Supported flavor<\/strong>/)
     assert.match(article, /class="katex"/)
     assert.doesNotMatch(article, /<script|onerror|window\.exportAttack/i)
+  }
+})
+
+test('static heading anchors preserve canonical fragments and unique legacy aliases', async () => {
+  const template = await readFile('out/site/template.html', 'utf8')
+  const texts = ['api_v2', 'title', 'title', 'title-1', '✨ features', 'apiv2']
+  for (const singleFile of [true, false]) {
+    const site = prepareSite(
+      {
+        name: 'heading destinations',
+        pages: [
+          {
+            path: 'README.md',
+            markdown: texts.map((text) => `## ${text}`).join('\n\n'),
+          },
+        ],
+      },
+      exportOptions({ singleFile }),
+    )
+    const files = await siteFiles(template, site)
+    for (const [path, html] of files) {
+      if (!path.endsWith('.html')) continue
+      const article = html.match(
+        /<article class="tiptap">([\s\S]*?)<\/article>/,
+      )?.[1]
+      assert.ok(article, path)
+      assert.deepEqual(
+        [...article.matchAll(/<h2[^>]* id="([^"]*)"/g)].map(
+          (match) => match[1],
+        ),
+        ['api_v2', 'title', 'title-1', 'title-1-1', '-features', 'apiv2-1'],
+      )
+      assert.match(
+        article,
+        /<h2 id="api_v2"><span id="apiv2" aria-hidden="true"><\/span>api_v2<\/h2>/,
+      )
+      assert.match(
+        article,
+        /<h2 id="-features"><span id="features" aria-hidden="true"><\/span>✨ features<\/h2>/,
+      )
+      const ids = [...article.matchAll(/\sid="([^"]*)"/g)].map(
+        (match) => match[1],
+      )
+      assert.equal(new Set(ids).size, ids.length, path)
+    }
   }
 })
 
@@ -333,12 +452,23 @@ test('published sites support direct routes, crawlable HTML, branding, locked th
     await page.locator('meta[name="description"]').getAttribute('content'),
     'Build something useful.',
   )
+  await page.getByRole('button', { name: /^search documentation$/i }).click()
+  await page
+    .getByRole('combobox', { name: /search commands/i })
+    .fill('getting started')
+  await page.getByRole('option', { name: /getting started/i }).click()
+  await page.waitForFunction(() => location.hash === '#getting-started')
+  await page.locator('article #doc-getting-started').waitFor()
+  await page.goto(`${base}development/README.md/`)
   await page.reload()
   await page.getByRole('button', { name: /^open graph$/i }).click()
   const graph = page.getByRole('dialog', { name: /^graph$/i })
+  // The graph's keyboard note starts on this page; type-ahead reaches the home page.
+  await graph.getByRole('option', { name: /^open /i }).focus()
+  await page.keyboard.press('r')
   await graph
-    .getByRole('button', { name: 'Open README.md', exact: true })
-    .focus()
+    .getByRole('option', { name: 'Open README.md', exact: true })
+    .waitFor()
   await page.keyboard.press('Enter')
   await graph.waitFor({ state: 'hidden' })
   assert.equal(page.url(), base)
@@ -389,6 +519,19 @@ test('published sites support direct routes, crawlable HTML, branding, locked th
     await locked.locator('article').innerText(),
     /private-sentinel-9742/,
   )
+  await locked.getByRole('button', { name: /^search documentation$/i }).click()
+  const protectedSearch = locked.getByRole('combobox', {
+    name: /search commands/i,
+  })
+  await protectedSearch.fill('getting started')
+  await locked.getByRole('option', { name: /getting started/i }).waitFor()
+  await protectedSearch.press('Enter')
+  await locked.waitForFunction(
+    () =>
+      new URLSearchParams(location.hash.slice(1)).get('anchor') ===
+      'getting-started',
+  )
+  await locked.locator('article #doc-getting-started').waitFor()
   assert.equal(
     await locked.evaluate(() =>
       JSON.stringify(localStorage).includes('unit-export-password-482'),
@@ -413,10 +556,35 @@ test('command-palette export opens options and writes a configured static folder
   await mkdir(output)
   await writeFile(
     join(workspace, 'README.md'),
-    '# Garden\n\n```mermaid\nflowchart LR\n  A --> B\n```\n\n[More](more.md)',
+    '# Garden\n\n```mermaid\nflowchart LR\n  A --> B\n```\n\n![large asset](img/a.png)\n\n[More](more.md)',
   )
   await writeFile(join(workspace, 'more.md'), '# More\n\nMore notes.')
+  await writeFile(
+    join(workspace, '.private.md'),
+    '# Private\n\nprivate-note-sentinel',
+  )
+  await mkdir(join(workspace, 'img'))
+  await writeFile(
+    join(workspace, 'img', 'a.png'),
+    Buffer.from(pixel.split(',')[1], 'base64'),
+  )
+  const largeImage = await open(join(workspace, 'img', 'a.png'), 'r+')
+  try {
+    await largeImage.truncate(8 * 1024 * 1024 + 1)
+  } finally {
+    await largeImage.close()
+  }
   await mkdir(profile)
+  await writeFile(
+    join(profile, 'workspace-settings.json'),
+    JSON.stringify({
+      enabled: false,
+      showAllFiles: true,
+      path: null,
+      startup: 'empty',
+      startupFolder: null,
+    }),
+  )
   await writeFile(
     join(profile, 'addons.json'),
     JSON.stringify({ mermaid: true, 'site-probe': true }),
@@ -532,6 +700,15 @@ test('command-palette export opens options and writes a configured static folder
   await modal.waitFor()
   const footer = modal.locator('.dialog-footer')
   await footer.getByRole('button', { name: /^export$/i }).waitFor()
+  assert.deepEqual(
+    (
+      await modal
+        .getByLabel('Home page', { exact: true })
+        .locator('option')
+        .allTextContents()
+    ).sort(),
+    ['Automatic', 'README.md', 'more.md'],
+  )
   assert.equal(
     await modal.getByLabel('Site title', { exact: true }).inputValue(),
     'Legacy garden',
@@ -614,9 +791,49 @@ test('command-palette export opens options and writes a configured static folder
   const exportedHtml = await readFile(exportedIndex, 'utf8')
   assert.match(exportedHtml, /My published garden/)
   assert.match(exportedHtml, /class="site-probe"/)
+  assert.match(exportedHtml, /src="\.\/hibi-assets\/media\/[a-f0-9]{64}\.png"/)
   const built = await page.evaluate(() => window.siteProbe.buildSite())
+  assert.match(
+    built.files.find((file) => file.path.endsWith('/workspace.js')).content,
+    /data:image\/png;base64,/,
+  )
   assert.equal(built.version, 1)
   assert.equal(built.pages, 2)
+  // The published copy remains independent of later workspace asset edits.
+  await writeFile(
+    join(workspace, 'img', 'a.png'),
+    Buffer.from(pixel.split(',')[1], 'base64'),
+  )
+  assert.doesNotMatch(
+    JSON.stringify(built),
+    /private-note-sentinel|\.private\.md/,
+  )
+  const draft = await page.evaluate(() =>
+    window.hibi.workspaceAction({ action: 'new-file', path: '' }),
+  )
+  const unsaved = '# Unsaved export draft\n\nExact unsaved text 日本語.'
+  await page.evaluate((source) => window.hibi.updateDocument(source), unsaved)
+  const withDraft = await page.evaluate(() => window.siteProbe.buildSite())
+  assert.equal(withDraft.pages, 3)
+  assert.match(
+    withDraft.files.find((file) => file.path.endsWith('/workspace.js')).content,
+    /Exact unsaved text 日本語/,
+  )
+  assert.equal(
+    (await page.evaluate(() => window.hibi.getDocument())).markdown,
+    unsaved,
+  )
+  await assert.rejects(readFile(join(workspace, draft.path)), /ENOENT/)
+  await app.evaluate(({ dialog }) => {
+    dialog.showMessageBox = async () => ({
+      response: 1,
+      checkboxChecked: false,
+    })
+  })
+  await page.evaluate(
+    (id) => window.hibi.closeDocumentTab(id),
+    draft.document.tabId,
+  )
   const customCss = built.files.find((file) =>
     file.path.endsWith('/custom.css'),
   ).content
@@ -667,6 +884,17 @@ test('command-palette export opens options and writes a configured static folder
     const image = document.querySelector('article img.mermaid-diagram')
     return image?.complete && image.naturalWidth > 0
   })
+  await exportedPage.waitForFunction(() => {
+    const image = document.querySelector('article img[alt="large asset"]')
+    return image?.complete && image.naturalWidth === 1
+  })
+  await exportedPage.goto(
+    pathToFileURL(join(output, 'notes-site-2', 'README.md', 'index.html')).href,
+  )
+  await exportedPage.waitForFunction(() => {
+    const image = document.querySelector('article img[alt="large asset"]')
+    return image?.complete && image.naturalWidth === 1
+  })
   assert.match(
     await readFile(
       join(output, 'notes-site-2', 'more.md', 'index.html'),
@@ -698,8 +926,12 @@ test('command-palette export opens options and writes a configured static folder
     .getByLabel('Password', { exact: true })
     .fill('remember-lock-not-password-845')
   const protectedPath = join(output, 'private.html')
-  await app.evaluate(({ dialog }, filePath) => {
-    dialog.showSaveDialog = async () => ({ canceled: false, filePath })
+  await app.evaluate(({ dialog, BrowserWindow }, filePath) => {
+    dialog.showSaveDialog = async (window, options) => {
+      if (!(window instanceof BrowserWindow) || !options?.defaultPath)
+        throw new Error('Export save dialog must keep its parent window.')
+      return { canceled: false, filePath }
+    }
   }, protectedPath)
   await modal.getByRole('button', { name: /^export$/i, exact: true }).click()
   await modal.waitFor({ state: 'hidden' })
@@ -735,4 +967,504 @@ test('command-palette export opens options and writes a configured static folder
     '',
   )
   await page.keyboard.press('Escape')
+})
+
+for (const count of [100, 1000, 2000]) {
+  test(`exported search indexes ${count} pages without rendering them`, {
+    timeout: 90000,
+  }, async (t) => {
+    const folder = await mkdtemp(join(tmpdir(), 'hibi-site-search-'))
+    const file = join(folder, 'site.html')
+    const pages = Array.from({ length: count }, (_, index) => ({
+      path: `${index}.md`,
+      markdown:
+        '# Page ' +
+        index +
+        '\n\n## Section ' +
+        index +
+        '\n\nsanitizer-probe-' +
+        index +
+        ' ' +
+        'Some unicode prose 日本語. '.repeat(320) +
+        (index === count - 1 ? `\n\n## raretarget${count} **日本語_é**` : ''),
+    }))
+    const sourceBytes = pages.reduce(
+      (bytes, page) => bytes + Buffer.byteLength(page.markdown),
+      0,
+    )
+    const site = prepareSite(
+      { name: 'search fixture', pages },
+      exportOptions({ graph: false }),
+    )
+    const files = await siteFiles(
+      await readFile('out/site/template.html', 'utf8'),
+      site,
+    )
+    await writeFile(file, files.get('index.html'))
+    const app = await electron.launch({
+      args: [resolve('.'), `--user-data-dir=${join(folder, 'profile')}`],
+    })
+    t.after(async () => {
+      await app.close()
+      await rm(folder, { recursive: true, force: true })
+    })
+    await app.firstWindow()
+    const next = app.waitForEvent('window')
+    await app.evaluate(({ BrowserWindow }, file) => {
+      const viewer = new BrowserWindow({
+        show: false,
+        width: 1200,
+        height: 850,
+        webPreferences: {
+          sandbox: true,
+          contextIsolation: true,
+          nodeIntegration: false,
+          backgroundThrottling: false,
+        },
+      })
+      void viewer.loadFile(file)
+    }, file)
+    const page = await next
+    await page
+      .getByRole('button', { name: /^search documentation$/i })
+      .waitFor()
+    await page.evaluate(() => {
+      window.siteSearchCounters = { sanitized: 0, rendered: 0 }
+      window.siteSearchRankings = 0
+      const post = Worker.prototype.postMessage
+      Worker.prototype.postMessage = function (message, ...args) {
+        if (message?.job?.kind === 'find') window.siteSearchRankings++
+        return post.call(this, message, ...args)
+      }
+      window.siteSearchTasks = []
+      new PerformanceObserver((list) => {
+        for (const entry of list.getEntries())
+          window.siteSearchTasks.push(entry.duration)
+      }).observe({ type: 'longtask' })
+      const parse = DOMParser.prototype.parseFromString
+      DOMParser.prototype.parseFromString = function (source, ...args) {
+        if (String(source).includes('sanitizer-probe-'))
+          window.siteSearchCounters.sanitized++
+        return parse.call(this, source, ...args)
+      }
+      const query = DocumentFragment.prototype.querySelectorAll
+      DocumentFragment.prototype.querySelectorAll = function (selector) {
+        if (selector === 'h1,h2,h3,h4,h5,h6')
+          window.siteSearchCounters.rendered++
+        return query.call(this, selector)
+      }
+    })
+    await page.getByRole('button', { name: /^search documentation$/i }).click()
+    const input = page.getByRole('combobox', { name: /search commands/i })
+    await input.waitFor()
+    assert.equal(await page.getByRole('option').count(), 50)
+    const started = performance.now()
+    await input.fill(`raretarget${count}`)
+    await page
+      .getByRole('option', { name: new RegExp(`raretarget${count}`, 'i') })
+      .waitFor()
+    const counters = await page.evaluate(() => window.siteSearchCounters)
+    assert.deepEqual(counters, { sanitized: 0, rendered: 0 })
+    assert.equal(
+      page.workers().length,
+      1,
+      'one inline search worker owns the index',
+    )
+    assert.equal(await page.evaluate(() => window.siteSearchRankings), 1)
+    const firstSearchMs = performance.now() - started
+    for (let index = 0; index < 10; index++) await input.press('ArrowDown')
+    assert.deepEqual(
+      await page.evaluate(() => window.siteSearchCounters),
+      counters,
+    )
+    await page.getByRole('option').nth(0).hover()
+    await page.getByRole('option').nth(1).hover()
+    assert.equal(await page.evaluate(() => window.siteSearchRankings), 1)
+    t.diagnostic(
+      JSON.stringify({
+        pages: count,
+        sourceBytes,
+        searchRecordBytes: site.pages.reduce(
+          (bytes, page) =>
+            bytes + Buffer.byteLength(JSON.stringify(page.search)),
+          0,
+        ),
+        firstSearchMs,
+        extraSanitizedPages: counters.sanitized,
+        maxObservedTaskMs: await page.evaluate(() =>
+          Math.max(0, ...window.siteSearchTasks),
+        ),
+      }),
+    )
+    if (count === 100) {
+      const heading = { name: /raretarget100 日本語_é/i }
+      await page.getByRole('option', heading).hover()
+      await page.getByRole('option', { ...heading, selected: true }).waitFor()
+      await input.press('Enter')
+    } else await input.press('Escape')
+    await page.locator('.command-palette').waitFor({ state: 'hidden' })
+    if (count === 100) {
+      await page
+        .locator('article h2')
+        .filter({ hasText: /raretarget100 日本語_é/ })
+        .waitFor()
+      assert.equal(
+        await page.evaluate(() =>
+          new URLSearchParams(location.hash.slice(1)).get('anchor'),
+        ),
+        'raretarget100-日本語_é',
+      )
+      assert.equal(
+        await page
+          .locator('article h2')
+          .filter({ hasText: /raretarget100 日本語_é/ })
+          .getAttribute('id'),
+        'doc-raretarget100-日本語_é',
+      )
+      for (let index = 1; index <= 10; index++) {
+        await page.evaluate((index) => {
+          location.hash = `page=${index}.md`
+        }, index)
+        await page
+          .locator('article h1')
+          .filter({ hasText: new RegExp(`^Page ${index}$`) })
+          .waitFor()
+      }
+      const before = await page.evaluate(
+        () => window.siteSearchCounters.sanitized,
+      )
+      await page.evaluate(() => {
+        location.hash = 'page=0.md'
+      })
+      await page
+        .locator('article h1')
+        .filter({ hasText: /^Page 0$/ })
+        .waitFor()
+      assert.equal(
+        await page.evaluate(() => window.siteSearchCounters.sanitized),
+        before + 1,
+        'the first page must leave the bounded display cache',
+      )
+    }
+  })
+}
+
+for (const blocked of [false, true]) {
+  test(blocked
+    ? 'search falls back when CSP blocks workers'
+    : 'pending search keeps rows and queues cold and warm enter', {
+    timeout: 45000,
+  }, async (t) => {
+    const folder = await mkdtemp(join(tmpdir(), 'hibi-search-pending-'))
+    const file = join(folder, 'site.html')
+    const site = prepareSite(
+      {
+        name: 'search',
+        pages: Array.from({ length: 100 }, (_, index) => ({
+          path: index + '.md',
+          markdown: '# Page ' + index + '\n\n## raretarget' + index,
+        })),
+      },
+      exportOptions({ graph: false }),
+    )
+    let html = (
+      await siteFiles(await readFile('out/site/template.html', 'utf8'), site)
+    ).get('index.html')
+    assert.equal((html.match(/worker-src /g) ?? []).length, 1)
+    if (blocked) html = html.replace('worker-src blob:', "worker-src 'none'")
+    await writeFile(file, html)
+    const app = await electron.launch({
+      args: [resolve('.'), '--user-data-dir=' + join(folder, 'profile')],
+    })
+    t.after(async () => {
+      await app.close()
+      await rm(folder, { recursive: true, force: true })
+    })
+    await app.firstWindow()
+    const next = app.waitForEvent('window')
+    await app.evaluate(({ BrowserWindow }, file) => {
+      const viewer = new BrowserWindow({
+        show: false,
+        webPreferences: {
+          sandbox: true,
+          contextIsolation: true,
+          nodeIntegration: false,
+          backgroundThrottling: false,
+        },
+      })
+      void viewer.loadFile(file)
+    }, file)
+    const page = await next
+    const button = page.getByRole('button', { name: /^search documentation$/i })
+    await button.waitFor()
+    const idleWorkers = page.workers().length
+    await page.evaluate((blocked) => {
+      window.holdSearch = !blocked
+      window.searchMessages = []
+      const post = Worker.prototype.postMessage
+      Worker.prototype.postMessage = function (...args) {
+        window.searchWorker = this
+        if (window.holdSearch) window.searchMessages.push([this, args])
+        else post.apply(this, args)
+      }
+      window.resumeSearch = () => {
+        window.holdSearch = false
+        for (const [worker, args] of window.searchMessages)
+          post.apply(worker, args)
+        window.searchMessages = []
+      }
+      window.emptySearchStatuses = []
+      new MutationObserver(() => {
+        const query = document.querySelector('[role=combobox]')?.value
+        const status = document.querySelector('.commands-empty')
+        if (query && status) window.emptySearchStatuses.push(status.textContent)
+      }).observe(document.body, { childList: true, subtree: true })
+    }, blocked)
+    await button.click()
+    const input = page.getByRole('combobox', { name: /search commands/i })
+    await input.pressSequentially('raretarget99')
+    if (blocked) {
+      await page
+        .getByRole('option', { name: /raretarget99/i })
+        .first()
+        .waitFor()
+      assert.equal(page.workers().length, 0)
+    } else {
+      assert.equal(
+        await page.getByRole('option').count(),
+        50,
+        'keep rows during hydration',
+      )
+      assert.equal(await page.locator('.commands-empty').count(), 0)
+      assert.equal(idleWorkers, 0, 'no worker before search intent')
+    }
+    await input.press('Enter')
+    if (!blocked) await page.evaluate(() => window.resumeSearch())
+    await page.locator('.command-palette').waitFor({ state: 'hidden' })
+    await page.waitForFunction(
+      () => new URLSearchParams(location.hash.slice(1)).get('page') === '99.md',
+    )
+    if (!blocked) {
+      await button.click()
+      await input.fill('raretarget99')
+      await page
+        .getByRole('option', { name: /raretarget99/i })
+        .first()
+        .waitFor()
+      const previous = await page.getByRole('option').allTextContents()
+      await page.evaluate(async () => {
+        window.holdSearch = true
+        const input = document.querySelector('[role=combobox]')
+        Object.getOwnPropertyDescriptor(
+          HTMLInputElement.prototype,
+          'value',
+        ).set.call(input, 'raretarget98')
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+        await new Promise((resolve) => queueMicrotask(resolve))
+        await Promise.resolve()
+        input.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }),
+        )
+      })
+      assert.deepEqual(
+        await page.getByRole('option').allTextContents(),
+        previous,
+        'keep rows during ranking',
+      )
+      assert.equal(await page.locator('.commands-empty').count(), 0)
+      await page.evaluate(() => window.resumeSearch())
+      await page.locator('.command-palette').waitFor({ state: 'hidden' })
+      await page.waitForFunction(
+        () =>
+          new URLSearchParams(location.hash.slice(1)).get('page') === '98.md',
+      )
+      await button.click()
+      await page.evaluate(() => {
+        window.holdSearch = true
+      })
+      await input.fill('raretarget96')
+      await input.press('ArrowDown')
+      const highlighted = (
+        await page.getByRole('option', { selected: true }).getAttribute('id')
+      )
+        .slice('command-'.length)
+        .split('#')[0]
+      assert.equal(
+        await page.getByRole('listbox').getAttribute('aria-busy'),
+        'true',
+      )
+      await input.press('Enter')
+      await page.locator('.command-palette').waitFor({ state: 'hidden' })
+      await page.waitForFunction(
+        (path) =>
+          new URLSearchParams(location.hash.slice(1)).get('page') === path,
+        highlighted,
+      )
+      await page.evaluate(() => window.resumeSearch())
+      await button.click()
+      await page.evaluate(() => {
+        window.holdSearch = true
+      })
+      await input.fill('raretarget97')
+      await input.press('Enter')
+      await page.waitForFunction(() =>
+        window.searchMessages.some(([, args]) => args[0]?.job?.kind === 'find'),
+      )
+      await page.evaluate(() =>
+        window.searchWorker.dispatchEvent(new MessageEvent('messageerror')),
+      )
+      await page.locator('.command-palette').waitFor({ state: 'hidden' })
+      await page.waitForFunction(
+        () =>
+          new URLSearchParams(location.hash.slice(1)).get('page') === '97.md',
+      )
+    }
+    assert.deepEqual(await page.evaluate(() => window.emptySearchStatuses), [])
+  })
+}
+
+test('chunked images and video load offline in single and protected exports with opaque SVG images', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'hibi-inline-site-'))
+  const app = await electron.launch({
+    args: [resolve('.'), '--user-data-dir=' + join(root, 'profile')],
+  })
+  t.after(async () => {
+    await app.close()
+    await rm(root, { recursive: true, force: true })
+  })
+  await app.firstWindow()
+  const assets = new Map([
+    [
+      'hibi-assets/media/' + 'a'.repeat(64) + '.png',
+      Buffer.concat([
+        Buffer.from(pixel.split(',')[1], 'base64'),
+        Buffer.alloc(131072),
+      ]),
+    ],
+    [
+      'hibi-assets/media/' + 'b'.repeat(64) + '.svg',
+      Buffer.from(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="2" height="2"><script>window.svgScriptRan=true;try{window.svgStorageAccess=!!localStorage}catch{window.svgStorageAccess=false}</script><rect width="2" height="2"/></svg>',
+      ),
+    ],
+    [
+      'hibi-assets/media/' + 'c'.repeat(64) + '.mp4',
+      Buffer.concat([
+        Buffer.from('000000206674797069736f6d', 'hex'),
+        Buffer.alloc(131072),
+      ]),
+    ],
+  ])
+  const [png, svg, video] = assets.keys()
+  const source =
+    '# Home\n\n![chunked PNG](image.png)\n\n![chunked SVG](vector.svg)\n\n![chunked video](clip.mp4)'
+  const template = await readFile('out/site/template.html', 'utf8')
+  for (const mode of [
+    'single',
+    'protected-single',
+    'protected-folder',
+    'folder',
+  ]) {
+    const directory = join(root, mode)
+    await mkdir(directory)
+    const singleFile = mode === 'single' || mode === 'protected-single'
+    const password = mode.startsWith('protected')
+      ? 'chunked-site-password-845'
+      : ''
+    const site = prepareSite(
+      {
+        name: 'Chunked site',
+        pages: [
+          {
+            path: 'README.md',
+            markdown: source,
+            html: marked.parse(source),
+            images: { 'image.png': png, 'vector.svg': svg, 'clip.mp4': video },
+          },
+        ],
+      },
+      exportOptions({ singleFile }),
+    )
+    async function* readAsset(path) {
+      const bytes = assets.get(path)
+      for (let offset = 0; offset < bytes.length; offset += 100001)
+        yield bytes.subarray(offset, offset + 100001)
+    }
+    for await (const [path, chunks] of siteOutput(
+      template,
+      site,
+      password,
+      async (page) => page,
+      readAsset,
+    )) {
+      await mkdir(join(directory, path, '..'), { recursive: true })
+      let content = ''
+      for await (const chunk of chunks) content += chunk
+      await writeFile(join(directory, path), content)
+    }
+    if (!singleFile && !password)
+      for (const path of [png, video]) {
+        await mkdir(join(directory, path, '..'), { recursive: true })
+        await writeFile(join(directory, path), assets.get(path))
+      }
+    const next = app.waitForEvent('window')
+    await app.evaluate(
+      ({ BrowserWindow }, path) => {
+        const window = new BrowserWindow({
+          show: false,
+          webPreferences: {
+            sandbox: true,
+            contextIsolation: true,
+            nodeIntegration: false,
+            backgroundThrottling: false,
+          },
+        })
+        void window.loadFile(path)
+      },
+      join(directory, 'index.html'),
+    )
+    const page = await next
+    if (password) {
+      await page.getByLabel('Password', { exact: true }).fill('wrong-password')
+      await page.getByRole('button', { name: 'Unlock', exact: true }).click()
+      await page.getByRole('alert').waitFor()
+      await page.getByLabel('Password', { exact: true }).fill(password)
+      await page.getByRole('button', { name: 'Unlock', exact: true }).click()
+    }
+    await page.getByRole('button', { name: /^toggle navigation$/i }).waitFor()
+    await page.waitForFunction(() =>
+      ['chunked PNG', 'chunked SVG'].every((alt) => {
+        const image = document.querySelector('img[alt="' + alt + '"]')
+        return image?.complete && image.naturalWidth > 0
+      }),
+    )
+    const videoSrc = await page
+      .locator('video[aria-label="chunked video"]')
+      .getAttribute('src')
+    assert.ok(videoSrc.startsWith('blob:') || mode === 'folder', videoSrc)
+    assert.equal(await page.evaluate(() => window.svgScriptRan), undefined)
+    if (mode === 'single') {
+      const svgUrl = await page
+        .locator('img[alt="chunked SVG"]')
+        .getAttribute('src')
+      assert.match(svgUrl, /^data:image\/svg\+xml;base64,/)
+      const nextSvg = app.waitForEvent('window')
+      await app.evaluate(({ BrowserWindow }, src) => {
+        const window = new BrowserWindow({
+          show: false,
+          webPreferences: {
+            sandbox: true,
+            contextIsolation: true,
+            nodeIntegration: false,
+          },
+        })
+        void window.loadURL(src)
+      }, svgUrl)
+      const opened = await nextSvg
+      await opened.waitForLoadState('domcontentloaded')
+      assert.equal(await opened.evaluate(() => window.svgStorageAccess), false)
+      await opened.close()
+    }
+    await page.close()
+  }
 })

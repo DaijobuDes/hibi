@@ -1,4 +1,4 @@
-import { readFile, rename, writeFile } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { app, BrowserWindow, net } from 'electron'
 import type { AppUpdater } from 'electron-updater'
@@ -13,10 +13,10 @@ import {
   updateCheckFrequency,
   updateRelease,
 } from '../shared/updates'
-import { retryRename } from './atomic-rename'
+import { writeText } from './files'
 
 let state: UpdateState = {
-  channel: 'nightly-green',
+  channel: 'beta',
   checkOnStartup: true,
   checkFrequency: 6,
   status: 'idle',
@@ -79,13 +79,24 @@ async function run(action: () => Promise<void>) {
   return getUpdateState()
 }
 
+async function saveChannel(channel: UpdateState['channel']) {
+  await writeText(preferencePath(), JSON.stringify(channel))
+}
+
 export async function loadUpdates() {
+  let saved: unknown
   try {
-    state.channel = updateChannel(
-      JSON.parse(await readFile(preferencePath(), 'utf8')),
-    )
+    saved = JSON.parse(await readFile(preferencePath(), 'utf8'))
   } catch {
-    /* Missing or old preferences use the recommended channel. */
+    /* Missing or invalid preferences use beta. */
+  }
+  state.channel = saved === 'nightly' ? 'nightly' : 'beta'
+  if (saved !== state.channel) {
+    try {
+      await saveChannel(state.channel)
+    } catch {
+      /* Use the migrated channel even if preferences cannot be saved. */
+    }
   }
   try {
     const saved = JSON.parse(await readFile(startupPreferencePath(), 'utf8'))
@@ -145,12 +156,7 @@ export function setUpdateStartupCheck(input: unknown) {
   if (typeof input !== 'boolean')
     throw new Error('Choose whether to check for updates on startup.')
   return run(async () => {
-    await writeFile(`${startupPreferencePath()}.tmp`, JSON.stringify(input), {
-      mode: 0o600,
-    })
-    await retryRename(() =>
-      rename(`${startupPreferencePath()}.tmp`, startupPreferencePath()),
-    )
+    await writeText(startupPreferencePath(), JSON.stringify(input))
     publish({ checkOnStartup: input })
   })
 }
@@ -158,12 +164,7 @@ export function setUpdateStartupCheck(input: unknown) {
 export function setUpdateCheckFrequency(input: unknown) {
   const hours = updateCheckFrequency(input)
   return run(async () => {
-    await writeFile(`${frequencyPreferencePath()}.tmp`, JSON.stringify(hours), {
-      mode: 0o600,
-    })
-    await retryRename(() =>
-      rename(`${frequencyPreferencePath()}.tmp`, frequencyPreferencePath()),
-    )
+    await writeText(frequencyPreferencePath(), JSON.stringify(hours))
     publish({ checkFrequency: hours })
     if (periodicCheck) schedulePeriodicChecks()
   })
@@ -172,16 +173,12 @@ export function setUpdateCheckFrequency(input: unknown) {
 export function setUpdateChannel(input: unknown) {
   const channel = updateChannel(input)
   return run(async () => {
-    await writeFile(`${preferencePath()}.tmp`, JSON.stringify(channel), {
-      mode: 0o600,
-    })
-    await retryRename(() => rename(`${preferencePath()}.tmp`, preferencePath()))
+    await saveChannel(channel)
     release = undefined
     publish({
       channel,
       status: 'idle',
       version: undefined,
-      broken: undefined,
       progress: undefined,
       message: state.supported
         ? 'Update channel saved. Check for updates to see the latest build.'
@@ -200,12 +197,11 @@ export function checkForUpdates() {
     publish({
       status: 'checking',
       version: undefined,
-      broken: undefined,
       progress: undefined,
       message: 'Checking for updates…',
     })
     const response = await net.fetch(
-      `${UPDATE_URL}${state.channel}/update.json`,
+      `${UPDATE_URL}${state.channel}/feed.json`,
       {
         cache: 'no-store',
         signal: AbortSignal.timeout(30_000),
@@ -233,7 +229,6 @@ export function checkForUpdates() {
     publish({
       status: 'available',
       version: candidate.version,
-      broken: candidate.status === 'nightly-broken',
       message: `An update is available: ${candidate.version}`,
     })
     for (const window of BrowserWindow.getAllWindows())
@@ -280,7 +275,7 @@ export function downloadUpdate() {
       channel: 'latest',
       useMultipleRangeRequest: false,
     })
-    // Our run-number comparison already rejected older builds. Semver sorts Git hashes incorrectly.
+    // Our comparison already rejected older builds; electron-updater sorts Git hashes first.
     client.allowDowngrade = true
     const result = await client.checkForUpdates()
     const asset = release.assets[`${process.platform}-${process.arch}`]

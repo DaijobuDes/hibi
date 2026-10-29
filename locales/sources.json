@@ -107,6 +107,9 @@
   "d8aa9d7083d6": [
     "src/renderer/src/editor-view-api.ts"
   ],
+  "be4baf3c7663": [
+    "src/main/document.ts"
+  ],
   "31dd788747d0": [
     "src/addons/mcp-server/Settings.tsx"
   ],
@@ -321,10 +324,13 @@
     "src/renderer/src/rich-source-session.ts"
   ],
   "9ab20d9f0486": [
-    "src/renderer/src/SourceEditor.tsx"
+    "src/renderer/src/source-session.ts"
   ],
   "293aad4970e4": [
     "src/renderer/src/Editor.tsx"
+  ],
+  "ce2d3152cde7": [
+    "src/renderer/src/source-session.ts"
   ],
   "6e1bc14eb426": [
     "src/renderer/src/addons.ts"
@@ -371,6 +377,10 @@
   "8c733faf0a0a": [
     "src/main/dependencies.ts"
   ],
+  "caf4b57ff979": [
+    "src/addons/documentation/native.ts",
+    "src/addons/documentation/site-runtime.ts"
+  ],
   "46e7dbbc93e5": [
     "src/main/index.ts",
     "src/renderer/src/main.tsx"
@@ -398,8 +408,8 @@
   ],
   "31e392d1c037": [
     "src/addons/math/engine.ts",
-    "src/addons/mermaid/Block.tsx",
-    "src/addons/typst/Block.tsx"
+    "src/addons/mermaid/BlockContent.tsx",
+    "src/addons/typst/BlockContent.tsx"
   ],
   "a1e57e3c2176": [
     "src/addons/frontmatter/Properties.tsx"
@@ -488,7 +498,14 @@
   "e13c426c14c5": [
     "src/renderer/src/BacklinksSidebar.tsx"
   ],
+  "ceefa76015c9": [
+    "src/renderer/src/BacklinksSidebar.tsx"
+  ],
+  "adbadd2131b2": [
+    "src/renderer/src/UpdateSettings.tsx"
+  ],
   "b4276963bf99": [
+    "src/addons/block-drag/formatted.ts",
     "src/addons/block-drag/index.ts"
   ],
   "a936b1f4cf9c": [
@@ -506,6 +523,9 @@
   ],
   "a066ff921096": [
     "src/addons/frontmatter/Properties.tsx"
+  ],
+  "b01a69e19d91": [
+    "src/addons/word-count/count-brackets.ts"
   ],
   "52656e8104ee": [
     "src/addons/git/Panel.tsx"
@@ -558,9 +578,6 @@
   "1bce26d66adc": [
     "src/addons/documentation/ExportDialog.tsx"
   ],
-  "cfda0ed6535b": [
-    "src/addons/import-notion/convert.ts"
-  ],
   "b73a5e2ca645": [
     "src/addons/diagnostics/Settings.tsx"
   ],
@@ -570,9 +587,9 @@
   "19766ed6ccb2": [
     "src/addons/dictionary/PackSettings.tsx",
     "src/addons/frontmatter/Properties.tsx",
-    "src/addons/mermaid/Block.tsx",
+    "src/addons/mermaid/BlockContent.tsx",
     "src/addons/quick-note/CaptureWindow.tsx",
-    "src/addons/typst/Block.tsx",
+    "src/addons/typst/BlockContent.tsx",
     "src/main/dependencies.ts",
     "src/main/document.ts",
     "src/main/index.ts",
@@ -700,10 +717,8 @@
     "src/addons/import-notion/convert.ts"
   ],
   "5389a69dd998": [
+    "src/main/files.ts",
     "src/main/workspace-files.ts"
-  ],
-  "ddfe19879e4e": [
-    "src/addons/vim/native.ts"
   ],
   "177862d61380": [
     "src/renderer/src/settings-pages.ts"
@@ -742,6 +757,7 @@
     "src/main/addon-documentation.ts"
   ],
   "5f7d0390ae07": [
+    "src/main/workspace-actions.ts",
     "src/main/workspace-paths.ts"
   ],
   "1d7031f78966": [
@@ -808,6 +824,7 @@
     "src/addons/mcp-server/tools.ts"
   ],
   "2874c2767f58": [
+    "src/main/workspace-text-index.ts",
     "src/main/workspace.ts"
   ],
   "3cc25a18d979": [
@@ -820,7 +837,7 @@
     "src/main/document.ts"
   ],
   "42e3ecb68937": [
-    "src/main/media.ts"
+    "src/main/document-media.ts"
   ],
   "f84eb17965b6": [
     "src/main/addon-hotkeys.ts",
@@ -862,9 +879,6 @@
   ],
   "519460187895": [
     "src/addons/quick-note/native.ts"
-  ],
-  "44ccfbb4da90": [
-    "src/main/workspace-settings.ts"
   ],
   "cf344c7a8b0f": [
     "src/addons/quick-note/native.ts"
@@ -1049,6 +1063,9 @@
   "99904db30de4": [
     "src/site/main.tsx"
   ],
+  "0ddc2c568df7": [
+    "src/renderer/src/DocumentTabs.tsx"
+  ],
   "17e28e230217": [
     "src/ui/Sidebar.tsx"
   ],
@@ -1059,6 +1076,12 @@
     "src/main/index.ts",
     "src/renderer/src/DocumentTabs.tsx",
     "src/shared/hotkeys.ts"
+  ],
+  "9db4e0a00da4": [
+    "src/renderer/src/DocumentTabs.tsx"
+  ],
+  "70b08b33798a": [
+    "src/renderer/src/DocumentTabs.tsx"
   ],
   "6c73f172ed0b": [
     "src/renderer/src/addon-reload.ts"
@@ -1219,6 +1242,12 @@
   "e21f935f11d7": [
     "src/addons/mcp-server/Settings.tsx"
   ],
+  "0146568214a4": [
+    "src/renderer/src/workspace-menu.ts"
+  ],
+  "3c8e7898fdae": [
+    "src/renderer/src/workspace-menu.ts"
+  ],
   "ec7ee2826c84": [
     "src/renderer/src/RecoveryScreen.tsx"
   ],
@@ -1308,7 +1337,7 @@
     "src/addons/documentation/ExportDialog.tsx"
   ],
   "88ad63a0a663": [
-    "src/addons/typst/Block.tsx"
+    "src/addons/typst/BlockContent.tsx"
   ],
   "9a19e86ea92a": [
     "src/addons/_shared/local-format-native.ts"
@@ -1369,7 +1398,11 @@
     "src/renderer/src/main.tsx"
   ],
   "7f43531f5a30": [
-    "src/addons/documentation/native.ts"
+    "src/addons/documentation/native.ts",
+    "src/addons/documentation/prepare.ts",
+    "src/addons/documentation/site-runtime.ts",
+    "src/addons/documentation/site-worker.ts",
+    "src/main/export-scratch.ts"
   ],
   "283432fdadc1": [
     "src/addons/dictionary/index.tsx"
@@ -1381,7 +1414,10 @@
     "src/addons/vim/keymaps.ts"
   ],
   "da2df709d46e": [
-    "src/renderer/src/document-worker-client.ts"
+    "src/renderer/src/document-worker-client.ts",
+    "src/shared/chunked-markdown.ts",
+    "src/shared/document-worker-service.ts",
+    "src/shared/markdown-boundary-index.ts"
   ],
   "ce6331b7277c": [
     "src/main/addon-hotkeys.ts"
@@ -1412,6 +1448,10 @@
   ],
   "dd16b185f231": [
     "src/addons/quick-note/native.ts"
+  ],
+  "d04bd262b5af": [
+    "src/addons/dictionary/custom-word-database.ts",
+    "src/addons/dictionary/custom-word-storage.ts"
   ],
   "2fe18391f790": [
     "src/renderer/src/AddonHotkeySettings.tsx",
@@ -1450,8 +1490,13 @@
   "2a30abd5f2ce": [
     "src/main/dependencies.ts"
   ],
+  "91dcce8f7449": [
+    "src/addons/autocomplete/Settings.tsx"
+  ],
   "98bdb8dbc149": [
     "src/addons/dictionary/SideView.tsx",
+    "src/addons/dictionary/custom-word-storage.ts",
+    "src/addons/dictionary/custom-words-worker.ts",
     "src/addons/dictionary/custom-words.ts",
     "src/addons/dictionary/index.tsx"
   ],
@@ -1470,6 +1515,9 @@
   "0af861157fe6": [
     "src/renderer/src/autosave.ts"
   ],
+  "93a0e14c0592": [
+    "src/site/search-worker-client.ts"
+  ],
   "f6a61661c1fd": [
     "src/renderer/src/document-worker-client.ts"
   ],
@@ -1481,6 +1529,9 @@
   ],
   "cb580f6fe5b1": [
     "src/renderer/src/AddonSettings.tsx"
+  ],
+  "39944ec84c8a": [
+    "src/renderer/src/SettingsScreen.tsx"
   ],
   "655907890730": [
     "src/addons/frontmatter/Properties.tsx"
@@ -1533,6 +1584,9 @@
   "a04c9b95fb0a": [
     "src/addons/ui-preview/index.tsx"
   ],
+  "be7ccdcd6b0c": [
+    "src/addons/dictionary/CustomWords.tsx"
+  ],
   "f454b68dc829": [
     "src/addons/dictionary/CustomWords.tsx"
   ],
@@ -1540,7 +1594,8 @@
     "src/addons/dictionary/CustomWords.tsx"
   ],
   "b27f46ebffcf": [
-    "src/addons/dictionary/custom-words.ts"
+    "src/addons/dictionary/custom-word-database.ts",
+    "src/addons/dictionary/custom-word-storage.ts"
   ],
   "020405ad0651": [
     "src/addons/documentation/hibi-addon.json"
@@ -1644,7 +1699,7 @@
     "src/addons/diagnostics/Settings.tsx"
   ],
   "a9e237ed14c7": [
-    "src/addons/mermaid/Block.tsx"
+    "src/addons/mermaid/BlockContent.tsx"
   ],
   "f12e2c9be9b1": [
     "src/addons/dictionary/index.tsx"
@@ -1656,7 +1711,18 @@
     "src/addons/dictionary/pack-store.ts"
   ],
   "daaa951adbd0": [
+    "src/addons/dictionary/custom-word-store.ts",
+    "src/addons/dictionary/native.ts",
     "src/addons/dictionary/pack-store.ts"
+  ],
+  "69fe9e664cf9": [
+    "src/addons/dictionary/custom-word-store.ts"
+  ],
+  "eb44c955aae8": [
+    "src/addons/dictionary/custom-word-store.ts"
+  ],
+  "f12cf184abb4": [
+    "src/addons/dictionary/custom-words-worker.ts"
   ],
   "d0538788d12f": [
     "src/addons/dictionary/index.tsx"
@@ -1713,6 +1779,9 @@
     "src/addons/discord-presence/rpc.ts",
     "src/renderer/src/AddonSettings.tsx"
   ],
+  "48845bff334a": [
+    "src/addons/dictionary/CustomWords.tsx"
+  ],
   "f5b084a14162": [
     "src/renderer/src/NotificationSettings.tsx"
   ],
@@ -1744,7 +1813,8 @@
     "src/addons/_shared/document-project.ts"
   ],
   "b104fab773bf": [
-    "src/renderer/src/Editor.tsx"
+    "src/renderer/src/Editor.tsx",
+    "src/renderer/src/SourceEditor.tsx"
   ],
   "f5dd68e8bde8": [
     "src/renderer/src/FormatsSettings.tsx"
@@ -1787,13 +1857,11 @@
   ],
   "7259e702cd4d": [
     "src/renderer/src/Editor.tsx",
-    "src/renderer/src/FormatEditor.tsx"
+    "src/renderer/src/FormatEditor.tsx",
+    "src/renderer/src/FormattedEditor.tsx"
   ],
   "a8c9ae023f1a": [
     "src/renderer/src/document-worker-client.ts"
-  ],
-  "c1c0d88d3fb2": [
-    "src/shared/document-worker-service.ts"
   ],
   "14158c871b70": [
     "src/shared/document-worker-service.ts"
@@ -1899,11 +1967,14 @@
   "a9ccbf1ab39f": [
     "src/shared/addon-manifest.ts"
   ],
+  "464c4ffd019e": [
+    "src/main/index.ts"
+  ],
   "ed4b5895642d": [
-    "src/addons/mermaid/Block.tsx"
+    "src/addons/mermaid/BlockContent.tsx"
   ],
   "78f982d5235c": [
-    "src/addons/typst/Block.tsx"
+    "src/addons/typst/BlockContent.tsx"
   ],
   "7588c9d702b3": [
     "src/addons/frontmatter/Properties.tsx"
@@ -1930,6 +2001,9 @@
     "src/renderer/src/Editor.tsx",
     "src/renderer/src/SourceEditor.tsx"
   ],
+  "cbde036b62cb": [
+    "src/addons/math/formatted.ts"
+  ],
   "b9598f73f10e": [
     "src/renderer/src/main.tsx"
   ],
@@ -1939,11 +2013,14 @@
   "7bc860ccf5e3": [
     "src/addons/frontmatter/hibi-addon.json"
   ],
-  "0daa134af314": [
+  "c1a90ec7d781": [
     "src/shared/document-edits.ts"
   ],
   "b865e72c0593": [
     "src/addons/ui-preview/index.tsx"
+  ],
+  "e5f4adee36ed": [
+    "src/addons/mermaid/BlockContent.tsx"
   ],
   "c7bf14938074": [
     "src/addons/asciidoc/hibi-addon.json"
@@ -2017,7 +2094,7 @@
     "src/renderer/src/addons.ts"
   ],
   "a608f028f460": [
-    "src/renderer/src/SourceEditor.tsx"
+    "src/renderer/src/source-session.ts"
   ],
   "b02278826abb": [
     "src/addons/mcp-server/types.ts"
@@ -2038,6 +2115,9 @@
   "c6c094bc0054": [
     "src/addons/frontmatter/Properties.tsx"
   ],
+  "f23b5633a4b0": [
+    "src/addons/mermaid/BlockContent.tsx"
+  ],
   "5342e09f2729": [
     "src/renderer/src/FormatEditor.tsx"
   ],
@@ -2052,6 +2132,9 @@
   ],
   "a42f7d67e1fe": [
     "src/addons/ui-preview/index.tsx"
+  ],
+  "10c5f48ececb": [
+    "src/renderer/src/SettingsScreen.tsx"
   ],
   "3809a20d54e6": [
     "src/renderer/src/SettingsScreen.tsx"
@@ -2234,7 +2317,8 @@
     "src/renderer/src/markdown-serialization.ts"
   ],
   "3dc9f569422d": [
-    "src/addons/vim/Settings.tsx"
+    "src/addons/vim/Settings.tsx",
+    "src/renderer/src/SettingsScreen.tsx"
   ],
   "3664895579f0": [
     "src/addons/_shared/format-renderer.tsx",
@@ -2251,7 +2335,7 @@
     "src/addons/typst/index.tsx"
   ],
   "94b16a7c8bcf": [
-    "src/addons/typst/Block.tsx"
+    "src/addons/typst/BlockContent.tsx"
   ],
   "f7b99930dd65": [
     "src/addons/dictionary/CustomWords.tsx"
@@ -2261,12 +2345,6 @@
   ],
   "d9d979c63132": [
     "src/main/host-selected-io.ts"
-  ],
-  "423a85dca9b6": [
-    "src/main/workspace.ts"
-  ],
-  "23b5bc4d7a20": [
-    "src/main/workspace.ts"
   ],
   "e7154684d4df": [
     "src/addons/dictionary/CustomWords.tsx"
@@ -2282,7 +2360,7 @@
     "src/main/addons.ts"
   ],
   "bbb399c5f459": [
-    "src/addons/typst/Block.tsx",
+    "src/addons/typst/BlockContent.tsx",
     "src/addons/typst/index.tsx"
   ],
   "d3007be4c75c": [
@@ -2388,6 +2466,7 @@
     "src/renderer/src/DependencySettings.tsx"
   ],
   "8b42941bd586": [
+    "src/shared/rendered-text.ts",
     "src/shared/source-search-index.ts"
   ],
   "5ed5f8ce994e": [
@@ -2409,9 +2488,13 @@
   ],
   "15182c44f611": [
     "src/shared/document-worker-service.ts",
+    "src/shared/formatted-text-runs.ts",
+    "src/shared/rendered-range.ts",
+    "src/shared/rendered-text.ts",
     "src/shared/source-search-index.ts"
   ],
   "5c1d80f74650": [
+    "src/shared/source-rendered-search.ts",
     "src/shared/source-search.ts"
   ],
   "996e3be92632": [
@@ -2471,7 +2554,18 @@
   ],
   "ba55f0808d87": [
     "src/renderer/src/Editor.tsx",
-    "src/renderer/src/FormatEditor.tsx"
+    "src/renderer/src/FormatEditor.tsx",
+    "src/renderer/src/FormattedEditor.tsx"
+  ],
+  "4b2a8fba1fa4": [
+    "src/shared/document-worker-service.ts",
+    "src/shared/rendered-text.ts"
+  ],
+  "4bf40e194a49": [
+    "src/renderer/src/LargeMarkdownPreview.tsx"
+  ],
+  "f613e96f398e": [
+    "src/renderer/src/LargeMarkdownPreview.tsx"
   ],
   "f1c65e14817e": [
     "src/main/index.ts"
@@ -2596,14 +2690,17 @@
     "src/renderer/src/SettingsScreen.tsx",
     "src/renderer/src/Titlebar.tsx"
   ],
-  "cc05d3346ee5": [
-    "src/main/workspace.ts"
-  ],
   "3e1b6a32663d": [
     "src/renderer/src/AddonSettings.tsx"
   ],
   "a0b88bf9965c": [
     "src/addons/quick-note/CaptureWindow.tsx"
+  ],
+  "e43664c0638d": [
+    "src/main/workspace-actions.ts"
+  ],
+  "d443e8296852": [
+    "src/main/index.ts"
   ],
   "87c719d7d306": [
     "src/main/history.ts"
@@ -2731,20 +2828,21 @@
   "47fa752d5df7": [
     "src/renderer/src/markdown-syntax.ts"
   ],
-  "b7630abc21fb": [
-    "src/main/import-files.ts"
+  "33ffe414fe4e": [
+    "src/addons/_shared/import-worker-client.ts"
   ],
-  "c50f362f8855": [
-    "src/main/import-files.ts"
-  ],
-  "23eefd0e1bbc": [
-    "src/main/import-files.ts"
+  "199a7dbf37b9": [
+    "src/addons/_shared/import-worker-client.ts"
   ],
   "0a26f41abd00": [
     "src/renderer/src/ImportDialog.tsx"
   ],
   "6a9e73cf0d42": [
     "src/main/host-selected-io.ts"
+  ],
+  "27d24ecfb271": [
+    "src/addons/_shared/import-packet.ts",
+    "src/main/import-files.ts"
   ],
   "f9e4378d7a08": [
     "src/renderer/src/ImportDialog.tsx"
@@ -2786,7 +2884,7 @@
   "938687e1fee8": [
     "src/addons/dictionary/CustomWords.tsx"
   ],
-  "610a5d14e9aa": [
+  "a41953871087": [
     "src/addons/dictionary/CustomWords.tsx"
   ],
   "79cf4fcf85ad": [
@@ -3045,16 +3143,18 @@
   "5ba39deb9bad": [
     "src/main/host-credentials.ts"
   ],
+  "18ef9d87cc14": [
+    "src/addons/dictionary/custom-word-database.ts",
+    "src/addons/dictionary/custom-words-worker.ts"
+  ],
   "9e9f2a70c53e": [
     "src/main/dependencies.ts"
   ],
   "650bc9063f2c": [
     "src/addons/dictionary/native.ts"
   ],
-  "9d5bc8bf6003": [
-    "src/addons/dictionary/pack-store.ts"
-  ],
   "5a2f299940cc": [
+    "src/main/index.ts",
     "src/shared/document-journal.ts"
   ],
   "648a4f2f5294": [
@@ -3069,6 +3169,19 @@
   "62734d46cb24": [
     "src/main/index.ts",
     "src/shared/document-checkpoint.ts"
+  ],
+  "01fa401e3bf6": [
+    "src/shared/source-transfer.ts"
+  ],
+  "1c875121a939": [
+    "src/main/index.ts"
+  ],
+  "dc0dc106489e": [
+    "src/renderer/src/document-transfer-load.ts",
+    "src/shared/source-transfer.ts"
+  ],
+  "c2e3add49974": [
+    "src/shared/source-transfer.ts"
   ],
   "e24a669abcf1": [
     "src/shared/document-worker-service.ts"
@@ -3111,6 +3224,9 @@
   ],
   "e130481e560e": [
     "src/shared/source-projection.ts"
+  ],
+  "5d11a76afe7b": [
+    "src/main/workspace-metadata-worker.ts"
   ],
   "55fd4183e9eb": [
     "src/shared/document-worker-service.ts"
@@ -3241,9 +3357,6 @@
   "318655cea4bd": [
     "src/renderer/src/CodeSyntaxSettings.tsx"
   ],
-  "8afab8fa80cb": [
-    "src/renderer/src/WorkspaceSettings.tsx"
-  ],
   "e139c41b9472": [
     "src/addons/vim/engine.ts"
   ],
@@ -3328,6 +3441,9 @@
   "cb8f2c8855ca": [
     "src/addons/dictionary/PackSettings.tsx"
   ],
+  "bf94dee592e6": [
+    "src/addons/documentation/ExportDialog.tsx"
+  ],
   "2de539a660eb": [
     "src/renderer/src/LicenseSettings.tsx"
   ],
@@ -3355,10 +3471,14 @@
   ],
   "a1f7f8733bfc": [
     "src/renderer/src/Editor.tsx",
-    "src/renderer/src/FormatEditor.tsx"
+    "src/renderer/src/FormatEditor.tsx",
+    "src/renderer/src/FormattedEditor.tsx"
   ],
   "3d171d73a47a": [
     "src/renderer/src/FormatEditor.tsx"
+  ],
+  "ba3bbbe10d8b": [
+    "src/renderer/src/RecoveryBoundary.tsx"
   ],
   "d7cd79b5925c": [
     "src/main/local-diagnostics/runtime.ts"
@@ -3427,7 +3547,7 @@
   "85a5ac392dfd": [
     "src/addons/_shared/format-worker.ts"
   ],
-  "25a239179c0c": [
+  "42c6b818dcbc": [
     "src/renderer/src/HibiSettings.tsx"
   ],
   "f988f51a872a": [
@@ -3518,7 +3638,7 @@
     "src/addons/mermaid/hibi-addon.json"
   ],
   "0f082e133791": [
-    "src/addons/mermaid/Block.tsx"
+    "src/addons/mermaid/BlockContent.tsx"
   ],
   "67da360acf23": [
     "src/addons/mermaid/index.tsx"
@@ -3527,7 +3647,7 @@
     "src/addons/mermaid/index.tsx"
   ],
   "4f44551d4abb": [
-    "src/addons/mermaid/Block.tsx"
+    "src/addons/mermaid/BlockContent.tsx"
   ],
   "3bc8bd63923d": [
     "src/site/bootstrap.tsx"
@@ -3554,9 +3674,11 @@
     "src/addons/mcp-server/tools.ts"
   ],
   "df6c593c35d7": [
+    "src/addons/block-drag/formatted.ts",
     "src/addons/block-drag/index.ts"
   ],
   "cc6fc79ab665": [
+    "src/addons/block-drag/formatted.ts",
     "src/addons/block-drag/index.ts"
   ],
   "9adcdf33dce1": [
@@ -3654,6 +3776,7 @@
     "src/addons/_shared/format-renderer.tsx"
   ],
   "1ff57a29d7c9": [
+    "src/addons/dictionary/CustomWords.tsx",
     "src/site/main.tsx"
   ],
   "825e5abd0762": [
@@ -3662,11 +3785,20 @@
   "115967f77ac6": [
     "src/renderer/src/FindBar.tsx"
   ],
+  "bb33bf08a10d": [
+    "src/renderer/src/LargeMarkdownPreview.tsx"
+  ],
   "1ef9522a9a8a": [
     "src/main/index.ts",
     "src/shared/hotkeys.ts"
   ],
-  "ab6b5a4d586b": [
+  "ad5823d9cb53": [
+    "src/addons/dictionary/CustomWords.tsx"
+  ],
+  "2d51b02e58b4": [
+    "src/renderer/src/UpdateSettings.tsx"
+  ],
+  "1c1ba4d73879": [
     "src/renderer/src/UpdateSettings.tsx"
   ],
   "fcfa3087d422": [
@@ -3833,6 +3965,9 @@
   ],
   "c72183682f41": [
     "src/addons/dictionary/CustomWords.tsx"
+  ],
+  "8a7525b1492f": [
+    "src/addons/graph/Canvas.tsx"
   ],
   "8ec5e108fc99": [
     "src/addons/tags/Panel.tsx"
@@ -4005,7 +4140,8 @@
     "src/renderer/src/ImportDialog.tsx"
   ],
   "b52d8596aa3f": [
-    "src/renderer/src/addons.ts"
+    "src/renderer/src/addons.ts",
+    "src/renderer/src/formatted-addon-compatibility.ts"
   ],
   "53bd3f8c9ac4": [
     "src/addons/ui-preview/index.tsx"
@@ -4086,6 +4222,9 @@
   "f5cc17a5ad18": [
     "src/addons/graph/Canvas.tsx"
   ],
+  "1d204cfab031": [
+    "src/renderer/src/main.tsx"
+  ],
   "1f1d592bdd1a": [
     "src/main/index.ts"
   ],
@@ -4146,6 +4285,9 @@
   "217fbef16da6": [
     "src/addons/documentation/ExportDialog.tsx"
   ],
+  "d631053c9df8": [
+    "src/addons/dictionary/CustomWords.tsx"
+  ],
   "60b14317b8ae": [
     "src/addons/asciidoc/hibi-addon.json",
     "src/addons/creole/hibi-addon.json",
@@ -4164,6 +4306,9 @@
     "src/shared/markdown-source-model.ts"
   ],
   "7210e2c9cfdd": [
+    "src/shared/source-parser.ts"
+  ],
+  "d447510064bd": [
     "src/shared/source-parser.ts"
   ],
   "26f98a0491bd": [
@@ -4248,6 +4393,9 @@
   "6d031af10da7": [
     "src/renderer/src/NotificationSettings.tsx"
   ],
+  "983826d83b6d": [
+    "src/renderer/src/LargeMarkdownPreview.tsx"
+  ],
   "a54e09e55035": [
     "src/addons/dictionary/PackSettings.tsx"
   ],
@@ -4302,6 +4450,7 @@
     "src/addons/typst/Preview.tsx"
   ],
   "a57b08a480b8": [
+    "src/addons/dictionary/CustomWords.tsx",
     "src/site/main.tsx"
   ],
   "daa2f8c3fc89": [
@@ -4310,9 +4459,15 @@
   "a1ac3c3a93fa": [
     "src/renderer/src/FindBar.tsx"
   ],
+  "84480cf303d2": [
+    "src/renderer/src/LargeMarkdownPreview.tsx"
+  ],
   "c88d5e7ec3a8": [
     "src/main/index.ts",
     "src/shared/hotkeys.ts"
+  ],
+  "bdc51b04dd04": [
+    "src/addons/dictionary/CustomWords.tsx"
   ],
   "da2eb576b5f6": [
     "src/addons/ui-preview/index.tsx"
@@ -4454,9 +4609,6 @@
   "a28622bdb72b": [
     "src/renderer/src/StartupPlaceholder.tsx"
   ],
-  "8bc443715025": [
-    "src/renderer/src/UpdateSettings.tsx"
-  ],
   "80e8dd1a5a05": [
     "src/addons/diagnostics/Settings.tsx"
   ],
@@ -4470,6 +4622,7 @@
     "src/renderer/src/RecoveryScreen.tsx"
   ],
   "74273989b096": [
+    "src/main/index.ts",
     "src/renderer/src/FormattingToolbar.tsx"
   ],
   "9c241dc5ee9d": [
@@ -4597,6 +4750,9 @@
   "2591fcfd6dcd": [
     "src/addons/_shared/format-worker.ts"
   ],
+  "d2e29bb001d1": [
+    "src/shared/formatted-text-runs.ts"
+  ],
   "6073c625266c": [
     "src/addons/diagnostics/Settings.tsx"
   ],
@@ -4604,7 +4760,7 @@
     "src/renderer/src/SettingsScreen.tsx"
   ],
   "6344dbe04b0b": [
-    "src/addons/mermaid/Block.tsx"
+    "src/addons/mermaid/BlockContent.tsx"
   ],
   "62c003429465": [
     "src/addons/_shared/format-renderer.tsx",
@@ -4680,8 +4836,14 @@
   "46f6013774d6": [
     "src/renderer/src/SettingsScreen.tsx"
   ],
+  "3d807d150cc8": [
+    "src/renderer/src/formatted/tables.ts"
+  ],
   "78f6821c3cf6": [
     "src/ui/Sidebar.tsx"
+  ],
+  "132b0bccb67f": [
+    "src/renderer/src/formatted/tables.ts"
   ],
   "243854b4d0c7": [
     "src/ui/Sidebar.tsx"
@@ -4702,6 +4864,7 @@
     "src/renderer/src/AddonViewContent.tsx",
     "src/renderer/src/Editor.tsx",
     "src/renderer/src/SettingsScreen.tsx",
+    "src/renderer/src/SourceEditor.tsx",
     "src/renderer/src/main.tsx"
   ],
   "3823b2b1ccc2": [
@@ -4914,7 +5077,7 @@
   "0a57174b2c85": [
     "src/addons/math/PackageSettings.tsx"
   ],
-  "7ee609e625df": [
+  "323568a5283e": [
     "src/addons/mcp-server/tools.ts"
   ],
   "32392c06e0d5": [
@@ -5015,6 +5178,7 @@
   ],
   "886bcbd93207": [
     "src/addons/tags/decorations.ts",
+    "src/addons/tags/formatted.ts",
     "src/addons/tags/rich-decorations.ts"
   ],
   "7d583b20c446": [
@@ -5161,8 +5325,12 @@
   "8a2bc7e0aed9": [
     "src/shared/source-buffer.ts"
   ],
-  "aa0061415476": [
+  "c9df32f0a2c5": [
     "src/shared/source-buffer.ts"
+  ],
+  "aa0061415476": [
+    "src/shared/source-buffer.ts",
+    "src/shared/source-load.ts"
   ],
   "f072e679279d": [
     "src/shared/source-buffer.ts"
@@ -5185,11 +5353,17 @@
   "bb4430a2cffb": [
     "src/shared/source-buffer.ts"
   ],
+  "fc537eec08e6": [
+    "src/renderer/src/LargeMarkdownPreview.tsx"
+  ],
   "f45809bdd48a": [
     "src/shared/source-buffer.ts"
   ],
   "a59c5fc9e739": [
     "src/renderer/src/source-outline.ts"
+  ],
+  "3300f213fd9e": [
+    "src/shared/source-buffer.ts"
   ],
   "2fc5a26b7c5b": [
     "src/shared/source-operations.ts"
@@ -5198,6 +5372,7 @@
     "src/shared/source-buffer.ts"
   ],
   "180c25278220": [
+    "src/shared/document-session.ts",
     "src/shared/source-buffer.ts"
   ],
   "a3ec45d2752b": [
@@ -5210,7 +5385,7 @@
     "src/renderer/src/source-outline.ts"
   ],
   "b44730f5bd1a": [
-    "src/renderer/src/Editor.tsx"
+    "src/renderer/src/use-source-outline.ts"
   ],
   "f98206e187b9": [
     "src/renderer/src/source-outline.ts"
@@ -5383,6 +5558,9 @@
     "src/renderer/src/SyntaxSettings.tsx",
     "src/renderer/src/settings-categories.ts"
   ],
+  "22b222cf96e0": [
+    "src/shared/markdown-flavor-guard.ts"
+  ],
   "5d56d0cefb9f": [
     "src/renderer/src/addons.ts"
   ],
@@ -5396,11 +5574,17 @@
   "9b910110596f": [
     "src/addons/autocomplete/Settings.tsx"
   ],
+  "6067c7203339": [
+    "src/renderer/src/DocumentTabs.tsx"
+  ],
   "70a91037b87d": [
     "src/renderer/src/SettingsScreen.tsx"
   ],
   "16d1c9050a0b": [
     "src/renderer/src/FormattingToolbar.tsx"
+  ],
+  "9a1f4654d0eb": [
+    "src/renderer/src/formatted/table-cells.ts"
   ],
   "8e5ea509893e": [
     "src/renderer/src/SettingsScreen.tsx"
@@ -5637,6 +5821,8 @@
     "src/main/media.ts"
   ],
   "f54320f2a651": [
+    "src/addons/documentation/site-media.ts",
+    "src/addons/documentation/site-worker.ts",
     "src/main/media.ts"
   ],
   "96c5ae0b5065": [
@@ -5677,7 +5863,12 @@
     "src/main/analysis.ts"
   ],
   "33848694bf6a": [
-    "src/shared/document-checkpoint.ts"
+    "src/renderer/src/main.tsx",
+    "src/shared/document-checkpoint-stream.ts"
+  ],
+  "f8848b91279e": [
+    "src/main/document-transfer.ts",
+    "src/renderer/src/document-transfer-load.ts"
   ],
   "4f933c48f0a0": [
     "src/renderer/src/document-target-edits.ts"
@@ -5686,6 +5877,9 @@
     "src/main/links.ts"
   ],
   "600ca5556eb4": [
+    "src/main/document.ts"
+  ],
+  "6ffd28864c12": [
     "src/main/document.ts"
   ],
   "602cad822b0c": [
@@ -5715,6 +5909,9 @@
   "364e042318da": [
     "src/main/media.ts"
   ],
+  "8a9c263a360f": [
+    "src/renderer/src/SourceEditor.tsx"
+  ],
   "a5aedb8a518f": [
     "src/addons/mcp-server/index.ts",
     "src/renderer/src/document-edits.ts",
@@ -5731,18 +5928,30 @@
     "src/main/index.ts"
   ],
   "8ea97b4e248c": [
-    "src/shared/document-checkpoint.ts"
+    "src/shared/document-checkpoint-stream.ts"
   ],
   "ee76fd92b752": [
-    "src/shared/document-checkpoint.ts"
+    "src/shared/document-checkpoint-stream.ts"
+  ],
+  "d5906e55a7d6": [
+    "src/main/index.ts",
+    "src/renderer/src/document-runtime.ts"
+  ],
+  "1272f967b3e4": [
+    "src/shared/source-transfer.ts"
+  ],
+  "9dc071e43d04": [
+    "src/main/document-transfer.ts",
+    "src/shared/document-worker-service.ts",
+    "src/shared/source-transfer.ts"
+  ],
+  "bc01d897e63b": [
+    "src/shared/source-transfer.ts"
   ],
   "53a9d03e9663": [
     "src/main/addon-documentation.ts"
   ],
-  "8c6ee6bc52e4": [
-    "src/addons/documentation/native.ts"
-  ],
-  "6d78247b2a33": [
+  "92ca4db1aa24": [
     "src/main/links.ts"
   ],
   "974b4f94f221": [
@@ -5759,9 +5968,6 @@
   ],
   "d3a23215018d": [
     "src/main/sideload.ts"
-  ],
-  "23b54a5e62e2": [
-    "src/shared/document-edits.ts"
   ],
   "a6cea19581d6": [
     "src/shared/document-edits.ts"
@@ -5817,14 +6023,25 @@
   "d84f02a8b4bc": [
     "src/main/workspace-actions.ts"
   ],
-  "d60d1c552b62": [
+  "34f17c8d67af": [
     "src/main/import-files.ts"
   ],
+  "d60d1c552b62": [
+    "src/addons/_shared/import-packet.ts",
+    "src/addons/_shared/import-worker-client.ts",
+    "src/main/import-files.ts",
+    "src/main/imports.ts",
+    "src/shared/imports.ts"
+  ],
   "c6ba816d86a5": [
-    "src/main/import-files.ts"
+    "src/main/import-files.ts",
+    "src/main/imports.ts"
   ],
   "23aa870889ee": [
     "src/main/import-files.ts"
+  ],
+  "47e60276c5e2": [
+    "src/main/workspace-legacy-index.ts"
   ],
   "93989d9c45f8": [
     "src/renderer/src/mounted-document-edits.ts"
@@ -5847,6 +6064,9 @@
   "cf9108c9789b": [
     "src/addons/mcp-server/tools.ts"
   ],
+  "8b3833b3d6d6": [
+    "src/main/document.ts"
+  ],
   "590fb9c8974a": [
     "src/addons/_shared/format-native.ts"
   ],
@@ -5867,6 +6087,9 @@
   ],
   "1a9c37310c3f": [
     "src/main/files.ts"
+  ],
+  "db39203290d8": [
+    "src/renderer/src/document-runtime.ts"
   ],
   "b98fc4a907d6": [
     "src/main/addon-inventory.ts"
@@ -5926,8 +6149,10 @@
     "src/main/addon-directory.ts"
   ],
   "bee50784d023": [
-    "src/renderer/src/document-target-edits.ts",
     "src/shared/document-edits.ts"
+  ],
+  "bfffe147f4f5": [
+    "src/main/workspace-files.ts"
   ],
   "6aa88449912f": [
     "src/shared/addon-manifest.ts"
@@ -5958,7 +6183,12 @@
     "src/main/index.ts"
   ],
   "671a56401be1": [
-    "src/addons/documentation/native.ts"
+    "src/addons/documentation/native.ts",
+    "src/addons/documentation/site-worker.ts",
+    "src/main/workspace.ts"
+  ],
+  "bcfba9ceabd5": [
+    "src/main/workspace-actions.ts"
   ],
   "1f9371eb85f2": [
     "src/main/workspace.ts"
@@ -5976,7 +6206,8 @@
     "src/main/workspace-entry-transfer.ts"
   ],
   "a83fa5eca26c": [
-    "src/main/workspace-entry-page.ts"
+    "src/main/workspace-entry-page.ts",
+    "src/main/workspace.ts"
   ],
   "2a3a78043479": [
     "src/main/imports.ts"
@@ -6126,14 +6357,14 @@
   "99427620f0ec": [
     "src/renderer/src/addons.ts"
   ],
-  "d5717893f842": [
-    "src/renderer/src/addons.ts"
-  ],
   "2c04b0714304": [
     "src/renderer/src/addons.ts"
   ],
   "5f453afab556": [
     "src/renderer/src/addon-views.ts"
+  ],
+  "adebe9b39174": [
+    "src/renderer/src/addons.ts"
   ],
   "3c4b2c687d81": [
     "src/renderer/src/addons.ts"
@@ -6165,7 +6396,11 @@
   "5eebb144c45a": [
     "src/shared/addon-manifest.ts"
   ],
+  "211d9f26c0c3": [
+    "src/addons/sdk-legacy-rich.ts"
+  ],
   "2d715c5a75aa": [
+    "src/addons/dictionary/custom-word-store.ts",
     "src/main/addons.ts",
     "src/main/index.ts"
   ],
@@ -6190,6 +6425,9 @@
   "92382357bcdf": [
     "src/main/workspace-files.ts"
   ],
+  "7da80d73d733": [
+    "src/site/media.ts"
+  ],
   "27f866079733": [
     "src/shared/document-journal.ts"
   ],
@@ -6208,29 +6446,29 @@
   "1824f46c0e29": [
     "src/renderer/src/Editor.tsx"
   ],
+  "740e6c0b4f76": [
+    "src/addons/dictionary/custom-word-database.ts",
+    "src/addons/dictionary/custom-word-storage.ts",
+    "src/addons/dictionary/custom-word-store.ts"
+  ],
   "1629952fe484": [
     "src/main/dependencies.ts"
   ],
-  "4450b8d48106": [
-    "src/addons/mermaid/render.ts"
-  ],
   "e0642a812b2e": [
-    "src/addons/dictionary/pack-store.ts"
+    "src/addons/dictionary/pack-verification.ts"
   ],
   "4aca8915ed3c": [
     "src/addons/dictionary/packs.ts"
   ],
   "794c92bbef64": [
-    "src/addons/dictionary/pack-store.ts"
+    "src/addons/dictionary/pack-store.ts",
+    "src/addons/dictionary/pack-verification.ts"
   ],
   "3f08b04c75dd": [
-    "src/addons/dictionary/pack-store.ts"
+    "src/addons/dictionary/pack-verification.ts"
   ],
   "f70a180e8466": [
-    "src/addons/_shared/import-markdown.ts"
-  ],
-  "b3e591b2b962": [
-    "src/main/files.ts"
+    "src/shared/imports.ts"
   ],
   "73b6a9218822": [
     "src/addons/bbcode/render.ts"
@@ -6255,11 +6493,9 @@
   "f3baf23e2a31": [
     "src/main/addon-documentation.ts"
   ],
-  "28d14c9029bb": [
-    "src/renderer/src/main.tsx"
-  ],
   "4396b1d0a374": [
-    "src/renderer/src/Editor.tsx"
+    "src/renderer/src/Editor.tsx",
+    "src/renderer/src/source-formatting-actions.ts"
   ],
   "9683e4c7c182": [
     "src/renderer/src/Editor.tsx"
@@ -6281,6 +6517,13 @@
   ],
   "7a5592fe56ea": [
     "src/addons/documentation/site.ts"
+  ],
+  "6805eb10d78f": [
+    "src/addons/dictionary/custom-words.ts"
+  ],
+  "de4804e48ed8": [
+    "src/site/bootstrap.tsx",
+    "src/site/media.ts"
   ],
   "160f0858f2bd": [
     "src/main/workspace-files.ts"
@@ -6321,9 +6564,6 @@
   "cb628f15bb2c": [
     "src/main/workspace.ts"
   ],
-  "31243b9077cb": [
-    "src/main/workspace.ts"
-  ],
   "1f93aa51a306": [
     "src/addons/quick-note/native.ts"
   ],
@@ -6331,6 +6571,9 @@
     "src/main/addon-documentation.ts"
   ],
   "a1a3c01051cc": [
+    "src/main/addons.ts"
+  ],
+  "4275527a00a6": [
     "src/main/addons.ts"
   ],
   "2ff13ca6ab5c": [
@@ -6363,6 +6606,9 @@
   "557e75befd2a": [
     "src/renderer/src/WorkspacesSidebar.tsx"
   ],
+  "e94cf57dc0b9": [
+    "src/renderer/src/main.tsx"
+  ],
   "726915b074e5": [
     "src/main/addon-trust-crypto.ts"
   ],
@@ -6378,11 +6624,17 @@
   "dd8dcbe75100": [
     "src/main/document.ts"
   ],
+  "c70bc0cdd914": [
+    "src/renderer/src/LargeMarkdownPreview.tsx"
+  ],
   "a8509d324773": [
     "src/main/workspace-paths.ts"
   ],
   "7026bfea8279": [
     "src/main/workspace-files.ts"
+  ],
+  "5311471f72b4": [
+    "src/renderer/src/LargeMarkdownPreview.tsx"
   ],
   "5089081cf601": [
     "src/renderer/src/document-edits.ts"
@@ -6402,6 +6654,16 @@
   "c13ad6f975f2": [
     "src/main/history.ts"
   ],
+  "81236bae92f9": [
+    "src/main/history.ts",
+    "src/renderer/src/VersionHistory.tsx"
+  ],
+  "ffebf17d6560": [
+    "src/addons/mcp-server/tools.ts",
+    "src/main/workspace-text-index.ts",
+    "src/main/workspace-text-search.ts",
+    "src/main/workspace-text-worker.ts"
+  ],
   "980892e485b4": [
     "src/main/global-shortcuts.ts"
   ],
@@ -6414,6 +6676,9 @@
   "3ec61208f558": [
     "src/main/global-shortcuts.ts"
   ],
+  "53101e1d982a": [
+    "src/addons/documentation/site-runtime.ts"
+  ],
   "f876c831e537": [
     "src/renderer/src/document-runtime.ts"
   ],
@@ -6423,6 +6688,9 @@
   ],
   "e8983dab4298": [
     "src/renderer/src/Introduction.tsx"
+  ],
+  "2a116f351782": [
+    "src/main/files.ts"
   ],
   "609876d22bea": [
     "src/shared/addon-manifest.ts"
@@ -6449,6 +6717,10 @@
   "c04f0fb5e9da": [
     "src/addons/ui-preview/index.tsx"
   ],
+  "dc943d8ef9e4": [
+    "src/addons/dictionary/custom-word-database.ts",
+    "src/addons/dictionary/custom-word-storage.ts"
+  ],
   "f716923c808e": [
     "src/addons/dictionary/custom-words.ts"
   ],
@@ -6457,6 +6729,7 @@
     "src/addons/autocomplete/index.tsx"
   ],
   "78c4a3ab448e": [
+    "src/addons/documentation/native.ts",
     "src/main/workspace.ts"
   ],
   "a5d897d361ec": [
@@ -6561,6 +6834,7 @@
   ],
   "7586b13894e7": [
     "src/addons/dictionary/CustomWords.tsx",
+    "src/addons/dictionary/custom-word-storage.ts",
     "src/addons/dictionary/custom-words.ts"
   ],
   "9a928ba210da": [
@@ -6570,7 +6844,7 @@
     "src/addons/slash-commands/hibi-addon.json"
   ],
   "38c14037e93b": [
-    "src/addons/typst/Block.tsx",
+    "src/addons/typst/BlockContent.tsx",
     "src/addons/typst/hibi-addon.json",
     "src/addons/typst/index.tsx"
   ],
@@ -6641,7 +6915,7 @@
     "src/addons/typst/compiler.ts"
   ],
   "7ba8dc6d48a0": [
-    "src/addons/typst/Block.tsx"
+    "src/addons/typst/BlockContent.tsx"
   ],
   "433fa57cd74a": [
     "src/addons/typst/compiler.ts"
@@ -6670,6 +6944,7 @@
     "src/addons/ui-preview/index.tsx"
   ],
   "a8283ade3185": [
+    "src/main/index.ts",
     "src/renderer/src/FormattingToolbar.tsx"
   ],
   "fe199528850a": [
@@ -6751,6 +7026,9 @@
   "c296b396f03c": [
     "src/main/updates.ts"
   ],
+  "3ce8bc1abf30": [
+    "src/renderer/src/AddonSettings.tsx"
+  ],
   "1e6bf669df09": [
     "src/renderer/src/UpdateSettings.tsx"
   ],
@@ -6764,6 +7042,9 @@
     "src/main/updates.ts"
   ],
   "30704b40105a": [
+    "src/renderer/src/SettingsScreen.tsx"
+  ],
+  "07ef64ace382": [
     "src/renderer/src/SettingsScreen.tsx"
   ],
   "0c78f3e5ef4e": [
@@ -6786,9 +7067,6 @@
   ],
   "9098e6f8753c": [
     "src/main/addon-repository.ts"
-  ],
-  "4e3017d9661a": [
-    "src/main/files.ts"
   ],
   "837f32b3dfef": [
     "src/addons/documentation/options.ts"
@@ -6945,6 +7223,9 @@
   "653913ac0e67": [
     "src/addons/word-count/hibi-addon.json"
   ],
+  "0ea187fc0e5a": [
+    "src/addons/dictionary/CustomWords.tsx"
+  ],
   "c4853f18f5cc": [
     "src/addons/dictionary/Settings.tsx"
   ],
@@ -6989,20 +7270,23 @@
   "919644e3d358": [
     "src/renderer/src/WorkspaceSettings.tsx"
   ],
-  "14592abed9a2": [
-    "src/renderer/src/WorkspaceSettings.tsx"
-  ],
   "8ebd7fbef943": [
     "src/renderer/src/WorkspaceSettings.tsx"
   ],
-  "cfac7c431f69": [
-    "src/main/workspace-reference-index.ts"
+  "18a2d5510948": [
+    "src/main/workspace-metadata-parser.ts"
   ],
   "80298932a272": [
     "src/main/workspace-reference-index.ts"
   ],
   "03efeb5aa9aa": [
     "src/main/workspace-reference-index.ts"
+  ],
+  "b18dabb099df": [
+    "src/main/workspace-metadata-parser.ts"
+  ],
+  "a741ce8b69a7": [
+    "src/main/workspace-metadata-parser.ts"
   ],
   "9619649d8dc1": [
     "src/renderer/src/WorkspaceSettings.tsx"
@@ -7044,6 +7328,9 @@
   "a03fccdc8fea": [
     "src/addons/markdown/hibi-addon.json"
   ],
+  "6e038946c2ae": [
+    "src/addons/mermaid/index.tsx"
+  ],
   "2cfece6a285e": [
     "src/addons/typst/hibi-addon.json"
   ],
@@ -7067,9 +7354,6 @@
   ],
   "9b6e8abe425e": [
     "src/addons/frontmatter/Properties.tsx"
-  ],
-  "fb54b1cc7cef": [
-    "src/addons/dictionary/custom-words.ts"
   ],
   "0ec4c65bb923": [
     "src/renderer/src/workspace-menu.ts"
@@ -7126,6 +7410,9 @@
     "src/renderer/src/HibiSettings.tsx"
   ],
   "189df083f938": [
+    "src/renderer/src/HibiSettings.tsx"
+  ],
+  "a7e2d26e8d15": [
     "src/renderer/src/HibiSettings.tsx"
   ],
   "277089d91c0b": [
@@ -7311,9 +7598,6 @@
     "src/renderer/src/AddonGarden.tsx",
     "src/renderer/src/AddonSettings.tsx"
   ],
-  "0695b563acde": [
-    "src/renderer/src/HibiSettings.tsx"
-  ],
   "21fc4b4e6645": [
     "src/main/workspace-layout.ts"
   ],
@@ -7331,6 +7615,9 @@
   ],
   "acf7f505b27e": [
     "src/addons/documentation/ExportDialog.tsx"
+  ],
+  "52f2acdcb418": [
+    "src/renderer/src/formatted-addon-compatibility.ts"
   ],
   "9121a9ed1cc9": [
     "src/renderer/src/window-desktop.ts"
@@ -7350,7 +7637,7 @@
   "f82d8c5475b7": [
     "src/renderer/src/addons.ts"
   ],
-  "386c2c478548": [
+  "f2767ee8a65d": [
     "src/renderer/src/addons.ts"
   ],
   "d44b2d82471e": [
@@ -7423,9 +7710,6 @@
   ],
   "3ca172ad5570": [
     "src/addons/diagnostics/Settings.tsx"
-  ],
-  "abfda98c8bbd": [
-    "src/addons/graph/Panel.tsx"
   ],
   "20eac6938637": [
     "src/addons/graph/Panel.tsx"
