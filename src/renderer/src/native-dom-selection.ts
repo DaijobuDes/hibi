@@ -79,6 +79,12 @@ const pointsOf = (selection: Selection | null): Points | null =>
     focusOffset: selection.focusOffset,
   }
 
+const samePoints = (a: Points | null, b: Points | null) =>
+  a?.anchorNode === b?.anchorNode &&
+  a?.anchorOffset === b?.anchorOffset &&
+  a?.focusNode === b?.focusNode &&
+  a?.focusOffset === b?.focusOffset
+
 const writable = (state: EditorState) =>
   !state.readOnly && state.facet(EditorView.editable)
 
@@ -92,6 +98,8 @@ export const nativeDOMSelection = ViewPlugin.fromClass(
   class {
     private armed = false
     private picked = false
+    /** The page points of the pick read last. */
+    private taken: Points | null = null
     private destroyed = false
     private document: Document
     private view: EditorView
@@ -147,6 +155,7 @@ export const nativeDOMSelection = ViewPlugin.fromClass(
       )
       if (!anchor || !head || !(anchor.mapped || head.mapped)) return
       this.picked = true
+      this.taken = selection
       const current = view.state.selection.main
       if (current.anchor !== anchor.at || current.head !== head.at)
         view.dispatch({
@@ -155,12 +164,7 @@ export const nativeDOMSelection = ViewPlugin.fromClass(
         })
       // The page keeps showing the pick, as the rich editor does.
       const page = this.document.getSelection()
-      if (
-        page?.anchorNode !== selection.anchorNode ||
-        page.anchorOffset !== selection.anchorOffset ||
-        page.focusNode !== selection.focusNode ||
-        page.focusOffset !== selection.focusOffset
-      ) {
+      if (!samePoints(page, selection)) {
         page?.setBaseAndExtent(
           selection.anchorNode,
           selection.anchorOffset,
@@ -172,12 +176,14 @@ export const nativeDOMSelection = ViewPlugin.fromClass(
     }
     update(update: ViewUpdate) {
       // CodeMirror writes its own selection to the page after this update,
-      // over a pick whose selection change has not arrived yet.
-      if (this.armed && !update.selectionSet && !writable(update.state)) {
+      // over a pick whose selection change has not arrived yet. A measure
+      // can also read that pick first, as a selection at the widget's edge.
+      if (this.armed && !writable(update.state)) {
         const points = pointsOf(this.document.getSelection())
-        queueMicrotask(() => {
-          if (!this.destroyed) this.read(points)
-        })
+        if (!update.selectionSet || !samePoints(points, this.taken))
+          queueMicrotask(() => {
+            if (!this.destroyed) this.read(points)
+          })
       }
       if (!this.armed || !writable(update.state) || writable(update.startState))
         return
