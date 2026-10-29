@@ -1707,11 +1707,22 @@ test('a native selection in a read-only table becomes the editing selection', {
 }, async () => {
   const doc = 'before\n\n| h | other |\n| - | - |\n| alpha | beta |\n\nafter'
   await mount(doc)
-  await harness.evaluate(() => window.tables.setEditable(false))
+  await harness.evaluate(() => {
+    window.tables.setEditable(false)
+    // The pick as the double click made it: the view's own selection
+    // replaces it on the page once it reads it.
+    document.addEventListener(
+      'dblclick',
+      () => {
+        window.pickedText = getSelection().toString()
+      },
+      { once: true },
+    )
+  })
   await harness
     .locator('.hibi-lp-table td', { hasText: 'alpha' })
     .dblclick({ position: { x: 8, y: 8 } })
-  assert.equal(await harness.evaluate(() => getSelection().toString()), 'alpha')
+  assert.equal(await harness.evaluate(() => window.pickedText), 'alpha')
   await harness.evaluate(() => window.tables.settle())
   const picked = await state()
   const from = doc.indexOf('alpha')
