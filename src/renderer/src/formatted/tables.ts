@@ -2962,6 +2962,30 @@ export const contribution: FormattedContribution = {
           view.dispatch({ effects: clearTablePick.of(null) })
       },
     }),
+    // Shift-click outside tables from an edited cell keeps the selection's
+    // anchor in the cell's text, as in the rich editor. The view's own
+    // pointer selection moves it out of the table, which is atomic for it.
+    EditorView.domEventHandlers({
+      mousedown(event, view) {
+        const { anchor } = view.state.selection.main
+        if (
+          event.button !== 0 ||
+          !event.shiftKey ||
+          event.detail > 1 ||
+          !writable(view.state) ||
+          !tableAt(view, anchor, true)
+        )
+          return false
+        const head = view.posAtCoords({ x: event.clientX, y: event.clientY })
+        if (head === null) return false
+        view.dispatch({
+          selection: { anchor, head },
+          userEvent: 'select.pointer',
+        })
+        view.focus()
+        return true
+      },
+    }),
     tableEditing,
     // Chromium drops typing and compositions over a selection that covers a
     // table widget or starts or ends inside one.
