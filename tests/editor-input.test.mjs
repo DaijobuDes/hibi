@@ -15,6 +15,7 @@ import {
   showTestWindows,
   waitForDocumentEditor,
 } from './electron.mjs'
+import { recordEvents, reportFailure } from './failure-state.mjs'
 import {
   testFormattedEngines as it,
   selectFormattedEngine,
@@ -1267,6 +1268,10 @@ test('native table picks retain multiline caret positions, scalar boundaries and
 test('codemirror: a native table pick keeps the shared input guards', {
   timeout: 60000,
 }, async (t) => {
+  const documentView = `document.querySelector('.rich-pane [aria-label="Document editor"]').cmTile.root.view`
+  let page
+  // Before the subtest's app closes.
+  t.afterEach((t) => reportFailure(t, page, documentView))
   for (const guard of [
     'readonly',
     'composing event',
@@ -1276,7 +1281,10 @@ test('codemirror: a native table pick keeps the shared input guards', {
     for (const kind of ['beforeinput', 'keypress']) {
       await t.test(guard + ': ' + kind, async (t) => {
         const oracle = inputFixture('multiline', 'into a table')
-        const { page, rich } = await launchInputFixture(t, oracle.source)
+        const launched = await launchInputFixture(t, oracle.source)
+        page = launched.page
+        const { rich } = launched
+        await recordEvents(page, documentView)
         await rich.focus()
         await selectNativeInputTable(t, page, rich, 'into a table', oracle)
         const setup = await rich.evaluate((element, guard) => {
