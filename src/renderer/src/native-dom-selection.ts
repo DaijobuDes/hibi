@@ -71,6 +71,14 @@ export function recordPageSelection(view: EditorView) {
   )
 }
 
+const pointsOf = (selection: Selection | null): Points | null =>
+  selection && {
+    anchorNode: selection.anchorNode,
+    anchorOffset: selection.anchorOffset,
+    focusNode: selection.focusNode,
+    focusOffset: selection.focusOffset,
+  }
+
 const writable = (state: EditorState) =>
   !state.readOnly && state.facet(EditorView.editable)
 
@@ -119,7 +127,7 @@ export const nativeDOMSelection = ViewPlugin.fromClass(
       )
         this.clear()
     }
-    private selection = () => this.read(this.document.getSelection())
+    private selection = () => this.read(pointsOf(this.document.getSelection()))
     /** Keep a pick's points, as the page shows them now or showed them before an update. */
     private read(selection: Points | null) {
       const { view } = this
@@ -145,18 +153,28 @@ export const nativeDOMSelection = ViewPlugin.fromClass(
           selection: EditorSelection.single(anchor.at, head.at),
           userEvent: 'select.pointer',
         })
+      // The page keeps showing the pick, as the rich editor does.
+      const page = this.document.getSelection()
+      if (
+        page?.anchorNode !== selection.anchorNode ||
+        page.anchorOffset !== selection.anchorOffset ||
+        page.focusNode !== selection.focusNode ||
+        page.focusOffset !== selection.focusOffset
+      ) {
+        page?.setBaseAndExtent(
+          selection.anchorNode,
+          selection.anchorOffset,
+          selection.focusNode,
+          selection.focusOffset,
+        )
+        recordPageSelection(view)
+      }
     }
     update(update: ViewUpdate) {
       // CodeMirror writes its own selection to the page after this update,
       // over a pick whose selection change has not arrived yet.
       if (this.armed && !update.selectionSet && !writable(update.state)) {
-        const selection = this.document.getSelection()
-        const points = selection && {
-          anchorNode: selection.anchorNode,
-          anchorOffset: selection.anchorOffset,
-          focusNode: selection.focusNode,
-          focusOffset: selection.focusOffset,
-        }
+        const points = pointsOf(this.document.getSelection())
         queueMicrotask(() => {
           if (!this.destroyed) this.read(points)
         })

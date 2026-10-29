@@ -1719,8 +1719,7 @@ test('a native selection in a read-only table becomes the editing selection', {
   await mount(doc)
   await harness.evaluate(() => {
     window.tables.setEditable(false)
-    // The pick as the double click made it: the view's own selection
-    // replaces it on the page once it reads it.
+    // The pick as the double click made it.
     document.addEventListener(
       'dblclick',
       () => {
@@ -1743,6 +1742,12 @@ test('a native selection in a read-only table becomes the editing selection', {
     ],
     [from, from + 5],
   )
+  // The page keeps showing the pick, as the rich editor does, through
+  // later updates too.
+  assert.equal(await harness.evaluate(() => getSelection().toString()), 'alpha')
+  await harness.evaluate(() => window.tables.view().dispatch({}))
+  await harness.evaluate(() => window.tables.settle())
+  assert.equal(await harness.evaluate(() => getSelection().toString()), 'alpha')
   await harness.keyboard.type('BLOCKED')
   assert.equal((await state()).doc, doc)
   await harness.evaluate(() => window.tables.setEditable(true))
