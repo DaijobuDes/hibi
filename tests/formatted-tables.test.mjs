@@ -1991,6 +1991,29 @@ test('undo moves the cell editor to the cell whose edit it undoes', {
   assert.equal(now.head, '| alpha'.length)
 })
 
+test('a cell editor shows its cell formatted as it opens', {
+  timeout: 30000,
+}, async () => {
+  const doc = '| a | b |\n| - | - |\n| x<br>**y** | z |'
+  await mount(doc)
+  const shown = await harness.evaluate(async (at) => {
+    const view = window.tables.view()
+    view.focus()
+    view.dispatch({ selection: { anchor: at } })
+    const text = () =>
+      document.querySelector('.hibi-lp-cell-editor .cm-content')?.textContent
+    // The editor opens in a microtask, before CodeMirror's focus change,
+    // which waits for a timer.
+    await Promise.resolve()
+    const opened = text()
+    await new Promise((done) => setTimeout(done, 50))
+    await window.tables.settle()
+    return [opened, text()]
+  }, doc.indexOf('x'))
+  // The line break shows as one, with no source text.
+  assert.deepEqual(shown, ['x**y**', 'x**y**'])
+})
+
 test('the toolbar inserts a header and two rows, with the caret in the first header cell', {
   timeout: 30000,
 }, async () => {

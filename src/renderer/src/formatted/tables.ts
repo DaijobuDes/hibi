@@ -889,6 +889,9 @@ class TableView {
       to: this.now(source.from + source.text.length),
     }
     editor.focus()
+    // The editor was built before it was the edited cell, without the cell's
+    // Markdown; CodeMirror's focus update, which draws it, waits for a timer.
+    editor.refresh()
     editor.mirror()
     element.scrollIntoView({ block: 'nearest', inline: 'nearest' })
     return true
