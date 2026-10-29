@@ -107,19 +107,27 @@ function nativeTableInput() {
         step = read?.steps[0],
         tr = state.tr
       typed = null
+      if (oldState.doc === state.doc) return null
       // ProseMirror places the browser's caret by the document it parsed, which
-      // can hold fewer cells than the one its step makes.
+      // can hold fewer cells than the one its step makes: in front of the typed
+      // text, its first occurrence from there on.
       if (text && read && step instanceof ReplaceStep) {
+        const after = read.mapping.slice(1)
         let end = -1
         step.slice.content.descendants((node, position) => {
-          const at = end < 0 && node.isText ? node.text!.indexOf(text) : -1
-          if (at >= 0) end = position + at + text.length
+          for (
+            let at = node.isText && end < 0 ? node.text!.indexOf(text) : -1;
+            at >= 0 && end < 0;
+            at = node.text!.indexOf(text, at + 1)
+          ) {
+            const start = step.from - step.slice.openStart + position + at
+            if (after.map(start) >= read.selection.head)
+              end = start + text.length
+          }
           return end < 0
         })
         if (end >= 0) {
-          let caret = read.mapping
-            .slice(1)
-            .map(step.from - step.slice.openStart + end)
+          let caret = after.map(end)
           for (const later of transactions.slice(1))
             caret = later.mapping.map(caret)
           tr.setSelection(TextSelection.create(state.doc, caret))

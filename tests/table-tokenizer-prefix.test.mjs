@@ -227,73 +227,83 @@ test('a native table that loses its header row keeps the empty one its Markdown 
   assert.equal(typed.transactions.length, 1)
 })
 
-test('text typed over a range across native cells leaves the caret after it', () => {
-  const tables = nativeTables(
-    'plain\n\n| aa | bb |\n| --- | --- |\n| c*ell* | *ta*il |',
-  )
-  const { editor, canonical } = tables
-  let state = tables.state.apply(
-    tables.state.tr.setSelection(
-      TextSelection.create(tables.state.doc, 26, 35),
-    ),
-  )
-  assert.equal(state.doc.textBetween(26, 35), 'ellta')
-  const input = (data) => {
-    for (const plugin of state.plugins)
-      plugin.props.handleDOMEvents?.beforeinput?.(
-        { state, composing: false },
-        { inputType: 'insertText', data },
-      )
-  }
-  input('Z')
-  // ProseMirror's read of Chromium's edit (traced in the app): an extra cell
-  // for the typed text, and the browser caret resolved in front of it.
-  const tr = state.tr.step(
-    ReplaceStep.fromJSON(state.schema, {
-      stepType: 'replace',
-      from: 26,
-      to: 35,
-      slice: {
-        content: [
-          { type: 'tableCell', content: [{ type: 'paragraph' }] },
-          {
-            type: 'tableCell',
-            content: [
-              {
-                type: 'paragraph',
-                content: [
-                  { type: 'text', marks: [{ type: 'italic' }], text: 'Z' },
-                ],
-              },
-            ],
-          },
-          { type: 'tableCell', content: [{ type: 'paragraph' }] },
-        ],
-        openStart: 2,
-        openEnd: 2,
-      },
-    }),
-  )
-  state = state.applyTransaction(
-    tr.setSelection(TextSelection.create(tr.doc, 30)),
-  ).state
-  const caret = (state) => [
-    state.selection.empty,
-    state.selection.$head.parent.textContent.slice(
-      0,
-      state.selection.$head.parentOffset,
-    ),
-    state.selection.$head.parent.textContent.slice(
-      state.selection.$head.parentOffset,
-    ),
-  ]
-  assert.deepEqual(caret(state), [true, 'Z', ''])
-  input('Q')
-  state = state.applyTransaction(state.tr.insertText('Q')).state
-  assert.deepEqual(caret(state), [true, 'ZQ', ''])
-  assert.equal(
-    editor.markdown.serialize(state.doc.toJSON()),
-    'plain\n\n\n|     | aa   | bb  |\n| --- | ---- | --- |\n| c   | *ZQ* | il  |\n',
-  )
-  assert.ok(state.doc.eq(canonical(state.doc)))
-})
+// ProseMirror's read of Chromium's edit (traced in the app) adds a cell for the
+// typed text and resolves the browser caret in front of it. Its slice may start
+// earlier and repeat the typed text in the cell before.
+for (const [typed, from, before] of [
+  ['Z', 26, []],
+  ['c', 25, [{ type: 'text', text: 'c' }]],
+])
+  test(`text typed over a range across native cells leaves the caret after it: ${typed}`, () => {
+    const tables = nativeTables(
+      'plain\n\n| aa | bb |\n| --- | --- |\n| c*ell* | *ta*il |',
+    )
+    const { editor, canonical } = tables
+    let state = tables.state.apply(
+      tables.state.tr.setSelection(
+        TextSelection.create(tables.state.doc, 26, 35),
+      ),
+    )
+    assert.equal(state.doc.textBetween(26, 35), 'ellta')
+    const input = (data) => {
+      for (const plugin of state.plugins)
+        plugin.props.handleDOMEvents?.beforeinput?.(
+          { state, composing: false },
+          { inputType: 'insertText', data },
+        )
+    }
+    input(typed)
+    const tr = state.tr.step(
+      ReplaceStep.fromJSON(state.schema, {
+        stepType: 'replace',
+        from,
+        to: 35,
+        slice: {
+          content: [
+            {
+              type: 'tableCell',
+              content: [{ type: 'paragraph', content: before }],
+            },
+            {
+              type: 'tableCell',
+              content: [
+                {
+                  type: 'paragraph',
+                  content: [
+                    { type: 'text', marks: [{ type: 'italic' }], text: typed },
+                  ],
+                },
+              ],
+            },
+            { type: 'tableCell', content: [{ type: 'paragraph' }] },
+          ],
+          openStart: 2,
+          openEnd: 2,
+        },
+      }),
+    )
+    state = state.applyTransaction(
+      tr.setSelection(TextSelection.create(tr.doc, 30)),
+    ).state
+    // Whether the caret is collapsed, its cell, and the text around it there.
+    const caret = (state) => [
+      state.selection.empty,
+      state.selection.$head.index(2),
+      state.selection.$head.parent.textContent.slice(
+        0,
+        state.selection.$head.parentOffset,
+      ),
+      state.selection.$head.parent.textContent.slice(
+        state.selection.$head.parentOffset,
+      ),
+    ]
+    assert.deepEqual(caret(state), [true, 1, typed, ''])
+    input('Q')
+    state = state.applyTransaction(state.tr.insertText('Q')).state
+    assert.deepEqual(caret(state), [true, 1, typed + 'Q', ''])
+    assert.equal(
+      editor.markdown.serialize(state.doc.toJSON()),
+      `plain\n\n\n|     | aa   | bb  |\n| --- | ---- | --- |\n| c   | *${typed}Q* | il  |\n`,
+    )
+    assert.ok(state.doc.eq(canonical(state.doc)))
+  })
