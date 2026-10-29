@@ -11,6 +11,12 @@ import { waitForAsync } from './poll.mjs'
 
 const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
 
+// Focusing the element moves the browser's caret to its start, which
+// CodeMirror undoes only within 200 ms, so a busy renderer loses the
+// selection. The view's own focus writes the selection to the page first.
+const focusEditor = (rich) =>
+  rich.evaluate((element) => element.cmTile.root.view.focus())
+
 async function measureFindLayout(rich) {
   await rich.evaluate(
     (element) =>
@@ -604,7 +610,7 @@ test('formatted dense find counts every match, bounds highlights, and preserves 
   assert.equal(await selected.count(), 1)
   // Accepted difference: undo restores the selected match, so it stays the
   // current one, as in source view. The rich editor leaves a caret after it.
-  await rich.evaluate((element) => element.focus())
+  await focusEditor(rich)
   await page.keyboard.insertText('pin')
   await count('0/9999')
   await pressShortcut(app, `${mod}+z`)
@@ -1256,7 +1262,7 @@ test('formatted find rescans edited source once and native history leaves naviga
 }, async (t) => {
   const { app, page, rich, input, count, dense, workers, initial } =
     await countedDenseFind(t)
-  await rich.focus()
+  await focusEditor(rich)
   await page.keyboard.insertText('pin')
   await count('0/9999')
   await waitForAsync(
