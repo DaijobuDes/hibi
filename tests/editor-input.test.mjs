@@ -1014,7 +1014,8 @@ test('multi-line text input in the visual editor makes the browser edit in one s
           ['a', 'b'],
           ['c', 'one\ntwo'],
         ],
-        'into a table': [['d']],
+        // The range removes the header row; the table keeps the empty one its source has.
+        'into a table': [[''], ['d']],
       }[what]
       assert.deepEqual(
         modelCells(browser.doc),
@@ -1048,10 +1049,9 @@ test('multi-line text input in the visual editor makes the browser edit in one s
         reloaded,
         what + ' native redo model equals a fresh source load',
       )
-      // The native range removes the empty header; source loading supplies it again.
       assert.deepEqual(
         modelCells(reloaded),
-        what === 'into a table' ? [[''], ['d']] : expected,
+        expected,
         what + ' native reload cell text and counts',
       )
       const styles = (node) => {
