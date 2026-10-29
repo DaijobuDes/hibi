@@ -816,6 +816,15 @@ class TableView {
     return { line, column: 0, offset: 'end' }
   }
 
+  /** Whether the last row has no closing pipe, so the table ends in its last cell's text. */
+  endsInCell() {
+    // A table of only a header ends in its delimiter row.
+    if (!this.current || this.lines < 3) return false
+    const { text } = this.widget.line(this.lines - 1)
+    const row = this.widget.row(this.lines - 1)
+    return cellSpan(row, row.cells.length - 1, text.length)?.closed === false
+  }
+
   /** A cell's text between its delimiters now; null while stale or its row ends before it. */
   private span({ line, column }: Cell) {
     if (!this.current) return null
@@ -2205,11 +2214,19 @@ class TableView {
   }
 }
 
-/** The mounted table containing a position of the formatted view's document. */
+/**
+ * The mounted table containing a position of the formatted view's document.
+ * `strict` leaves out its edges, apart from an end in its last cell's text.
+ */
 function tableAt(view: EditorView, pos: number, strict = false) {
   for (const table of mounted.get(view) ?? []) {
     const { from, to } = table.range()
-    if (strict ? pos > from && pos < to : pos >= from && pos <= to) return table
+    if (
+      strict
+        ? pos > from && (pos < to || (pos === to && table.endsInCell()))
+        : pos >= from && pos <= to
+    )
+      return table
   }
   return null
 }
