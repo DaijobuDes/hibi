@@ -1734,6 +1734,29 @@ test('a native selection in a read-only table becomes the editing selection', {
   assert.equal((await state()).doc, doc)
 })
 
+test('a read-only pick outlasts a view update before its selection change', {
+  timeout: 30000,
+}, async () => {
+  const doc = 'before\n\n| h | other |\n| - | - |\n| alpha | beta |\n\nafter'
+  await mount(doc)
+  await harness.evaluate(() => window.tables.setEditable(false))
+  await harness.locator('.hibi-lp-table td', { hasText: 'alpha' }).click()
+  await harness.evaluate(() => {
+    const cell = [...document.querySelectorAll('.hibi-lp-table td p')].find(
+      (paragraph) => paragraph.textContent === 'alpha',
+    )
+    const text = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT)
+    text.nextNode()
+    getSelection().setBaseAndExtent(text.currentNode, 1, text.currentNode, 4)
+    // As from a parse slice, before the page reports the selection change.
+    window.tables.view().dispatch({})
+  })
+  await harness.evaluate(() => window.tables.settle())
+  const from = doc.indexOf('alpha')
+  const picked = await state()
+  assert.deepEqual([picked.anchor, picked.head], [from + 1, from + 4])
+})
+
 test('a read-only cell pick maps hidden marks, escaped pipes and quote prefixes', {
   timeout: 30000,
 }, async () => {
