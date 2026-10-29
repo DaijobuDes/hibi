@@ -710,6 +710,18 @@ export class CellEditor {
           Prec.highest(
             keymap.of([
               { key: 'Tab', run: move('next'), shift: move('previous') },
+              // As in the rich editor, select all takes the whole note.
+              {
+                key: 'Mod-a',
+                run: () => {
+                  host.main.focus()
+                  host.main.dispatch({
+                    selection: { anchor: 0, head: host.main.state.doc.length },
+                    userEvent: 'select.all',
+                  })
+                  return true
+                },
+              },
               {
                 key: 'Home',
                 run: edge(false, false),
