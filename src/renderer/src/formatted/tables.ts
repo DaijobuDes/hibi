@@ -1,6 +1,7 @@
 import { isolateHistory } from '@codemirror/commands'
 import {
   type ChangeDesc,
+  EditorSelection,
   EditorState,
   MapMode,
   Prec,
@@ -46,6 +47,10 @@ import {
 } from '../native-dom-selection.ts'
 import { type InsertValues, tableActions } from '../source-formatting.ts'
 import { inlineInput, typedLiteral } from '../source-formatting-actions.ts'
+import {
+  sourceHistoryEffects,
+  sourceHistorySelection,
+} from '../source-session.ts'
 import {
   readTableLayouts,
   storedTableLayouts,
@@ -2464,6 +2469,22 @@ const pickedTable = StateField.define<boolean>({
         tr.annotation(Transaction.userEvent) === 'select')
     )
   },
+  // History restores a picked text range as a caret at its upper end.
+  provide: (field) =>
+    sourceHistoryEffects.of((state) => {
+      const { main, ranges } = state.selection
+      if (!state.field(field) || main.empty || ranges.length !== 1) return []
+      const { tabId, revision } = state.facet(formattedDocument)
+      return [
+        clearTablePick.of(null),
+        sourceHistorySelection.of((current, selection) => {
+          const owner = current.facet(formattedDocument)
+          return owner.tabId === tabId && owner.revision === revision
+            ? EditorSelection.single(selection.main.to)
+            : selection
+        }),
+      ]
+    }),
 })
 
 /**
