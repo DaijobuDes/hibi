@@ -754,7 +754,12 @@ export const storedMarkInput = [
       from = to = view.state.selection.main.head
     }
     const tree = formattedSyntaxTree(view.state)
-    if (tree && !view.composing && !view.compositionStarted) {
+    if (
+      tree &&
+      !view.composing &&
+      !view.compositionStarted &&
+      (from !== to || !stored)
+    ) {
       const spec = inlineInput(view.state, tree, from, to, text)
       if (spec) {
         view.dispatch(spec)

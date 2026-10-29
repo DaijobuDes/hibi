@@ -62,7 +62,7 @@ import { cellFixes, type InlineMark, planInline } from './table-source.ts'
 
 /** Lezer Markdown for cell text: the formatted view's inline syntax and no blocks. */
 const cellParsers = new WeakMap<readonly MarkdownConfig[], MarkdownParser>()
-function cellParser(state: EditorState) {
+export function cellParser(state: EditorState) {
   const contributed = state.facet(formattedMarkdown)
   let found = cellParsers.get(contributed)
   if (!found) {
