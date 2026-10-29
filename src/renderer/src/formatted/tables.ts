@@ -1,6 +1,7 @@
 import { isolateHistory } from '@codemirror/commands'
 import {
   type ChangeDesc,
+  EditorSelection,
   EditorState,
   MapMode,
   Prec,
@@ -20,10 +21,12 @@ import {
 } from '@codemirror/view'
 import { type MarkdownConfig, Table } from '@lezer/markdown'
 import { customBody } from '../../../shared/formatted-custom-body.ts'
+import { markdownLiteral } from '../../../shared/markdown-literal.ts'
 import {
   type TableLayout,
   tableSizeChanges,
 } from '../../../shared/table-layout.ts'
+import { lineInput } from '../formatted-commands.ts'
 import {
   type FormattedContribution,
   type FormattedNodeView,
@@ -32,12 +35,27 @@ import {
   formattedFollowLink,
   formattedLiteral,
   formattedMarkdown,
+  formattedRefresh,
   formattedRenderInputs,
   formattedSyntaxTree,
   formattedViews,
 } from '../formatted-contributions.ts'
-import { registerDOMPositions } from '../native-dom-selection.ts'
-import { tableActions } from '../source-formatting.ts'
+import { blockAt } from '../formatted-toolbar-state.ts'
+import {
+  readDOMPosition,
+  registerDOMPositions,
+} from '../native-dom-selection.ts'
+import { type InsertValues, tableActions } from '../source-formatting.ts'
+import {
+  formattedInputError,
+  inlineInput,
+  rejectedInput,
+  typedLiteral,
+} from '../source-formatting-actions.ts'
+import {
+  sourceHistoryEffects,
+  sourceHistorySelection,
+} from '../source-session.ts'
 import {
   readTableLayouts,
   storedTableLayouts,
@@ -51,6 +69,7 @@ import {
   type CellMove,
   cellInput,
   cellLineBreak,
+  cellParser,
   markStarts,
   padding,
   renderInline,
@@ -60,6 +79,7 @@ import {
 import {
   alignments,
   cellContent,
+  cellFixes,
   cellSpan,
   countTables,
   deleteColumn,
@@ -331,6 +351,20 @@ type Rendered = { element: HTMLTableRowElement; text: string }
 type Cell = { line: number; column: number }
 /** Where an edited row was when a change deleted it, in the document now, and the edited column. */
 type Lost = { at: number; column: number }
+
+/** Chromium's unhandled table input counts each native block break once again in its caret. */
+function nativeTableTail(text: string) {
+  const normalized = text.replace(/\r\n?/g, '\n')
+  let at = normalized.length - (normalized.match(/\n/g)?.length ?? 0)
+  // Chromium puts a caret that falls inside a surrogate pair after that scalar.
+  if (
+    at > 0 &&
+    /[\uD800-\uDBFF]/.test(normalized.charAt(at - 1)) &&
+    /[\uDC00-\uDFFF]/.test(normalized.charAt(at))
+  )
+    at++
+  return normalized.slice(at)
+}
 
 /** The DOM of one table widget: header, then all rows or the window of rows in view, and the cell being edited. */
 class TableView {
@@ -748,6 +782,7 @@ class TableView {
 
   /** Where the table is now: the range its widget replaces. */
   range() {
+    if (this.current) return { from: this.widget.from, to: this.widget.to }
     const from = this.view.posAtDOM(this.dom)
     return { from, to: from + this.widget.to - this.widget.from }
   }
@@ -877,6 +912,210 @@ class TableView {
     )
   }
 
+  /** Edit one cell's inline source without normalizing its table's padding. */
+  private inline(source: string, from: number, to: number, text: string) {
+    const state = this.view.state
+    const selected = EditorState.create({
+      doc: source,
+      selection: { anchor: from, head: to },
+      extensions: state
+        .facet(formattedLiteral)
+        .map((name) => formattedLiteral.of(name)),
+    })
+    const edit = selected.update(
+      inlineInput(selected, cellParser(state).parse(source), from, to, text) ??
+        selected.replaceSelection(typedLiteral(selected, text)),
+    )
+    const fixed = edit.state.update({
+      changes: cellFixes(edit.newDoc.toString(), true),
+    })
+    return {
+      source: fixed.newDoc.toString(),
+      head: fixed.changes.mapPos(edit.newSelection.main.head),
+    }
+  }
+
+  /** A genuine text pick keeps balanced inline fragments at the cells it crosses. */
+  private textInput(
+    from: number,
+    to: number,
+    text: string,
+  ): TransactionSpec | null {
+    const { state } = this.view
+    const tree = formattedSyntaxTree(state)
+    if (!tree || /[\r\n]/.test(text)) return null
+    const range = this.range()
+    const last = this.locate(to)
+    if (!last) return null
+    const changes: { from: number; to: number; insert: string }[] = []
+    if (from >= range.from) {
+      const first = this.locate(from)
+      if (!first || first.line !== last.line || first.column === last.column)
+        return null
+      const line = this.widget.line(first.line)
+      const row = this.widget.row(first.line)
+      const a = row.cells[first.column],
+        b = row.cells[last.column]
+      if (!a || !b) return null
+      const start = this.now(line.from + a.from)
+      const before = state.sliceDoc(start, this.now(line.from + a.to))
+      const end = this.now(line.from + b.to)
+      const after = state.sliceDoc(this.now(line.from + b.from), end)
+      const prefix = this.inline(before, from - start, before.length, '').source
+      const suffix = this.inline(after, 0, to - (end - after.length), '').source
+      const selected = this.inline(before, 0, from - start, '').source
+      const inserted = this.inline(selected, 0, selected.length, text)
+      const fragments = [prefix, inserted.source, suffix]
+      changes.push({ from: start, to: end, insert: fragments.join(' | ') })
+      const counts = Array.from(
+        { length: this.lines - 1 },
+        (_, row) => this.widget.row(row ? row + 1 : 0).cells.length,
+      )
+      counts[first.line ? first.line - 1 : 0] =
+        row.cells.length - (last.column - first.column + 1) + fragments.length
+      const width = counts.reduce((width, count) => Math.max(width, count), 0)
+      const short = counts.flatMap((count, row) => (count < width ? [row] : []))
+      const pad = (index: number, count: number, before: boolean) => {
+        const line = this.widget.line(index)
+        const row = this.widget.row(index)
+        const span = cellSpan(
+          row,
+          before ? 0 : row.cells.length - 1,
+          line.text.length,
+        )
+        if (!span) return
+        const at = this.now(line.from + (before ? span.from : span.to))
+        changes.push({
+          from: at,
+          to: at,
+          insert: (before
+            ? ` ${index === 1 ? '---' : ' '} |`
+            : `| ${index === 1 ? '---' : ' '} `
+          ).repeat(count),
+        })
+      }
+      // The native table repair fills the short rows at their open edge.
+      for (const row of short) {
+        const before =
+          (row === 0 || short[0] === row - 1) && short.at(-1) === row
+        pad(row ? row + 1 : 0, width - counts[row]!, before)
+        if (row === 0) pad(1, width - counts[row]!, before)
+      }
+      const set = state.changes(changes)
+      return {
+        changes: set,
+        // The caret follows the typed text.
+        selection: {
+          anchor: set.mapPos(start, -1) + prefix.length + 3 + inserted.head,
+        },
+        annotations: isolateHistory.of('full'),
+        userEvent: 'input.type',
+        scrollIntoView: true,
+      }
+    }
+    return null
+  }
+
+  /** Native table input stays in its cells; a range entering a table keeps its structure. */
+  input(from: number, to: number, text: string): TransactionSpec | null {
+    if (!this.current || from === to || !writable(this.view.state)) return null
+    const range = this.range()
+    if (to <= range.from || to > range.to) return null
+    const { state } = this.view
+    const picked = !!state.field(pickedTable, false)
+    if (picked) {
+      const edit = this.textInput(from, to, text)
+      if (edit) return edit
+    }
+    if (from >= range.from) {
+      const anchor = this.locate(state.selection.main.anchor)
+      const head = this.locate(state.selection.main.head)
+      if (
+        !anchor ||
+        !head ||
+        (anchor.line === head.line && anchor.column === head.column)
+      )
+        return null
+      const line = this.widget.line(head.line)
+      const content = this.widget.row(head.line).cells[head.column]
+      if (!content) return null
+      const start = this.now(line.from + content.from)
+      const insert = markdownLiteral(text)
+        .replace(/\r\n?|\n/g, '<br>')
+        .replace(/\|/g, '\\|')
+      const caret =
+        insert.length -
+        markdownLiteral(nativeTableTail(text))
+          .replace(/\n/g, '<br>')
+          .replace(/\|/g, '\\|').length
+      return {
+        changes: { from: start, to: this.now(line.from + content.to), insert },
+        selection: { anchor: start + caret },
+        userEvent: 'input.type',
+        scrollIntoView: true,
+      }
+    }
+    const tree = formattedSyntaxTree(state)
+    if (!tree) return null
+    let end = range.from
+    while (end > from && /\s/.test(state.sliceDoc(end - 1, end))) end--
+    const block = picked
+      ? blockAt(tree, from, state.facet(formattedLiteral)).node
+      : null
+    const balanced =
+      picked &&
+      !/[\r\n]/.test(text) &&
+      block?.name === 'Paragraph' &&
+      block.parent?.name === 'Document' &&
+      !this.widget.inline &&
+      block.nextSibling?.name === 'Table' &&
+      state.doc.lineAt(block.nextSibling.from).from === range.from
+    const part = balanced ? block.to : end
+    const selected = state.update({
+      selection: { anchor: from, head: part },
+    }).state
+    const spec = /[\r\n]/.test(text)
+      ? lineInput(selected, tree, from, part, text)
+      : ((balanced ? inlineInput(selected, tree, from, part, text) : null) ?? {
+          ...selected.replaceSelection(markdownLiteral(text)),
+          userEvent: 'input.type',
+        })
+    if (!spec) return null
+    const transaction = selected.update(spec)
+    const cleared: { from: number; to: number; insert: string }[] = []
+    if (part < end) cleared.push({ from: part, to: end, insert: '' })
+    const target = this.locate(to)
+    if (!target) return null
+    for (let index = 0; index <= target.line; index++) {
+      if (index === 1) continue
+      const line = this.widget.line(index)
+      for (const content of this.widget.row(index).cells) {
+        const start = this.now(line.from + content.from)
+        const stop = Math.min(to, this.now(line.from + content.to))
+        if (start < stop) {
+          const source = state.sliceDoc(start, this.now(line.from + content.to))
+          cleared.push({
+            from: start,
+            to: balanced ? start + source.length : stop,
+            insert:
+              balanced && stop < start + source.length
+                ? this.inline(source, 0, stop - start, '').source
+                : '',
+          })
+        }
+      }
+    }
+    const changes = transaction.changes
+    const after = markdownLiteral(nativeTableTail(text)).replace(/\n/g, '\n\n')
+    return {
+      changes: changes.compose(state.changes(cleared).map(changes)),
+      ...(balanced ? { annotations: isolateHistory.of('full') } : {}),
+      selection: { anchor: transaction.newSelection.main.head - after.length },
+      userEvent: 'input.type',
+      scrollIntoView: true,
+    }
+  }
+
   /** Render a window of rows around row `index`, for editing it. */
   private reveal(index: number) {
     const from = Math.max(0, index - 10)
@@ -900,7 +1139,18 @@ class TableView {
         return true
       },
       blurred: (editor) => {
-        if (this.editing?.editor === editor) this.stopEditing()
+        // A native pick sets focus before selectionchange. Read its completed
+        // range in this event turn, while the cell endpoint still exists.
+        const source = this.view.state.doc
+        queueMicrotask(() => {
+          if (this.editing?.editor !== editor || editor.view.hasFocus) return
+          if (
+            this.view.state.doc === source &&
+            this.view.plugin(tableEditing)?.pick()
+          )
+            return
+          this.stopEditing()
+        })
       },
     }
   }
@@ -1259,6 +1509,11 @@ class TableView {
     return this.editing?.editor.view.hasFocus ?? false
   }
 
+  /** The pending formatting of the cell that owns the current selection. */
+  formattingState(id: string) {
+    return this.editing?.editor.formatting.state(id) ?? null
+  }
+
   /** Let the cell editor take input as the formatted view does. */
   reconfigure() {
     this.editing?.editor.reconfigure(this.view.state)
@@ -1333,11 +1588,28 @@ class TableView {
   }
 
   /** Run a toolbar table action on the edited cell, or on the cell at the selection. */
-  run(id: string): boolean {
+  run(id: string, values?: InsertValues): boolean {
     if (!this.current || !writable(this.view.state)) return false
     const cell =
       this.editing ?? this.locate(this.view.state.selection.main.head)
     if (!cell) return false
+    if (
+      [
+        'bold',
+        'italic',
+        'strike',
+        'subscript',
+        'inline-code',
+        'link',
+        'unlink',
+      ].includes(id)
+    ) {
+      const { anchor, head } = this.view.state.selection.main
+      if (!this.editing && !this.editAt(anchor, head)) return false
+      const done = this.editing?.editor.formatting.run(id, values) ?? false
+      this.view.dispatch({ effects: formattedRefresh.of(null) })
+      return done
+    }
     if (id === 'hard-break') {
       // A cell's line break is `<br>`, typed in the cell's editor.
       const { anchor, head } = this.view.state.selection.main
@@ -1807,8 +2079,14 @@ class TableView {
 
   /** A native point in rendered cell text, where its source is now. */
   private position(node: Node, offset: number): number | null {
-    if (!this.current || this.editing?.editor.view.dom.contains(node))
-      return null
+    if (!this.current) return null
+    const editing = this.editing
+    if (editing?.editor.view.contentDOM.contains(node)) {
+      const span = this.span(editing)
+      return span
+        ? span.from + editing.editor.view.posAtDOM(node, offset)
+        : null
+    }
     if (node.nodeType !== Node.TEXT_NODE) {
       const child = node.childNodes[offset] ?? node.childNodes[offset - 1]
       if (!child) return null
@@ -1833,6 +2111,36 @@ class TableView {
     const cell = node.parentElement?.closest('th, td')
     if (at === null || !cell || !this.table.contains(cell)) return null
     return this.cellPosition(cell, at)
+  }
+
+  /** A source endpoint in the static cell after its editor gives up a cross-cell pick. */
+  point(at: number): { node: Node; offset: number } | null {
+    const cell = this.locate(at)
+    if (!cell) return null
+    const row = cell.line
+      ? this.rendered.get(cell.line - 2)?.element
+      : this.head
+    const element = row?.cells[cell.column]
+    if (!element) return null
+    const walker = this.dom.ownerDocument.createTreeWalker(
+      element,
+      NodeFilter.SHOW_TEXT,
+    )
+    while (walker.nextNode()) {
+      const node = walker.currentNode
+      const start = this.position(node, 0),
+        end = this.position(node, node.textContent?.length ?? 0)
+      if (start === null || end === null || at < start || at > end) continue
+      let low = 0,
+        high = node.textContent?.length ?? 0
+      while (low < high) {
+        const middle = (low + high) >>> 1
+        if ((this.position(node, middle) ?? end) < at) low = middle + 1
+        else high = middle
+      }
+      return { node, offset: low }
+    }
+    return { node: element.firstElementChild ?? element, offset: 0 }
   }
 
   /** A rendered cell offset, including escaped pipes and hidden inline syntax. */
@@ -1932,6 +2240,11 @@ function overTable(event: InputStart, view: EditorView) {
   }
   return false
 }
+
+/** Native picks take the same input as selections across a table's edge. */
+const tableInput = (event: InputStart, view: EditorView) =>
+  takesInput(event, view) &&
+  (view.state.field(pickedTable) || overTable(event, view))
 
 /** Types text over the selection through the view's input handlers, then the default insert. */
 function type(view: EditorView, text: string) {
@@ -2131,6 +2444,44 @@ const endCompositions = new WeakMap<
   { doc: Text; from: number; to: number; before: string }
 >()
 
+const clearTablePick = StateEffect.define<null>()
+// Releasing DOM ownership, including for readonly, keeps the logical source
+// selection until a new intent replaces it; widget-bound echoes cannot do so.
+const pickedTable = StateField.define<boolean>({
+  create: () => false,
+  update(picked, tr) {
+    if (tr.effects.some((effect) => effect.is(clearTablePick))) return false
+    if (tr.docChanged)
+      return (
+        picked && tr.isUserEvent('input.format') && !tr.newSelection.main.empty
+      )
+    if (tr.annotation(cellInput) && tr.isUserEvent('select.pointer'))
+      return true
+    return (
+      picked &&
+      (!tr.selection ||
+        !!tr.annotation(cellInput) ||
+        tr.annotation(Transaction.userEvent) === 'select')
+    )
+  },
+  // History restores a picked text range as a caret at its upper end.
+  provide: (field) =>
+    sourceHistoryEffects.of((state) => {
+      const { main, ranges } = state.selection
+      if (!state.field(field) || main.empty || ranges.length !== 1) return []
+      const { tabId, revision } = state.facet(formattedDocument)
+      return [
+        clearTablePick.of(null),
+        sourceHistorySelection.of((current, selection) => {
+          const owner = current.facet(formattedDocument)
+          return owner.tabId === tabId && owner.revision === revision
+            ? EditorSelection.single(selection.main.to)
+            : selection
+        }),
+      ]
+    }),
+})
+
 /**
  * Tables follow scrolling with their row windows, and a collapsed
  * selection that lands inside a table, as after undo or find, edits the
@@ -2141,10 +2492,187 @@ const tableEditing = ViewPlugin.fromClass(
     readonly view: EditorView
     /** Focused cell editors that follow their tables' changes once tables redraw. */
     private following: { table: TableView; lost: Lost | null }[] = []
+    private picked = false
+    private editable = new Set<HTMLElement>()
     constructor(view: EditorView) {
       this.view = view
+      view.dom.ownerDocument.addEventListener(
+        'selectionchange',
+        this.pick,
+        true,
+      )
+      view.dom.addEventListener('focus', this.pick, true)
+      view.dom.addEventListener('focusout', this.intent, true)
+      view.dom.ownerDocument.addEventListener('pointerdown', this.intent, true)
+      view.dom.ownerDocument.defaultView?.addEventListener('blur', this.intent)
+    }
+    private releasePick() {
+      this.picked = false
+      for (const dom of this.editable) dom.contentEditable = 'false'
+      this.editable.clear()
+    }
+    private intent = (event: Event) => {
+      const { view } = this
+      if (
+        event.type === 'pointerdown' &&
+        event.target instanceof Node &&
+        view.dom.contains(event.target) &&
+        view.state.field(pickedTable)
+      ) {
+        this.releasePick()
+        view.dispatch({ effects: clearTablePick.of(null) })
+        return
+      }
+      if (!this.picked) return
+      if (
+        event instanceof FocusEvent &&
+        event.relatedTarget instanceof Node &&
+        view.dom.contains(event.relatedTarget)
+      )
+        return
+      const source = view.state.doc
+      const focusout = event.type === 'focusout'
+      queueMicrotask(() => {
+        if (
+          view.state.doc !== source ||
+          (focusout &&
+            view.dom.ownerDocument.hasFocus() &&
+            view.dom.contains(view.dom.ownerDocument.activeElement))
+        )
+          return
+        this.releasePick()
+      })
+    }
+    pick = (event?: Event): true | undefined => {
+      const { view } = this
+      if (
+        !writable(view.state) ||
+        view.composing ||
+        view.compositionStarted ||
+        !view.dom.ownerDocument.hasFocus()
+      )
+        return
+      const active = view.dom.ownerDocument.activeElement
+      if (active !== view.dom.ownerDocument.body && !view.dom.contains(active))
+        return
+      const selection = view.dom.ownerDocument.getSelection()
+      if (
+        !selection?.anchorNode ||
+        !selection.focusNode ||
+        selection.isCollapsed
+      )
+        return
+      const cell = (node: Node) =>
+        (node instanceof Element ? node : node.parentElement)?.closest('td, th')
+      const anchorCell = cell(selection.anchorNode),
+        headCell = cell(selection.focusNode)
+      if (anchorCell === headCell || !(anchorCell || headCell)) return
+      const anchor = readDOMPosition(
+        view,
+        selection.anchorNode,
+        selection.anchorOffset,
+      )
+      const head = readDOMPosition(
+        view,
+        selection.focusNode,
+        selection.focusOffset,
+      )
+      if (!anchor || !head || !(anchor.mapped || head.mapped)) return
+      const a = selection.anchorNode,
+        h = selection.focusNode
+      // Cross-cell picks belong to the document. Removing the nested editing
+      // host lets Chromium include both endpoints in the same native range.
+      for (const table of mounted.get(view) ?? []) {
+        const editor = table.dom.querySelector('.hibi-lp-cell-editor')
+        if (!editor) continue
+        const left = editor.contains(a),
+          right = editor.contains(h)
+        if (!left && !right) continue
+        table.stopEditing()
+      }
+      if (event?.type === 'selectionchange') event.stopImmediatePropagation()
+      this.picked = true
+      const current = view.state.selection.main
+      if (
+        !view.state.field(pickedTable) ||
+        current.anchor !== anchor.at ||
+        current.head !== head.at
+      )
+        view.dispatch({
+          selection: { anchor: anchor.at, head: head.at },
+          annotations: cellInput.of(true),
+          userEvent: 'select.pointer',
+        })
+      if (!view.hasFocus) view.focus()
+      this.restorePick()
+      return true
+    }
+    private restorePick = () => {
+      if (!this.picked) return
+      const { view } = this
+      if (
+        !view.state.field(pickedTable) ||
+        !writable(view.state) ||
+        !view.hasFocus
+      ) {
+        this.releasePick()
+        return
+      }
+      const point = (at: number) => {
+        const table = tableAt(view, at, true)
+        return table ? table.point(at) : view.domAtPos(at)
+      }
+      const range = view.state.selection.main
+      const anchor = point(range.anchor),
+        head = point(range.head)
+      if (
+        !anchor ||
+        !head ||
+        !anchor.node.isConnected ||
+        !head.node.isConnected
+      )
+        return
+      for (const dom of this.editable)
+        if (dom.contains(anchor.node) === dom.contains(head.node)) {
+          dom.contentEditable = 'false'
+          this.editable.delete(dom)
+        }
+      // Across a widget edge both endpoints must share the document's host.
+      for (const table of mounted.get(view) ?? [])
+        if (
+          table.dom.contains(anchor.node) !== table.dom.contains(head.node) &&
+          !this.editable.has(table.dom)
+        ) {
+          table.dom.contentEditable = 'inherit'
+          this.editable.add(table.dom)
+        }
+      view.dom.ownerDocument
+        .getSelection()
+        ?.setBaseAndExtent(anchor.node, anchor.offset, head.node, head.offset)
+    }
+    destroy() {
+      this.releasePick()
+      this.view.dom.ownerDocument.removeEventListener(
+        'selectionchange',
+        this.pick,
+        true,
+      )
+      this.view.dom.removeEventListener('focus', this.pick, true)
+      this.view.dom.removeEventListener('focusout', this.intent, true)
+      this.view.dom.ownerDocument.removeEventListener(
+        'pointerdown',
+        this.intent,
+        true,
+      )
+      this.view.dom.ownerDocument.defaultView?.removeEventListener(
+        'blur',
+        this.intent,
+      )
     }
     update(update: ViewUpdate) {
+      if (update.docChanged && update.state.field(pickedTable))
+        this.picked = true
+      if (this.picked) queueMicrotask(this.restorePick)
       const tables = mounted.get(this.view) ?? []
       // Undo and keyboard navigation move a focused cell editor; ignore
       // DOM selection echoes from the unfocused formatted view.
@@ -2285,6 +2813,34 @@ export const contribution: FormattedContribution = {
     { key: 'ArrowLeft', run: (view) => enterTable(view, 'left') },
   ],
   extension: [
+    pickedTable,
+    // CodeMirror reads a block widget as its bounds. A native pick already
+    // resolved those bounds to cell text; its DOM echo must keep that range.
+    EditorState.transactionFilter.of((tr) =>
+      tr.startState.field(pickedTable) &&
+      tr.selection &&
+      !tr.docChanged &&
+      tr.annotation(Transaction.userEvent) === 'select' &&
+      !tr.scrollIntoView &&
+      !tr.annotation(cellInput)
+        ? []
+        : tr,
+    ),
+    EditorView.domEventObservers({
+      mousedown(_event, view) {
+        if (view.state.field(pickedTable))
+          view.dispatch({ effects: clearTablePick.of(null) })
+      },
+      keydown(event, view) {
+        if (
+          view.state.field(pickedTable) &&
+          /^(ArrowLeft|ArrowRight|ArrowUp|ArrowDown|Home|End|PageUp|PageDown|Escape|Tab)$/.test(
+            event.key,
+          )
+        )
+          view.dispatch({ effects: clearTablePick.of(null) })
+      },
+    }),
     tableEditing,
     // Chromium drops typing and compositions over a selection that covers a
     // table widget or starts or ends inside one.
@@ -2386,7 +2942,7 @@ export const contribution: FormattedContribution = {
             !event.metaKey &&
             !(event.ctrlKey && !event.altKey) &&
             [...event.key].length === 1 &&
-            overTable(event, view) &&
+            tableInput(event, view) &&
             type(view, event.key)
           )
         },
@@ -2396,12 +2952,40 @@ export const contribution: FormattedContribution = {
           if (event.inputType !== 'insertText' || !event.data) return false
           if (belowTable(event, view))
             view.dispatch(paragraphBelow(view), { userEvent: 'input.type' })
-          else if (!overTable(event, view)) return false
-          return type(view, event.data)
+          else if (!tableInput(event, view)) return false
+          event.preventDefault()
+          type(view, event.data)
+          view.contentDOM.dispatchEvent(
+            new InputEvent('input', {
+              inputType: event.inputType,
+              data: event.data,
+              bubbles: true,
+            }),
+          )
+          return true
         },
       }),
     ),
-    EditorView.inputHandler.of((view) => {
+    EditorView.inputHandler.of((view, from, to, text) => {
+      if (
+        text &&
+        !view.composing &&
+        (/[\r\n]/.test(text) || view.state.field(pickedTable))
+      ) {
+        let edit: TransactionSpec | null | undefined
+        try {
+          edit = tableAt(view, to)?.input(from, to, text)
+        } catch (error) {
+          if (!(error instanceof Error) || error.cause !== formattedInputError)
+            throw error
+          view.dispatch({ annotations: rejectedInput.of(error) })
+          return true
+        }
+        if (edit) {
+          view.dispatch(edit)
+          return true
+        }
+      }
       // Mapped widget bounds are current even when its snapshot's length is old.
       const { node, offset } = view.domAtPos(view.state.selection.main.head)
       for (const table of mounted.get(view) ?? [])
@@ -2415,8 +2999,11 @@ export const contribution: FormattedContribution = {
     }),
     tableActions.of({
       active: (view) => !!tableAt(view, view.state.selection.main.head),
-      run: (view, id) =>
-        tableAt(view, view.state.selection.main.head)?.run(id) ?? false,
+      run: (view, id, values) =>
+        tableAt(view, view.state.selection.main.head)?.run(id, values) ?? false,
+      state: (view, id) =>
+        tableAt(view, view.state.selection.main.head)?.formattingState(id) ??
+        null,
     }),
   ],
 }

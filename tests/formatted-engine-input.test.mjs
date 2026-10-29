@@ -59,6 +59,8 @@ for (const engine of ['tiptap', 'codemirror']) {
       })
     await rich.focus()
     await settleSelection()
+    // Certify the initial source before the first native replacement.
+    await page.evaluate(() => window.hibi.flushDocumentChanges())
     await replaceRichText(page, rich, 'before chosen after 😀')
     await saved('before chosen after 😀')
     await settleSelection()

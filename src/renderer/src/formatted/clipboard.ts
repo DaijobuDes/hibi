@@ -2,6 +2,7 @@ import { Annotation, EditorSelection } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import DOMPurify from 'dompurify'
 import { renderedHtmlOptions } from '../../../shared/rendered-html.ts'
+import { captureCopiedHtml } from '../clipboard-source.ts'
 import { documentRuntime } from '../document-runtime'
 import {
   type FormattedContribution,
@@ -77,10 +78,11 @@ function paste(event: ClipboardEvent, view: EditorView) {
   event.preventDefault()
   // The clipboard is only readable during the event.
   const text = data?.getData('text/plain') ?? ''
+  const snapshot = captureCopiedHtml(html, text)
   const pending = { view, selection: view.state.selection }
   pastes.add(pending)
   void import('../html-markdown')
-    .then(({ htmlToMarkdown }) => htmlToMarkdown(html, text))
+    .then(({ htmlToMarkdown }) => htmlToMarkdown(html, text, snapshot))
     .catch((error: unknown) => {
       console.error('Pasted HTML could not be converted:', error)
       return ''

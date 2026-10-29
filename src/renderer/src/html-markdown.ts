@@ -11,6 +11,7 @@ import {
   markdownLiteral as literal,
 } from '../../shared/markdown-literal.ts'
 import { renderedHtmlOptions } from '../../shared/rendered-html.ts'
+import { isCopiedHtml } from './clipboard-source.ts'
 
 const blocks = new Set([
   'ADDRESS',
@@ -350,11 +351,16 @@ function parseSelection(html: string) {
 }
 
 /** Markdown for pasted HTML. */
-export function htmlToMarkdown(html: string, original?: string) {
+export function htmlToMarkdown(
+  html: string,
+  original?: string,
+  snapshot?: object,
+) {
   const document = parseSelection(html)
   if (
     original !== undefined &&
-    document.body.firstElementChild?.hasAttribute('data-hibi-markdown')
+    document.body.firstElementChild?.hasAttribute('data-hibi-markdown') &&
+    isCopiedHtml(html, original, snapshot)
   )
     return original
   DOMPurify.sanitize(document.body, { ...renderedHtmlOptions, IN_PLACE: true })

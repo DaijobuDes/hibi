@@ -6494,7 +6494,8 @@
     "src/main/addon-documentation.ts"
   ],
   "4396b1d0a374": [
-    "src/renderer/src/Editor.tsx"
+    "src/renderer/src/Editor.tsx",
+    "src/renderer/src/source-formatting-actions.ts"
   ],
   "9683e4c7c182": [
     "src/renderer/src/Editor.tsx"

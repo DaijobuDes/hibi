@@ -74,7 +74,7 @@ const containers = [
 ]
 
 /** The text of inline formatting, between its opening and closing syntax. */
-function formattingText(state: EditorState, node: SyntaxNode) {
+export function formattingText(state: EditorState, node: SyntaxNode) {
   // A bare web address is all text.
   if (node.name === 'URL') return { from: node.from, to: node.to }
   const first = node.firstChild
@@ -157,7 +157,7 @@ function blockOf(node: SyntaxNode | null, literal: readonly string[]): Block {
  * The block at `pos`, looking first to the side `side`; a line between
  * blocks takes a paragraph.
  */
-function blockAt(
+export function blockAt(
   tree: Tree,
   pos: number,
   literal: readonly string[],
@@ -170,7 +170,7 @@ function blockAt(
 }
 
 /** Where a text block's text starts, after its own markers. */
-function textStart(state: EditorState, block: SyntaxNode) {
+export function textStart(state: EditorState, block: SyntaxNode) {
   let at = block.from
   for (
     let child = block.firstChild;
@@ -183,7 +183,7 @@ function textStart(state: EditorState, block: SyntaxNode) {
   return at
 }
 
-function textEnd(block: SyntaxNode) {
+export function textEnd(block: SyntaxNode) {
   const last = block.lastChild
   return block.name === 'FencedCode' && last?.name === 'CodeMark'
     ? Math.max(block.from, last.from - 1)

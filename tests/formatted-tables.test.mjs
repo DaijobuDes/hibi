@@ -10,7 +10,7 @@ import { bundledColorschemes } from '../src/shared/color-palettes.ts'
 import { COLOR_TOKENS } from '../src/shared/colorschemes.ts'
 import { electron, waitForDocumentEditor } from './electron.mjs'
 import { selectFormattedEngine } from './formatted-engine.mjs'
-import { pressShortcut } from './keyboard.mjs'
+import { clickMenu, pressShortcut } from './keyboard.mjs'
 import { waitForAsync } from './poll.mjs'
 
 const wide = Array.from({ length: 30 }, (_, i) => `col ${i}`)
@@ -1591,6 +1591,117 @@ test('a cell editor whose row is deleted leaves focus that moved out of the edit
   assert.equal((await state()).editor, null)
 })
 
+test('a native table pick releases its editing host on blur, new intent, readonly and destruction', {
+  timeout: 30000,
+}, async (t) => {
+  const doc = 'ab\n\n|   |\n| - |\n| cd |\n\nend'
+  for (const action of [
+    'outside focus',
+    'outside pointer',
+    'window blur',
+    'readonly',
+    'new document',
+    'new pick',
+    'destroy',
+  ]) {
+    await t.test(action, async () => {
+      await mount(doc)
+      await harness.evaluate((at) => {
+        const view = window.tables.view()
+        view.focus()
+        view.dispatch({ selection: { anchor: at } })
+      }, doc.indexOf('cd') + 1)
+      await harness
+        .getByRole('textbox', { name: 'Table cell', exact: true })
+        .waitFor()
+      await harness.evaluate(() => {
+        const root = window.tables.view().contentDOM
+        const find = (word) => {
+          const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+          while (walker.nextNode())
+            if (walker.currentNode.textContent.trim() === word)
+              return walker.currentNode
+        }
+        const a = find('ab'),
+          b = find('cd')
+        getSelection().setBaseAndExtent(
+          a,
+          1,
+          b,
+          b.textContent.indexOf('cd') + 1,
+        )
+      })
+      await harness.waitForFunction(
+        () =>
+          getSelection().toString().replace(/\s/g, '') === 'bc' &&
+          document.querySelector('.hibi-lp-table').contentEditable ===
+            'inherit',
+      )
+      const before = await state()
+      await harness.evaluate(async (action) => {
+        window.pickedTableDOM = document.querySelector('.hibi-lp-table')
+        if (action === 'readonly') window.tables.setEditable(false)
+        else if (action === 'new document') window.tables.echo('!')
+        else if (action === 'new pick') {
+          const view = window.tables.view()
+          view.contentDOM.dispatchEvent(
+            new PointerEvent('pointerdown', { bubbles: true }),
+          )
+          view.dispatch({ selection: { anchor: view.state.doc.length } })
+          view.focus()
+        } else if (action === 'destroy')
+          await window.tables.mount(
+            'replacement',
+            { width: 1000, height: 800 },
+            { editable: true },
+          )
+        else if (action === 'window blur')
+          window.dispatchEvent(new FocusEvent('blur'))
+        else {
+          const button = document.createElement('button')
+          button.className = 'table-pick-outside'
+          button.textContent = 'Outside the editor'
+          document.body.append(button)
+          if (action === 'outside focus') button.focus()
+          else
+            button.dispatchEvent(
+              new PointerEvent('pointerdown', { bubbles: true }),
+            )
+        }
+        await window.tables.settle()
+      }, action)
+      assert.equal(
+        await harness.evaluate(() => window.pickedTableDOM.contentEditable),
+        'false',
+      )
+      if (action !== 'destroy') {
+        const after = await state()
+        assert.equal(after.doc, action === 'new document' ? doc + '!' : doc)
+        assert.deepEqual(
+          [after.anchor, after.head],
+          action === 'new pick'
+            ? [doc.length, doc.length]
+            : [before.anchor, before.head],
+        )
+      }
+      if (action === 'outside focus')
+        assert.equal(
+          await harness.evaluate(() =>
+            document.activeElement.matches('.table-pick-outside'),
+          ),
+          true,
+        )
+      if (action === 'new pick') {
+        await harness.keyboard.insertText('Q')
+        assert.equal((await state()).doc, doc + 'Q')
+      }
+      await harness.evaluate(() =>
+        document.querySelector('.table-pick-outside')?.remove(),
+      )
+    })
+  }
+})
+
 test('a native selection in a read-only table becomes the editing selection', {
   timeout: 30000,
 }, async () => {
@@ -1897,7 +2008,9 @@ test('the toolbar inserts a header and two rows, with the caret in the first hea
   await harness.locator('.hibi-lp-table').waitFor()
   assert.equal(await rows.count(), 3)
   await harness.evaluate(() => window.tables.settle())
-  assert.deepEqual([(await state()).cell, (await state()).head], ['0:0', 2])
+  // The rich editor's table spelling `\n|     |`: an empty cell's caret sits
+  // mid-padding, after the line break, the pipe and three of its five spaces.
+  assert.deepEqual([(await state()).cell, (await state()).head], ['0:0', 5])
   // Table actions edit the table around that cell, as in the rich editor.
   assert.equal(
     await harness.evaluate(() => window.tables.runTableAction('row-after')),
@@ -2832,4 +2945,338 @@ test('in the app, undo and redo in a cell do nothing while the view takes no inp
   // Input again: undo reaches the document's history.
   await page.keyboard.press(undoKey)
   await saved(/\| value 2 \| value 3 \|/)
+})
+
+test('typed cell padding follows selection, blur, readonly and a source change', {
+  timeout: 30000,
+}, async (t) => {
+  const doc = 'before\n\n| h |\n| - |\n| south     |\n\nafter'
+  const end = doc.indexOf('south') + 5
+  for (const action of ['selection', 'blur', 'readonly', 'source']) {
+    await t.test(action, async () => {
+      await mount(doc)
+      const cell = harness.locator('.hibi-lp-table td', { hasText: 'south' })
+      await cell.click()
+      await harness.keyboard.press('End')
+      await harness.keyboard.press('Space')
+      await harness.evaluate(() => window.tables.settle())
+      assert.equal(await cell.innerText(), 'south ')
+      assert.equal((await state()).doc, doc.replace('south', 'south '))
+      await harness.evaluate(
+        ({ action, end }) => {
+          const view = window.tables.view()
+          if (action === 'selection') {
+            const content = document.querySelector(
+              '.hibi-lp-cell-editor .cm-content',
+            )
+            const cellView = content.cmTile.root.view
+            cellView.dispatch({
+              selection: {
+                anchor: cellView.state.doc.toString().indexOf('south') + 5,
+              },
+            })
+          } else if (action === 'blur') {
+            const button = document.createElement('button')
+            button.dataset.cellSpaceFocus = ''
+            document.body.append(button)
+            button.focus()
+          } else if (action === 'readonly') window.tables.setEditable(false)
+          else view.dispatch({ changes: { from: end, to: end + 1 } })
+        },
+        { action, end },
+      )
+      await harness.evaluate(() => window.tables.settle())
+      const after = await state()
+      assert.equal(
+        await cell.innerText(),
+        action === 'readonly' ? 'south ' : 'south',
+        action,
+      )
+      assert.equal(
+        after.doc,
+        action === 'source' ? doc : doc.replace('south', 'south '),
+      )
+      if (action === 'blur' || action === 'readonly')
+        assert.deepEqual([after.anchor, after.head], [end + 1, end + 1])
+      if (action !== 'blur')
+        assert.equal(
+          await harness.evaluate(
+            () =>
+              document.querySelector('.hibi-lp-cell-editor .cm-content').cmTile
+                .root.view.state.selection.main.head,
+          ),
+          after.head - (doc.indexOf('south') - 1),
+        )
+      if (action === 'readonly') {
+        await harness.keyboard.type('BLOCKED')
+        assert.equal((await state()).doc, after.doc)
+        await harness.evaluate(() => window.tables.settle())
+        const blocked = await state()
+        assert.deepEqual([blocked.anchor, blocked.head], [end + 1, end + 1])
+        await harness.evaluate(() => window.tables.setEditable(true))
+      }
+      if (action === 'source' || action === 'readonly') {
+        await harness.keyboard.type('Q')
+        const expected =
+          action === 'source'
+            ? doc.replace('south', 'southQ')
+            : doc.replace('south', 'south Q')
+        assert.equal((await state()).doc, expected)
+        const next = await harness.evaluate(() => {
+          const content = document.querySelector(
+            '.hibi-lp-cell-editor .cm-content',
+          )
+          const view = content.cmTile.root.view
+          const selection = getSelection()
+          return [
+            view.state.selection.main.head,
+            view.posAtDOM(selection.focusNode, selection.focusOffset),
+          ]
+        })
+        assert.equal(next[0], next[1])
+      }
+      await harness.evaluate(() =>
+        document.querySelector('[data-cell-space-focus]')?.remove(),
+      )
+    })
+  }
+})
+
+test('toolbar formatting preserves genuine DOM picks across table redraws', {
+  timeout: 30000,
+}, async (t) => {
+  await openFormatted()
+  const doc = 'plain\n\n\n| aa   | bb   |\n| ---- | ---- |\n| cell | tail |\n'
+  const cases = [
+    {
+      id: 'bold',
+      start: 'plain',
+      a: 1,
+      end: 'cell',
+      b: 2,
+      selected: 'lainaabbce',
+      source:
+        'p**lain**\n\n\n| **aa**   | **bb** |\n| -------- | ------ |\n| **ce**ll | tail   |\n',
+      styles: [
+        ['p', false, false],
+        ['lainaabbce', true, false],
+        ['lltail', false, false],
+      ],
+      caret: [
+        ['p', 'lain'],
+        ['ce', 'll'],
+      ],
+    },
+    {
+      id: 'italic',
+      start: 'cell',
+      a: 1,
+      end: 'tail',
+      b: 2,
+      selected: 'ellta',
+      source:
+        'plain\n\n\n| aa     | bb     |\n| ------ | ------ |\n| c*ell* | *ta*il |\n',
+      styles: [
+        ['plain', false, false],
+        ['aabb', true, false],
+        ['c', false, false],
+        ['ellta', false, true],
+        ['il', false, false],
+      ],
+      caret: [
+        ['c', 'ell'],
+        ['ta', 'il'],
+      ],
+    },
+  ]
+  const snapshot = () =>
+    page.evaluate(async () => {
+      await window.hibi.flushDocumentChanges()
+      const accepted = await window.hibi.getDocument()
+      const root = document.querySelector(
+        '.rich-pane [aria-label="Document editor"]',
+      )
+      const selection = getSelection()
+      const clean = (fragment) => {
+        for (const node of fragment.querySelectorAll(
+          '.hibi-lp-marker, [aria-hidden="true"], label',
+        ))
+          node.remove()
+        return fragment.textContent
+      }
+      const at = (node, offset) => {
+        const block = (
+          node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement
+        ).closest('.cm-line, p')
+        const left = document.createRange(),
+          right = document.createRange()
+        left.selectNodeContents(block)
+        left.setEnd(node, offset)
+        right.selectNodeContents(block)
+        right.setStart(node, offset)
+        return [clean(left.cloneContents()), clean(right.cloneContents())]
+      }
+      const styles = []
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+      while (walker.nextNode()) {
+        const node = walker.currentNode,
+          parent = node.parentElement
+        if (
+          !node.data ||
+          parent.closest('.hibi-lp-marker, [aria-hidden="true"], label') ||
+          !parent.getClientRects().length
+        )
+          continue
+        const css = getComputedStyle(parent),
+          bold = Number(css.fontWeight) >= 600,
+          italic = css.fontStyle === 'italic'
+        const last = styles.at(-1)
+        if (last && last[1] === bold && last[2] === italic) last[0] += node.data
+        else styles.push([node.data, bold, italic])
+      }
+      const range = root.cmTile.root.view.state.selection.main
+      return {
+        source: accepted.markdown,
+        version: accepted.contentVersion,
+        range: [range.anchor, range.head],
+        text: clean(root.cloneNode(true)),
+        styles,
+        selected: clean(selection.getRangeAt(0).cloneContents()).replace(
+          /\s/g,
+          '',
+        ),
+        caret: [
+          at(selection.anchorNode, selection.anchorOffset),
+          at(selection.focusNode, selection.focusOffset),
+        ],
+        collapsed: selection.isCollapsed,
+        inputs: window.tableActionInputs,
+      }
+    })
+  for (const item of cases)
+    for (const reverse of [false, true])
+      await t.test(item.id + (reverse ? ' reverse' : ' forward'), async () => {
+        const name = 'table-action-' + item.id + '-' + reverse + '.md'
+        const file = join(folder, name)
+        await writeFile(file, doc)
+        await app.evaluate(({ dialog }, file) => {
+          dialog.showOpenDialog = async () => ({
+            canceled: false,
+            filePaths: [file],
+          })
+        }, file)
+        await clickMenu(app, 'Open…')
+        await waitForAsync(
+          page,
+          async (name) => (await window.hibi.getDocument()).name === name,
+          name,
+        )
+        await waitForDocumentEditor(app, page)
+        const rich = page.getByRole('textbox', {
+          name: 'Document editor',
+          exact: true,
+        })
+        await page.waitForFunction(
+          (doc) =>
+            document
+              .querySelector('.rich-pane [aria-label="Document editor"]')
+              .cmTile.root.view.state.doc.toString() === doc,
+          doc,
+        )
+        await rich.evaluate((root, at) => {
+          const view = root.cmTile.root.view
+          view.focus()
+          view.dispatch({ selection: { anchor: at }, scrollIntoView: true })
+        }, doc.indexOf(item.end) + item.b)
+        await page
+          .getByRole('textbox', { name: 'Table cell', exact: true })
+          .waitFor()
+        await page.waitForFunction(
+          () =>
+            document.activeElement?.getAttribute('aria-label') === 'Table cell',
+        )
+        await rich.evaluate(
+          (root, { item, reverse }) => {
+            const find = (word) => {
+              const walker = document.createTreeWalker(
+                root,
+                NodeFilter.SHOW_TEXT,
+              )
+              while (walker.nextNode())
+                if (walker.currentNode.data.trim() === word)
+                  return walker.currentNode
+            }
+            const a = find(item.start),
+              h = find(item.end)
+            getSelection().setBaseAndExtent(
+              reverse ? h : a,
+              reverse ? item.b : item.a,
+              reverse ? a : h,
+              reverse ? item.a : item.b,
+            )
+            window.tableActionInputs = []
+            if (!window.tableActionInputInstalled) {
+              window.tableActionInputInstalled = true
+              document.addEventListener('input', (event) => {
+                if (
+                  document
+                    .querySelector('.rich-pane [aria-label="Document editor"]')
+                    ?.contains(event.target)
+                )
+                  window.tableActionInputs.push({
+                    type: event.inputType,
+                    data: event.data,
+                  })
+              })
+            }
+          },
+          { item, reverse },
+        )
+        const initial = [
+          doc.indexOf(item.start) + item.a,
+          doc.indexOf(item.end) + item.b,
+        ]
+        if (reverse) initial.reverse()
+        await page.waitForFunction((range) => {
+          const current = document.querySelector(
+            '.rich-pane [aria-label="Document editor"]',
+          ).cmTile.root.view.state.selection.main
+          return current.anchor === range[0] && current.head === range[1]
+        }, initial)
+        const before = await snapshot()
+        assert.equal(before.source, doc)
+        assert.equal(before.version, 0)
+        assert.equal(before.selected, item.selected)
+        await page
+          .locator('.editor-toolbar [data-toolbar-id="format.' + item.id + '"]')
+          .click()
+        await page.evaluate(async () => {
+          await new Promise(requestAnimationFrame)
+          await new Promise(requestAnimationFrame)
+        })
+        await rich.focus()
+        const from = item.source.indexOf(item.id === 'bold' ? 'lain' : 'ell')
+        const to = item.source.indexOf(item.id === 'bold' ? 'ce' : 'ta') + 2
+        const expectedRange = reverse ? [to, from] : [from, to]
+        const expectedCaret = reverse ? [...item.caret].reverse() : item.caret
+        const action = await snapshot()
+        assert.equal(action.source, item.source)
+        assert.equal(action.version, 1)
+        assert.equal(action.text, 'plainaabbcelltail')
+        assert.deepEqual(action.styles, item.styles)
+        assert.deepEqual(action.range, expectedRange)
+        assert.deepEqual(action.caret, expectedCaret)
+        assert.equal(action.selected, item.selected)
+        assert.equal(action.collapsed, false)
+        assert.deepEqual(action.inputs, [])
+        // Round-trip the real range through the registered widget mapping.
+        await page.evaluate(() =>
+          document.dispatchEvent(new Event('selectionchange')),
+        )
+        await page.evaluate(async () => {
+          await new Promise(requestAnimationFrame)
+          await new Promise(requestAnimationFrame)
+        })
+        assert.deepEqual(await snapshot(), action)
+      })
 })

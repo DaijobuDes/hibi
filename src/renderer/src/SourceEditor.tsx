@@ -14,13 +14,7 @@ import {
   setSelectedCompletion,
   startCompletion,
 } from '@codemirror/autocomplete'
-import {
-  defaultKeymap,
-  indentLess,
-  indentMore,
-  isolateHistory,
-  selectAll,
-} from '@codemirror/commands'
+import { indentLess, indentMore, isolateHistory } from '@codemirror/commands'
 import {
   ensureSyntaxTree,
   HighlightStyle,
@@ -70,6 +64,7 @@ import type {
   FormattedExtension,
   SourceExtension,
 } from '../../addons/api'
+import { commands as sourceCommands } from '../../addons/sdk-source'
 import {
   type CompletionItem,
   type CompletionRequest,
@@ -102,6 +97,7 @@ import type { SourceMatch } from '../../shared/source-search'
 import { Button } from '../../ui/Controls'
 import { DocumentNotice } from '../../ui/DocumentNotice'
 import { uncovered } from './chunked-markdown'
+import { observeClipboard } from './clipboard-source'
 import { codeHighlighter, codeLanguages } from './code-languages'
 import { setCodeExtents } from './code-placeholders'
 import {
@@ -165,7 +161,9 @@ import {
   type SourceFormatting,
   sourceFormatting,
   storedMarkInput,
+  wholeSelectionInput,
 } from './source-formatting'
+import { rejectedInput } from './source-formatting-actions'
 import { sourceIndentation } from './source-indent'
 import {
   createSourceSession,
@@ -1115,6 +1113,7 @@ export function SourceEditor({
       if (formatted)
         return [
           storedMarkInput,
+          wholeSelectionInput,
           livePreview(syntax, { flavors: parserOptions.current.flavors }),
           keymap.of(
             formattingKeymap((id) => formatting.current?.run(id) ?? false),
@@ -1787,6 +1786,14 @@ export function SourceEditor({
           }
         : {}),
       dispatchTransactions(transactions, editor) {
+        // Input no Markdown can keep is refused unapplied, its features kept.
+        for (const transaction of transactions) {
+          const error = transaction.annotation(rejectedInput)
+          if (error) {
+            reject(editor, error)
+            return
+          }
+        }
         try {
           bridge.dispatch(transactions, editor, exactChanges.current)
           // Only the user's next action clears a failure, not the view's own.
@@ -1811,6 +1818,9 @@ export function SourceEditor({
         extensions: [
           firstStateRead,
           restore ? restore.extension : [],
+          ViewPlugin.define((view) => ({
+            destroy: observeClipboard(view.contentDOM),
+          })),
           EditorView.domEventHandlers({
             scroll: (_event, editor) => record(editor),
           }),
@@ -2043,8 +2053,8 @@ export function SourceEditor({
             },
           }),
           keymap.of([
-            { key: 'Ctrl-a', run: selectAll },
-            ...defaultKeymap,
+            { key: 'Ctrl-a', run: sourceCommands.selectAll },
+            ...sourceCommands.defaultKeymap,
             {
               key: 'Mod-z',
               run: bridge.undo,

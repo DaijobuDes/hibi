@@ -27,6 +27,7 @@ import {
   customBody as nativeBody,
 } from '../../../shared/formatted-custom-body.ts'
 import { formattedInlineParser } from '../../../shared/formatted-markdown.ts'
+import { markdownLiteral } from '../../../shared/markdown-literal.ts'
 import { runSourceHistory } from '../../../shared/source-history.ts'
 import {
   blockMarkedNodes,
@@ -41,6 +42,7 @@ import {
   formattedMarkdown,
   formattedNodeViews,
   formattedRefresh,
+  formattedTree,
   showMarkdownMarkers,
 } from '../formatted-contributions.ts'
 import { drawReference, referenceLink } from '../formatted-references.ts'
@@ -48,7 +50,9 @@ import {
   formattingKeymap,
   type SourceFormatting,
   sourceFormatting,
+  storedMarkInput,
 } from '../source-formatting.ts'
+import { rejectedInput } from '../source-formatting-actions.ts'
 import { cellFixes, type InlineMark, planInline } from './table-source.ts'
 
 /*
@@ -59,7 +63,7 @@ import { cellFixes, type InlineMark, planInline } from './table-source.ts'
 
 /** Lezer Markdown for cell text: the formatted view's inline syntax and no blocks. */
 const cellParsers = new WeakMap<readonly MarkdownConfig[], MarkdownParser>()
-function cellParser(state: EditorState) {
+export function cellParser(state: EditorState) {
   const contributed = state.facet(formattedMarkdown)
   let found = cellParsers.get(contributed)
   if (!found) {
@@ -413,7 +417,13 @@ function editorDecorations(
     atomic.push(range)
   }
   // Spaces around the content are the cell's padding, not its text.
-  const { start, end } = padding(text)
+  let { start, end } = padding(text)
+  // Newly typed whitespace must keep the caret in visible cell text.
+  if (view.hasFocus)
+    for (const range of view.state.selection.ranges) {
+      start = Math.min(start, range.from)
+      end = Math.max(end, range.to)
+    }
   hide(0, start, null)
   hide(end, text.length, null)
   if (from !== undefined)
@@ -502,6 +512,7 @@ export type CellHost = {
  */
 export class CellEditor {
   readonly view: EditorView
+  readonly formatting: SourceFormatting
   /** A change from the formatted view is being applied. */
   private remote = false
   private access = new Compartment()
@@ -620,7 +631,7 @@ export class CellEditor {
     const move = (to: CellMove) => () => host.move(to)
     // Inline formatting shortcuts format the cell's source; block ones do nothing in a cell.
     let formatting: SourceFormatting | null = null
-    const inline = ['bold', 'italic', 'strike', 'inline-code']
+    const inline = ['bold', 'italic', 'strike', 'subscript', 'inline-code']
     /** Put the caret at the content's start or end, inside the cell's padding. */
     const edge = (end: boolean, extend: boolean) => (view: EditorView) => {
       const { start, end: last } = content(view)
@@ -639,6 +650,11 @@ export class CellEditor {
         selection: { anchor, head },
         extensions: [
           preview,
+          storedMarkInput,
+          formattedTree.of((state) =>
+            cellParser(host.main.state).parse(state.doc.toString()),
+          ),
+          main.facet(formattedLiteral).map((name) => formattedLiteral.of(name)),
           main
             .facet(formattedCellExtensions)
             .map((extension) => extension(host.main)),
@@ -694,6 +710,18 @@ export class CellEditor {
           Prec.highest(
             keymap.of([
               { key: 'Tab', run: move('next'), shift: move('previous') },
+              // As in the rich editor, select all takes the whole note.
+              {
+                key: 'Mod-a',
+                run: () => {
+                  host.main.focus()
+                  host.main.dispatch({
+                    selection: { anchor: 0, head: host.main.state.doc.length },
+                    userEvent: 'select.all',
+                  })
+                  return true
+                },
+              },
               {
                 key: 'Home',
                 run: edge(false, false),
@@ -759,8 +787,43 @@ export class CellEditor {
                 /^[yz]$/i.test(event.key) &&
                 (!writable(host.main.state) ||
                   runScopeHandlers(host.main, event, 'editor')),
-              beforeinput: (event) => {
-                const { inputType } = event
+              beforeinput: (event, view) => {
+                const { inputType, data } = event
+                if (
+                  inputType === 'insertText' &&
+                  data &&
+                  /[\r\n]/.test(data) &&
+                  !event.isComposing &&
+                  !view.composing &&
+                  writable(host.main.state) &&
+                  host.current()
+                ) {
+                  event.preventDefault()
+                  const { from, to } = view.state.selection.main
+                  const text = view.state.toText(data).toString()
+                  const insert = () =>
+                    view.state.update(
+                      view.state.replaceSelection(markdownLiteral(text)),
+                      {
+                        userEvent: 'input.type',
+                        scrollIntoView: true,
+                      },
+                    )
+                  if (
+                    !view.state
+                      .facet(EditorView.inputHandler)
+                      .some((handler) => handler(view, from, to, text, insert))
+                  )
+                    view.dispatch(insert())
+                  view.contentDOM.dispatchEvent(
+                    new InputEvent('input', {
+                      inputType,
+                      data,
+                      bubbles: true,
+                    }),
+                  )
+                  return true
+                }
                 if (inputType !== 'historyUndo' && inputType !== 'historyRedo')
                   return false
                 if (writable(host.main.state))
@@ -789,11 +852,19 @@ export class CellEditor {
       dispatchTransactions: (transactions, view) =>
         this.dispatch(transactions, view),
     })
-    formatting = sourceFormatting(this.view)
+    this.formatting = formatting = sourceFormatting(this.view)
   }
 
   /** Apply the editor's transactions, and send each change and selection to the formatted view. */
   private dispatch(transactions: readonly Transaction[], view: EditorView) {
+    // Rejected input leaves the cell as it was, for CodeMirror to redraw.
+    for (const transaction of transactions) {
+      const error = transaction.annotation(rejectedInput)
+      if (error) {
+        this.host.main.dispatch({ annotations: rejectedInput.of(error) })
+        return
+      }
+    }
     view.update(transactions)
     if (this.remote) {
       if (transactions.some((transaction) => transaction.docChanged))
@@ -893,9 +964,19 @@ export class CellEditor {
       doc[doc.length - 1 - end] === text[text.length - 1 - end]
     )
       end++
+    const span = this.host.span()
+    const selected = this.host.main.state.selection.main
+    const selection =
+      span && selected.from >= span.from && selected.to <= span.to
+        ? {
+            anchor: selected.anchor - span.from,
+            head: selected.head - span.from,
+          }
+        : undefined
     this.remote = true
     try {
       this.view.dispatch({
+        selection,
         changes: {
           from: start,
           to: doc.length - end,

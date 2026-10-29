@@ -25,11 +25,15 @@ import type {
   DocumentSelection,
 } from '../../addons/api'
 import { inlineCodeInfo } from '../../shared/formatted-markdown.ts'
-import { markdownLiteral } from '../../shared/markdown-literal.ts'
+import {
+  markdownLineStarts,
+  markdownLiteral,
+} from '../../shared/markdown-literal.ts'
 import type { MediaAttachment } from '../../shared/media'
 import { gapInput } from './formatted-commands.ts'
 import {
-  formattedLiteral,
+  formattedDocument,
+  formattedPrefix,
   formattedSyntaxTree,
 } from './formatted-contributions.ts'
 import {
@@ -40,7 +44,22 @@ import {
   unfenceChanges,
   unlinkChanges,
 } from './formatted-toolbar-state.ts'
-import { sourceHistoryEffects } from './source-session.ts'
+import {
+  blockAction,
+  formattedInputError,
+  inlineAction,
+  inlineInput,
+  listAction,
+  preserveActionSelection,
+  quoteAction,
+  rejectedInput,
+  splitAction,
+  typedLiteral,
+} from './source-formatting-actions.ts'
+import {
+  sourceHistoryEffects,
+  sourceHistorySelection,
+} from './source-session.ts'
 
 /** Same format actions as the toolbar; addon keymaps (including vim) run first. */
 const formatBindings: [string, string][] = [
@@ -67,7 +86,11 @@ export type InsertValues = { url: string; alt: string }
 /** A view's table editing: whether the selection is in a table, and the toolbar's table actions. */
 export type TableActions = {
   active: (view: EditorView) => boolean
-  run: (view: EditorView, id: string) => boolean
+  run: (view: EditorView, id: string, values?: InsertValues) => boolean
+  state?: (
+    view: EditorView,
+    id: string,
+  ) => { pressed: boolean; disabled: boolean } | null
 }
 export const tableActions = Facet.define<TableActions>()
 const tableIds = [
@@ -230,20 +253,6 @@ function codeRuns(text: string, tail = 0) {
   return { longest, tail: last }
 }
 
-function typedLiteral(state: EditorState, text: string) {
-  // Escape an ampersand before later input can complete an entity reference.
-  const literal = text
-    .split('&')
-    .map((part) => markdownLiteral(part, '='))
-    .join('&amp;')
-  return state.facet(formattedLiteral).includes('Escape')
-    ? literal.replace(
-        /\\(.)/gu,
-        (_, char: string) => `&#${char.codePointAt(0)};`,
-      )
-    : literal
-}
-
 /** Keep trailing spaces outside delimiters until more marked text follows. */
 function continueInline(
   state: EditorState,
@@ -260,6 +269,13 @@ function continueInline(
   const from = stored.pos - tail.length - (tail ? close.length : 0)
   const pos =
     from + value.length + (trailing ? close.length + trailing.length : 0)
+  const pending = {
+    ...stored,
+    pos,
+    marks: stored.marks.filter((id) => id !== 'subscript'),
+  }
+  if (stored.marks.includes('subscript')) delete pending.inline
+  else pending.inline = { close, tail: trailing }
   return {
     changes: {
       from,
@@ -267,11 +283,7 @@ function continueInline(
       insert: value + close + trailing,
     },
     selection: EditorSelection.cursor(pos),
-    effects: storeMarks.of({
-      ...stored,
-      pos,
-      inline: { close, tail: trailing },
-    }),
+    effects: storeMarks.of(pending),
     userEvent: 'input.type',
     scrollIntoView: true,
   }
@@ -499,8 +511,12 @@ function storedInput(
   const keep = !code && add.length > 0 && (!core || !!trail)
   let caret =
     at + close.length + (keep ? typed.length : typed.length - shut.length)
-  const pending: StoredMarks = { pos: caret, marks: stored.marks }
-  if (core && shut && !code) pending.inline = { close: shut, tail: trail }
+  const pending: StoredMarks = {
+    pos: caret,
+    marks: stored.marks.filter((id) => id !== 'subscript'),
+  }
+  if (core && shut && !code && !stored.marks.includes('subscript'))
+    pending.inline = { close: shut, tail: trail }
   if (code) {
     const runs = codeRuns(value)
     pending.code = {
@@ -567,6 +583,135 @@ function finishStoredComposition(view: EditorView) {
   })
 }
 
+type WholeSelection = {
+  from: number
+  selection: EditorSelection
+  document: { tabId: string | null; revision: number }
+}
+const storeWholeSelection = StateEffect.define<WholeSelection | null>()
+function wholeSelectionAt(state: EditorState): WholeSelection | null {
+  const { main } = state.selection
+  if (main.empty || main.to !== state.doc.length) return null
+  let body = 0
+  for (const prefix of state.facet(formattedPrefix))
+    body = Math.max(body, prefix(state))
+  body = Math.min(body, state.doc.length)
+  return main.from === 0 || main.from === body
+    ? {
+        from: body,
+        selection: state.selection,
+        document: state.facet(formattedDocument),
+      }
+    : null
+}
+const ownsWholeSelection = (value: WholeSelection, state: EditorState) => {
+  const owner = state.facet(formattedDocument)
+  return (
+    value.document.tabId === owner.tabId &&
+    value.document.revision === owner.revision
+  )
+}
+const wholeSelection = StateField.define<WholeSelection | null>({
+  create: () => null,
+  update(value, transaction) {
+    for (const effect of transaction.effects)
+      if (effect.is(storeWholeSelection)) {
+        const restored = effect.value
+        return restored &&
+          ownsWholeSelection(restored, transaction.state) &&
+          restored.selection.eq(transaction.newSelection)
+          ? restored
+          : null
+      }
+    if (value && !ownsWholeSelection(value, transaction.state)) value = null
+    if (transaction.docChanged)
+      return value &&
+        transaction.isUserEvent('input.format') &&
+        !transaction.newSelection.main.empty
+        ? {
+            ...value,
+            from: transaction.changes.mapPos(value.from, -1),
+            selection: transaction.newSelection,
+          }
+        : null
+    if (!transaction.selection) return value
+    if (transaction.isUserEvent('select.all'))
+      return wholeSelectionAt(transaction.state)
+    return transaction.isUserEvent('input.format') &&
+      value?.selection.eq(transaction.newSelection)
+      ? value
+      : null
+  },
+})
+
+/** Physical keys replace a whole-note selection as a document; direct text input keeps its block context. */
+export const wholeSelectionInput = [
+  wholeSelection,
+  sourceHistoryEffects.of((state) => {
+    const whole = state.field(wholeSelection)
+    if (!whole) return [storeWholeSelection.of(null)]
+    const { tabId, revision } = whole.document
+    return [
+      storeWholeSelection.of(whole),
+      sourceHistorySelection.of((current, selection) => {
+        const owner = current.facet(formattedDocument),
+          selected = current.field(wholeSelection, false)
+        return owner.tabId === tabId &&
+          owner.revision === revision &&
+          !selected?.selection.eq(current.selection)
+          ? EditorSelection.single(selection.main.to)
+          : selection
+      }),
+    ]
+  }),
+  EditorView.domEventHandlers({
+    keypress(event, view) {
+      const { state } = view
+      const whole = state.field(wholeSelection)
+      if (
+        !whole ||
+        !whole.selection.eq(state.selection) ||
+        !ownsWholeSelection(whole, state) ||
+        state.readOnly ||
+        !state.facet(EditorView.editable) ||
+        !view.hasFocus ||
+        event.target !== view.contentDOM ||
+        event.defaultPrevented ||
+        view.composing ||
+        view.compositionStarted ||
+        event.isComposing ||
+        !event.charCode ||
+        (event.ctrlKey && !event.altKey) ||
+        event.metaKey ||
+        event.key === 'Dead' ||
+        event.key === 'Process'
+      )
+        return false
+      const text = String.fromCodePoint(event.charCode)
+      if (/[\r\n\t]/.test(text)) return false
+      const literal = markdownLineStarts(markdownLiteral(text))
+      event.preventDefault()
+      const insert = () =>
+        state.update({
+          changes: { from: whole.from, to: state.doc.length, insert: literal },
+          selection: EditorSelection.cursor(whole.from + literal.length),
+          userEvent: 'input.type',
+          scrollIntoView: true,
+        })
+      // Input handlers, an addon's among them, see the typing first.
+      if (
+        !state
+          .facet(EditorView.inputHandler)
+          .some((handler) =>
+            handler(view, whole.from, state.doc.length, text, insert),
+          )
+      )
+        view.dispatch(insert())
+      return true
+    },
+  }),
+]
+
 /** Stored marks for a formatted view, which wrap the text typed next at their caret. */
 export const storedMarkInput = [
   storedMarks,
@@ -607,6 +752,7 @@ export const storedMarkInput = [
     },
   ),
   EditorView.inputHandler.of((view, from, to, text) => {
+    if (view.state.readOnly) return false
     let stored = view.state.field(storedMarks)
     if (
       stored?.composition &&
@@ -620,6 +766,26 @@ export const storedMarkInput = [
       from = to = view.state.selection.main.head
     }
     const tree = formattedSyntaxTree(view.state)
+    if (
+      tree &&
+      !view.composing &&
+      !view.compositionStarted &&
+      (from !== to || !stored)
+    ) {
+      let spec: TransactionSpec | null
+      try {
+        spec = inlineInput(view.state, tree, from, to, text)
+      } catch (error) {
+        if (!(error instanceof Error) || error.cause !== formattedInputError)
+          throw error
+        view.dispatch({ annotations: rejectedInput.of(error) })
+        return true
+      }
+      if (spec) {
+        view.dispatch(spec)
+        return true
+      }
+    }
     if (
       !stored ||
       !tree ||
@@ -739,9 +905,20 @@ export function sourceFormatting(
     )
   }
   const run = (id: string, values?: InsertValues) => {
-    if (!editable() || !supported(id)) return false
+    if (
+      !editable() ||
+      !supported(id) ||
+      ((id === 'link' || id === 'image') && !values)
+    )
+      return false
     if (blockIds.includes(id) && inTable(view)) return false
-    if (id === 'undo' || id === 'redo' || id === 'indent' || id === 'outdent') {
+    if (
+      id === 'undo' ||
+      id === 'redo' ||
+      ((id === 'indent' || id === 'outdent') &&
+        (!formattedSyntaxTree(view.state) ||
+          view.state.selection.ranges.length !== 1))
+    ) {
       const done = {
         undo: history?.undo ?? undo,
         redo: history?.redo ?? redo,
@@ -757,9 +934,22 @@ export function sourceFormatting(
       return view.state
         .facet(tableActions)
         .some((actions) => actions.run(view, id))
+    if (inTable(view) && [...storable, 'link', 'unlink'].includes(id)) {
+      const done = view.state
+        .facet(tableActions)
+        .some((actions) => actions.run(view, id, values))
+      if (done || view.state.selection.main.empty) return done
+    }
     const range = view.state.selection.main
     const doc = view.state.doc
     const tree = format === 'markdown' ? formattedSyntaxTree(view.state) : null
+    if (
+      tree &&
+      formattedStates(view.state, tree, range, storedAt(view.state)).disabled(
+        id,
+      )
+    )
+      return false
     if (
       range.empty &&
       tree &&
@@ -768,12 +958,6 @@ export function sourceFormatting(
       !inTable(view)
     ) {
       // Like the rich editor, a caret action formats the text typed next.
-      if (
-        formattedStates(view.state, tree, range, storedAt(view.state)).disabled(
-          id,
-        )
-      )
-        return false
       const current = storedAt(view.state) ?? [
         ...caretMarks(view.state, tree, range.head).keys(),
       ]
@@ -786,6 +970,19 @@ export function sourceFormatting(
               ? [id]
               : [...current, id],
         }),
+      })
+      view.focus()
+      return true
+    }
+    const inline = tree && inlineAction(view.state, tree, id, values?.url)
+    if (inline) {
+      view.dispatch({
+        ...inline,
+        annotations: [
+          Transaction.userEvent.of('input.format'),
+          isolateHistory.of('full'),
+        ],
+        scrollIntoView: true,
       })
       view.focus()
       return true
@@ -807,6 +1004,24 @@ export function sourceFormatting(
       }
       view.dispatch({
         changes: structural,
+        annotations: [
+          Transaction.userEvent.of('input.format'),
+          isolateHistory.of('full'),
+        ],
+        scrollIntoView: true,
+      })
+      view.focus()
+      return true
+    }
+    const block =
+      tree &&
+      (blockAction(view.state, tree, id) ??
+        splitAction(view.state, tree, id) ??
+        listAction(view.state, tree, id) ??
+        (id === 'quote' ? quoteAction(view.state, tree) : null))
+    if (block) {
+      view.dispatch({
+        ...preserveActionSelection(view.state, tree!, block),
         annotations: [
           Transaction.userEvent.of('input.format'),
           isolateHistory.of('full'),
@@ -994,6 +1209,19 @@ export function sourceFormatting(
             pressed: false,
             disabled:
               state.readOnly || !table || state.selection.ranges.length !== 1,
+          }
+        const cellState =
+          table && [...storable, 'link', 'unlink'].includes(id)
+            ? state
+                .facet(tableActions)
+                .map((actions) => actions.state?.(view, id))
+                .find(Boolean)
+            : null
+        if (cellState)
+          return {
+            supported: true,
+            ...cellState,
+            disabled: state.readOnly || cellState.disabled,
           }
         const blockActive = id.startsWith('heading-')
           ? line.startsWith(`${'#'.repeat(Number(id.slice(-1)))} `)

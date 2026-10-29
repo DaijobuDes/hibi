@@ -6,24 +6,17 @@ import {
 } from '@tiptap/core'
 import { DOMParser } from '@tiptap/pm/model'
 import { Plugin } from '@tiptap/pm/state'
+import {
+  clipboardHtml,
+  isCopiedHtml,
+  observeClipboard,
+  trustedClipboardElements,
+} from './clipboard-source.ts'
 import { markdownSyntax } from './markdown-syntax.ts'
 
 export { preserveInlineHtml } from '../../shared/markdown-inline-html.ts'
+export { clipboardHtml } from './clipboard-source.ts'
 
-let lastCopiedHtml = ''
-const trustedClipboardElements = new WeakSet<Element>()
-/** Strip native clipboard envelopes without rewriting the fragment. */
-export function clipboardHtml(html: string) {
-  const fragment = /<!--StartFragment-->([\s\S]*?)<!--EndFragment-->/i.exec(
-    html,
-  )?.[1]
-  if (fragment !== undefined) return fragment
-  return html
-    .replace(/^\s*<html\b[^>]*>([\s\S]*)<\/html>\s*$/i, '$1')
-    .replace(/^\s*<head\b[^>]*>[\s\S]*?<\/head>/i, '')
-    .replace(/^\s*<body\b[^>]*>([\s\S]*)<\/body>\s*$/i, '$1')
-    .replace(/^(?:<meta\b[^>]*>)+/i, '')
-}
 const htmlBreak = /^<br\s*\/?>$/i
 
 /** Keep break spelling and marked HTML fragments outside Tiptap's text-only mark handling. */
@@ -101,47 +94,42 @@ export const rawHtml = (['inline', 'block'] as const).map((level) => {
     addProseMirrorPlugins() {
       if (level !== 'inline') return []
       let internalPaste = false
+      let pastedText = ''
       const parser = DOMParser.fromSchema(this.editor.schema)
       const clipboardParser = new DOMParser(parser.schema, parser.rules)
       clipboardParser.parseSlice = (dom, options) => {
         if (internalPaste)
           for (const element of (dom as HTMLElement).querySelectorAll(
-            '[data-raw-html], [data-raw-html-break]',
+            '[data-raw-html], [data-raw-html-break], [data-literal-markdown]',
           ))
             trustedClipboardElements.add(element)
         internalPaste = false
+        pastedText = ''
         return parser.parseSlice(dom, options)
       }
       return [
         new Plugin({
           props: {
             clipboardParser,
+            handleDOMEvents: {
+              paste(_view, event) {
+                pastedText = event.clipboardData?.getData('text/plain') ?? ''
+                return false
+              },
+              drop(_view, event) {
+                pastedText = event.dataTransfer?.getData('text/plain') ?? ''
+                return false
+              },
+            },
             transformPastedHTML(html) {
               const fragment = clipboardHtml(html)
-              internalPaste = !!lastCopiedHtml && fragment === lastCopiedHtml
+              internalPaste = isCopiedHtml(html, pastedText)
+              pastedText = ''
               return internalPaste ? fragment : html
             },
           },
           view(view) {
-            // Read the final payload after ProseMirror's copy/cut/drag handler.
-            const remember = (event: Event) => {
-              if (!view.dom.contains(event.target as globalThis.Node)) return
-              const data =
-                (event as ClipboardEvent).clipboardData ??
-                (event as DragEvent).dataTransfer
-              if (data)
-                lastCopiedHtml = clipboardHtml(data.getData('text/html'))
-            }
-            const events = ['copy', 'cut', 'dragstart']
-            const document = view.dom.ownerDocument
-            for (const event of events)
-              document.addEventListener(event, remember)
-            return {
-              destroy() {
-                for (const event of events)
-                  document.removeEventListener(event, remember)
-              },
-            }
+            return { destroy: observeClipboard(view.dom) }
           },
         }),
       ]

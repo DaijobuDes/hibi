@@ -61,6 +61,20 @@ const codeParser = parser.configure({
   ],
 })
 
+/** The core parser's emphasis delimiter rules, over the adjacent Unicode scalars. */
+export function emphasisFlanks(marker: number, before: string, after: string) {
+  const pBefore = /[\p{P}\p{S}]/u.test(before),
+    pAfter = /[\p{P}\p{S}]/u.test(after)
+  const sBefore = /\s|^$/.test(before),
+    sAfter = /\s|^$/.test(after)
+  const left = !sAfter && (!pAfter || sBefore || pBefore)
+  const right = !sBefore && (!pBefore || sAfter || pAfter)
+  return {
+    open: left && (marker === 42 || !right || pBefore),
+    close: right && (marker === 42 || !left || pAfter),
+  }
+}
+
 const UnicodeEmphasis: MarkdownConfig = {
   parseInline: [
     {
@@ -73,20 +87,15 @@ const UnicodeEmphasis: MarkdownConfig = {
         const before =
           cx.slice(Math.max(cx.offset, from - 2), from).match(/.$/su)?.[0] ?? ''
         const after = cx.slice(to, to + 2).match(/^./su)?.[0] ?? ''
-        const pBefore = /[\p{P}\p{S}]/u.test(before),
-          pAfter = /[\p{P}\p{S}]/u.test(after)
-        const sBefore = /\s|^$/.test(before),
-          sAfter = /\s|^$/.test(after)
-        const left = !sAfter && (!pAfter || sBefore || pBefore)
-        const right = !sBefore && (!pBefore || sAfter || pAfter)
+        const { open, close } = emphasisFlanks(next, before, after)
         return cx.addDelimiter(
           next === 42
             ? InlineContext.emphasisAsterisk
             : InlineContext.emphasisUnderscore,
           from,
           to,
-          left && (next === 42 || !right || pBefore),
-          right && (next === 42 || !left || pAfter),
+          open,
+          close,
         )
       },
     },
