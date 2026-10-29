@@ -40,7 +40,7 @@ import {
   formattedSyntaxTree,
   formattedViews,
 } from '../formatted-contributions.ts'
-import { blockAt, formattingAt } from '../formatted-toolbar-state.ts'
+import { blockAt } from '../formatted-toolbar-state.ts'
 import {
   readDOMPosition,
   registerDOMPositions,
@@ -348,12 +348,9 @@ type Cell = { line: number; column: number }
 type Lost = { at: number; column: number }
 
 /** Chromium's unhandled table input counts each native block break once again in its caret. */
-function nativeTableTail(text: string, boundaries = 0) {
+function nativeTableTail(text: string) {
   const normalized = text.replace(/\r\n?/g, '\n')
-  let at = Math.max(
-    0,
-    normalized.length - (normalized.match(/\n/g)?.length ?? 0) - boundaries,
-  )
+  let at = normalized.length - (normalized.match(/\n/g)?.length ?? 0)
   // Chromium puts a caret that falls inside a surrogate pair after that scalar.
   if (
     at > 0 &&
@@ -1000,18 +997,11 @@ class TableView {
         if (row === 0) pad(1, width - counts[row]!, before)
       }
       const set = state.changes(changes)
-      const tail = nativeTableTail(text, 4) // The open cell and paragraph each have two boundaries.
-      const literal = formattingAt(state, tree, from).has('inline-code')
-        ? tail
-        : typedLiteral(state, tail)
-      const escaped = EditorState.create({ doc: literal }).update({
-        changes: cellFixes(literal, true),
-      }).newDoc.length
       return {
         changes: set,
+        // The caret follows the typed text.
         selection: {
-          anchor:
-            set.mapPos(start, -1) + prefix.length + 3 + inserted.head - escaped,
+          anchor: set.mapPos(start, -1) + prefix.length + 3 + inserted.head,
         },
         annotations: isolateHistory.of('full'),
         userEvent: 'input.type',
