@@ -430,7 +430,12 @@ for (const engine of ['tiptap', 'codemirror'])
         },
         content,
       )
-      await rich.focus()
+      // A raw focus of CodeMirror's content puts Chromium's caret at its
+      // start, which CodeMirror reverts only for 200 ms; its view draws its
+      // own selection as it takes focus.
+      if (engine === 'codemirror')
+        await rich.evaluate((element) => element.cmTile.root.view.focus())
+      else await rich.focus()
       await rich.evaluate(() => {
         window.actionInputs = []
         if (!window.rawDOMInputsInstalled) {
