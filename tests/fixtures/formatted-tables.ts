@@ -2,7 +2,10 @@ import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import { Compartment, EditorState, Transaction } from '@codemirror/state'
 import { EditorView, keymap } from '@codemirror/view'
 import '../../src/renderer/src/styles.css'
-import type { ChunkedMarkdownProbe } from '../../src/renderer/src/chunked-markdown'
+import {
+  type ChunkedMarkdownProbe,
+  uncovered,
+} from '../../src/renderer/src/chunked-markdown'
 import * as formattedTables from '../../src/renderer/src/formatted/tables'
 import {
   formattedDocument,
@@ -152,6 +155,16 @@ Object.assign(window, {
       ])
     },
     settling: () => view && syntax?.settling(view.state),
+    /**
+     * Whether the text in view is parsed. A viewport that moves during an
+     * edit's reparse ends its settling first: the view then shows the text it
+     * has not reached yet unparsed.
+     */
+    parsed: () =>
+      !!view &&
+      !!syntax &&
+      !syntax.settling(view.state) &&
+      !uncovered(syntax.tree(view.state), view.viewport.from, view.viewport.to),
     second: () => second,
     /** How many column and row positions table size tracking mapped. */
     sizeProbe: () =>

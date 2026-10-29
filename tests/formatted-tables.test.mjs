@@ -1549,7 +1549,7 @@ test('unfinished syntax never resolves or writes cells with old spans', {
     await harness.evaluate(() =>
       window.tables.view().dispatch({ changes: { from: 0, to: 4 } }),
     )
-    await harness.waitForFunction(() => !window.tables.settling())
+    await harness.waitForFunction(() => window.tables.parsed())
     await harness.evaluate(() => window.tables.settle())
     const now = await state()
     assert.deepEqual(
