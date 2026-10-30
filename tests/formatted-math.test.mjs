@@ -523,6 +523,70 @@ test('display math inside a heading line draws as display math, in the note and 
   await page.getByRole('button', { name: /^toggle right sidebar$/i }).click()
 })
 
+test('display math across lines, blank or holding dollars draws as display math, as in Obsidian', {
+  timeout: 90000,
+}, async () => {
+  // Obsidian 1.13.7 closes `$$` inside a paragraph at the next `$$` outside
+  // a backslash pair, also on a later line, and draws what is between, blank
+  // or with dollar signs, as display math.
+  const note =
+    'Across $$x\n+y$$ lines\n\nBlank $$ $$ body\n\nDollar $$x\\text{ and $y$}$$ inside\n\n> Quoted $$a\n> +b$$ formula\n\nlast\n'
+  await writeFile(join(folder, 'notes', 'display-gaps.md'), note)
+  await open('display-gaps.md')
+  await page.locator('.rich-pane .cm-line', { hasText: 'last' }).click()
+  const formulas = () =>
+    page.evaluate(() =>
+      [...document.querySelectorAll('.rich-pane [data-type="block-math"]')].map(
+        (formula) => ({
+          latex: formula.dataset.latex.replace(/\s+/g, ' '),
+          drawn: !!formula.querySelector('.katex'),
+        }),
+      ),
+    )
+  await page
+    .waitForFunction(
+      () =>
+        document.querySelectorAll('.rich-pane [data-type="block-math"] .katex')
+          .length === 4,
+    )
+    .catch(async (cause) => {
+      throw new Error(JSON.stringify(await formulas()), { cause })
+    })
+  // The quote's marker on the later line is no part of its formula.
+  assert.deepEqual(
+    (await formulas()).map(({ latex }) => latex),
+    ['x +y', '', 'x\\text{ and $y$}', 'a +b'],
+  )
+  // Each formula takes the text of its lines, delimiters included.
+  assert.deepEqual(
+    await page.evaluate(() =>
+      [...document.querySelectorAll('.rich-pane .cm-line')]
+        .map((line) => line.textContent)
+        .filter((text) => text.includes('$$')),
+    ),
+    [],
+  )
+  // A caret in the formula across lines shows its source on both of them.
+  const session = await page.context().newCDPSession(page)
+  await session.send('Emulation.setFocusEmulationEnabled', { enabled: true })
+  await page.evaluate(() => {
+    const view = document.querySelector('.rich-pane .cm-content').cmTile.root
+      .view
+    view.dispatch({
+      selection: { anchor: view.state.doc.toString().indexOf('+y') },
+    })
+    view.focus()
+  })
+  await page
+    .locator('.rich-pane .hibi-lp-math-source', { hasText: '+y' })
+    .waitFor()
+  assert.equal(
+    await page.locator('.rich-pane [data-type="block-math"]').count(),
+    3,
+  )
+  assert.equal(await documentText(), note)
+})
+
 test('with markers hidden, clicking a formula opens its prompt and replaces the formula', {
   timeout: 90000,
 }, async () => {
@@ -530,7 +594,10 @@ test('with markers hidden, clicking a formula opens its prompt and replaces the 
   await open('edit.md')
   const session = await page.context().newCDPSession(page)
   await session.send('Emulation.setFocusEmulationEnabled', { enabled: true })
-  await page.locator('.rich-pane [data-type="block-math"] .katex').waitFor()
+  // The reload shows the previous test's note, and its formulas, until this one opens.
+  await page
+    .locator('.rich-pane [data-type="block-math"][data-latex="c^2"] .katex')
+    .waitFor()
   await page.locator('.rich-pane [data-type="block-math"]').click()
   const prompt = page.getByRole('dialog', { name: 'Math' })
   const field = prompt.getByRole('textbox', { name: 'LaTeX' })
@@ -598,6 +665,34 @@ test('with markers hidden, clicking a formula opens its prompt and replaces the 
   await waitForAsync(page, async () =>
     (await window.hibi.getDocument()).markdown.startsWith('Text $a+b$ end.'),
   )
+  await engine(true, true)
+})
+
+test('applying an unchanged prompt keeps a formula across quote lines as written', {
+  timeout: 90000,
+}, async () => {
+  // The prompt shows the formula without the quote markers of its later
+  // lines, so writing it back would leave those lines outside the quote.
+  const note =
+    '> Quoted $$a\n> +b$$ formula\n\n> $$\n> c\n> +d\n> $$\n\nlast line\n'
+  await writeFile(join(folder, 'notes', 'quoted-prompt.md'), note)
+  await engine(true, false)
+  await open('quoted-prompt.md')
+  const formulas = page.locator('.rich-pane [data-type="block-math"]')
+  await page.locator('.rich-pane .cm-line', { hasText: 'Quoted' }).waitFor()
+  await page.waitForFunction(
+    () =>
+      document.querySelectorAll('.rich-pane [data-type="block-math"] .katex')
+        .length === 2,
+  )
+  const prompt = page.getByRole('dialog', { name: 'Math' })
+  for (const index of [0, 1]) {
+    await formulas.nth(index).click()
+    await prompt.getByRole('textbox', { name: 'LaTeX' }).waitFor()
+    await prompt.getByRole('button', { name: 'Apply' }).click()
+    await prompt.waitFor({ state: 'hidden' })
+    assert.equal(await documentText(), note)
+  }
   await engine(true, true)
 })
 
