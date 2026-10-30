@@ -131,12 +131,22 @@ test('fenced code keeps residual structural tab columns and unclosed bodies', ()
     }
 })
 
-test('quoted list and tilde compensation keep preexisting native rules distinct', () => {
+test('quoted list compensation keeps preexisting native rules distinct and tilde fences follow CommonMark', () => {
+  for (const source of [
+    '>  ~~~\n>  \tcode\n>  ~~~',
+    '>   ~~~\n>   \tcode\n>   ~~~',
+  ]) {
+    const native = new Marked({ gfm: false }).parse(source)
+    assert.notDeepEqual(code(native), code(micromark(source)), source)
+    assert.deepEqual(
+      code(new Marked({ gfm: false }, blockMarkdown).parse(source)),
+      code(micromark(source)),
+      source,
+    )
+  }
   for (const source of [
     '> - item\n>\n>   ```\n>   foo\n>   \tbar\n>   ```',
     '> - a\n>   - b\n>\n>     ```\n>     foo\n>     \tbar\n>     ```',
-    '>  ~~~\n>  \tcode\n>  ~~~',
-    '>   ~~~\n>   \tcode\n>   ~~~',
   ]) {
     const native = new Marked({ gfm: false }).parse(source)
     const oracle = micromark(source)
@@ -407,7 +417,7 @@ test('throwing quote and list reads restore grammar, hooks and container metadat
         tokenizer,
         extensions: {
           block: [
-            function (source) {
+            (source) => {
               if (source.startsWith('explode')) throw sentinel
             },
           ],
@@ -799,5 +809,23 @@ test('quote extensions keep physical title columns and consumed fence indentatio
             body,
           )
         }
+    }
+})
+
+test('re-reading a nested quote with quote extensions keeps later physical rows', () => {
+  // An extension that re-reads a nested quote reads its raw text, which is
+  // not the rest of the frame. Later blocks in the frame keep their rows.
+  for (const sample of [
+    '> > x\n>\n>\t>\t\tcode',
+    '> > x\n>\n>\t>\t[!NOTE]\n>\t>\n>\t>\t\tcode\n>\t>\t\tmore',
+  ])
+    for (const eol of ['\n', '\r\n']) {
+      const source = sample.replaceAll('\n', eol)
+      const markdown = new Marked({ gfm: true }, alertMarkdown, blockMarkdown)
+      assert.deepEqual(
+        code(markdown.parse(source)),
+        code(micromark(source).replaceAll('\r\n', '\n')),
+        source,
+      )
     }
 })
