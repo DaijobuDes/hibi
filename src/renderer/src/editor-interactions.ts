@@ -5,6 +5,7 @@ import {
   sameInteraction,
 } from '../../shared/editor-interactions'
 import type { CommandExecutionContext } from '../../shared/foundation-contracts'
+import type { MenuItem } from '../../ui/menus'
 import type { RegisteredCommand } from './addons'
 import { claimEditorPopup } from './completion-broker'
 import { captureEditorCommandTarget } from './editor-command-targets'
@@ -18,6 +19,24 @@ type MenuEntry =
       command: RegisteredCommand
       context: CommandExecutionContext
     }
+  | { kind: 'item'; item: MenuItem }
+
+/**
+ * Asks the editor's actions menu to open at `position` with the editor's own
+ * `items` first, as a link's. The menu cancels the event when it opens.
+ */
+export type EditorActionsRequest = {
+  position: number
+  x: number
+  y: number
+  items: readonly MenuItem[]
+}
+
+/** Entries of one source, which the menu separates from the next. */
+const group = (entry: MenuEntry) =>
+  entry.kind === 'command'
+    ? `command:${entry.command.menu?.group ?? ''}`
+    : entry.kind
 
 type Adapter = {
   element: HTMLElement
@@ -81,9 +100,12 @@ function copy(label: string, detail?: string) {
   return entry
 }
 
+let menuCount = 0
+
 export function attachEditorInteractions(adapter: Adapter) {
   const hover = panel('tooltip', 'Editor hover')
   const menu = panel('menu', 'Editor actions')
+  menu.id = `hibi-editor-actions-${++menuCount}`
   let hoverTimer: ReturnType<typeof setTimeout> | null = null
   let hoverCancel: (() => void) | null = null
   let actionCancel: (() => void) | null = null
@@ -102,6 +124,13 @@ export function attachEditorInteractions(adapter: Adapter) {
     if (element === menu) {
       releaseMenu?.()
       releaseMenu = null
+      // Another popup's, such as completions', stays.
+      if (
+        adapter.element
+          .getAttribute('aria-activedescendant')
+          ?.startsWith(`${menu.id}-`)
+      )
+        adapter.element.removeAttribute('aria-activedescendant')
     }
     if (element.matches(':popover-open')) element.hidePopover()
   }
@@ -173,7 +202,11 @@ export function attachEditorInteractions(adapter: Adapter) {
       element.setAttribute('aria-current', String(active))
       ;(element as HTMLElement).style.background = active ? 'var(--active)' : ''
     }
-    menu.children[selected]?.scrollIntoView({ block: 'nearest' })
+    // The editor keeps its focus; assistive technology follows the selected action.
+    const current = menu.children[selected]
+    if (current)
+      adapter.element.setAttribute('aria-activedescendant', current.id)
+    current?.scrollIntoView({ block: 'nearest' })
   }
   const accept = (index: number) => {
     const current = shown
@@ -196,11 +229,17 @@ export function attachEditorInteractions(adapter: Adapter) {
         .finally(() => release?.())
     } else {
       closeMenu()
-      adapter.apply(item.action, current.request)
+      if (item.kind === 'edit') adapter.apply(item.action, current.request)
+      else void Promise.resolve(item.item.onSelect()).catch(adapter.error)
     }
     adapter.focus()
   }
-  const openMenu = (position: number, x: number, y: number) => {
+  const openMenu = (
+    position: number,
+    x: number,
+    y: number,
+    lead: readonly MenuItem[] = [],
+  ) => {
     closeHover()
     closeMenu()
     const commands = editorCommandMenu()
@@ -226,6 +265,13 @@ export function attachEditorInteractions(adapter: Adapter) {
     else target?.release()
     if (!commandItems.length && !contextActionBroker.hasProviders())
       return false
+    // The menu lists only the actions that can run.
+    const fixed: MenuEntry[] = [
+      ...lead
+        .filter((item) => !item.disabled)
+        .map((item): MenuEntry => ({ kind: 'item', item })),
+      ...commandItems,
+    ]
     adapter.element.dispatchEvent(new Event('hibi:editor-actions-open'))
     const generation = menuGeneration
     const render = (items: readonly MenuEntry[]) => {
@@ -247,13 +293,27 @@ export function attachEditorInteractions(adapter: Adapter) {
         ...items.map((item, index) => {
           const button = document.createElement('button')
           button.type = 'button'
+          button.id = `${menu.id}-${index}`
           button.setAttribute('role', 'menuitem')
+          // One action per row.
+          Object.assign(button.style, {
+            display: 'flex',
+            width: '100%',
+            textAlign: 'start',
+          })
           button.append(
             copy(
-              item.kind === 'command' ? item.command.label : item.action.label,
+              item.kind === 'command'
+                ? item.command.label
+                : item.kind === 'edit'
+                  ? item.action.label
+                  : item.item.label,
               item.kind === 'edit' ? item.action.detail : undefined,
             ),
           )
+          const previous = items[index - 1]
+          if (previous && group(previous) !== group(item))
+            button.style.marginTop = 'var(--space-2)'
           button.addEventListener('pointermove', () => select(index))
           button.addEventListener('click', () => accept(index))
           return button
@@ -262,7 +322,7 @@ export function attachEditorInteractions(adapter: Adapter) {
       show(menu, x, y)
       select(selected)
     }
-    if (commandItems.length) render(commandItems)
+    if (fixed.length) render(fixed)
     if (contextActionBroker.hasProviders()) {
       let displayedActions: readonly EditorContextAction[] = []
       actionCancel = contextActionBroker.request(
@@ -276,7 +336,7 @@ export function attachEditorInteractions(adapter: Adapter) {
             return
           displayedActions = items
           render([
-            ...commandItems,
+            ...fixed,
             ...items.map((action): MenuEntry => ({ kind: 'edit', action })),
           ])
         },
@@ -284,12 +344,20 @@ export function attachEditorInteractions(adapter: Adapter) {
     }
     return !!shown || !!actionCancel
   }
+  const request = (event: Event) => {
+    const { position, x, y, items } = (
+      event as CustomEvent<EditorActionsRequest>
+    ).detail
+    if (openMenu(position, x, y, items)) event.preventDefault()
+  }
   const contextMenu = (event: MouseEvent) => {
     const position = adapter.positionAt(event.clientX, event.clientY)
     if (position === null) return
     if (openMenu(position, event.clientX, event.clientY)) event.preventDefault()
   }
   const keyDown = (event: KeyboardEvent) => {
+    // A composition's keys are its input method's.
+    if (event.isComposing) return
     if (
       event.key === 'F10' &&
       event.shiftKey &&
@@ -343,6 +411,7 @@ export function attachEditorInteractions(adapter: Adapter) {
   adapter.element.addEventListener('pointermove', pointerMove)
   adapter.element.addEventListener('pointerleave', closeHover)
   adapter.element.addEventListener('contextmenu', contextMenu)
+  adapter.element.addEventListener('hibi:editor-actions-request', request)
   adapter.element.addEventListener('keydown', keyDown, true)
   adapter.element.addEventListener('blur', invalidate)
   adapter.element.addEventListener(
@@ -358,6 +427,7 @@ export function attachEditorInteractions(adapter: Adapter) {
     adapter.element.removeEventListener('pointermove', pointerMove)
     adapter.element.removeEventListener('pointerleave', closeHover)
     adapter.element.removeEventListener('contextmenu', contextMenu)
+    adapter.element.removeEventListener('hibi:editor-actions-request', request)
     adapter.element.removeEventListener('keydown', keyDown, true)
     adapter.element.removeEventListener('blur', invalidate)
     adapter.element.removeEventListener(

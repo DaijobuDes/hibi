@@ -1,4 +1,4 @@
-import { Prec } from '@codemirror/state'
+import { MapMode, Prec } from '@codemirror/state'
 import {
   type EditorView,
   keymap,
@@ -6,6 +6,11 @@ import {
   type ViewUpdate,
 } from '@codemirror/view'
 import { menus } from '../../../ui/menu-store'
+import type { MenuItem } from '../../../ui/menus'
+import { otherPopupOpen } from '../completion-broker'
+import type { EditorActionsRequest } from '../editor-interactions'
+import { formattedSyntaxTree } from '../formatted-contributions'
+import { formattingBefore } from '../formatted-toolbar-state'
 import { readDOMPosition } from '../native-dom-selection'
 import type { SourceFormatting } from '../source-formatting'
 
@@ -33,7 +38,10 @@ export function linkControls(callbacks: Callbacks) {
       } | null = null
       menuOwner: symbol | null = null
       generation = 0
-      dismissed = false
+      /** The link whose dismissed actions stay hidden while the caret stays in it. */
+      dismissed: { from: number; to: number } | null = null
+      /** Until the caret moves, the link a note opens with it in counts as dismissed. */
+      caretMoved = false
       focusPending = false
       leave: ReturnType<typeof setTimeout> | undefined
 
@@ -61,8 +69,7 @@ export function linkControls(callbacks: Callbacks) {
             const target = this.target
             // A destination still resolving has no href yet.
             if (!target?.href || target.doc !== view.state.doc) return
-            this.dismissed = true
-            this.hide()
+            this.dismiss()
             this.act(id, target.capture, target.href)
           })
           actions.append(button)
@@ -101,6 +108,37 @@ export function linkControls(callbacks: Callbacks) {
         this.forget()
         if (this.panel.matches(':popover-open')) this.panel.hidePopover()
       }
+      /** Hides the shown link's actions until the caret leaves it or a pointer comes back. */
+      dismiss() {
+        this.dismissed = this.range(this.target?.capture)
+        this.hide()
+      }
+      /** The link of `capture`, which its dismissed actions stay scoped to. */
+      range(capture: Capture | null | undefined) {
+        const link = capture?.link
+        return link ? { from: link.from, to: link.to } : null
+      }
+      /** The link at `at`, or the one that ends there, past its closing syntax. */
+      linkAt(at: number) {
+        const capture = callbacks.capture(at)
+        if (capture?.link) return capture
+        const { state } = this.view
+        const tree = formattedSyntaxTree(state)
+        const text = tree && formattingBefore(state, tree, at, 'link')
+        // A bare address is all text, whose last place inside is before its end.
+        return text
+          ? callbacks.capture(text.to < at ? text.to : at - 1)
+          : capture
+      }
+      /** A read-only note offers only the actions that change nothing. */
+      enable() {
+        for (const button of this.panel.querySelectorAll<HTMLButtonElement>(
+          'button',
+        ))
+          button.disabled =
+            this.view.state.readOnly &&
+            ['edit', 'remove'].includes(button.dataset.action ?? '')
+      }
       act(id: Action, capture: Capture, href: string) {
         if (id === 'edit') this.edit(capture)
         else if (id === 'copy')
@@ -126,12 +164,12 @@ export function linkControls(callbacks: Callbacks) {
           this.hide()
       }
       outside = (event: PointerEvent) => {
-        if (
-          !(event.target instanceof Node) ||
-          (!this.panel.contains(event.target) &&
-            !this.view.dom.contains(event.target))
-        )
-          this.hide()
+        const target = event.target instanceof Node ? event.target : null
+        // A press in the editor may show dismissed actions again.
+        if (target && this.view.dom.contains(target)) {
+          this.dismissed = null
+          this.caretMoved = true
+        } else if (!target || !this.panel.contains(target)) this.hide()
       }
       point(x: number, y: number) {
         const range = document.caretRangeFromPoint(x, y)
@@ -155,7 +193,7 @@ export function linkControls(callbacks: Callbacks) {
           return
         }
         this.keep()
-        this.dismissed = false
+        this.dismissed = null
         const at = this.point(event.clientX, event.clientY)
         if (at !== null) this.show(at, link.getBoundingClientRect())
       }
@@ -168,8 +206,21 @@ export function linkControls(callbacks: Callbacks) {
           at <= current.capture.link.to
         )
           return
-        const capture = callbacks.capture(at)
-        if (!capture?.link) {
+        const capture = this.linkAt(at)
+        // Dismissed actions stay hidden until the caret leaves their link,
+        // its destination included.
+        if (
+          this.dismissed &&
+          (at < this.dismissed.from || at > this.dismissed.to)
+        )
+          this.dismissed = null
+        if (
+          !capture?.link ||
+          this.dismissed ||
+          // Nor do they cover an open menu.
+          menus.snapshot() ||
+          otherPopupOpen(this.view.contentDOM)
+        ) {
           this.hide()
           return
         }
@@ -192,12 +243,7 @@ export function linkControls(callbacks: Callbacks) {
             }
             this.target = { capture, href, doc }
             this.preview.textContent = href
-            for (const button of this.panel.querySelectorAll<HTMLButtonElement>(
-              'button',
-            ))
-              button.disabled =
-                this.view.state.readOnly &&
-                ['edit', 'remove'].includes(button.dataset.action ?? '')
+            this.enable()
             if (!this.panel.matches(':popover-open')) this.panel.showPopover()
             const bounds = this.panel.getBoundingClientRect()
             this.panel.style.left = `${Math.max(8, Math.min(rect.left, innerWidth - bounds.width - 8))}px`
@@ -214,7 +260,6 @@ export function linkControls(callbacks: Callbacks) {
       caret() {
         if (this.panel.contains(document.activeElement)) return
         if (
-          this.dismissed ||
           !this.view.dom.contains(document.activeElement) ||
           !this.view.state.selection.main.empty
         ) {
@@ -222,6 +267,10 @@ export function linkControls(callbacks: Callbacks) {
           return
         }
         const at = this.view.state.selection.main.head
+        if (!this.caretMoved) {
+          const range = this.range(this.linkAt(at))
+          if (range) this.dismissed = range
+        }
         const selection = document.getSelection()
         const link =
           selection?.anchorNode?.parentElement?.closest('.hibi-lp-link')
@@ -230,7 +279,7 @@ export function linkControls(callbacks: Callbacks) {
         else this.hide()
       }
       edit(capture: Capture) {
-        this.dismissed = true
+        this.dismissed = this.range(capture)
         void callbacks
           .edit(capture)
           .catch(callbacks.error)
@@ -242,10 +291,11 @@ export function linkControls(callbacks: Callbacks) {
       tab() {
         if (
           !this.view.state.selection.main.empty ||
-          !callbacks.capture(this.view.state.selection.main.head)?.link
+          !this.linkAt(this.view.state.selection.main.head)?.link
         )
           return false
-        this.dismissed = false
+        this.dismissed = null
+        this.caretMoved = true
         this.focusPending = true
         this.caret()
         if (this.panel.matches(':popover-open')) {
@@ -257,7 +307,7 @@ export function linkControls(callbacks: Callbacks) {
         return true
       }
       openMenu(at: number, x: number, y: number) {
-        const capture = callbacks.capture(at)
+        const capture = this.linkAt(at)
         if (!capture?.link) return false
         this.hide()
         const readOnly = this.view.state.readOnly
@@ -266,26 +316,29 @@ export function linkControls(callbacks: Callbacks) {
           Promise.resolve(capture.href).then((href) => {
             if (href) this.act(id, capture, href)
           })
-        this.scope.api.open({
-          label: 'Link actions',
-          anchor: { x, y },
-          items: [
-            {
-              id: 'edit-link',
-              label: 'Edit link…',
-              disabled: readOnly,
-              onSelect: () => this.edit(capture),
-            },
-            { id: 'open-link', label: 'Open link', onSelect: run('open') },
-            { id: 'copy-link', label: 'Copy link', onSelect: run('copy') },
-            {
-              id: 'remove-link',
-              label: 'Remove link',
-              disabled: readOnly,
-              onSelect: run('remove'),
-            },
-          ],
-        })
+        const items: MenuItem[] = [
+          {
+            id: 'edit-link',
+            label: 'Edit link…',
+            disabled: readOnly,
+            onSelect: () => this.edit(capture),
+          },
+          { id: 'open-link', label: 'Open link', onSelect: run('open') },
+          { id: 'copy-link', label: 'Copy link', onSelect: run('copy') },
+          {
+            id: 'remove-link',
+            label: 'Remove link',
+            disabled: readOnly,
+            onSelect: run('remove'),
+          },
+        ]
+        // Addon and editor actions join the link's in the editor's menu.
+        const request = new CustomEvent<EditorActionsRequest>(
+          'hibi:editor-actions-request',
+          { cancelable: true, detail: { position: at, x, y, items } },
+        )
+        if (!this.view.contentDOM.dispatchEvent(request)) return true
+        this.scope.api.open({ label: 'Link actions', anchor: { x, y }, items })
         this.menuOwner = menus.snapshot()?.owner ?? null
         return true
       }
@@ -298,6 +351,8 @@ export function linkControls(callbacks: Callbacks) {
         }
       }
       key = (event: KeyboardEvent) => {
+        // A composition's keys are its input method's: its Escape cancels it.
+        if (event.isComposing || this.view.composing) return
         if (event.key === 'F10' && event.shiftKey) {
           const at = this.view.state.selection.main.head
           const rect = this.view.coordsAtPos(at)
@@ -305,10 +360,7 @@ export function linkControls(callbacks: Callbacks) {
             event.preventDefault()
             event.stopImmediatePropagation()
           }
-        } else if (event.key === 'Escape' && this.target) {
-          this.dismissed = true
-          this.hide()
-        }
+        } else if (event.key === 'Escape' && this.target) this.dismiss()
       }
       menuKey = (event: KeyboardEvent) => {
         if (
@@ -341,8 +393,7 @@ export function linkControls(callbacks: Callbacks) {
         )
           return
         event.preventDefault()
-        this.dismissed = true
-        this.hide()
+        this.dismiss()
         this.view.focus()
       }
       update(update: ViewUpdate) {
@@ -354,13 +405,34 @@ export function linkControls(callbacks: Callbacks) {
           this.panel.matches(':popover-open')
         if (update.docChanged && focused) this.hide()
         else if (update.docChanged || moved) this.forget()
+        // A note's opening caret is placed before the editor has focus; the
+        // moves made with it are the user's.
+        if (
+          (update.selectionSet || update.docChanged) &&
+          this.view.dom.contains(document.activeElement)
+        )
+          this.caretMoved = true
+        // A dismissed link stays dismissed while edited, until either end goes.
+        if (update.docChanged && this.dismissed) {
+          const from = update.changes.mapPos(
+            this.dismissed.from,
+            1,
+            MapMode.TrackAfter,
+          )
+          const to = update.changes.mapPos(
+            this.dismissed.to,
+            -1,
+            MapMode.TrackBefore,
+          )
+          this.dismissed = from === null || to === null ? null : { from, to }
+        }
+        if (update.state.readOnly !== update.startState.readOnly) this.enable()
         if (
           update.docChanged ||
           moved ||
           update.selectionSet ||
           update.focusChanged
         ) {
-          if (update.selectionSet) this.dismissed = false
           queueMicrotask(() => {
             if (this.view.dom.isConnected) this.caret()
           })

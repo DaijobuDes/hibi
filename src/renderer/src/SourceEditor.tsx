@@ -2055,6 +2055,45 @@ export function SourceEditor({
               return position != null && followLink(view, position)
             },
           }),
+          // A right-click places the caret at once, which the page would place
+          // only after the menu opens: the menu then acts there and stays open.
+          EditorView.mouseSelectionStyle.of((view, event) => {
+            // macOS opens the menu on a Control+click too.
+            const control =
+              event.button === 0 &&
+              event.ctrlKey &&
+              !event.metaKey &&
+              !event.shiftKey &&
+              /Mac/.test(navigator.platform)
+            if (
+              (event.button !== 2 && !control) ||
+              (event.target instanceof Element &&
+                event.target.closest('[contenteditable="false"]'))
+            )
+              return null
+            const pressed = view.posAtCoords({
+              x: event.clientX,
+              y: event.clientY,
+            })
+            if (pressed === null) return null
+            const { from, to } = view.state.selection.main
+            // A press in the selection keeps it.
+            if (from < to && pressed >= from && pressed <= to) {
+              if (!control) return null
+              // A click collapses it on release; this keeps it. Focused now,
+              // the editor does not select it again on release either, as it
+              // does after taking focus.
+              view.focus()
+              return { get: () => view.state.selection, update: () => false }
+            }
+            let at = pressed
+            return {
+              get: () => EditorSelection.single(at),
+              update: (update) => {
+                at = update.changes.mapPos(at)
+              },
+            }
+          }),
           keymap.of([
             { key: 'Ctrl-a', run: sourceCommands.selectAll },
             ...sourceCommands.defaultKeymap,
@@ -2193,7 +2232,13 @@ export function SourceEditor({
               update.view.contentDOM.dispatchEvent(
                 new Event('hibi:source-caret', { bubbles: true }),
               )
-            if (update.docChanged || update.selectionSet || update.focusChanged)
+            // CodeMirror reports a regained focus a moment late, which must
+            // not close a menu opened in the meantime.
+            if (
+              update.docChanged ||
+              update.selectionSet ||
+              (update.focusChanged && !update.view.hasFocus)
+            )
               update.view.contentDOM.dispatchEvent(
                 new Event('hibi:editor-interactions-invalidate'),
               )
